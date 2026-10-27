@@ -1,0 +1,7 @@
+name = "ern-formal"
+version = "0.1.0"
+defaultTargets = ["Ern"]
+
+[[lean_lib]]
+name = "Ern"
+globs = ["Ern.*"]

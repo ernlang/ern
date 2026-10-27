@@ -1,0 +1,26 @@
+name: formal
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: leanprover/lean-action@v1
+        with:
+          lake-package-directory: formal
+          build: true
+          leanchecker: true
+          axiom-audit: true
+
+      - name: Forbidden constructs
+        run: |
+          if grep -rnE '\b(sorry|admit|native_decide)\b|^\s*axiom\b' --include='*.lean' --exclude-dir=.lake formal; then
+            echo "Forbidden construct found"
+            exit 1
+          fi
