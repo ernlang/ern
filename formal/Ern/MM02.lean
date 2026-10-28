@@ -3,10 +3,12 @@
 
 Modèle exploratoire de MM-02. Chaque définition et chaque théorème cite la
 règle MM-02.x qu'il modélise ; le texte des règles reste dans la spécification.
-Conditions abstraites (par omission) : MM-02.B.4, B.6, B.7 ; MM-02.C.4, C.5, C.6 ;
-MM-02.D troisième condition (autres invariants).
-Non couverts : MM-02.1 (aucune règle opératoire, hors du périmètre de la tâche),
-MM-02.F, MM-02.G.
+`State.write`, `State.dealloc`, `State.alloc` : effet d'une opération valide.
+`read`, `write`, `dealloc`, `alloc` : opérations brutes, issue `ok` ou `ub`
+(MM-02.H) ; `checkedWrite`, `checkedDealloc` : variantes vérifiées.
+Obligations non décidées par le noyau, paramètres explicites des opérations
+brutes : `ObR` (MM-02.B.4, B.6, B.7), `ObW` (MM-02.C.4, C.5, C.6).
+Non couverts : MM-02.1, MM-02.F, MM-02.G, MM-03.
 -/
 
 namespace Ern.MM02
@@ -519,5 +521,36 @@ example : ∃ s₁ s₂ s₃ : State,
       subst h
       simp at hl
     · simp [State.dealloc, State.alloc, hi] at h
+
+/-- MM-02.C (écriture valide) : cadre de l'effet d'écriture. Toute allocation
+autre que `ac.prov` est inchangée ; dans `ac.prov`, seuls les octets changent et
+tout octet hors de `[off, off + len)`, avec `off = ac.addr - base`, est inchangé ;
+`next` est inchangé. -/
+theorem write_frame (s : State) (ac : Access) (w : Nat → UInt8 × Option Nat) :
+    (∀ i, i ≠ ac.prov → (s.write ac w).allocs i = s.allocs i) ∧
+    (∀ a, s.allocs ac.prov = some a → ∃ a', (s.write ac w).allocs ac.prov = some a' ∧
+      { a' with bytes := a.bytes } = a ∧
+      ∀ j, ¬ (ac.addr - a.base ≤ j ∧ j < ac.addr - a.base + ac.len) → a'.bytes j = a.bytes j) ∧
+    (s.write ac w).next = s.next :=
+  ⟨fun i hi => by simp [State.write, hi],
+   fun a ha => ⟨a.write (ac.addr - a.base) ac.len w, by simp [State.write, ha], rfl,
+     fun j hj => by simp only [Alloc.write]; exact ite_eq_right hj⟩,
+   rfl⟩
+
+/-- MM-02.D : cadre de l'effet de désallocation. Toute allocation autre que `id`
+est inchangée ; `next` est inchangé. -/
+theorem dealloc_frame (s : State) (id : Nat) :
+    (∀ i, i ≠ id → (s.dealloc id).allocs i = s.allocs i) ∧ (s.dealloc id).next = s.next :=
+  ⟨fun i hi => by simp [State.dealloc, hi], rfl⟩
+
+/-- MM-02.A : cadre de l'effet d'allocation. Si l'identité `s.next` est fraîche
+(clause de `AllocPre`), toute allocation existante est inchangée. -/
+theorem alloc_frame {s : State} (hf : s.allocs s.next = none) (space base size align : Nat)
+    (freeAuth : Option Nat) {i : Nat} {a : Alloc} (ha : s.allocs i = some a) :
+    (s.alloc space base size align freeAuth).allocs i = some a := by
+  have hne : i ≠ s.next := fun e => by
+    rw [e, hf] at ha
+    cases ha
+  simp [State.alloc, hne, ha]
 
 end Ern.MM02
