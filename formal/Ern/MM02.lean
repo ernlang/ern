@@ -1350,6 +1350,67 @@ theorem alloc_complete_of_wf {space base size align : Nat} {freeAuth : Option Na
   | ok h => exact ite_eq_left ((allocPreDec_iff hwf).2 h)
   | ub h => exact ite_eq_right (mt (allocPreDec_iff hwf).1 h)
 
+/-- MM-02.A et MM-02.H : états atteignables depuis `State.empty` par des pas de la
+sémantique d'issue `ok`, avec des obligations et une compatibilité quelconques à
+chaque pas. -/
+inductive ReachableStep : State → Prop where
+  | empty : ReachableStep State.empty
+  | read {s s' : State} (ObR : ReadObl) (ac : Access) :
+      ReachableStep s → ReadStep ObR ac s (.ok s') → ReachableStep s'
+  | write {s s' : State} (ObW : WriteObl) (ac : Access) (w : Nat → UInt8 × Option Nat) :
+      ReachableStep s → WriteStep ObW ac w s (.ok s') → ReachableStep s'
+  | dealloc {s s' : State} (Compatible : Nat → Nat → Prop) (id auth : Nat) :
+      ReachableStep s → DeallocStep Compatible id auth s (.ok s') → ReachableStep s'
+  | alloc {s s' : State} (space base size align : Nat) (freeAuth : Option Nat) :
+      ReachableStep s → AllocStep space base size align freeAuth s (.ok s') → ReachableStep s'
+
+/-- MM-02.A, MM-02.2 et MM-02.H : tout état atteignable par la sémantique
+satisfait l'invariant global. -/
+theorem reachableStep_inv {s : State} (h : ReachableStep s) : Inv s := by
+  induction h with
+  | empty => exact inv_empty
+  | read _ _ _ h ih =>
+    obtain ⟨-, rfl⟩ := ReadStep_ok_iff.1 h
+    exact ih
+  | write _ ac w _ h ih =>
+    obtain ⟨-, rfl⟩ := WriteStep_ok_iff.1 h
+    exact ⟨write_wf ih.1 ac w, liveDisjoint_write ih.2.1 ac w, aligned_write ih.2.2 ac w⟩
+  | dealloc _ id _ _ h ih =>
+    obtain ⟨-, rfl⟩ := DeallocStep_ok_iff.1 h
+    exact ⟨dealloc_wf ih.1 id, liveDisjoint_dealloc ih.2.1 id, aligned_dealloc ih.2.2 id⟩
+  | alloc space base size align freeAuth _ h ih =>
+    obtain ⟨hp, rfl⟩ := AllocStep_ok_iff.1 h
+    exact ⟨alloc_wf ih.1 space base size align freeAuth, liveDisjoint_alloc ih.2.1 hp freeAuth,
+      aligned_alloc ih.2.2 hp freeAuth⟩
+
+/-- MM-02.A et MM-02.H : les états atteignables par la sémantique sont ceux
+qu'atteignent les interpréteurs. Une compatibilité non décidable est remplacée
+par la relation pleine, l'effet de désallocation n'en dépendant pas. -/
+theorem reachableStep_iff_reachable {s : State} : ReachableStep s ↔ Reachable s := by
+  constructor
+  · intro h
+    induction h with
+    | empty => exact .empty
+    | read ObR ac _ h ih => exact .read ObR ac _ ih (read_complete h (ReadStep_ok_iff.1 h).1.2.2)
+    | write ObW ac w _ h ih =>
+      exact .write ObW ac w _ ih (write_complete h (WriteStep_ok_iff.1 h).1.2.2)
+    | dealloc _ id auth _ h ih =>
+      obtain ⟨⟨a, ha, hl, d, hd, -⟩, rfl⟩ := DeallocStep_ok_iff.1 h
+      exact .dealloc (fun _ _ => True) id auth ih
+        (dealloc_eq_ok.2 ⟨⟨a, ha, hl, d, hd, trivial⟩, rfl⟩)
+    | alloc space base size align freeAuth _ h ih =>
+      exact .alloc space base size align freeAuth ih
+        (alloc_complete_of_wf (reachable_inv ih).1 h)
+  · intro h
+    induction h with
+    | empty => exact .empty
+    | @read _ _ ObR ac _ _ h ih => exact .read ObR ac ih (read_sound h)
+    | @write _ _ ObW ac w _ _ h ih => exact .write ObW ac w ih (write_sound h)
+    | @dealloc _ _ Compatible _ id auth _ h ih =>
+      exact .dealloc Compatible id auth ih (dealloc_sound h)
+    | @alloc _ _ space base size align freeAuth hr h ih =>
+      exact .alloc space base size align freeAuth ih (alloc_sound_of_wf (reachable_inv hr).1 h)
+
 namespace Witness
 
 /-! Témoins exécutables (MM-02.H) : chaque opération brute et vérifiée sur des
