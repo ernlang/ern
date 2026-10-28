@@ -184,6 +184,18 @@ def AllocPre (s : State) (space base size align : Nat) : Prop :=
     ∀ i a, s.allocs i = some a → a.live = true → a.space = space →
       RangeDisjoint a.base a.size base size
 
+/-- MM-02.2 : toute allocation enregistrée, vivante ou morte, a un alignement
+strictement positif, puissance de deux, auquel sa base satisfait. -/
+def Aligned (s : State) : Prop :=
+  ∀ i a, s.allocs i = some a → 0 < a.align ∧ Pow2 a.align ∧ a.base % a.align = 0
+
+/-- MM-02.A et MM-02.2 : invariant global de l'état : fraîcheur des identités,
+`LiveDisjoint` et alignement valide. -/
+def Inv (s : State) : Prop := WF s ∧ LiveDisjoint s ∧ Aligned s
+
+/-- MM-02.2 : état initial, sans allocation, prochaine identité `0`. -/
+def State.empty : State := ⟨fun _ => none, 0⟩
+
 /-- MM-02.E : `ac'` est dérivé de `ac` : sous-plage, même provenance,
 autorité au plus celle de l'origine. -/
 def Derive (ac ac' : Access) : Prop :=
@@ -264,6 +276,20 @@ noncomputable def checkedRead (ObR : State → Access → Prop) (ac : Access) (s
   match readBytes s ac with
   | some v => if ObR s ac then (read ObR ac s).lift v else .fail s
   | none => .fail s
+
+/-- MM-02.A et MM-02.H : états atteignables depuis `State.empty` par des
+opérations brutes d'issue `ok`. -/
+inductive Reachable : State → Prop where
+  | empty : Reachable State.empty
+  | read {s s' : State} (ObR : State → Access → Prop) (ac : Access) :
+      Reachable s → read ObR ac s = .ok s' → Reachable s'
+  | write {s s' : State} (ObW : State → Access → (Nat → UInt8 × Option Nat) → Prop)
+      (ac : Access) (w : Nat → UInt8 × Option Nat) :
+      Reachable s → write ObW ac w s = .ok s' → Reachable s'
+  | dealloc {s s' : State} (Compatible : Nat → Nat → Prop) (id auth : Nat) :
+      Reachable s → dealloc Compatible id auth s = .ok s' → Reachable s'
+  | alloc {s s' : State} (space base size align : Nat) (freeAuth : Option Nat) :
+      Reachable s → alloc space base size align freeAuth s = .ok s' → Reachable s'
 
 /-- P1, MM-02.B.1 : toute lecture permise porte sur une allocation vivante. -/
 theorem read_requires_live {s : State} {ac : Access} (h : Read s ac) :
@@ -828,5 +854,92 @@ theorem checkedRead_fail_state {ObR : State → Access → Prop} {ac : Access} {
       simp [Outcome.lift] at h
     · simp_all [eq_comm]
   · simp_all [eq_comm]
+
+/-- MM-02.A et MM-02.2 : l'état initial satisfait l'invariant global. -/
+theorem inv_empty : Inv State.empty := by
+  refine ⟨fun _ _ => rfl, ?_, ?_⟩
+  · intro _ _ _ _ _ h
+    simp [State.empty] at h
+  · intro _ _ h
+    simp [State.empty] at h
+
+/-- MM-02.2 : l'effet d'une écriture préserve l'alignement valide. -/
+theorem aligned_write {s : State} (h : Aligned s) (ac : Access) (w : Nat → UInt8 × Option Nat) :
+    Aligned (s.write ac w) := by
+  intro i a ha
+  simp only [State.write] at ha
+  split at ha
+  · obtain ⟨a₀, h₀, rfl⟩ := Option.map_eq_some_iff.1 ha
+    exact h i a₀ h₀
+  · exact h i a ha
+
+/-- MM-02.2 : l'effet d'une désallocation préserve l'alignement valide. -/
+theorem aligned_dealloc {s : State} (h : Aligned s) (id : Nat) : Aligned (s.dealloc id) := by
+  intro i a ha
+  simp only [State.dealloc] at ha
+  split at ha
+  · obtain ⟨a₀, h₀, rfl⟩ := Option.map_eq_some_iff.1 ha
+    exact h i a₀ h₀
+  · exact h i a ha
+
+/-- MM-02.2 (création brute) : l'effet d'une allocation dont `AllocPre` est
+satisfaite préserve l'alignement valide. -/
+theorem aligned_alloc {s : State} (h : Aligned s) {space base size align : Nat}
+    (hp : AllocPre s space base size align) (freeAuth : Option Nat) :
+    Aligned (s.alloc space base size align freeAuth) := by
+  obtain ⟨-, h0, h2, hm, -⟩ := hp
+  intro i a ha
+  simp only [State.alloc] at ha
+  split at ha
+  · cases ha
+    exact ⟨h0, h2, hm⟩
+  · exact h i a ha
+
+/-- MM-02.H : une lecture brute d'issue `ok` préserve l'invariant global. -/
+theorem inv_read {ObR : State → Access → Prop} {ac : Access} {s s' : State}
+    (h : read ObR ac s = .ok s') (hi : Inv s) : Inv s' := by
+  obtain ⟨-, rfl⟩ := read_eq_ok.1 h
+  exact hi
+
+/-- MM-02.H : une écriture brute d'issue `ok` préserve l'invariant global. -/
+theorem inv_write {ObW : State → Access → (Nat → UInt8 × Option Nat) → Prop} {ac : Access}
+    {w : Nat → UInt8 × Option Nat} {s s' : State} (h : write ObW ac w s = .ok s')
+    (hi : Inv s) : Inv s' := by
+  obtain ⟨-, rfl⟩ := write_eq_ok.1 h
+  exact ⟨write_wf hi.1 ac w, liveDisjoint_write hi.2.1 ac w, aligned_write hi.2.2 ac w⟩
+
+/-- MM-02.H : une désallocation brute d'issue `ok` préserve l'invariant global. -/
+theorem inv_dealloc {Compatible : Nat → Nat → Prop} {id auth : Nat} {s s' : State}
+    (h : dealloc Compatible id auth s = .ok s') (hi : Inv s) : Inv s' := by
+  obtain ⟨-, rfl⟩ := dealloc_eq_ok.1 h
+  exact ⟨dealloc_wf hi.1 id, liveDisjoint_dealloc hi.2.1 id, aligned_dealloc hi.2.2 id⟩
+
+/-- MM-02.H et MM-02.2 (création brute) : une allocation brute d'issue `ok`
+préserve l'invariant global. -/
+theorem inv_alloc {space base size align : Nat} {freeAuth : Option Nat} {s s' : State}
+    (h : alloc space base size align freeAuth s = .ok s') (hi : Inv s) : Inv s' := by
+  obtain ⟨hp, rfl⟩ := alloc_eq_ok.1 h
+  exact ⟨alloc_wf hi.1 space base size align freeAuth, liveDisjoint_alloc hi.2.1 hp freeAuth,
+    aligned_alloc hi.2.2 hp freeAuth⟩
+
+/-- MM-02.A, MM-02.2 et MM-02.H : tout état atteignable satisfait l'invariant global. -/
+theorem reachable_inv {s : State} (h : Reachable s) : Inv s := by
+  induction h with
+  | empty => exact inv_empty
+  | @read _ _ _ _ _ h ih => exact inv_read h ih
+  | @write _ _ _ _ _ _ h ih => exact inv_write h ih
+  | @dealloc _ _ _ _ _ _ h ih => exact inv_dealloc h ih
+  | @alloc _ _ _ _ _ _ _ _ h ih => exact inv_alloc h ih
+
+/-- MM-02.A : une identité absente reste absente après l'effet d'une écriture. -/
+theorem write_absent {s : State} {i : Nat} (h : s.allocs i = none) (ac : Access)
+    (w : Nat → UInt8 × Option Nat) : (s.write ac w).allocs i = none := by
+  simp [State.write, h]
+
+/-- MM-02.A : une identité absente reste absente après l'effet d'une
+désallocation. -/
+theorem dealloc_absent {s : State} {i : Nat} (h : s.allocs i = none) (id : Nat) :
+    (s.dealloc id).allocs i = none := by
+  simp [State.dealloc, h]
 
 end Ern.MM02
