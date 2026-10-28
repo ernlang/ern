@@ -7,7 +7,8 @@ règle MM-02.x qu'il modélise ; le texte des règles reste dans la spécificati
 `ReadStep`, `WriteStep`, `DeallocStep`, `AllocStep` : sémantique des opérations
 brutes, relation entre un état et son issue `ok` ou `ub` (MM-02.H), définie pour
 tout état. `read`, `write`, `dealloc`, `alloc` : interpréteurs de ces relations ;
-`checkedRead`, `checkedWrite`, `checkedDealloc` : variantes vérifiées. Ces
+`checkedRead`, `checkedWrite`, `checkedDealloc` : variantes vérifiées,
+vérifications instrumentées du modèle exploratoire et non primitives d'ERN. Ces
 fonctions sont calculables, sans décision classique.
 Obligations non décidées par le noyau, paramètres explicites : `ObR : ReadObl`
 (MM-02.B.4, B.6, B.7), `ObW : WriteObl` (MM-02.C.4, C.5, C.6), chacun formé
@@ -392,7 +393,10 @@ def Outcome.lift {α : Type} (o : Outcome) (v : α) : Outcome' α :=
 /-- MM-02.B, MM-02.H et MM-01.5 : sémantique d'une lecture brute par `ac` dans
 l'état `s`. Issue `ok s` (état inchangé) si les conditions 1, 2, 3, 5 (`Read`),
 la part décidable `ObR.dec` et la part statique `ObR.stat` (conditions 4, 6, 7)
-sont satisfaites ; issue `ub` sinon, violation de la part statique comprise. -/
+sont satisfaites ; issue `ub` sinon, violation de la part statique comprise.
+La part statique est la frontière avec la sémantique concurrente (Spec 2,
+MM-02.F) et n'est pas modélisée ici ; la répartition des conditions entre
+`dec` et `stat` n'est pas fixée. -/
 inductive ReadStep (ObR : ReadObl) (ac : Access) (s : State) : Outcome → Prop where
   | ok : Read s ac ∧ ObR.dec s ac ∧ ObR.stat s ac → ReadStep ObR ac s (.ok s)
   | ub : ¬ (Read s ac ∧ ObR.dec s ac ∧ ObR.stat s ac) → ReadStep ObR ac s .ub
@@ -401,7 +405,9 @@ inductive ReadStep (ObR : ReadObl) (ac : Access) (s : State) : Outcome → Prop 
 dans l'état `s`. Issue `ok` avec l'effet `State.write` si les conditions 1, 2, 3
 (`CanWrite`), la part décidable `ObW.dec` et la part statique `ObW.stat`
 (conditions 4, 5, 6) sont satisfaites ; issue `ub` sinon, violation de la part
-statique comprise. -/
+statique comprise. La part statique est la frontière avec la sémantique
+concurrente (Spec 2, MM-02.F) et n'est pas modélisée ici ; la répartition des
+conditions entre `dec` et `stat` n'est pas fixée. -/
 inductive WriteStep (ObW : WriteObl) (ac : Access) (w : Nat → UInt8 × Option Nat) (s : State) :
     Outcome → Prop where
   | ok : CanWrite s ac ∧ ObW.dec s ac w ∧ ObW.stat s ac w →
@@ -454,14 +460,21 @@ def alloc (space base size align : Nat) (freeAuth : Option Nat) (s : State) : Ou
 
 /-- MM-01.3 et MM-02.H : écriture vérifiée : contrôle `CanWrite` et `ObW.dec`
 avant d'appeler l'opération brute ; `fail` avec l'état d'entrée, sans y entrer,
-si le contrôle échoue. La part statique `ObW.stat` est reçue en hypothèse. -/
+si le contrôle échoue. La part statique `ObW.stat` est reçue en hypothèse.
+Vérification instrumentée du modèle exploratoire, non primitive d'ERN : elle
+modélise une machine instrumentée qui lit l'état abstrait, alors que la machine
+abstraite n'institue aucune métadonnée à l'exécution (rapport de passe 2,
+`formal/reports/MM02_v0.3_p2.md`, section (h)). -/
 def checkedWrite (ObW : WriteObl) (ac : Access) (w : Nat → UInt8 × Option Nat) (s : State)
     (hs : ObW.stat s ac w) : Outcome' Unit :=
   if CanWrite s ac ∧ ObW.dec s ac w then (write ObW ac w s hs).lift () else .fail s
 
 /-- MM-01.3 et MM-02.H : désallocation vérifiée : contrôle `CanDealloc` avant
 d'appeler l'opération brute ; `fail` avec l'état d'entrée, sans y entrer, si le
-contrôle échoue. -/
+contrôle échoue. Vérification instrumentée du modèle exploratoire, non
+primitive d'ERN : elle modélise une machine instrumentée qui lit l'état
+abstrait, alors que la machine abstraite n'institue aucune métadonnée à
+l'exécution (rapport de passe 2, `formal/reports/MM02_v0.3_p2.md`, section (h)). -/
 def checkedDealloc (Compatible : Nat → Nat → Prop) [DecidableRel Compatible] (id auth : Nat)
     (s : State) : Outcome' Unit :=
   if CanDealloc Compatible s id auth then (dealloc Compatible id auth s).lift () else .fail s
@@ -469,7 +482,11 @@ def checkedDealloc (Compatible : Nat → Nat → Prop) [DecidableRel Compatible]
 /-- MM-02.B, MM-01.3 et MM-02.H : lecture vérifiée : contrôle les conditions du
 noyau (par `readBytes`) et `ObR.dec` avant d'appeler la lecture brute ; rend les
 octets lus, ou `fail` avec l'état d'entrée sans y entrer. La part statique
-`ObR.stat` est reçue en hypothèse. -/
+`ObR.stat` est reçue en hypothèse. Vérification instrumentée du modèle
+exploratoire, non primitive d'ERN : elle modélise une machine instrumentée qui
+lit l'état abstrait, alors que la machine abstraite n'institue aucune
+métadonnée à l'exécution (rapport de passe 2, `formal/reports/MM02_v0.3_p2.md`,
+section (h)). -/
 def checkedRead (ObR : ReadObl) (ac : Access) (s : State) (hs : ObR.stat s ac) :
     Outcome' (List AByte) :=
   match readBytes s ac with
