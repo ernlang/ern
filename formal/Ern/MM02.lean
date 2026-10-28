@@ -359,6 +359,26 @@ inductive Outcome' (α : Type) where
   | fail (s : State)
   | ub
 
+/-- MM-02.H : projection booléenne d'une issue brute : `true` ssi `ok`. -/
+def Outcome.isOk : Outcome → Bool
+  | .ok _ => true
+  | .ub => false
+
+/-- MM-02.H : projection booléenne d'une issue vérifiée : `true` ssi `ok`. -/
+def Outcome'.isOk {α : Type} : Outcome' α → Bool
+  | .ok _ _ => true
+  | _ => false
+
+/-- MM-02.H : projection booléenne d'une issue vérifiée : `true` ssi `fail`. -/
+def Outcome'.isFail {α : Type} : Outcome' α → Bool
+  | .fail _ => true
+  | _ => false
+
+/-- MM-02.H : valeur rendue par une issue vérifiée `ok`, s'il y en a une. -/
+def Outcome'.value? {α : Type} : Outcome' α → Option α
+  | .ok _ v => some v
+  | _ => none
+
 /-- MM-02.H : une issue d'opération brute vue comme issue de variante vérifiée,
 avec la valeur `v` en cas de succès. -/
 def Outcome.lift {α : Type} (o : Outcome) (v : α) : Outcome' α :=
@@ -1095,5 +1115,80 @@ désallocation. -/
 theorem dealloc_absent {s : State} {i : Nat} (h : s.allocs i = none) (id : Nat) :
     (s.dealloc id).allocs i = none := by
   simp [State.dealloc, h]
+
+namespace Witness
+
+/-! Témoins exécutables (MM-02.H) : chaque opération brute et vérifiée sur des
+états concrets construits depuis `State.empty`, vérifiés par `decide` sur une
+projection booléenne de l'issue. -/
+
+/-- MM-02.B.4, B.6, B.7 : obligations de lecture triviales (parts vraies). -/
+def obR : ReadObl := ⟨fun _ _ => True, fun _ _ => instDecidableTrue, fun _ _ => True⟩
+
+/-- MM-02.C.4, C.5, C.6 : obligations d'écriture triviales (parts vraies). -/
+def obW : WriteObl := ⟨fun _ _ _ => True, fun _ _ _ => instDecidableTrue, fun _ _ _ => True⟩
+
+/-- MM-02.2 : une allocation vivante d'identité `0`, base `96`, étendue `8`,
+alignement `8`, jeton de désallocation `7`, créée depuis `State.empty`. -/
+def s1 : State := State.empty.alloc 0 96 8 8 (some 7)
+
+/-- MM-02.5 : accès en écriture aux 4 premiers octets de l'allocation `0`. -/
+def acW : Access := ⟨96, 0, 4, .write⟩
+
+/-- MM-02.5 : accès en lecture aux 4 premiers octets de l'allocation `0`. -/
+def acR : Access := ⟨96, 0, 4, .read⟩
+
+/-- MM-02.3 : contenu écrit : valeur `i + 1` sans provenance en position `i`. -/
+def w0 : Nat → UInt8 × Option Nat := fun i => (i.toUInt8 + 1, none)
+
+/-- MM-02.C : `s1` après écriture de `w0` par `acW`. -/
+def s2 : State := s1.write acW w0
+
+/-- MM-02.2 : allocation brute valide depuis `State.empty`. -/
+example : (alloc 0 96 8 8 (some 7) State.empty).isOk = true := by decide
+/-- MM-02.2 : allocation brute à une base non alignée. -/
+example : (alloc 0 97 8 8 none State.empty).isOk = false := by decide
+/-- MM-02.2 : allocation brute chevauchant une allocation vivante du même espace. -/
+example : (alloc 0 100 4 4 none s1).isOk = false := by decide
+
+/-- MM-02.C : écriture brute valide. -/
+example : (write obW acW w0 s1 trivial).isOk = true := by decide
+/-- MM-02.C.3 : écriture brute sans autorité d'écriture. -/
+example : (write obW acR w0 s1 trivial).isOk = false := by decide
+
+/-- MM-02.B : lecture brute d'octets écrits. -/
+example : (read obR acR s2 trivial).isOk = true := by decide
+/-- MM-02.B.3 : lecture brute d'octets non initialisés. -/
+example : (read obR acR s1 trivial).isOk = false := by decide
+
+/-- MM-02.D : désallocation brute avec l'autorité compatible (égalité). -/
+example : (dealloc (· = ·) 0 7 s1).isOk = true := by decide
+/-- MM-02.D.2 : désallocation brute avec une autorité incompatible. -/
+example : (dealloc (· = ·) 0 8 s1).isOk = false := by decide
+
+/-- MM-01.3 : écriture vérifiée réussie. -/
+example : (checkedWrite obW acW w0 s1 trivial).isOk = true := by decide
+/-- MM-01.3 : écriture vérifiée refusée par le contrôle. -/
+example : (checkedWrite obW acR w0 s1 trivial).isFail = true := by decide
+
+/-- MM-01.3 : désallocation vérifiée réussie. -/
+example : (checkedDealloc (· = ·) 0 7 s1).isOk = true := by decide
+/-- MM-01.3 : désallocation vérifiée refusée par le contrôle. -/
+example : (checkedDealloc (· = ·) 0 8 s1).isFail = true := by decide
+
+/-- MM-01.3 : lecture vérifiée réussie. -/
+example : (checkedRead obR acR s2 trivial).isOk = true := by decide
+/-- MM-01.3 : lecture vérifiée refusée par le contrôle. -/
+example : (checkedRead obR acR s1 trivial).isFail = true := by decide
+
+/-- info: some [Ern.MM02.AByte.init 1 none, Ern.MM02.AByte.init 2 none, Ern.MM02.AByte.init 3 none, Ern.MM02.AByte.init 4 none] -/
+#guard_msgs in
+#eval readBytes s2 acR
+
+/-- info: some [Ern.MM02.AByte.init 1 none, Ern.MM02.AByte.init 2 none, Ern.MM02.AByte.init 3 none, Ern.MM02.AByte.init 4 none] -/
+#guard_msgs in
+#eval (checkedRead obR acR s2 trivial).value?
+
+end Witness
 
 end Ern.MM02
