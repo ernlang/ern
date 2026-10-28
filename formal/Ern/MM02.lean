@@ -121,6 +121,30 @@ def alloc (s : State) (space base size align : Nat) (freeAuth : Option Nat) : St
       else s.allocs i
     next := s.next + 1 }
 
+/-- MM-02.2 (LiveDisjoint) : les plages semi-ouvertes `[b1, b1 + n1)` et
+`[b2, b2 + n2)` ont une intersection vide. -/
+def RangeDisjoint (b1 n1 b2 n2 : Nat) : Prop :=
+  ∀ x, b1 ≤ x → x < b1 + n1 → b2 ≤ x → x < b2 + n2 → False
+
+/-- MM-02.2 (LiveDisjoint) : deux allocations vivantes distinctes du même espace
+d'adressage occupent des plages disjointes. -/
+def LiveDisjoint (s : State) : Prop :=
+  ∀ i j a b, i ≠ j → s.allocs i = some a → s.allocs j = some b →
+    a.live = true → b.live = true → a.space = b.space →
+    RangeDisjoint a.base a.size b.base b.size
+
+/-- MM-02.2 : `n` est une puissance de deux. -/
+def Pow2 (n : Nat) : Prop := ∃ k, n = 2 ^ k
+
+/-- MM-02.2 (création brute) : précondition de création d'une allocation vivante
+dans l'espace `space` : identité `s.next` fraîche, alignement strictement positif
+et puissance de deux, base alignée, plage disjointe de celle de toute allocation
+vivante du même espace (`LiveDisjoint`). -/
+def AllocPre (s : State) (space base size align : Nat) : Prop :=
+  s.allocs s.next = none ∧ 0 < align ∧ Pow2 align ∧ base % align = 0 ∧
+    ∀ i a, s.allocs i = some a → a.live = true → a.space = space →
+      RangeDisjoint a.base a.size base size
+
 /-- MM-02.E : `ac'` est dérivé de `ac` : sous-plage, même provenance,
 autorité au plus celle de l'origine. -/
 def Derive (ac ac' : Access) : Prop :=
@@ -221,5 +245,62 @@ theorem write_wf {s : State} (hwf : WF s) (ac : Access) (w : Nat → UInt8 × Op
     WF (write s ac w) := by
   intro i hi
   simp [write, hwf i hi]
+
+/-- MM-02.2 (LiveDisjoint) : un pas qui ne rend vivante aucune allocation et
+conserve espace, base et étendue de toute allocation restée vivante préserve
+`LiveDisjoint`. -/
+theorem LiveDisjoint.of_fields {s s' : State} (hd : LiveDisjoint s)
+    (h : ∀ i a, s'.allocs i = some a → a.live = true →
+      ∃ a₀, s.allocs i = some a₀ ∧ a₀.live = true ∧ a₀.space = a.space ∧
+        a₀.base = a.base ∧ a₀.size = a.size) :
+    LiveDisjoint s' := by
+  intro i j a b hij ha hb hla hlb hsp
+  obtain ⟨a₀, ha₀, hla₀, hs₁, hb₁, hz₁⟩ := h i a ha hla
+  obtain ⟨b₀, hb₀, hlb₀, hs₂, hb₂, hz₂⟩ := h j b hb hlb
+  have := hd i j a₀ b₀ hij ha₀ hb₀ hla₀ hlb₀ (by rw [hs₁, hs₂, hsp])
+  rw [hb₁, hz₁, hb₂, hz₂] at this
+  exact this
+
+/-- MM-02.2 (LiveDisjoint) : une écriture préserve `LiveDisjoint`. -/
+theorem liveDisjoint_write {s : State} (hd : LiveDisjoint s) (ac : Access)
+    (w : Nat → UInt8 × Option Nat) : LiveDisjoint (write s ac w) :=
+  hd.of_fields fun i a ha hla => by
+    simp only [write] at ha
+    split at ha
+    · obtain ⟨a₀, h₀, rfl⟩ := Option.map_eq_some_iff.1 ha
+      exact ⟨a₀, h₀, hla, rfl, rfl, rfl⟩
+    · exact ⟨a, ha, hla, rfl, rfl, rfl⟩
+
+/-- MM-02.2 (LiveDisjoint) : une désallocation préserve `LiveDisjoint`. -/
+theorem liveDisjoint_dealloc {s : State} (hd : LiveDisjoint s) (id : Nat) :
+    LiveDisjoint (dealloc s id) :=
+  hd.of_fields fun i a ha hla => by
+    simp only [dealloc] at ha
+    split at ha
+    · obtain ⟨a₀, -, rfl⟩ := Option.map_eq_some_iff.1 ha
+      simp at hla
+    · exact ⟨a, ha, hla, rfl, rfl, rfl⟩
+
+/-- MM-02.2 (LiveDisjoint, création brute) : une allocation dont la précondition
+de création est satisfaite préserve `LiveDisjoint`. -/
+theorem liveDisjoint_alloc {s : State} (hd : LiveDisjoint s) {space base size align : Nat}
+    (hp : AllocPre s space base size align) (freeAuth : Option Nat) :
+    LiveDisjoint (alloc s space base size align freeAuth) := by
+  obtain ⟨-, -, -, -, hdis⟩ := hp
+  intro i j a b hij ha hb hla hlb hsp
+  simp only [alloc] at ha hb
+  by_cases hi : i = s.next <;> by_cases hj : j = s.next
+  · exact absurd (hi.trans hj.symm) hij
+  · rw [ite_eq_left hi] at ha
+    rw [ite_eq_right hj] at hb
+    cases ha
+    exact fun x h1 h2 h3 h4 => hdis j b hb hlb hsp.symm x h3 h4 h1 h2
+  · rw [ite_eq_right hi] at ha
+    rw [ite_eq_left hj] at hb
+    cases hb
+    exact hdis i a ha hla hsp
+  · rw [ite_eq_right hi] at ha
+    rw [ite_eq_right hj] at hb
+    exact hd i j a b hij ha hb hla hlb hsp
 
 end Ern.MM02
