@@ -20,10 +20,11 @@ inductive Auth where
 instance : LE Auth := ⟨fun a b => a = .read ∨ b = .write⟩
 
 /-- MM-02.3 : octet abstrait, non initialisé ou initialisé avec une valeur
-d'octet (`val`) et une provenance optionnelle (`prov`, identité d'allocation). -/
+d'octet sur 8 bits (`val`) et une provenance optionnelle (`prov`, identité
+d'allocation). -/
 inductive AByte where
   | uninit
-  | init (val : Nat) (prov : Option Nat)
+  | init (val : UInt8) (prov : Option Nat)
 
 /-- MM-02.2 : allocation abstraite. Son identité est sa clé dans `State.allocs`.
 `space` espace d'adressage, `base` adresse de base, `size` étendue, `align` alignement, `live` état
@@ -89,12 +90,12 @@ def CanWrite (s : State) (ac : Access) : Prop :=
 /-- MM-02.C : effet d'une écriture sur le stockage. Les `len` octets à partir
 du décalage `off` deviennent `init`, avec `w i = (valeur, provenance)` du
 i-ème octet écrit ; les autres octets sont inchangés. -/
-def Alloc.write (a : Alloc) (off len : Nat) (w : Nat → Nat × Option Nat) : Alloc :=
+def Alloc.write (a : Alloc) (off len : Nat) (w : Nat → UInt8 × Option Nat) : Alloc :=
   { a with bytes := fun j =>
       if off ≤ j ∧ j < off + len then .init (w (j - off)).1 (w (j - off)).2 else a.bytes j }
 
 /-- MM-02.C : effet d'une écriture par le moyen d'accès `ac` sur l'état. -/
-def write (s : State) (ac : Access) (w : Nat → Nat × Option Nat) : State :=
+def write (s : State) (ac : Access) (w : Nat → UInt8 × Option Nat) : State :=
   { s with allocs := fun i =>
       if i = ac.prov then (s.allocs i).map (fun a => a.write (ac.addr - a.base) ac.len w)
       else s.allocs i }
@@ -156,7 +157,7 @@ theorem no_double_free (Compatible : Nat → Nat → Prop) (s : State) (id auth 
 /-- P3, MM-02.C : une écriture permise met à jour les octets de sa plage, qui
 deviennent initialisés avec les valeurs et provenances écrites. -/
 theorem write_initializes {s : State} {ac : Access} (hw : CanWrite s ac)
-    (w : Nat → Nat × Option Nat) :
+    (w : Nat → UInt8 × Option Nat) :
     ∃ a', (write s ac w).allocs ac.prov = some a' ∧
       ∀ i, i < ac.len → a'.bytes (ac.addr - a'.base + i) = .init (w i).1 (w i).2 := by
   obtain ⟨a, ha, -, -, -⟩ := hw
@@ -216,7 +217,7 @@ theorem reuse_does_not_restore {s : State} (hwf : WF s) {ac : Access} {a : Alloc
          fun ⟨_, hb, hl, _⟩ => by rw [hk] at hb; cases hb; simp at hl⟩
 
 /-- MM-02.A : `write` préserve l'invariant de fraîcheur. -/
-theorem write_wf {s : State} (hwf : WF s) (ac : Access) (w : Nat → Nat × Option Nat) :
+theorem write_wf {s : State} (hwf : WF s) (ac : Access) (w : Nat → UInt8 × Option Nat) :
     WF (write s ac w) := by
   intro i hi
   simp [write, hwf i hi]
