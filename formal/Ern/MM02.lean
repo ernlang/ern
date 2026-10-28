@@ -28,9 +28,9 @@ inductive AByte where
 /-- MM-02.2 : allocation abstraite. Son identité est sa clé dans `State.allocs`.
 `base` adresse de base, `size` étendue, `align` alignement, `live` état
 d'existence, `bytes` stockage indexé par décalage depuis `base`,
-`freeAuth` autorité de désallocation de référence : une autorité `auth` peut
-désallouer ssi `Compatible auth d` (MM-02.D), `none` si la désallocation n'est
-pas applicable. -/
+`freeAuth` jeton de désallocation : si `freeAuth = some d`, les autorités
+capables de la désallouer (MM-02.2) sont les `auth` telles que
+`Compatible auth d` (MM-02.D) ; `none` si la désallocation n'est pas applicable. -/
 structure Alloc where
   base : Nat
   size : Nat
@@ -111,7 +111,7 @@ def dealloc (s : State) (id : Nat) : State :=
       if i = id then (s.allocs i).map (fun a => { a with live := false }) else s.allocs i }
 
 /-- MM-02.2 et MM-02.A : nouvelle allocation sous l'identité fraîche `s.next`,
-vivante, entièrement non initialisée (MM-02.3). -/
+vivante, octets tous `uninit` (contenu initial non fixé par MM-02). -/
 def alloc (s : State) (base size align : Nat) (freeAuth : Option Nat) : State :=
   { allocs := fun i =>
       if i = s.next then
@@ -200,7 +200,8 @@ theorem dealloc_wf {s : State} (hwf : WF s) (id : Nat) : WF (dealloc s id) := by
   intro i hi
   simp [dealloc, hwf i hi]
 
-/-- P2b, MM-02.A : si l'allocation visée par `ac` existait, alors après sa
+/-- P2b, MM-02.A : sous l'invariant de fraîcheur `WF s`, si l'allocation visée
+par `ac` existait, alors après sa
 désallocation puis une nouvelle allocation de base `base` quelconque (y compris
 la base de l'ancienne), aucun accès par `ac`, lecture ou écriture, n'est permis. -/
 theorem reuse_does_not_restore {s : State} (hwf : WF s) {ac : Access} {a : Alloc}
