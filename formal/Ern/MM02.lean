@@ -1368,7 +1368,9 @@ theorem write_sound {ObW : WriteObl} {ac : Access} {w : Nat → UInt8 × Option 
   · next hc => exact .ub fun ⟨h1, h2, _⟩ => hc ⟨h1, h2⟩
 
 /-- MM-02.C et MM-02.H : toute issue de la sémantique `WriteStep` est celle que
-rend l'interpréteur `write`, pour toute preuve de la part statique. -/
+rend l'interpréteur `write`, pour toute preuve de la part statique. Quand la part
+statique est fausse, aucune telle preuve n'existe : l'énoncé ne dit alors rien de
+l'interpréteur, qui n'est pas appelable. -/
 theorem write_complete {ObW : WriteObl} {ac : Access} {w : Nat → UInt8 × Option Nat} {s : State}
     {o : Outcome} (h : WriteStep ObW.toSpec ac w s o) : ∀ hs, write ObW ac w s hs = o := by
   intro hs
