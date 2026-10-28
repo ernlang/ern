@@ -19,7 +19,7 @@ namespace Ern.MM02
 inductive Auth where
   | read
   | write
-  deriving DecidableEq, Repr
+  deriving DecidableEq
 
 /-- MM-02.5 : ordre des autorités, `read ≤ write` (réflexif). -/
 instance : LE Auth := ⟨fun a b => a = .read ∨ b = .write⟩
@@ -878,20 +878,27 @@ theorem readBytes_congr {s t : State} {ac : Access} (h : s.allocs ac.prov = t.al
     · rw [ite_eq_right hRs, ite_eq_right (mt hR.2 hRs)]
   · rfl
 
-/-- MM-02.C et MM-02.B : relire par `ac` la plage qu'une écriture valide par `ac`
-vient d'écrire rend le contenu écrit. -/
+/-- MM-02.C et MM-02.B : relire la plage qu'une écriture valide par `ac` vient
+d'écrire, par un accès de même provenance, adresse et longueur et d'autorité `r`
+quelconque, rend le contenu écrit. -/
 theorem readBytes_write_same {s : State} {ac : Access} (hw : CanWrite s ac)
-    (w : Nat → UInt8 × Option Nat) :
-    readBytes (s.write ac w) ac = some ((List.range ac.len).map fun i => .init (w i).1 (w i).2) := by
+    (w : Nat → UInt8 × Option Nat) (r : Auth) :
+    readBytes (s.write ac w) { ac with auth := r } =
+      some ((List.range ac.len).map fun i => .init (w i).1 (w i).2) := by
   obtain ⟨a, ha, hl, hsp, -⟩ := hw
   have hwa : (s.write ac w).allocs ac.prov = some (a.write (ac.addr - a.base) ac.len w) := by
     simp [State.write, ha]
-  have hR : Read (s.write ac w) ac :=
+  have hR : Read (s.write ac w) { ac with auth := r } :=
     ⟨_, hwa, hl, hsp, fun i hi => by
-      rw [show (a.write (ac.addr - a.base) ac.len w).base = a.base from rfl,
-        Alloc.write_bytes_in a w hi]
+      show (a.write (ac.addr - a.base) ac.len w).bytes (ac.addr - a.base + i) ≠ .uninit
+      rw [Alloc.write_bytes_in a w hi]
       nofun, Or.inl rfl⟩
-  simp only [readBytes, hwa]
+  show (match (s.write ac w).allocs ac.prov with
+    | some a => if Read (s.write ac w) { ac with auth := r } then
+        some (a.bytesAt (ac.addr - a.base) ac.len) else none
+    | none => none) = _
+  rw [hwa]
+  dsimp only
   rw [ite_eq_left hR]
   congr 1
   exact List.map_congr_left fun i hi => Alloc.write_bytes_in a w (List.mem_range.1 hi)
