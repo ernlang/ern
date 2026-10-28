@@ -4,12 +4,15 @@
 Modèle exploratoire de MM-02. Chaque définition et chaque théorème cite la
 règle MM-02.x qu'il modélise ; le texte des règles reste dans la spécification.
 `State.write`, `State.dealloc`, `State.alloc` : effet d'une opération valide.
-`read`, `write`, `dealloc`, `alloc` : opérations brutes, issue `ok` ou `ub`
-(MM-02.H) ; `checkedRead`, `checkedWrite`, `checkedDealloc` : variantes
-vérifiées. Toutes sont calculables, sans décision classique.
+`ReadStep`, `WriteStep`, `DeallocStep`, `AllocStep` : sémantique des opérations
+brutes, relation entre un état et son issue `ok` ou `ub` (MM-02.H), définie pour
+tout état. `read`, `write`, `dealloc`, `alloc` : interpréteurs de ces relations ;
+`checkedRead`, `checkedWrite`, `checkedDealloc` : variantes vérifiées. Ces
+fonctions sont calculables, sans décision classique.
 Obligations non décidées par le noyau, paramètres explicites : `ObR : ReadObl`
 (MM-02.B.4, B.6, B.7), `ObW : WriteObl` (MM-02.C.4, C.5, C.6), chacun formé
-d'une part décidable, testée, et d'une part statique, reçue en hypothèse.
+d'une part décidable, testée par les fonctions, et d'une part statique, reçue en
+hypothèse par les fonctions ; les relations exigent les deux pour l'issue `ok`.
 Non couverts : MM-02.1, MM-02.F, MM-02.G, MM-03.
 -/
 
@@ -385,6 +388,42 @@ def Outcome.lift {α : Type} (o : Outcome) (v : α) : Outcome' α :=
   match o with
   | .ok s => .ok s v
   | .ub => .ub
+
+/-- MM-02.B, MM-02.H et MM-01.5 : sémantique d'une lecture brute par `ac` dans
+l'état `s`. Issue `ok s` (état inchangé) si les conditions 1, 2, 3, 5 (`Read`),
+la part décidable `ObR.dec` et la part statique `ObR.stat` (conditions 4, 6, 7)
+sont satisfaites ; issue `ub` sinon, violation de la part statique comprise. -/
+inductive ReadStep (ObR : ReadObl) (ac : Access) (s : State) : Outcome → Prop where
+  | ok : Read s ac ∧ ObR.dec s ac ∧ ObR.stat s ac → ReadStep ObR ac s (.ok s)
+  | ub : ¬ (Read s ac ∧ ObR.dec s ac ∧ ObR.stat s ac) → ReadStep ObR ac s .ub
+
+/-- MM-02.C, MM-02.H et MM-01.5 : sémantique d'une écriture brute de `w` par `ac`
+dans l'état `s`. Issue `ok` avec l'effet `State.write` si les conditions 1, 2, 3
+(`CanWrite`), la part décidable `ObW.dec` et la part statique `ObW.stat`
+(conditions 4, 5, 6) sont satisfaites ; issue `ub` sinon, violation de la part
+statique comprise. -/
+inductive WriteStep (ObW : WriteObl) (ac : Access) (w : Nat → UInt8 × Option Nat) (s : State) :
+    Outcome → Prop where
+  | ok : CanWrite s ac ∧ ObW.dec s ac w ∧ ObW.stat s ac w →
+      WriteStep ObW ac w s (.ok (s.write ac w))
+  | ub : ¬ (CanWrite s ac ∧ ObW.dec s ac w ∧ ObW.stat s ac w) → WriteStep ObW ac w s .ub
+
+/-- MM-02.D, MM-02.H et MM-01.5 : sémantique d'une désallocation brute de `id`
+avec l'autorité `auth` dans l'état `s`. Issue `ok` avec l'effet `State.dealloc`
+si `CanDealloc` ; issue `ub` sinon. `Compatible` n'est pas supposée décidable. -/
+inductive DeallocStep (Compatible : Nat → Nat → Prop) (id auth : Nat) (s : State) :
+    Outcome → Prop where
+  | ok : CanDealloc Compatible s id auth → DeallocStep Compatible id auth s (.ok (s.dealloc id))
+  | ub : ¬ CanDealloc Compatible s id auth → DeallocStep Compatible id auth s .ub
+
+/-- MM-02.2 (création brute), MM-02.H et MM-01.5 : sémantique d'une allocation
+brute dans l'état `s`. Issue `ok` avec l'effet `State.alloc` si `AllocPre`
+(non-chevauchement vérifié sur toute identité) ; issue `ub` sinon. -/
+inductive AllocStep (space base size align : Nat) (freeAuth : Option Nat) (s : State) :
+    Outcome → Prop where
+  | ok : AllocPre s space base size align →
+      AllocStep space base size align freeAuth s (.ok (s.alloc space base size align freeAuth))
+  | ub : ¬ AllocPre s space base size align → AllocStep space base size align freeAuth s .ub
 
 /-- MM-02.B et MM-02.H : lecture brute par `ac`, sous la part statique `ObR.stat`
 reçue en hypothèse. `ok` (état inchangé) si les conditions 1, 2, 3, 5 (`Read`)
