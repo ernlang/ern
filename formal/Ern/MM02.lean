@@ -6,15 +6,21 @@ règle MM-02.x qu'il modélise ; le texte des règles reste dans la spécificati
 `State.write`, `State.dealloc`, `State.alloc` : effet d'une opération valide.
 `ReadStep`, `WriteStep`, `DeallocStep`, `AllocStep` : sémantique des opérations
 brutes, relation entre un état et son issue `ok` ou `ub` (MM-02.H), définie pour
-tout état. `read`, `write`, `dealloc` : interpréteurs de ces relations ; `alloc` :
-interpréteur de `AllocStep` sur les états qui satisfont `WF` ;
+tout état, sans décision des obligations ni des préconditions ; la lecture rend
+la valeur lue (`ReadOutcome`) et n'a pas d'effet sur l'état.
+`read`, `write`, `dealloc`, `alloc` : interpréteurs de ces relations. Chacun
+reçoit en argument de preuve les conditions établies statiquement (part `stat`
+pour `read`, `write` ; `WF` pour `alloc`) et n'est appelable que sur ce domaine ;
+tout résultat qu'il rend est une issue de la relation.
 `checkedRead`, `checkedWrite`, `checkedDealloc` : variantes vérifiées,
 vérifications instrumentées du modèle exploratoire et non primitives d'ERN. Ces
 fonctions sont calculables, sans décision classique.
-Obligations non décidées par le noyau, paramètres explicites : `ObR : ReadObl`
-(MM-02.B.4, B.6, B.7), `ObW : WriteObl` (MM-02.C.4, C.5, C.6), chacun formé
-d'une part décidable, testée par les fonctions, et d'une part statique, reçue en
-hypothèse par les fonctions ; les relations exigent les deux pour l'issue `ok`.
+Obligations non décidées par le noyau (MM-02.B.4, B.6, B.7 ; MM-02.C.4, C.5,
+C.6) : `ReadOblSpec`, `WriteOblSpec`, formées d'une part décidable `dec` et d'une
+part statique `stat`, paramètres des relations, qui exigent les deux pour
+l'issue `ok` ; `ReadObl`, `WriteObl` y ajoutent une décision de `dec` et
+paramètrent les fonctions. `Compatible`, `ObR`, `ObW` sont fixés pour toute une
+exécution (`Reachable`, `ReachableStep`).
 Non couverts : MM-02.1, MM-02.F, MM-02.G, MM-03.
 -/
 
@@ -361,7 +367,8 @@ structure WriteObl extends toSpec : WriteOblSpec where
 attribute [instance] WriteObl.decInst
 
 /-- MM-02.H : issue d'une opération brute : effet défini `ok` (nouvel état) ou
-comportement indéfini `ub` (MM-01.5). -/
+comportement indéfini `ub` (MM-01.5). Issue des interpréteurs et des relations
+`WriteStep`, `DeallocStep`, `AllocStep` ; `ReadStep` rend une `ReadOutcome`. -/
 inductive Outcome where
   | ok (s : State)
   | ub
