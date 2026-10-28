@@ -1,5 +1,5 @@
 /-!
-# ERN — Memory Model v0.2, MM-02 (machine abstraite minimale)
+# ERN — Memory Model v0.3, MM-02 (machine abstraite minimale)
 
 Modèle exploratoire de MM-02. Chaque définition et chaque théorème cite la
 règle MM-02.x qu'il modélise ; le texte des règles reste dans la spécification.
@@ -26,12 +26,13 @@ inductive AByte where
   | init (val : Nat) (prov : Option Nat)
 
 /-- MM-02.2 : allocation abstraite. Son identité est sa clé dans `State.allocs`.
-`base` adresse de base, `size` étendue, `align` alignement, `live` état
+`space` espace d'adressage, `base` adresse de base, `size` étendue, `align` alignement, `live` état
 d'existence, `bytes` stockage indexé par décalage depuis `base`,
 `freeAuth` jeton de désallocation : si `freeAuth = some d`, les autorités
 capables de la désallouer (MM-02.2) sont les `auth` telles que
 `Compatible auth d` (MM-02.D) ; `none` si la désallocation n'est pas applicable. -/
 structure Alloc where
+  space : Nat
   base : Nat
   size : Nat
   align : Nat
@@ -112,10 +113,10 @@ def dealloc (s : State) (id : Nat) : State :=
 
 /-- MM-02.2 et MM-02.A : nouvelle allocation sous l'identité fraîche `s.next`,
 vivante, octets tous `uninit` (contenu initial non fixé par MM-02). -/
-def alloc (s : State) (base size align : Nat) (freeAuth : Option Nat) : State :=
+def alloc (s : State) (space base size align : Nat) (freeAuth : Option Nat) : State :=
   { allocs := fun i =>
       if i = s.next then
-        some { base, size, align, live := true, bytes := fun _ => .uninit, freeAuth }
+        some { space, base, size, align, live := true, bytes := fun _ => .uninit, freeAuth }
       else s.allocs i
     next := s.next + 1 }
 
@@ -181,15 +182,15 @@ theorem derive_auth_le {ac ac' : Access} (hd : Derive ac ac') : ac'.auth ≤ ac.
 
 /-- MM-02.A : l'identité `s.next` qu'attribue `alloc` est distincte de toute
 identité déjà utilisée, et `alloc` laisse intacte toute allocation existante. -/
-theorem alloc_fresh {s : State} (hwf : WF s) (base size align : Nat) (freeAuth : Option Nat)
-    {i : Nat} {a : Alloc} (ha : s.allocs i = some a) :
-    i ≠ s.next ∧ (alloc s base size align freeAuth).allocs i = some a :=
+theorem alloc_fresh {s : State} (hwf : WF s) (space base size align : Nat)
+    (freeAuth : Option Nat) {i : Nat} {a : Alloc} (ha : s.allocs i = some a) :
+    i ≠ s.next ∧ (alloc s space base size align freeAuth).allocs i = some a :=
   have hne : i ≠ s.next := fun e => by simp [e, hwf _ (Nat.le_refl _)] at ha
   ⟨hne, by simp [alloc, hne, ha]⟩
 
 /-- MM-02.A : `alloc` préserve l'invariant de fraîcheur. -/
-theorem alloc_wf {s : State} (hwf : WF s) (base size align : Nat) (freeAuth : Option Nat) :
-    WF (alloc s base size align freeAuth) := by
+theorem alloc_wf {s : State} (hwf : WF s) (space base size align : Nat)
+    (freeAuth : Option Nat) : WF (alloc s space base size align freeAuth) := by
   intro i hi
   simp only [alloc] at hi ⊢
   have : i ≠ s.next := by omega
@@ -205,12 +206,12 @@ par `ac` existait, alors après sa
 désallocation puis une nouvelle allocation de base `base` quelconque (y compris
 la base de l'ancienne), aucun accès par `ac`, lecture ou écriture, n'est permis. -/
 theorem reuse_does_not_restore {s : State} (hwf : WF s) {ac : Access} {a : Alloc}
-    (ha : s.allocs ac.prov = some a) (base size align : Nat) (freeAuth : Option Nat) :
-    ¬ Read (alloc (dealloc s ac.prov) base size align freeAuth) ac ∧
-      ¬ CanWrite (alloc (dealloc s ac.prov) base size align freeAuth) ac := by
+    (ha : s.allocs ac.prov = some a) (space base size align : Nat) (freeAuth : Option Nat) :
+    ¬ Read (alloc (dealloc s ac.prov) space base size align freeAuth) ac ∧
+      ¬ CanWrite (alloc (dealloc s ac.prov) space base size align freeAuth) ac := by
   have hd : (dealloc s ac.prov).allocs ac.prov = some { a with live := false } := by
     simp [dealloc, ha]
-  have hk := (alloc_fresh (dealloc_wf hwf ac.prov) base size align freeAuth hd).2
+  have hk := (alloc_fresh (dealloc_wf hwf ac.prov) space base size align freeAuth hd).2
   exact ⟨fun ⟨_, hb, hl, _⟩ => by rw [hk] at hb; cases hb; simp at hl,
          fun ⟨_, hb, hl, _⟩ => by rw [hk] at hb; cases hb; simp at hl⟩
 
