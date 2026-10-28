@@ -56,6 +56,37 @@
         "label": "/ponytail:ponytail",
         "default_collapsed": true
       }
+    },
+    {
+      "id": "claude-skill-toolu_01AqeicYLvsH11Gp5QC3vdpM",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "workflow-authoring"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "16ef31c25caf",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 1559,
+        "end": 1560,
+        "entry_ids": [
+          "04ca8b66-ab71-4f90-9a36-a9b672938d04"
+        ],
+        "tool_use_id": "toolu_01AqeicYLvsH11Gp5QC3vdpM"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01AqeicYLvsH11Gp5QC3vdpM"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: workflow-authoring",
+        "default_collapsed": true
+      }
     }
   ],
   "session_metrics": {
