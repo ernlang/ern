@@ -330,25 +330,33 @@ def Derive (ac ac' : Access) : Prop :=
   ac.addr ≤ ac'.addr ∧ ac'.addr + ac'.len ≤ ac.addr + ac.len ∧
     ac'.prov = ac.prov ∧ ac'.auth ≤ ac.auth
 
-/-- MM-02.B.4, B.6, B.7 : obligations de lecture typée non décidées par le noyau.
-`dec` : part décidable, testée par les variantes vérifiées ; `stat` : part
-statique, reçue en hypothèse par les fonctions ; `ReadStep` exige les deux pour
-l'issue `ok`. -/
-structure ReadObl where
+/-- MM-02.B.4, B.6, B.7 : obligations de lecture typée non décidées par le noyau,
+sans procédure de décision. `dec` : part décidable ; `stat` : part statique.
+`ReadStep` exige les deux pour l'issue `ok`. -/
+structure ReadOblSpec where
   dec : State → Access → Prop
-  decInst : ∀ s, DecidablePred (dec s)
   stat : State → Access → Prop
+
+/-- MM-02.B.4, B.6, B.7 et MM-01.3 : obligations de lecture munies d'une décision
+de `dec` (`decInst`), testée par les fonctions ; `stat` est reçue en hypothèse
+par les fonctions. -/
+structure ReadObl extends toSpec : ReadOblSpec where
+  decInst : ∀ s, DecidablePred (dec s)
 
 attribute [instance] ReadObl.decInst
 
-/-- MM-02.C.4, C.5, C.6 : obligations d'écriture typée non décidées par le noyau.
-`dec` : part décidable, testée par les variantes vérifiées ; `stat` : part
-statique, reçue en hypothèse par les fonctions ; `WriteStep` exige les deux pour
-l'issue `ok`. -/
-structure WriteObl where
+/-- MM-02.C.4, C.5, C.6 : obligations d'écriture typée non décidées par le noyau,
+sans procédure de décision. `dec` : part décidable ; `stat` : part statique.
+`WriteStep` exige les deux pour l'issue `ok`. -/
+structure WriteOblSpec where
   dec : State → Access → (Nat → UInt8 × Option Nat) → Prop
-  decInst : ∀ s ac, DecidablePred (dec s ac)
   stat : State → Access → (Nat → UInt8 × Option Nat) → Prop
+
+/-- MM-02.C.4, C.5, C.6 et MM-01.3 : obligations d'écriture munies d'une décision
+de `dec` (`decInst`), testée par les fonctions ; `stat` est reçue en hypothèse
+par les fonctions. -/
+structure WriteObl extends toSpec : WriteOblSpec where
+  decInst : ∀ s ac, DecidablePred (dec s ac)
 
 attribute [instance] WriteObl.decInst
 
@@ -400,7 +408,7 @@ sont satisfaites ; issue `ub` sinon, violation de la part statique comprise.
 La part statique est la frontière avec la sémantique concurrente (Spec 2,
 MM-02.F) et n'est pas modélisée ici ; la répartition des conditions entre
 `dec` et `stat` n'est pas fixée. -/
-inductive ReadStep (ObR : ReadObl) (ac : Access) (s : State) : Outcome → Prop where
+inductive ReadStep (ObR : ReadOblSpec) (ac : Access) (s : State) : Outcome → Prop where
   | ok : Read s ac ∧ ObR.dec s ac ∧ ObR.stat s ac → ReadStep ObR ac s (.ok s)
   | ub : ¬ (Read s ac ∧ ObR.dec s ac ∧ ObR.stat s ac) → ReadStep ObR ac s .ub
 
@@ -411,7 +419,7 @@ dans l'état `s`. Issue `ok` avec l'effet `State.write` si les conditions 1, 2, 
 statique comprise. La part statique est la frontière avec la sémantique
 concurrente (Spec 2, MM-02.F) et n'est pas modélisée ici ; la répartition des
 conditions entre `dec` et `stat` n'est pas fixée. -/
-inductive WriteStep (ObW : WriteObl) (ac : Access) (w : Nat → UInt8 × Option Nat) (s : State) :
+inductive WriteStep (ObW : WriteOblSpec) (ac : Access) (w : Nat → UInt8 × Option Nat) (s : State) :
     Outcome → Prop where
   | ok : CanWrite s ac ∧ ObW.dec s ac w ∧ ObW.stat s ac w →
       WriteStep ObW ac w s (.ok (s.write ac w))
@@ -1183,13 +1191,13 @@ theorem dealloc_absent {s : State} {i : Nat} (h : s.allocs i = none) (id : Nat) 
   simp [State.dealloc, h]
 
 /-- MM-02.H : une lecture brute a au plus une issue. -/
-theorem ReadStep_det {ObR : ReadObl} {ac : Access} {s : State} {o₁ o₂ : Outcome}
+theorem ReadStep_det {ObR : ReadOblSpec} {ac : Access} {s : State} {o₁ o₂ : Outcome}
     (h₁ : ReadStep ObR ac s o₁) (h₂ : ReadStep ObR ac s o₂) : o₁ = o₂ := by
   cases h₁ <;> cases h₂ <;> first | rfl | contradiction
 
 /-- MM-02.H : une écriture brute a au plus une issue. -/
-theorem WriteStep_det {ObW : WriteObl} {ac : Access} {w : Nat → UInt8 × Option Nat} {s : State}
-    {o₁ o₂ : Outcome} (h₁ : WriteStep ObW ac w s o₁) (h₂ : WriteStep ObW ac w s o₂) :
+theorem WriteStep_det {ObW : WriteOblSpec} {ac : Access} {w : Nat → UInt8 × Option Nat}
+    {s : State} {o₁ o₂ : Outcome} (h₁ : WriteStep ObW ac w s o₁) (h₂ : WriteStep ObW ac w s o₂) :
     o₁ = o₂ := by
   cases h₁ <;> cases h₂ <;> first | rfl | contradiction
 
@@ -1207,19 +1215,19 @@ theorem AllocStep_det {space base size align : Nat} {freeAuth : Option Nat} {s :
 
 /-- MM-02.B et MM-02.H : une lecture brute a pour issue `ok s'` ssi `Read`,
 `ObR.dec` et `ObR.stat` sont satisfaits et `s' = s`. -/
-theorem ReadStep_ok_iff {ObR : ReadObl} {ac : Access} {s s' : State} :
+theorem ReadStep_ok_iff {ObR : ReadOblSpec} {ac : Access} {s s' : State} :
     ReadStep ObR ac s (.ok s') ↔ (Read s ac ∧ ObR.dec s ac ∧ ObR.stat s ac) ∧ s' = s :=
   ⟨fun h => by cases h with | ok h => exact ⟨h, rfl⟩, fun ⟨h, e⟩ => by subst e; exact .ok h⟩
 
 /-- MM-02.B, MM-02.H et MM-01.5 : une lecture brute a pour issue `ub` ssi `Read`,
 `ObR.dec` ou `ObR.stat` n'est pas satisfait. -/
-theorem ReadStep_ub_iff {ObR : ReadObl} {ac : Access} {s : State} :
+theorem ReadStep_ub_iff {ObR : ReadOblSpec} {ac : Access} {s : State} :
     ReadStep ObR ac s .ub ↔ ¬ (Read s ac ∧ ObR.dec s ac ∧ ObR.stat s ac) :=
   ⟨fun h => by cases h with | ub h => exact h, .ub⟩
 
 /-- MM-02.C et MM-02.H : une écriture brute a pour issue `ok s'` ssi `CanWrite`,
 `ObW.dec` et `ObW.stat` sont satisfaits et `s'` est l'effet `State.write`. -/
-theorem WriteStep_ok_iff {ObW : WriteObl} {ac : Access} {w : Nat → UInt8 × Option Nat}
+theorem WriteStep_ok_iff {ObW : WriteOblSpec} {ac : Access} {w : Nat → UInt8 × Option Nat}
     {s s' : State} :
     WriteStep ObW ac w s (.ok s') ↔
       (CanWrite s ac ∧ ObW.dec s ac w ∧ ObW.stat s ac w) ∧ s' = s.write ac w :=
@@ -1227,7 +1235,7 @@ theorem WriteStep_ok_iff {ObW : WriteObl} {ac : Access} {w : Nat → UInt8 × Op
 
 /-- MM-02.C, MM-02.H et MM-01.5 : une écriture brute a pour issue `ub` ssi
 `CanWrite`, `ObW.dec` ou `ObW.stat` n'est pas satisfait. -/
-theorem WriteStep_ub_iff {ObW : WriteObl} {ac : Access} {w : Nat → UInt8 × Option Nat}
+theorem WriteStep_ub_iff {ObW : WriteOblSpec} {ac : Access} {w : Nat → UInt8 × Option Nat}
     {s : State} :
     WriteStep ObW ac w s .ub ↔ ¬ (CanWrite s ac ∧ ObW.dec s ac w ∧ ObW.stat s ac w) :=
   ⟨fun h => by cases h with | ub h => exact h, .ub⟩
@@ -1260,13 +1268,14 @@ theorem AllocStep_ub_iff {space base size align : Nat} {freeAuth : Option Nat} {
 
 /-- MM-02.H : toute lecture brute a une issue, dans tout état. Preuve classique :
 `ObR.stat` n'est pas décidable. -/
-theorem ReadStep_total (ObR : ReadObl) (ac : Access) (s : State) : ∃ o, ReadStep ObR ac s o :=
+theorem ReadStep_total (ObR : ReadOblSpec) (ac : Access) (s : State) :
+    ∃ o, ReadStep ObR ac s o :=
   (Classical.em (Read s ac ∧ ObR.dec s ac ∧ ObR.stat s ac)).elim
     (fun h => ⟨_, .ok h⟩) (fun h => ⟨_, .ub h⟩)
 
 /-- MM-02.H : toute écriture brute a une issue, dans tout état. Preuve
 classique : `ObW.stat` n'est pas décidable. -/
-theorem WriteStep_total (ObW : WriteObl) (ac : Access) (w : Nat → UInt8 × Option Nat)
+theorem WriteStep_total (ObW : WriteOblSpec) (ac : Access) (w : Nat → UInt8 × Option Nat)
     (s : State) : ∃ o, WriteStep ObW ac w s o :=
   (Classical.em (CanWrite s ac ∧ ObW.dec s ac w ∧ ObW.stat s ac w)).elim
     (fun h => ⟨_, .ok h⟩) (fun h => ⟨_, .ub h⟩)
@@ -1288,7 +1297,7 @@ theorem AllocStep_total (space base size align : Nat) (freeAuth : Option Nat) (s
 /-- MM-02.B et MM-02.H : l'issue rendue par l'interpréteur `read`, appelé avec
 une preuve de la part statique, est une issue de la sémantique `ReadStep`. -/
 theorem read_sound {ObR : ReadObl} {ac : Access} {s : State} {hs : ObR.stat s ac} {o : Outcome}
-    (h : read ObR ac s hs = o) : ReadStep ObR ac s o := by
+    (h : read ObR ac s hs = o) : ReadStep ObR.toSpec ac s o := by
   subst h
   unfold read
   split
@@ -1298,7 +1307,7 @@ theorem read_sound {ObR : ReadObl} {ac : Access} {s : State} {hs : ObR.stat s ac
 /-- MM-02.B et MM-02.H : toute issue de la sémantique `ReadStep` est celle que rend
 l'interpréteur `read`, pour toute preuve de la part statique. -/
 theorem read_complete {ObR : ReadObl} {ac : Access} {s : State} {o : Outcome}
-    (h : ReadStep ObR ac s o) : ∀ hs, read ObR ac s hs = o := by
+    (h : ReadStep ObR.toSpec ac s o) : ∀ hs, read ObR ac s hs = o := by
   intro hs
   unfold read
   cases h with
@@ -1309,7 +1318,7 @@ theorem read_complete {ObR : ReadObl} {ac : Access} {s : State} {o : Outcome}
 une preuve de la part statique, est une issue de la sémantique `WriteStep`. -/
 theorem write_sound {ObW : WriteObl} {ac : Access} {w : Nat → UInt8 × Option Nat} {s : State}
     {hs : ObW.stat s ac w} {o : Outcome} (h : write ObW ac w s hs = o) :
-    WriteStep ObW ac w s o := by
+    WriteStep ObW.toSpec ac w s o := by
   subst h
   unfold write
   split
@@ -1319,7 +1328,7 @@ theorem write_sound {ObW : WriteObl} {ac : Access} {w : Nat → UInt8 × Option 
 /-- MM-02.C et MM-02.H : toute issue de la sémantique `WriteStep` est celle que
 rend l'interpréteur `write`, pour toute preuve de la part statique. -/
 theorem write_complete {ObW : WriteObl} {ac : Access} {w : Nat → UInt8 × Option Nat} {s : State}
-    {o : Outcome} (h : WriteStep ObW ac w s o) : ∀ hs, write ObW ac w s hs = o := by
+    {o : Outcome} (h : WriteStep ObW.toSpec ac w s o) : ∀ hs, write ObW ac w s hs = o := by
   intro hs
   unfold write
   cases h with
@@ -1376,9 +1385,9 @@ chaque pas. -/
 inductive ReachableStep : State → Prop where
   | empty : ReachableStep State.empty
   | read {s s' : State} (ObR : ReadObl) (ac : Access) :
-      ReachableStep s → ReadStep ObR ac s (.ok s') → ReachableStep s'
+      ReachableStep s → ReadStep ObR.toSpec ac s (.ok s') → ReachableStep s'
   | write {s s' : State} (ObW : WriteObl) (ac : Access) (w : Nat → UInt8 × Option Nat) :
-      ReachableStep s → WriteStep ObW ac w s (.ok s') → ReachableStep s'
+      ReachableStep s → WriteStep ObW.toSpec ac w s (.ok s') → ReachableStep s'
   | dealloc {s s' : State} (Compatible : Nat → Nat → Prop) (id auth : Nat) :
       ReachableStep s → DeallocStep Compatible id auth s (.ok s') → ReachableStep s'
   | alloc {s s' : State} (space base size align : Nat) (freeAuth : Option Nat) :
@@ -1438,10 +1447,13 @@ namespace Witness
 projection booléenne de l'issue. -/
 
 /-- MM-02.B.4, B.6, B.7 : obligations de lecture triviales (parts vraies). -/
-def obR : ReadObl := ⟨fun _ _ => True, fun _ _ => instDecidableTrue, fun _ _ => True⟩
+def obR : ReadObl :=
+  { dec := fun _ _ => True, stat := fun _ _ => True, decInst := fun _ _ => instDecidableTrue }
 
 /-- MM-02.C.4, C.5, C.6 : obligations d'écriture triviales (parts vraies). -/
-def obW : WriteObl := ⟨fun _ _ _ => True, fun _ _ _ => instDecidableTrue, fun _ _ _ => True⟩
+def obW : WriteObl :=
+  { dec := fun _ _ _ => True, stat := fun _ _ _ => True,
+    decInst := fun _ _ _ => instDecidableTrue }
 
 /-- MM-02.2 : une allocation vivante d'identité `0`, base `96`, étendue `8`,
 alignement `8`, jeton de désallocation `7`, créée depuis `State.empty`. -/
