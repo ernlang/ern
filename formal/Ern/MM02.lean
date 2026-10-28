@@ -6,7 +6,8 @@ règle MM-02.x qu'il modélise ; le texte des règles reste dans la spécificati
 `State.write`, `State.dealloc`, `State.alloc` : effet d'une opération valide.
 `ReadStep`, `WriteStep`, `DeallocStep`, `AllocStep` : sémantique des opérations
 brutes, relation entre un état et son issue `ok` ou `ub` (MM-02.H), définie pour
-tout état. `read`, `write`, `dealloc`, `alloc` : interpréteurs de ces relations ;
+tout état. `read`, `write`, `dealloc` : interpréteurs de ces relations ; `alloc` :
+interpréteur de `AllocStep` sur les états qui satisfont `WF` ;
 `checkedRead`, `checkedWrite`, `checkedDealloc` : variantes vérifiées,
 vérifications instrumentées du modèle exploratoire et non primitives d'ERN. Ces
 fonctions sont calculables, sans décision classique.
@@ -331,7 +332,8 @@ def Derive (ac ac' : Access) : Prop :=
 
 /-- MM-02.B.4, B.6, B.7 : obligations de lecture typée non décidées par le noyau.
 `dec` : part décidable, testée par les variantes vérifiées ; `stat` : part
-statique, reçue en hypothèse. -/
+statique, reçue en hypothèse par les fonctions ; `ReadStep` exige les deux pour
+l'issue `ok`. -/
 structure ReadObl where
   dec : State → Access → Prop
   decInst : ∀ s, DecidablePred (dec s)
@@ -341,7 +343,8 @@ attribute [instance] ReadObl.decInst
 
 /-- MM-02.C.4, C.5, C.6 : obligations d'écriture typée non décidées par le noyau.
 `dec` : part décidable, testée par les variantes vérifiées ; `stat` : part
-statique, reçue en hypothèse. -/
+statique, reçue en hypothèse par les fonctions ; `WriteStep` exige les deux pour
+l'issue `ok`. -/
 structure WriteObl where
   dec : State → Access → (Nat → UInt8 × Option Nat) → Prop
   decInst : ∀ s ac, DecidablePred (dec s ac)
