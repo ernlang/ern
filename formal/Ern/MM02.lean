@@ -799,4 +799,34 @@ theorem checkedRead_eq_fail {ObR : State → Access → Prop} {ac : Access} {s :
     rw [hu] at this
     cases this
 
+/-- MM-01.3 et MM-02.H : l'état porté par un `fail` de l'écriture vérifiée est
+l'état d'entrée. -/
+theorem checkedWrite_fail_state {ObW : State → Access → (Nat → UInt8 × Option Nat) → Prop}
+    {ac : Access} {w : Nat → UInt8 × Option Nat} {s s' : State}
+    (h : checkedWrite ObW ac w s = .fail s') : s' = s := by
+  unfold checkedWrite write at h
+  split at h <;> simp_all [Outcome.lift, eq_comm]
+
+/-- MM-01.3 et MM-02.H : l'état porté par un `fail` de la désallocation vérifiée
+est l'état d'entrée. -/
+theorem checkedDealloc_fail_state {Compatible : Nat → Nat → Prop} {id auth : Nat}
+    {s s' : State} (h : checkedDealloc Compatible id auth s = .fail s') : s' = s := by
+  unfold checkedDealloc dealloc at h
+  split at h <;> simp_all [Outcome.lift, eq_comm]
+
+/-- MM-01.3 et MM-02.H : l'état porté par un `fail` de la lecture vérifiée est
+l'état d'entrée. -/
+theorem checkedRead_fail_state {ObR : State → Access → Prop} {ac : Access} {s s' : State}
+    (h : checkedRead ObR ac s = .fail s') : s' = s := by
+  unfold checkedRead read at h
+  split at h
+  · next v hv =>
+    have hR := (readBytes_eq_some_iff.1 hv).1
+    split at h
+    · next ho =>
+      rw [ite_eq_left ⟨hR, ho⟩] at h
+      simp [Outcome.lift] at h
+    · simp_all [eq_comm]
+  · simp_all [eq_comm]
+
 end Ern.MM02
