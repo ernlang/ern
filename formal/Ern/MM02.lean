@@ -113,6 +113,19 @@ def CanWritePlace (s : State) (ac : Access) : Prop :=
   ∃ p, ac.toPlace s = some p ∧ ∃ a, s.allocs p.alloc = some a ∧ a.live = true ∧
     Auth.write ≤ ac.auth
 
+/-- MM-02.B et MM-02.3 : les `len` octets de `a` à partir du décalage `off`. -/
+def Alloc.bytesAt (a : Alloc) (off len : Nat) : List AByte :=
+  (List.range len).map fun i => a.bytes (off + i)
+
+open Classical in
+/-- MM-02.B et MM-02.H : lecture d'octets par `ac` satisfaisant les conditions du
+noyau (`Read`) ; rend les octets de la plage désignée. Ne valide pas les
+obligations de lecture typée (conditions 4, 6, 7). -/
+noncomputable def readBytes (s : State) (ac : Access) : Option (List AByte) :=
+  match s.allocs ac.prov with
+  | some a => if Read s ac then some (a.bytesAt (ac.addr - a.base) ac.len) else none
+  | none => none
+
 /-- MM-02.C : effet d'une écriture sur le stockage. Les `len` octets à partir
 du décalage `off` deviennent `init`, avec `w i = (valeur, provenance)` du
 i-ème octet écrit ; les autres octets sont inchangés. -/
@@ -183,16 +196,19 @@ inductive Outcome where
   | ok (s : State)
   | ub
 
-/-- MM-02.H : issue d'une variante vérifiée : celles d'une opération brute, plus
-l'échec défini `fail` rendu sans entrer dans l'opération (MM-01.3). -/
-inductive Outcome' where
-  | ok (s : State)
+/-- MM-02.H : issue d'une variante vérifiée rendant une valeur de type `α` :
+`ok` (nouvel état et valeur), échec défini `fail` rendu sans entrer dans
+l'opération, avec l'état d'entrée (MM-01.3), ou `ub`. -/
+inductive Outcome' (α : Type) where
+  | ok (s : State) (v : α)
+  | fail (s : State)
   | ub
-  | fail
 
-/-- MM-02.H : une issue d'opération brute vue comme issue de variante vérifiée. -/
-def Outcome.lift : Outcome → Outcome'
-  | .ok s => .ok s
+/-- MM-02.H : une issue d'opération brute vue comme issue de variante vérifiée,
+avec la valeur `v` en cas de succès. -/
+def Outcome.lift {α : Type} (o : Outcome) (v : α) : Outcome' α :=
+  match o with
+  | .ok s => .ok s v
   | .ub => .ub
 
 open Classical in
@@ -229,15 +245,25 @@ open Classical in
 /-- MM-01.3 et MM-02.H : écriture vérifiée : contrôle les conditions de `write`
 avant d'appeler l'opération brute ; `fail` sans y entrer si le contrôle échoue. -/
 noncomputable def checkedWrite (ObW : State → Access → (Nat → UInt8 × Option Nat) → Prop)
-    (ac : Access) (w : Nat → UInt8 × Option Nat) (s : State) : Outcome' :=
-  if CanWrite s ac ∧ ObW s ac w then (write ObW ac w s).lift else .fail
+    (ac : Access) (w : Nat → UInt8 × Option Nat) (s : State) : Outcome' Unit :=
+  if CanWrite s ac ∧ ObW s ac w then (write ObW ac w s).lift () else .fail s
 
 open Classical in
 /-- MM-01.3 et MM-02.H : désallocation vérifiée : contrôle `CanDealloc` avant
 d'appeler l'opération brute ; `fail` sans y entrer si le contrôle échoue. -/
 noncomputable def checkedDealloc (Compatible : Nat → Nat → Prop) (id auth : Nat)
-    (s : State) : Outcome' :=
-  if CanDealloc Compatible s id auth then (dealloc Compatible id auth s).lift else .fail
+    (s : State) : Outcome' Unit :=
+  if CanDealloc Compatible s id auth then (dealloc Compatible id auth s).lift () else .fail s
+
+open Classical in
+/-- MM-02.B, MM-01.3 et MM-02.H : lecture vérifiée : contrôle les conditions du
+noyau (par `readBytes`) et les obligations `ObR` avant d'appeler la lecture
+brute ; rend les octets lus, ou `fail` avec l'état d'entrée sans y entrer. -/
+noncomputable def checkedRead (ObR : State → Access → Prop) (ac : Access) (s : State) :
+    Outcome' (List AByte) :=
+  match readBytes s ac with
+  | some v => if ObR s ac then (read ObR ac s).lift v else .fail s
+  | none => .fail s
 
 /-- P1, MM-02.B.1 : toute lecture permise porte sur une allocation vivante. -/
 theorem read_requires_live {s : State} {ac : Access} (h : Read s ac) :
@@ -479,30 +505,30 @@ theorem write_eq_ub {ObW : State → Access → (Nat → UInt8 × Option Nat) �
 contrôle réussit et `s'` est l'effet `State.write`. -/
 theorem checkedWrite_eq_ok {ObW : State → Access → (Nat → UInt8 × Option Nat) → Prop}
     {ac : Access} {w : Nat → UInt8 × Option Nat} {s s' : State} :
-    checkedWrite ObW ac w s = .ok s' ↔ (CanWrite s ac ∧ ObW s ac w) ∧ s' = s.write ac w := by
+    checkedWrite ObW ac w s = .ok s' () ↔ (CanWrite s ac ∧ ObW s ac w) ∧ s' = s.write ac w := by
   unfold checkedWrite write
   split <;> simp_all [Outcome.lift, eq_comm]
 
-/-- MM-01.3 et MM-02.H : une écriture vérifiée a pour issue `fail` ssi le
-contrôle échoue. -/
+/-- MM-01.3 et MM-02.H : une écriture vérifiée a pour issue `fail` avec l'état
+d'entrée ssi le contrôle échoue. -/
 theorem checkedWrite_eq_fail {ObW : State → Access → (Nat → UInt8 × Option Nat) → Prop}
     {ac : Access} {w : Nat → UInt8 × Option Nat} {s : State} :
-    checkedWrite ObW ac w s = .fail ↔ ¬ (CanWrite s ac ∧ ObW s ac w) := by
+    checkedWrite ObW ac w s = .fail s ↔ ¬ (CanWrite s ac ∧ ObW s ac w) := by
   unfold checkedWrite write
   split <;> simp_all [Outcome.lift]
 
 /-- MM-01.3 et MM-02.H : une désallocation vérifiée a pour issue `ok s'` ssi le
 contrôle réussit et `s'` est l'effet `State.dealloc`. -/
 theorem checkedDealloc_eq_ok {Compatible : Nat → Nat → Prop} {id auth : Nat} {s s' : State} :
-    checkedDealloc Compatible id auth s = .ok s' ↔
+    checkedDealloc Compatible id auth s = .ok s' () ↔
       CanDealloc Compatible s id auth ∧ s' = s.dealloc id := by
   unfold checkedDealloc dealloc
   split <;> simp_all [Outcome.lift, eq_comm]
 
-/-- MM-01.3 et MM-02.H : une désallocation vérifiée a pour issue `fail` ssi le
-contrôle échoue. -/
+/-- MM-01.3 et MM-02.H : une désallocation vérifiée a pour issue `fail` avec
+l'état d'entrée ssi le contrôle échoue. -/
 theorem checkedDealloc_eq_fail {Compatible : Nat → Nat → Prop} {id auth : Nat} {s : State} :
-    checkedDealloc Compatible id auth s = .fail ↔ ¬ CanDealloc Compatible s id auth := by
+    checkedDealloc Compatible id auth s = .fail s ↔ ¬ CanDealloc Compatible s id auth := by
   unfold checkedDealloc dealloc
   split <;> simp_all [Outcome.lift]
 
@@ -613,5 +639,164 @@ theorem alloc_frame {s : State} (hf : s.allocs s.next = none) (space base size a
     rw [e, hf] at ha
     cases ha
   simp [State.alloc, hne, ha]
+
+/-- MM-02.C : dans la plage écrite, l'octet `off + i` porte la valeur et la
+provenance écrites en position `i`. -/
+theorem Alloc.write_bytes_in (a : Alloc) {off len : Nat} (w : Nat → UInt8 × Option Nat)
+    {i : Nat} (hi : i < len) : (a.write off len w).bytes (off + i) = .init (w i).1 (w i).2 := by
+  simp only [Alloc.write]
+  rw [ite_eq_left ⟨Nat.le_add_right _ _, Nat.add_lt_add_left hi _⟩, Nat.add_sub_cancel_left]
+
+/-- MM-02.B : `readBytes` rend `v` ssi `Read` est satisfait et `v` est la suite
+des octets de la plage désignée dans l'allocation de la provenance. -/
+theorem readBytes_eq_some_iff {s : State} {ac : Access} {v : List AByte} :
+    readBytes s ac = some v ↔
+      Read s ac ∧ ∃ a, s.allocs ac.prov = some a ∧ v = a.bytesAt (ac.addr - a.base) ac.len := by
+  unfold readBytes
+  split
+  · next a ha =>
+    by_cases hR : Read s ac
+    · rw [ite_eq_left hR]
+      constructor
+      · intro h
+        cases h
+        exact ⟨hR, a, ha, rfl⟩
+      · rintro ⟨-, b, hb, rfl⟩
+        rw [ha] at hb
+        cases hb
+        rfl
+    · rw [ite_eq_right hR]
+      simp [hR]
+  · next ha =>
+    simp only [reduceCtorEq, false_iff]
+    rintro ⟨-, b, hb, -⟩
+    rw [ha] at hb
+    cases hb
+
+/-- MM-02.B et MM-02.5 : `readBytes` ne dépend que de l'allocation désignée par
+la provenance. -/
+theorem readBytes_congr {s t : State} {ac : Access} (h : s.allocs ac.prov = t.allocs ac.prov) :
+    readBytes s ac = readBytes t ac := by
+  have hR : Read s ac = Read t ac := by simp only [Read, h]
+  unfold readBytes
+  rw [h, hR]
+
+/-- MM-02.C et MM-02.B : relire par `ac` la plage qu'une écriture valide par `ac`
+vient d'écrire rend le contenu écrit. -/
+theorem readBytes_write_same {s : State} {ac : Access} (hw : CanWrite s ac)
+    (w : Nat → UInt8 × Option Nat) :
+    readBytes (s.write ac w) ac = some ((List.range ac.len).map fun i => .init (w i).1 (w i).2) := by
+  obtain ⟨a, ha, hl, hsp, -⟩ := hw
+  have hwa : (s.write ac w).allocs ac.prov = some (a.write (ac.addr - a.base) ac.len w) := by
+    simp [State.write, ha]
+  have hR : Read (s.write ac w) ac :=
+    ⟨_, hwa, hl, hsp, fun i hi => by
+      rw [show (a.write (ac.addr - a.base) ac.len w).base = a.base from rfl,
+        Alloc.write_bytes_in a w hi]
+      nofun, Or.inl rfl⟩
+  simp only [readBytes, hwa]
+  rw [ite_eq_left hR]
+  congr 1
+  exact List.map_congr_left fun i hi => Alloc.write_bytes_in a w (List.mem_range.1 hi)
+
+/-- MM-02.C et MM-02.B : une écriture valide par `ac` ne change pas la lecture par
+`ac'` si `ac'` a une autre provenance, ou si les plages d'adresses des deux accès
+sont disjointes. -/
+theorem readBytes_write_other {s : State} {ac ac' : Access} (hw : CanWrite s ac)
+    (w : Nat → UInt8 × Option Nat)
+    (hd : ac'.prov ≠ ac.prov ∨ RangeDisjoint ac.addr ac.len ac'.addr ac'.len) :
+    readBytes (s.write ac w) ac' = readBytes s ac' := by
+  by_cases hp : ac'.prov = ac.prov
+  case neg => exact readBytes_congr (by simp [State.write, hp])
+  have hr : RangeDisjoint ac.addr ac.len ac'.addr ac'.len := hd.resolve_left (· hp)
+  obtain ⟨a, ha, -, hsp, -⟩ := hw
+  have key : Spatial a ac' → ∀ i, i < ac'.len →
+      (a.write (ac.addr - a.base) ac.len w).bytes (ac'.addr - a.base + i) =
+        a.bytes (ac'.addr - a.base + i) := by
+    intro hs' i hi
+    simp only [Alloc.write]
+    apply ite_eq_right
+    intro ⟨h1, h2⟩
+    obtain ⟨hb, -⟩ := hsp
+    obtain ⟨hb', -⟩ := hs'
+    exact hr (ac'.addr + i) (by omega) (by omega) (by omega) (by omega)
+  have hwa : (s.write ac w).allocs ac'.prov = some (a.write (ac.addr - a.base) ac.len w) := by
+    simp [State.write, hp, ha]
+  have ha' : s.allocs ac'.prov = some a := hp ▸ ha
+  have hRead : Read (s.write ac w) ac' ↔ Read s ac' := by
+    constructor
+    · rintro ⟨b, hb, hl', hs', hi', hau⟩
+      rw [hwa] at hb
+      cases hb
+      exact ⟨a, ha', hl', hs', fun i hi => by rw [← key hs' i hi]; exact hi' i hi, hau⟩
+    · rintro ⟨b, hb, hl', hs', hi', hau⟩
+      rw [ha'] at hb
+      cases hb
+      exact ⟨_, hwa, hl', hs', fun i hi => by
+        rw [show (a.write (ac.addr - a.base) ac.len w).base = a.base from rfl, key hs' i hi]
+        exact hi' i hi, hau⟩
+  simp only [readBytes, hwa, ha']
+  by_cases hR : Read s ac'
+  · rw [ite_eq_left (hRead.2 hR), ite_eq_left hR]
+    obtain ⟨b, hb, -, hs', -⟩ := hR
+    rw [ha'] at hb
+    cases hb
+    congr 1
+    exact List.map_congr_left fun i hi => key hs' i (List.mem_range.1 hi)
+  · rw [ite_eq_right (mt hRead.1 hR), ite_eq_right hR]
+
+/-- MM-01.3 et MM-02.H : une lecture vérifiée n'a jamais pour issue `ub`. -/
+theorem checkedRead_ne_ub (ObR : State → Access → Prop) (ac : Access) (s : State) :
+    checkedRead ObR ac s ≠ .ub := by
+  unfold checkedRead
+  split
+  · next v hv =>
+    split
+    · next ho =>
+      rw [read, ite_eq_left ⟨(readBytes_eq_some_iff.1 hv).1, ho⟩]
+      nofun
+    · nofun
+  · nofun
+
+/-- MM-01.3, MM-02.B et MM-02.H : une lecture vérifiée a pour issue `ok s' v` ssi
+le contrôle réussit, `s' = s` et `v` est le résultat de `readBytes`. -/
+theorem checkedRead_eq_ok {ObR : State → Access → Prop} {ac : Access} {s s' : State}
+    {v : List AByte} :
+    checkedRead ObR ac s = .ok s' v ↔ (Read s ac ∧ ObR s ac) ∧ s' = s ∧ readBytes s ac = some v := by
+  unfold checkedRead
+  split
+  · next u hu =>
+    have hR := (readBytes_eq_some_iff.1 hu).1
+    split
+    · next ho =>
+      rw [read, ite_eq_left ⟨hR, ho⟩]
+      simp [Outcome.lift, hR, ho, hu, eq_comm]
+    · next ho => simp [ho]
+  · next hu =>
+    simp only [reduceCtorEq, false_iff]
+    rintro ⟨-, -, h⟩
+    rw [hu] at h
+    cases h
+
+/-- MM-01.3, MM-02.B et MM-02.H : une lecture vérifiée a pour issue `fail` avec
+l'état d'entrée ssi le contrôle échoue. -/
+theorem checkedRead_eq_fail {ObR : State → Access → Prop} {ac : Access} {s : State} :
+    checkedRead ObR ac s = .fail s ↔ ¬ (Read s ac ∧ ObR s ac) := by
+  unfold checkedRead
+  split
+  · next u hu =>
+    have hR := (readBytes_eq_some_iff.1 hu).1
+    split
+    · next ho =>
+      rw [read, ite_eq_left ⟨hR, ho⟩]
+      simp [Outcome.lift, hR, ho]
+    · next ho => simp [ho]
+  · next hu =>
+    simp only [true_iff]
+    rintro ⟨hR, -⟩
+    have ⟨a, ha, _⟩ := hR
+    have := readBytes_eq_some_iff.2 ⟨hR, a, ha, rfl⟩
+    rw [hu] at this
+    cases this
 
 end Ern.MM02
