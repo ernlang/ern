@@ -1265,6 +1265,91 @@ theorem AllocStep_total (space base size align : Nat) (freeAuth : Option Nat) (s
   (Classical.em (AllocPre s space base size align)).elim
     (fun h => ⟨_, .ok h⟩) (fun h => ⟨_, .ub h⟩)
 
+/-- MM-02.B et MM-02.H : l'issue rendue par l'interpréteur `read`, appelé avec
+une preuve de la part statique, est une issue de la sémantique `ReadStep`. -/
+theorem read_sound {ObR : ReadObl} {ac : Access} {s : State} {hs : ObR.stat s ac} {o : Outcome}
+    (h : read ObR ac s hs = o) : ReadStep ObR ac s o := by
+  subst h
+  unfold read
+  split
+  · next hc => exact .ok ⟨hc.1, hc.2, hs⟩
+  · next hc => exact .ub fun ⟨h1, h2, _⟩ => hc ⟨h1, h2⟩
+
+/-- MM-02.B et MM-02.H : toute issue de la sémantique `ReadStep` est celle que rend
+l'interpréteur `read`, pour toute preuve de la part statique. -/
+theorem read_complete {ObR : ReadObl} {ac : Access} {s : State} {o : Outcome}
+    (h : ReadStep ObR ac s o) : ∀ hs, read ObR ac s hs = o := by
+  intro hs
+  unfold read
+  cases h with
+  | ok h => exact ite_eq_left ⟨h.1, h.2.1⟩
+  | ub h => exact ite_eq_right fun ⟨h1, h2⟩ => h ⟨h1, h2, hs⟩
+
+/-- MM-02.C et MM-02.H : l'issue rendue par l'interpréteur `write`, appelé avec
+une preuve de la part statique, est une issue de la sémantique `WriteStep`. -/
+theorem write_sound {ObW : WriteObl} {ac : Access} {w : Nat → UInt8 × Option Nat} {s : State}
+    {hs : ObW.stat s ac w} {o : Outcome} (h : write ObW ac w s hs = o) :
+    WriteStep ObW ac w s o := by
+  subst h
+  unfold write
+  split
+  · next hc => exact .ok ⟨hc.1, hc.2, hs⟩
+  · next hc => exact .ub fun ⟨h1, h2, _⟩ => hc ⟨h1, h2⟩
+
+/-- MM-02.C et MM-02.H : toute issue de la sémantique `WriteStep` est celle que
+rend l'interpréteur `write`, pour toute preuve de la part statique. -/
+theorem write_complete {ObW : WriteObl} {ac : Access} {w : Nat → UInt8 × Option Nat} {s : State}
+    {o : Outcome} (h : WriteStep ObW ac w s o) : ∀ hs, write ObW ac w s hs = o := by
+  intro hs
+  unfold write
+  cases h with
+  | ok h => exact ite_eq_left ⟨h.1, h.2.1⟩
+  | ub h => exact ite_eq_right fun ⟨h1, h2⟩ => h ⟨h1, h2, hs⟩
+
+/-- MM-02.D et MM-02.H : l'issue rendue par l'interpréteur `dealloc` est une issue
+de la sémantique `DeallocStep`. -/
+theorem dealloc_sound {Compatible : Nat → Nat → Prop} [DecidableRel Compatible] {id auth : Nat}
+    {s : State} {o : Outcome} (h : dealloc Compatible id auth s = o) :
+    DeallocStep Compatible id auth s o := by
+  subst h
+  unfold dealloc
+  split
+  · next hc => exact .ok hc
+  · next hc => exact .ub hc
+
+/-- MM-02.D et MM-02.H : toute issue de la sémantique `DeallocStep` est celle que
+rend l'interpréteur `dealloc`. -/
+theorem dealloc_complete {Compatible : Nat → Nat → Prop} [DecidableRel Compatible]
+    {id auth : Nat} {s : State} {o : Outcome} (h : DeallocStep Compatible id auth s o) :
+    dealloc Compatible id auth s = o := by
+  unfold dealloc
+  cases h with
+  | ok h => exact ite_eq_left h
+  | ub h => exact ite_eq_right h
+
+/-- MM-02.2 (création brute), MM-02.A et MM-02.H : sous l'invariant de
+fraîcheur, l'issue rendue par l'interpréteur `alloc` est une issue de la
+sémantique `AllocStep`. -/
+theorem alloc_sound_of_wf {space base size align : Nat} {freeAuth : Option Nat} {s : State}
+    {o : Outcome} (hwf : WF s) (h : alloc space base size align freeAuth s = o) :
+    AllocStep space base size align freeAuth s o := by
+  subst h
+  unfold alloc
+  split
+  · next hc => exact .ok ((allocPreDec_iff hwf).1 hc)
+  · next hc => exact .ub (mt (allocPreDec_iff hwf).2 hc)
+
+/-- MM-02.2 (création brute), MM-02.A et MM-02.H : sous l'invariant de
+fraîcheur, toute issue de la sémantique `AllocStep` est celle que rend
+l'interpréteur `alloc`. -/
+theorem alloc_complete_of_wf {space base size align : Nat} {freeAuth : Option Nat} {s : State}
+    {o : Outcome} (hwf : WF s) (h : AllocStep space base size align freeAuth s o) :
+    alloc space base size align freeAuth s = o := by
+  unfold alloc
+  cases h with
+  | ok h => exact ite_eq_left ((allocPreDec_iff hwf).2 h)
+  | ub h => exact ite_eq_right (mt (allocPreDec_iff hwf).1 h)
+
 namespace Witness
 
 /-! Témoins exécutables (MM-02.H) : chaque opération brute et vérifiée sur des
