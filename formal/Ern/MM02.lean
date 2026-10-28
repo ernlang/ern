@@ -445,6 +445,67 @@ theorem alloc_eq_ok {space base size align : Nat} {freeAuth : Option Nat} {s s' 
   unfold alloc
   split <;> simp_all [eq_comm]
 
+/-- MM-02.B et MM-02.H : une lecture brute a pour issue `ok s'` ssi `Read` et les
+obligations `ObR` sont satisfaites et `s' = s`. -/
+theorem read_eq_ok {ObR : State → Access → Prop} {ac : Access} {s s' : State} :
+    read ObR ac s = .ok s' ↔ (Read s ac ∧ ObR s ac) ∧ s' = s := by
+  unfold read
+  split <;> simp_all [eq_comm]
+
+/-- MM-02.B et MM-02.H : une lecture brute a pour issue `ub` ssi `Read` ou les
+obligations `ObR` ne sont pas satisfaites. -/
+theorem read_eq_ub {ObR : State → Access → Prop} {ac : Access} {s : State} :
+    read ObR ac s = .ub ↔ ¬ (Read s ac ∧ ObR s ac) := by
+  unfold read
+  split <;> simp_all
+
+/-- MM-02.C et MM-02.H : une écriture brute a pour issue `ok s'` ssi `CanWrite`
+et les obligations `ObW` sont satisfaites et `s'` est l'effet `State.write`. -/
+theorem write_eq_ok {ObW : State → Access → (Nat → UInt8 × Option Nat) → Prop} {ac : Access}
+    {w : Nat → UInt8 × Option Nat} {s s' : State} :
+    write ObW ac w s = .ok s' ↔ (CanWrite s ac ∧ ObW s ac w) ∧ s' = s.write ac w := by
+  unfold write
+  split <;> simp_all [eq_comm]
+
+/-- MM-02.C et MM-02.H : une écriture brute a pour issue `ub` ssi `CanWrite` ou
+les obligations `ObW` ne sont pas satisfaites. -/
+theorem write_eq_ub {ObW : State → Access → (Nat → UInt8 × Option Nat) → Prop} {ac : Access}
+    {w : Nat → UInt8 × Option Nat} {s : State} :
+    write ObW ac w s = .ub ↔ ¬ (CanWrite s ac ∧ ObW s ac w) := by
+  unfold write
+  split <;> simp_all
+
+/-- MM-01.3 et MM-02.H : une écriture vérifiée a pour issue `ok s'` ssi le
+contrôle réussit et `s'` est l'effet `State.write`. -/
+theorem checkedWrite_eq_ok {ObW : State → Access → (Nat → UInt8 × Option Nat) → Prop}
+    {ac : Access} {w : Nat → UInt8 × Option Nat} {s s' : State} :
+    checkedWrite ObW ac w s = .ok s' ↔ (CanWrite s ac ∧ ObW s ac w) ∧ s' = s.write ac w := by
+  unfold checkedWrite write
+  split <;> simp_all [Outcome.lift, eq_comm]
+
+/-- MM-01.3 et MM-02.H : une écriture vérifiée a pour issue `fail` ssi le
+contrôle échoue. -/
+theorem checkedWrite_eq_fail {ObW : State → Access → (Nat → UInt8 × Option Nat) → Prop}
+    {ac : Access} {w : Nat → UInt8 × Option Nat} {s : State} :
+    checkedWrite ObW ac w s = .fail ↔ ¬ (CanWrite s ac ∧ ObW s ac w) := by
+  unfold checkedWrite write
+  split <;> simp_all [Outcome.lift]
+
+/-- MM-01.3 et MM-02.H : une désallocation vérifiée a pour issue `ok s'` ssi le
+contrôle réussit et `s'` est l'effet `State.dealloc`. -/
+theorem checkedDealloc_eq_ok {Compatible : Nat → Nat → Prop} {id auth : Nat} {s s' : State} :
+    checkedDealloc Compatible id auth s = .ok s' ↔
+      CanDealloc Compatible s id auth ∧ s' = s.dealloc id := by
+  unfold checkedDealloc dealloc
+  split <;> simp_all [Outcome.lift, eq_comm]
+
+/-- MM-01.3 et MM-02.H : une désallocation vérifiée a pour issue `fail` ssi le
+contrôle échoue. -/
+theorem checkedDealloc_eq_fail {Compatible : Nat → Nat → Prop} {id auth : Nat} {s : State} :
+    checkedDealloc Compatible id auth s = .fail ↔ ¬ CanDealloc Compatible s id auth := by
+  unfold checkedDealloc dealloc
+  split <;> simp_all [Outcome.lift]
+
 /-- MM-01.3 et MM-02.H : une écriture vérifiée n'a jamais pour issue `ub`. -/
 theorem checkedWrite_ne_ub (ObW : State → Access → (Nat → UInt8 × Option Nat) → Prop)
     (ac : Access) (w : Nat → UInt8 × Option Nat) (s : State) :
