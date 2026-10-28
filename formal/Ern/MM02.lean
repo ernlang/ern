@@ -251,16 +251,16 @@ theorem dealloc_dead {s : State} {id : Nat} {a : Alloc}
   obtain ⟨b, -, rfl⟩ := ha
   rfl
 
-/-- P2a, MM-02.D : après désallocation de l'allocation visée par `ac`, aucun
-accès par `ac`, lecture ou écriture, n'est permis. -/
-theorem dealloc_invalidates (s : State) (ac : Access) :
+/-- MM-02.D (forme v0.2 sur les prédicats) : après désallocation de l'allocation
+visée par `ac`, aucun accès par `ac`, lecture ou écriture, n'est permis. -/
+theorem dealloc_invalidates_pre (s : State) (ac : Access) :
     ¬ Read (s.dealloc ac.prov) ac ∧ ¬ CanWrite (s.dealloc ac.prov) ac :=
   ⟨fun ⟨_, ha, hl, _⟩ => by simp [dealloc_dead ha] at hl,
    fun ⟨_, ha, hl, _⟩ => by simp [dealloc_dead ha] at hl⟩
 
-/-- P2c, MM-02.D : après désallocation de `id`, aucune désallocation de `id`
-n'est permise. -/
-theorem no_double_free (Compatible : Nat → Nat → Prop) (s : State) (id auth : Nat) :
+/-- MM-02.D (forme v0.2 sur les prédicats) : après désallocation de `id`, aucune
+désallocation de `id` n'est permise. -/
+theorem no_double_free_pre (Compatible : Nat → Nat → Prop) (s : State) (id auth : Nat) :
     ¬ CanDealloc Compatible (s.dealloc id) id auth :=
   fun ⟨_, ha, hl, _⟩ => by simp [dealloc_dead ha] at hl
 
@@ -312,11 +312,11 @@ theorem dealloc_wf {s : State} (hwf : WF s) (id : Nat) : WF (s.dealloc id) := by
   intro i hi
   simp [State.dealloc, hwf i hi]
 
-/-- P2b, MM-02.A : sous l'invariant de fraîcheur `WF s`, si l'allocation visée
-par `ac` existait, alors après sa
-désallocation puis une nouvelle allocation de base `base` quelconque (y compris
-la base de l'ancienne), aucun accès par `ac`, lecture ou écriture, n'est permis. -/
-theorem reuse_does_not_restore {s : State} (hwf : WF s) {ac : Access} {a : Alloc}
+/-- MM-02.A (forme v0.2 sur les prédicats) : sous l'invariant de fraîcheur
+`WF s`, si l'allocation visée par `ac` existait, alors après sa désallocation
+puis une nouvelle allocation de base `base` quelconque (y compris la base de
+l'ancienne), aucun accès par `ac`, lecture ou écriture, n'est permis. -/
+theorem reuse_does_not_restore_pre {s : State} (hwf : WF s) {ac : Access} {a : Alloc}
     (ha : s.allocs ac.prov = some a) (space base size align : Nat) (freeAuth : Option Nat) :
     ¬ Read ((s.dealloc ac.prov).alloc space base size align freeAuth) ac ∧
       ¬ CanWrite ((s.dealloc ac.prov).alloc space base size align freeAuth) ac := by
@@ -455,5 +455,69 @@ theorem checkedDealloc_ne_ub (Compatible : Nat → Nat → Prop) (id auth : Nat)
     checkedDealloc Compatible id auth s ≠ .ub := by
   unfold checkedDealloc dealloc
   split <;> simp_all [Outcome.lift]
+
+/-- P2a, MM-02.D et MM-02.H : après une désallocation brute réussie de
+l'allocation visée par `ac`, toute lecture et toute écriture brutes par `ac` ont
+pour issue `ub`. -/
+theorem dealloc_invalidates {Compatible : Nat → Nat → Prop} {ObR : State → Access → Prop}
+    {ObW : State → Access → (Nat → UInt8 × Option Nat) → Prop} {ac : Access} {auth : Nat}
+    {s s' : State} (h : dealloc Compatible ac.prov auth s = .ok s') :
+    read ObR ac s' = .ub ∧ ∀ w, write ObW ac w s' = .ub := by
+  obtain ⟨-, rfl⟩ := dealloc_eq_ok.1 h
+  obtain ⟨hr, hw⟩ := dealloc_invalidates_pre s ac
+  exact ⟨by simp [read, hr], fun w => by simp [write, hw]⟩
+
+/-- P2c, MM-02.D et MM-02.H : après une désallocation brute réussie de `id`, une
+nouvelle désallocation brute de `id`, avec toute autorité, a pour issue `ub`. -/
+theorem no_double_free {Compatible : Nat → Nat → Prop} {id auth : Nat} {s s' : State}
+    (h : dealloc Compatible id auth s = .ok s') (auth' : Nat) :
+    dealloc Compatible id auth' s' = .ub := by
+  obtain ⟨-, rfl⟩ := dealloc_eq_ok.1 h
+  simp [dealloc, no_double_free_pre Compatible s id auth']
+
+/-- P2b, MM-02.A et MM-02.H : après la désallocation brute réussie de
+l'allocation visée par `ac`, puis une allocation brute réussie de base `base`
+quelconque (y compris la base de l'ancienne), toute lecture et toute écriture
+brutes par `ac` ont pour issue `ub`. -/
+theorem reuse_does_not_restore {Compatible : Nat → Nat → Prop}
+    {ObR : State → Access → Prop} {ObW : State → Access → (Nat → UInt8 × Option Nat) → Prop}
+    {ac : Access} {auth : Nat} (space base size align : Nat) (freeAuth : Option Nat)
+    {s s₁ s₂ : State} (h₁ : dealloc Compatible ac.prov auth s = .ok s₁)
+    (h₂ : alloc space base size align freeAuth s₁ = .ok s₂) :
+    read ObR ac s₂ = .ub ∧ ∀ w, write ObW ac w s₂ = .ub := by
+  obtain ⟨⟨a, ha, -⟩, hs₁⟩ := dealloc_eq_ok.1 h₁
+  obtain ⟨⟨hf, -⟩, hs₂⟩ := alloc_eq_ok.1 h₂
+  have hd : s₁.allocs ac.prov = some { a with live := false } := by
+    subst hs₁
+    simp [State.dealloc, ha]
+  have hne : ac.prov ≠ s₁.next := fun e => by
+    rw [e, hf] at hd
+    cases hd
+  have hk : s₂.allocs ac.prov = some { a with live := false } := by
+    subst hs₂
+    simp [State.alloc, hne, hd]
+  have hr : ¬ Read s₂ ac := fun ⟨_, hb, hl, _⟩ => by rw [hk] at hb; cases hb; simp at hl
+  have hw : ¬ CanWrite s₂ ac := fun ⟨_, hb, hl, _⟩ => by rw [hk] at hb; cases hb; simp at hl
+  exact ⟨by simp [read, hr], fun w => by simp [write, hw]⟩
+
+/-- MM-02, exemple 1 (adresse réutilisée) : allocation, désallocation, puis
+nouvelle allocation à la même base ; les hypothèses de `reuse_does_not_restore`
+sont satisfiables avec une base identique. -/
+example : ∃ s₁ s₂ s₃ : State,
+    alloc 0 96 8 8 (some 0) ⟨fun _ => none, 0⟩ = .ok s₁ ∧
+    dealloc (fun _ _ => True) 0 0 s₁ = .ok s₂ ∧
+    alloc 0 96 8 8 none s₂ = .ok s₃ := by
+  refine ⟨_, _, _, alloc_eq_ok.2 ⟨?_, rfl⟩, dealloc_eq_ok.2 ⟨?_, rfl⟩, alloc_eq_ok.2 ⟨?_, rfl⟩⟩
+  · exact ⟨rfl, by decide, ⟨3, rfl⟩, rfl, fun _ _ h => by cases h⟩
+  · exact ⟨{ space := 0, base := 96, size := 8, align := 8, live := true,
+              bytes := fun _ => .uninit, freeAuth := some 0 },
+            by simp [State.alloc], rfl, 0, rfl, trivial⟩
+  · refine ⟨by simp [State.dealloc, State.alloc], by decide, ⟨3, rfl⟩, rfl, fun i a h hl _ => ?_⟩
+    by_cases hi : i = 0
+    · subst hi
+      simp [State.dealloc, State.alloc] at h
+      subst h
+      simp at hl
+    · simp [State.dealloc, State.alloc, hi] at h
 
 end Ern.MM02
