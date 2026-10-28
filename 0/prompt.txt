@@ -1,0 +1,210 @@
+/ponytail:ponytail
+
+---
+
+@"/Users/guygouri/Downloads/ERN_Memory_model.md"
+
+<pasted_content id="7ee2">
+# Tâche : formaliser ERN MM-02 (Memory Model v0.2) en Lean 4 — modèle exploratoire
+
+## Git
+- Travailler sur la branche `formal/memory_model_0.2` (la créer depuis la branche par défaut si elle n'existe pas). Pas de merge, pas de PR.
+- Tous les changements restent sous `formal/`. Ne modifie rien ailleurs.
+- La spécification est fournie dans ce prompt ; ne la copie pas dans le dépôt. Seuls les documents validés y entrent.
+
+## Contexte
+- La spécification jointe (« ERN — Memory Model, version de travail 0.2 » : MM-01, MM-02, MM-03) est une version de travail non gelée. Cette passe formalise MM-02 uniquement. MM-01 et MM-03 ne sont pas à formaliser.
+- Hiérarchie normative : Charte ERN > spécification > formalisation. Le texte de la spec est la référence ; le modèle Lean la reflète, il ne la corrige jamais. Si une règle est ambiguë ou incomplète, tu prends la lecture la plus faible qui permet d'avancer et tu la consignes dans le rapport. Tu n'inventes aucune règle.
+- Si `ERN_MM02.lean` est fourni (amorçage, compile sous Lean 4.15.0 sans sorry), pars de lui et mets-le en conformité avec ce prompt ; sinon construis depuis la spec.
+
+## Environnement
+- Projet lake existant dans `formal/`. Commence par lire son `lakefile`, son `lean-toolchain` et sa structure de modules, et suis les conventions en place.
+- Toolchain : celle pinnée dans `formal/lean-toolchain`. Ne la change pas ; si elle est < v4.15.0 et que ça bloque, signale-le dans le rapport plutôt que de la monter.
+- Core Lean uniquement : pas de Mathlib, pas de Batteries, aucune dépendance ajoutée.
+- Module `ERN.MM02` (fichier `ERN/MM02.lean` sous la racine source du projet, ou l'emplacement équivalent selon la convention existante).
+- Pas d'`abbrev` pour les types numériques (`omega` ne voit pas à travers un synonyme) : `Nat` directement, rôle en commentaire.
+
+## Périmètre (MM-02)
+- MM-02.2 Allocation abstraite : identité, base, étendue, alignement, état vivant/mort, octets, autorité de désallocation.
+- MM-02.3 Octet abstrait : `uninit | init (valeur) (provenance optionnelle)`.
+- MM-02.4 Emplacement (place) : allocation + plage. La spec le distingue du moyen d'accès : modéliser `Place` et `Access` comme deux structures.
+- MM-02.5 Moyen d'accès : adresse, provenance (= identité d'allocation en v0.1, sans étiquette), plage, autorité (`read | write`, avec `read ≤ write`).
+- MM-02.A Identité : fraîcheur, non-réutilisation ; une adresse est réutilisable.
+- MM-02.B Lecture : conditions 1, 2, 3, 5 modélisées. 4 (représentation typée), 6 (alignement), 7 (concurrence) : abstraites, par un paramètre de prédicat ou par omission, au choix, mais documenté.
+- MM-02.C Écriture : 1, 2, 3, 5, 6 modélisées ; 4 (valeur admissible) abstraite.
+- MM-02.D Désallocation : allocation vivante, autorité compatible. Modéliser la compatibilité comme une relation paramétrique `Compatible : Nat → Nat → Prop`, pas comme une égalité.
+- MM-02.E Dérivation : sous-plage, même provenance, autorité ≤ origine. La formation d'une adresse hors limites n'est pas modélisée comme UB (la spec la laisse ouverte).
+- Hors périmètre : MM-02.F (data races), MM-02.G (conversions), tout MM-03.
+
+## Théorèmes à prouver (noms imposés)
+- `read_requires_live` (P1)
+- `dealloc_invalidates` (P2a)
+- `reuse_does_not_restore` (P2b) — la base de la nouvelle allocation est universellement quantifiée : elle peut être exactement celle de l'ancienne. C'est le contenu de MM-02.A ; une version avec base différente est sans valeur.
+- `no_double_free` (P2c)
+- `write_initializes` (P3)
+- `derive_spatial`, `derive_prov`, `derive_auth_le` (P4)
+- `alloc_fresh`, `alloc_wf`, `dealloc_wf`, `write_wf` (invariant de fraîcheur des identités)
+Si un théorème n'est pas prouvable à partir des règles telles qu'écrites, ne renforce pas les définitions pour le faire passer : signale-le avec le contre-exemple.
+
+## Règles de travail
+- Chaque `def`/`theorem` porte un docstring citant la règle MM-02.x qu'il modélise.
+- Zéro `sorry`. `#print axioms` sur chaque théorème : rien au-delà de `propext`, `Quot.sound`, `Classical.choice`.
+- `lake build` passe depuis `formal/`.
+- Rien au-delà du périmètre.
+- Commits atomiques sur la branche, messages en français.
+
+## Livrable
+1. Le module compilable, commité sur `formal/memory_model_0.2`.
+2. `formal/reports/MM02_v0.2.md`, lisible sans ouvrir le Lean (le répertoire `reports/` est de l'exploration : il ne sera jamais mergé dans la branche par défaut) :
+   (a) table règle → définition/théorème ;
+   (b) règles abstraites et comment ;
+   (c) décisions de modélisation non dictées par le texte, chacune avec la phrase de la spec concernée ;
+   (d) théorèmes non prouvés et pourquoi ;
+   (e) questions pour arbitrage.
+</pasted_content id="7ee2">
+
+---
+
+<task-notification>
+<task-id>wpm78s09w</task-id>
+<tool-use-id>toolu_01GqL1S6tD8Kd6WKx27y9tWd</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-guygouri-Devlab-ernlang-ern/c986905c-e900-4fd9-bebc-4a3ce7ebb180/tasks/wpm78s09w.output</output-file>
+<status>completed</status>
+<summary>Dynamic workflow "Adversarial spec-fidelity review of formal/Ern/MM02.lean against ERN MM-02 v0.2 and the task prompt" completed</summary>
+<result>{"confirmed":[{"title":"freeAuth docstring overstates: `d` is not necessarily capable of deallocating","location":"Ern.MM02.Alloc.freeAuth — formal/Ern/MM02.lean:29-30,37 (used at :100-101)","severity":"changes","cause":"silent interpretation","claim":"The docstring says `freeAuth` is \"autorité capable de la désallouer\", but under `CanDealloc` the capable authorities are {auth | Compatible auth d}; `d` itself is capable only if `Compatible` is reflexive, which the task forbids assuming (\"pas comme une égalité\"). The spec's \"relation avec les autorités\" is thus modelled as a reference token + parametric relation; the reading is sound (any relation is encodable through `Compatible`) but the Nat's documented role is wrong.","evidence":"Spec MM-02.2: \"Une relation avec les autorités capables de la désallouer, lorsque la désallocation est applicable.\" Task: \"Modéliser la compatibilité comme une relation paramétrique `Compatible : Nat → Nat → Prop`, pas comme une égalité.\" Lean (exit 0): `def Comp (x d : Nat) : Prop := x = d + 1`, `a0.freeAuth = some 5`: `example : ¬ CanDealloc Comp s0 0 5` and `example : CanDealloc Comp s0 0 6` both prove — authority 5 cannot deallocate, 6 can.","fix":"Reword the docstring: \"`freeAuth` : autorité de désallocation de référence ; `auth` peut désallouer ssi `Compatible auth d` (MM-02.D) ; `none` si la désallocation n'est pas applicable.\" Log the token+relation reading in report (c).","finder":"data-model","survives":true,"votes":[{"refuted":false,"reason":"Not refuted. The spec (MM-02.2) says the allocation has \"Une relation avec les autorités capables de la désallouer, lorsque la désallocation est applicable\" — a relation, not a stored capable authority — and MM-02.D asks for \"Une autorité compatible avec les conditions de désallocation de cette allocation\"; the module encodes this as freeAuth = some d plus the parametric Compatible auth d (as the task dictates, \"pas comme une égalité\"), so the docstring's claim at MM02.lean:29 that d is \"autorité capable de la désallouer\" asserts exactly `Compatible d d`, which nothing in the module provides. Confirmed in Lean (lake env lean, exit 0, scratch file /private/tmp/claude-501/-Users-guygouri-Devlab-ernlang-ern/c986905c-e900-4fd9-bebc-4a3ce7ebb180/scratchpad/refuter_freeauth_spec.lean): with Comp x d := x = d + 1 and freeAuth = some 5, `¬ CanDealloc Comp s0 0 5` and `CanDealloc Comp s0 0 6` both prove, and for arbitrary Compatible, `CanDealloc Compatible (alloc ∅ 0 1 1 (some d)) 0 d ↔ Compatible d d`. The task permits the token+relation reading (and the finding does not contest it), but it does not permit a docstring stronger than the definition; one minor imprecision in the finding (\"pas comme une égalité\" forbids equality, not reflexivity) is not load-bearing since the module assumes neither. Severity \"changes\" (docstring misdescribes the field) with the token+relation reading logged in report item (c) is appropriate."},{"refuted":false,"reason":"Confirmed in Lean (scratch /private/tmp/claude-501/-Users-guygouri-Devlab-ernlang-ern/c986905c-e900-4fd9-bebc-4a3ce7ebb180/scratchpad/verify_freeauth_lens_code.lean, `lake env lean` exit 0): with `Comp x d := x = d + 1`, `a0.freeAuth = some 5`, `s0.allocs 0 = some a0` (live), both `¬ CanDealloc Comp s0 0 5` and `CanDealloc Comp s0 0 6` prove, and `¬ CanDealloc Compatible s0 0 5` proves for any irreflexive `Compatible`. So under `CanDealloc` (MM02.lean:100-101) the stored `d` can deallocate only when `Compatible d d` holds, which the task forbids assuming (\"pas comme une égalité\"); the docstring at MM02.lean:29-30 (\"autorité capable de la désallouer\") describes a property the code does not guarantee. Severity 'changes' (docstring wording) is appropriate; the definition itself matches the task's parametric-relation instruction."},{"refuted":true,"reason":"The fact is confirmed (Lean exit 0 on /private/tmp/claude-501/-Users-guygouri-Devlab-ernlang-ern/c986905c-e900-4fd9-bebc-4a3ce7ebb180/scratchpad/refute_freeAuth_doc.lean: with `Comp x d := x = d + 1` and `freeAuth = some 5`, `¬ CanDealloc Comp s0 0 5` and `CanDealloc Comp s0 0 6` both prove), but it is not a 'changes' defect: the token-plus-relation structure is dictated by the task, not silently chosen. The task itself names the field \"autorité de désallocation\" (\"MM-02.2 Allocation abstraite : identité, base, étendue, alignement, état vivant/mort, octets, autorité de désallocation\") and mandates \"Modéliser la compatibilité comme une relation paramétrique `Compatible : Nat → Nat → Prop`, pas comme une égalité\", which together mean the stored authority need not itself satisfy `Compatible`; the docstring's \"autorité capable de la désallouer\" echoes the task's label and the cited spec bullet (\"Une relation avec les autorités capables de la désallouer\"), the only docstring rule (\"docstring citant la règle MM-02.x\") is met, `CanDealloc` says exactly what MM-02.D says (\"Une autorité compatible avec les conditions de désallocation de cette allocation\"), and no theorem depends on `Compatible d d`. Keep as a 'note' for report (c): `freeAuth = some d` is the allocation's deallocation-condition token and the capable authorities are `{auth | Compatible auth d}`; the docstring rewording is optional polish, not required by the task."}]},{"title":"Storage is a total function: bytes beyond `size` exist (ghost bytes)","location":"Ern.MM02.Alloc.bytes — formal/Ern/MM02.lean:36","severity":"note","cause":"silent interpretation","claim":"\"Une séquence d'octets\" of length `size` is modelled as `Nat → AByte`, so offsets ≥ `size` carry a value. They are unobservable through `Read` (guarded by `Spatial`) and `write_initializes` (via `CanWrite`), so no accepted behavior changes; representation choice to log.","evidence":"Spec MM-02.2: \"Une séquence d'octets abstraits constituant son stockage.\" Lean (exit 0): `a1` with `size := 0`, `bytes := fun _ =&gt; .init 7 none`; `example : ¬ Read s1 { addr := 10, prov := 0, len := 1, auth := .read }` proves (Spatial fails).","fix":"Report (c): storage = total function, bytes outside [0,size) are inert.","finder":"data-model","survives":true,"votes":[{"refuted":false,"reason":"Spec-text lens: the finding quotes MM-02.2 accurately (\"Une étendue.\" / \"Une séquence d'octets abstraits constituant son stockage.\") and its gloss that the sequence is bounded by the extent is forced by MM-02.B.2/C.2 spatial validity, so nothing is misattributed; the claim is confirmed in Lean (scratch at /private/tmp/claude-501/-Users-guygouri-Devlab-ernlang-ern/c986905c-e900-4fd9-bebc-4a3ce7ebb180/scratchpad/spec_lens_ghost_bytes.lean, exit 0: `a1.bytes 10 = .init 7 none` by rfl while `¬ Read s1 {addr:=10,…}` and `¬ CanWrite s1 {addr:=0,len:=1,…}` both prove via `Spatial`). It is a behavior-neutral representation choice, so severity 'note' is right. However the label 'silent' is wrong: the choice is already logged with the exact spec sentence and the same rationale as item 5 of report section (c) at /Users/guygouri/Devlab/ernlang/ern/formal/reports/MM02_v0.2.md:97 (\"Octets indexés par décalage depuis la base, fonction totale sur `Nat`. […] Les indices au-delà de l'étendue sont sans signification ; aucune règle ne les consulte grâce à la condition spatiale.\"), so the proposed fix is already done and no action remains."},{"refuted":false,"reason":"Confirmed on the code: `Alloc.bytes : Nat → AByte` (formal/Ern/MM02.lean:36) is total, and the finder's counterexample elaborates (size 0, bytes all `.init 7 none`, `¬ Read s1 {addr:=10, prov:=0, len:=1, auth:=.read}` proved via Spatial). Stronger evidence in /private/tmp/claude-501/-Users-guygouri-Devlab-ernlang-ern/c986905c-e900-4fd9-bebc-4a3ce7ebb180/scratchpad/verify_ghost_bytes_datamodel.lean (lake env lean, exit 0, axioms [propext, Quot.sound]): `read_in_range` (any permitted Read only inspects offsets `ac.addr - a.base + i &lt; a.size`), `read_ghost_irrelevant` (Read is invariant under arbitrary r
+... (truncated 113466 chars, full result in /private/tmp/claude-501/-Users-guygouri-Devlab-ernlang-ern/c986905c-e900-4fd9-bebc-4a3ce7ebb180/tasks/wpm78s09w.output)</result>
+<diagnostics>Per-agent results: /Users/guygouri/.claude/projects/-Users-guygouri-Devlab-ernlang-ern/c986905c-e900-4fd9-bebc-4a3ce7ebb180/subagents/workflows/wf_7c66b762-3bf/journal.jsonl — one {"type":"result",...} line per completed agent with its full return value.
+If the result above is empty or unexpected, Read this file BEFORE diagnosing — do not assume agents returned non-empty results.
+To re-run with edited post-processing: Workflow({scriptPath: '/Users/guygouri/.claude/projects/-Users-guygouri-Devlab-ernlang-ern/c986905c-e900-4fd9-bebc-4a3ce7ebb180/workflows/scripts/review-mm02-wf_7c66b762-3bf.js', resumeFromRunId: 'wf_7c66b762-3bf'}) — agents whose (prompt, opts) are unchanged replay from cache.</diagnostics>
+<failures>[verify:read-write:spec-text] failed: You've hit your session limit · resets 2:50am (Europe/Paris)
+[verify:read-write:spec-text] failed: You've hit your session limit · resets 2:50am (Europe/Paris)
+[verify:read-write:task-scope] failed: You've hit your session limit · resets 2:50am (Europe/Paris)
+[verify:read-write:lean-semantics] failed: You've hit your session limit · resets 2:50am (Europe/Paris)
+[verify:read-write:task-scope] failed: You've hit your session limit · resets 2:50am (Europe/Paris)
+[verify:read-write:spec-text] failed: You've hit your session limit · resets 2:50am (Europe/Paris)
+[verify:read-write:lean-semantics] failed: You've hit your session limit · resets 2:50am (Europe/Paris)
+[verify:identity-dealloc:spec-text] failed: You've hit your session limit · resets 2:50am (Europe/Paris)
+[verify:identity-dealloc:lean-semantics] failed: You've hit your session limit · resets 2:50am (Europe/Paris)
+[verify:identity-dealloc:task-scope] failed: You've hit your session limit · resets 2:50am (Europe/Paris)
+[verify:identity-dealloc:spec-text] failed: You've hit your session limit · resets 2:50am (Europe/Paris)
+[verify:identity-dealloc:lean-semantics] failed: You've hit your session limit · resets 2:50am (Europe/Paris)
+[verify:identity-dealloc:task-scope] failed: You've hit your session limit · resets 2:50am (Europe/Paris)
+[verify:read-write:lean-semantics] failed: You've hit your session limit · resets 2:50am (Europe/Paris)
+[verify:identity-dealloc:spec-text] failed: You've hit your session limit · resets 2:50am (Europe/Paris)
+[verify:read-write:task-scope] failed: You've hit your session limit · resets 2:50am (Europe/Paris)
+[verify:identity-dealloc:task-scope] failed: You've hit your session limit · resets 2:50am (Europe/Paris)
+[verify:identity-dealloc:lean-semantics] failed: You've hit your session limit · resets 2:50am (Europe/Paris)
+[verify:identity-dealloc:lean-semantics] failed: You've hit your session limit · resets 2:50am (Europe/Paris)
+[verify:read-write:task-scope] failed: You've hit your session limit · resets 2:50am (Europe/Paris)
+[verify:identity-dealloc:spec-text] failed: You've hit your session limit · resets 2:50am (Europe/Paris)
+[verify:read-write:spec-text] failed: You've hit your session limit · resets 2:50am (Europe/Paris)
+[verify:identity-dealloc:task-scope] failed: You've hit your session limit · resets 2:50am (Europe/Paris)
+[verify:identity-dealloc:spec-text] failed: You've hit your session limit · resets 2:50am (Europe/Paris)
+[verify:identity-dealloc:task-scope] failed: You've hit your session limit · resets 2:50am (Europe/Paris)
+[verify:identity-dealloc:lean-semantics] failed: You've hit your session limit · resets 2:50am (Europe/Paris)
+[verify:identity-dealloc:lean-semantics] failed: You've hit your session limit · resets 2:50am (Europe/Paris)
+[verify:identity-dealloc:spec-text] failed: You've hit your session limit · resets 2:50am (Europe/Paris)
+[verify:identity-dealloc:task-scope] failed: You've hit your session limit · resets 2:50am (Europe/Paris)
+[verify:identity-dealloc:spec-text] failed: You've hit your session limit · resets 2:50am (Europe/Paris)
+[verify:read-write:lean-semantics] failed: You've hit your session limit · resets 2:50am (Europe/Paris)
+[verify:identity-dealloc:task-scope] failed: You've hit your session limit · resets 2:50am (Europe/Paris)
+[verify:identity-dealloc:lean-semantics] failed: You've hit your session limit · resets 2:50am (Europe/Paris)
+[verify:derive-vacuity:lean-semantics] failed: You've hit your session limit · resets 2:50am (Europe/Paris)
+[verify:derive-vacuity:spec-text] failed: You've hit your session limit · resets 2:50am (Europe/Paris)
+[verify:derive-vacuity:lean-semantics] failed: You've hit your session limit · resets 2:50am (Europe/Paris)
+[verify:derive-vacuity:task-scope] failed: You've hit your session limit · resets 2:50am (Europe/Paris)
+[verify:derive-vacuity:spec-text] failed: You've hit your session limit · resets 2:50am (Europe/Paris)
+[verify:derive-vacuity:task-scope] failed: You've hit your session limit · resets 2:50am (Europe/Paris)
+[verify:derive-vacuity:spec-text] failed: You've hit your session limit · resets 2:50am (Europe/Paris)
+[verify:derive-vacuity:lean-semantics] failed: You've hit your session limit · resets 2:50am (Europe/Paris)
+[verify:derive-vacuity:lean-semantics] failed: You've hit your session limit · resets 2:50am (Europe/Paris)
+[verify:derive-vacuity:task-scope] failed: You've hit your session limit · resets 2:50am (Europe/Paris)
+[verify:derive-vacuity:spec-text] failed: You've hit your session limit · resets 2:50am (Europe/Paris)
+[verify:derive-vacuity:spec-text] failed: You've hit your session limit · resets 2:50am (Europe/Paris)
+[verify:derive-vacuity:lean-semantics] failed: You've hit your session limit · resets 2:50am (Europe/Paris)
+[verify:derive-vacuity:task-scope] failed: You've hit your session limit · resets 2:50am (Europe/Paris)
+[verify:derive-vacuity:task-scope] failed: You've hit your session limit · resets 2:50am (Europe/Paris)
+[verify:derive-vacuity:spec-text] failed: You've hit your session limit · resets 2:50am (Europe/Paris)
+[verify:derive-vacuity:lean-semantics] failed: You've hit your session limit · resets 2:50am (Europe/Paris)
+[verify:derive-vacuity:task-scope] failed: You've hit your session limit · resets 2:50am (Europe/Paris)
+[verify:derive-vacuity:lean-semantics] failed: You've hit your session limit · resets 2:50am (Europe/Paris)
+[verify:derive-vacuity:task-scope] failed: You've hit your session limit · resets 2:50am (Europe/Paris)
+[verify:derive-vacuity:spec-text] failed: You've hit your session limit · resets 2:50am (Europe/Paris)
+[verify:derive-vacuity:spec-text] failed: You've hit your session limit · resets 2:50am (Europe/Paris)
+[verify:derive-vacuity:lean-semantics] failed: You've hit your session limit · resets 2:50am (Europe/Paris)
+[verify:derive-vacuity:task-scope] failed: You've hit your session limit · resets 2:50am (Europe/Paris)
+[verify:read-write:task-scope] failed: You've hit your session limit · resets 2:50am (Europe/Paris)
+[verify:read-write:task-scope] failed: You've hit your session limit · resets 2:50am (Europe/Paris)
+[verify:read-write:spec-text] failed: You've hit your session limit · resets 2:50am (Europe/Paris)</failures>
+<usage><agent_count>114</agent_count><agents_done>54</agents_done><agents_error>60</agents_error><agents_skipped>0</agents_skipped><agents_empty_result>0</agents_empty_result><subagent_tokens>5391086</subagent_tokens><tool_uses>525</tool_uses><duration_ms>729578</duration_ms></usage>
+</task-notification>
+
+---
+
+I hit my usage limit while you were working, but it has reset now. Please continue from where you left off.
+
+---
+
+Je retourne le rapport tel quel ou tu va relancer la review de refutation?
+
+---
+
+<task-notification>
+<task-id>w66hke8ml</task-id>
+<tool-use-id>toolu_01WnbydWFYqaJkvqsPubma38</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-guygouri-Devlab-ernlang-ern/c986905c-e900-4fd9-bebc-4a3ce7ebb180/tasks/w66hke8ml.output</output-file>
+<status>completed</status>
+<summary>Dynamic workflow "Targeted refutation review of the committed MM-02 module and report: changed theorem statements, report facts, report spec fidelity" completed</summary>
+<result>{"confirmed":[{"title":"Report row maps 'accès ultérieur' to dealloc_invalidates, which only covers the state right after dealloc","location":"formal/reports/MM02_v0.2.md:64 ; Ern.MM02.dealloc_invalidates (MM02.lean:144)","severity":"note","cause":"false report claim","claim":"The table row 'MM-02.D | pas d'accès ultérieur par un moyen invalidé | dealloc_invalidates (lecture et écriture), no_double_free' reads as full coverage. dealloc_invalidates only speaks about `dealloc s ac.prov`, the state immediately after the dealloc. 'Ultérieure' after a later alloc holds only under WF (reuse_does_not_restore, not cited in this row). Longer sequences are not stated anywhere. The theorem statement itself is fine and within scope: ¬Read ∧ ¬CanWrite matches 'Toute tentative d'accès'.","evidence":"Spec MM-02.D: « Toute tentative d'accès ultérieure à ce stockage par un moyen d'accès invalidé est interdite. » Lean (scratchpad/rr_cs_main.lean): sBad has allocs 0 = some a0 and next = 0, so ¬WF. Then `CanWrite (alloc (dealloc sBad ac0.prov) 100 8 8 (some 0)) ac0` is proved (file compiles, prints OK). So a later step can restore access unless WF holds, and dealloc_invalidates alone does not give 'ultérieure'.","fix":"Rewrite the row as: 'état immédiatement après dealloc : dealloc_invalidates ; après dealloc puis une alloc, sous WF : reuse_does_not_restore ; séquences plus longues non énoncées'.","finder":"changed-statements","status":"confirmed","expected":1,"votes":[{"refuted":false,"reason":"I could not refute this finding, so it stands as a note. Line 64 of the report maps the spec text « Toute tentative d'accès ultérieure à ce stockage par un moyen d'accès invalidé est interdite » to `dealloc_invalidates` and `no_double_free`. `dealloc_invalidates` (MM02.lean:144) only states `¬Read`/`¬CanWrite` on `dealloc s ac.prov`, the state right after the dealloc. I ran rr_cs_main.lean with `lake env lean` and it printed OK, so the counterexample holds: a state `sBad` that fails `WF` gets `CanWrite (alloc (dealloc sBad ac0.prov) 100 8 8 (some 0)) ac0` back after a later `alloc`. The report never limits this row: the post-dealloc-then-alloc case is covered only by `reuse_does_not_restore` under `WF`, which sits in the MM-02.A row (line 48). Point (c) 2 says « énoncée pas à pas … sans notion de trace d'exécution » only about identity non-reuse, and no section says that longer sequences after a dealloc are unstated."}]},{"title":"reuse_does_not_restore docstring leaves out the WF hypothesis; the stated claim is false without it","location":"Ern.MM02.reuse_does_not_restore docstring (MM02.lean:203-205)","severity":"note","cause":"formalization error","claim":"The docstring says « si l'allocation visée par `ac` existait, alors après sa désallocation puis une nouvelle allocation de base `base` quelconque ..., aucun accès par `ac` ... n'est permis ». It never mentions WF, which the statement requires (`hwf : WF s`). As written, the docstring is false. The report (l.77, « sous l'invariant de fraîcheur ») is correct.","evidence":"Lean (rr_cs_main.lean, compiles OK): with sBad (existence holds, `sBad.allocs ac0.prov = some a0`, but `¬ WF sBad`), `CanWrite (alloc (dealloc sBad ac0.prov) 100 8 8 (some 0)) ac0` holds. Separately checked: base is universally quantified and may equal the old base (`reuse_does_not_restore hwf ha a.base a.size a.align a.freeAuth` typechecks). Both hypotheses are satisfiable: s0 with one live allocation, next = 1, `s0_wf`, CanWrite s0 ac0, and a new access at the same address with prov 1 is permitted after realloc. Both are necessary: the sBad counterexample above, and sEmpty (WF, no allocation, `CanWrite (alloc (dealloc sEmpty 0) …) ac0`).","fix":"Add « sous l'invariant de fraîcheur `WF s` » to the docstring.","finder":"changed-statements","status":"confirmed","expected":1,"votes":[{"refuted":false,"reason":"Confirmed. The docstring at MM02.lean:203-205 states only the existence hypothesis (« si l'allocation visée par `ac` existait ») and never mentions `WF`, but the statement requires `(hwf : WF s)`. The report (l.77) does say « sous l'invariant de fraîcheur ». I checked the counterexample in /private/tmp/claude-501/-Users-guygouri-Devlab-ernlang-ern/c986905c-e900-4fd9-bebc-4a3ce7ebb180/scratchpad/rr_wfdoc_refute.lean with `lake env lean` (output OK). It uses sBad with allocs 0 = a0 and next = 0, so `¬ WF sBad` holds. With `sBad.allocs ac0.prov = some a0`, the elaborated term shows `CanWrite (alloc (dealloc sBad ac0.prov) 100 8 8 (some 0)) ac0`. So the docstring's claim is false when read without WF, and severity 'note' fits: the theorem and the report are right, only the docstring needs a one-line fix."}]},{"title":"alloc_fresh's preservation clause is a frame property strictly stronger than MM-02.A; the report justifies it only by identity reuse","location":"Ern.MM02.alloc_fresh (MM02.lean:182-188) ; report (d) l.123","severity":"note","cause":"scope","claim":"Judged within scope. The task lists alloc_fresh under « invariant de fraîcheur des identités ». The clause is the only part of the statement that involves `alloc`, it is true of the definition, and the report logs it. But it forbids alloc from changing any existing record, which MM-02.A (« Une identité d'allocation n'est pas réutilisée ») does not say. The report's reason, « pour que l'énoncé rejette un alloc réattribuant une identité », leaves this out.","evidence":"Lean (rr_cs_mut.lean, compiles OK): mutant `allocK` creates the new allocation at the fresh s.next and reuses no identity, but marks every other allocation dead. `¬ (∀ s, WF s → … → i ≠ s.next ∧ (allocK s …).allocs i = some a)` is proved, so the alloc_fresh statement rejects an alloc that complies with MM-02.A.","fix":"Report (d), one line: the second conjunct is a frame property of the model's `alloc` (it leaves existing allocations untouched), stronger than MM-02.A; it is kept because it is what rejects identity reassignment.","finder":"changed-statements","status":"confirmed","expected":1,"votes":[{"refuted":false,"reason":"I could not refute it. I ran rr_cs_mut.lean with `lake env lean` and it elaborates (exit 0, only unused-variable warnings). In it, `allocK` puts the new allocation at the fresh `s.next` and reuses no identity, which is what MM-02.A asks for (« Une identité d'allocation n'est pas réutilisée pendant une exécution abstraite »). It still falsifies the `alloc_fresh` statement, because that statement also requires every existing allocation to stay unchanged. The report states this clause (l.81 « reste intacte après `alloc` », l.123 « allocation existante intacte »), but l.123 gives only « pour que l'énoncé rejette un `alloc` réattribuant une identité » as the reason, and nowhere says the clause goes beyond MM-02.A. l.124 even calls a frame property « non demandée » for `write`, so the one-line clarification is warranted at severity note."}]},{"title":"Alloc docstring: « peut désallouer ssi Compatible auth d » is false for dead allocations, and d is unbound","location":"Ern.MM02.Alloc docstring, freeAuth (MM02.lean:31-33)","severity":"note","cause":"formalization error","claim":"CanDealloc also requires `live = true`, so a compatible authority cannot deallocate a dead allocation. The docstring describes the MM-02.2 capability relation as a deallocation permission. Its `d` is also never tied to `freeAuth = some d`.","evidence":"Docstring: « une autorité `auth` peut désallouer ssi `Compatible auth d` (MM-02.D) ». Lean (rr_cs_fa.lean, compiles OK): aD has live = false and freeAuth = some 0, Compatible := fun _ _ =&gt; True, and `¬ CanDealloc (fun _ _ =&gt; True) sD 0 0` is proved even though Compatible 0 0 holds.","fix":"Reword to: « si `freeAuth = some d`, les autorités capables de la désallouer (MM-02.2) sont celles telles que `Compatible auth d` (MM-02.D) ; `none` si la désallocation n'est pas applicable ».","finder":"changed-statements","status":"confirmed","expected":1,"votes":[{"refuted":false,"reason":"I could not 
+... (truncated 37040 chars, full result in /private/tmp/claude-501/-Users-guygouri-Devlab-ernlang-ern/c986905c-e900-4fd9-bebc-4a3ce7ebb180/tasks/w66hke8ml.output)</result>
+<diagnostics>Per-agent results: /Users/guygouri/.claude/projects/-Users-guygouri-Devlab-ernlang-ern/c986905c-e900-4fd9-bebc-4a3ce7ebb180/subagents/workflows/wf_7a40bf7f-8d2/journal.jsonl — one {"type":"result",...} line per completed agent with its full return value.
+If the result above is empty or unexpected, Read this file BEFORE diagnosing — do not assume agents returned non-empty results.
+To re-run with edited post-processing: Workflow({scriptPath: '/Users/guygouri/.claude/projects/-Users-guygouri-Devlab-ernlang-ern/c986905c-e900-4fd9-bebc-4a3ce7ebb180/workflows/scripts/rereview-mm02-wf_7a40bf7f-8d2.js', resumeFromRunId: 'wf_7a40bf7f-8d2'}) — agents whose (prompt, opts) are unchanged replay from cache.</diagnostics>
+<usage><agent_count>30</agent_count><agents_done>30</agents_done><agents_error>0</agents_error><agents_skipped>0</agents_skipped><agents_empty_result>0</agents_empty_result><subagent_tokens>2380907</subagent_tokens><tool_uses>145</tool_uses><duration_ms>392672</duration_ms></usage>
+</task-notification>
+
+---
+
+@"/Users/guygouri/Downloads/ERN_Memory_Model_v0.3_consolidee.md"
+
+<pasted_content id="7ee2">
+# Tâche : MM-02 v0.3 — deuxième passe de formalisation Lean 4
+
+## Git
+- Branche `formal/memory_model_0.3`, créée depuis `formal/memory_model_0.2`. Pas de merge, pas de PR.
+- Tout reste sous `formal/`. La spec jointe (ERN Memory Model v0.3 consolidée) n'est pas copiée dans le dépôt.
+- Lis `formal/DESIGN.md` et respecte son architecture ; si une exigence de ce prompt la contredit, signale-le dans le rapport et suis DESIGN.md.
+
+## Point de départ
+- `formal/Ern/MM02.lean` et `formal/reports/MM02_v0.2.md` existants. Conserve les théorèmes v0.2 ; si une modification en change l'énoncé, explique pourquoi dans le rapport. Interdit d'affaiblir un énoncé pour faire passer une preuve.
+- Toolchain existante, core Lean seul, aucune dépendance.
+
+## Changements de modèle (dans cet ordre)
+1. **Espace d'adressage** : champ `space : Nat` sur `Alloc`.
+2. **Octets** : valeur sur 8 bits (`UInt8` ou `Fin 256`), provenance `Option Nat` inchangée (MM-02.3).
+3. **`LiveDisjoint`** : deux allocations vivantes distinctes du même espace ont des plages `[base, base+size)` disjointes au sens de l'intersection semi-ouverte (une plage vide ne chevauche rien). Invariant d'état, à ajouter à `WF` ou à côté. `alloc` reçoit une précondition : non-chevauchement, `align > 0` puissance de deux, `base % align = 0`. Théorèmes de préservation par `alloc`, `write`, `dealloc`.
+4. **Résolution `Access → Place`** : `Access.toPlace : State → Access → Option Place`, `some` ssi l'allocation de la provenance existe et la plage est spatialement contenue. Énonce `Read` et `CanWrite` via cette résolution et prouve l'équivalence avec les définitions v0.2 (`read_iff_place`, `canWrite_iff_place`).
+5. **Issue des opérations** : `inductive Outcome | ok (s : State) | ub`. Opérations brutes `read`, `write`, `dealloc`, `alloc` de type `… → State → Outcome` : `ok` quand la précondition est satisfaite, `ub` sinon (MM-01.5). Variantes vérifiées `checkedWrite`, `checkedDealloc` : `Outcome'` avec un troisième constructeur `fail`, rendu au lieu d'entrer dans l'opération quand la précondition échoue (MM-01.3). Théorème : une variante vérifiée ne produit jamais `ub`.
+6. **Réécriture des théorèmes v0.2 en termes d'issue** : `dealloc_invalidates` devient « après `dealloc`, `read` par un accès de cette provenance a pour issue `ub` » ; idem `no_double_free`, `reuse_does_not_restore`. Les versions v0.2 sur les prédicats peuvent rester comme lemmes.
+7. **Lemmes de cadre** : `write_frame` (toute allocation ≠ `a.prov` inchangée ; dans `a.prov`, tout octet hors `[off, off+len)` inchangé ; `next` inchangé), `dealloc_frame` (toute autre allocation inchangée, `next` inchangé), `alloc_frame` (toute allocation existante inchangée).
+
+## Hors périmètre
+- `carve`/`uncarve` : ne pas implémenter.
+- `arena.reset`, sous-objets, générations : MM-03, ne pas anticiper.
+- MM-02.F, MM-02.G, alignement des accès (B.6/C.5), concurrence : abstraits comme en v0.2.
+
+## Règles
+- Docstring citant la règle MM-02.x sur chaque `def`/`theorem`.
+- Zéro `sorry` ; `#print axioms` sur chaque théorème : rien au-delà de `propext`, `Quot.sound`, `Classical.choice`.
+- `lake build` passe depuis `formal/`. Commits atomiques, messages en français.
+
+## Livrable
+1. Module compilable, commité sur `formal/memory_model_0.3`.
+2. `formal/reports/MM02_v0.3.md`, lisible sans ouvrir le Lean :
+   (a) règle → définition/théorème, incluant ce qui change par rapport à v0.2 ;
+   (b) règles abstraites ;
+   (c) décisions de modélisation non dictées par le texte, avec la phrase de la spec ;
+   (d) théorèmes non prouvés et pourquoi ;
+   (e) questions pour arbitrage ;
+   (f) conflits éventuels avec `formal/DESIGN.md`.
+</pasted_content id="7ee2">
