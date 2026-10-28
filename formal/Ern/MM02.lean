@@ -139,7 +139,7 @@ def State.dealloc (s : State) (id : Nat) : State :=
       if i = id then (s.allocs i).map (fun a => { a with live := false }) else s.allocs i }
 
 /-- MM-02.2 et MM-02.A : nouvelle allocation sous l'identité fraîche `s.next`,
-vivante, octets tous `uninit` (contenu initial non fixé par MM-02). -/
+vivante ; MM-02.3 : allocation brute nouvellement créée, octets tous `uninit`. -/
 def State.alloc (s : State) (space base size align : Nat) (freeAuth : Option Nat) : State :=
   { allocs := fun i =>
       if i = s.next then
