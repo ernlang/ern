@@ -471,9 +471,11 @@ def dealloc (Compatible : Nat → Nat → Prop) [DecidableRel Compatible] (id au
     (s : State) : Outcome :=
   if CanDealloc Compatible s id auth then .ok (s.dealloc id) else .ub
 
-/-- MM-02.2 (création brute) et MM-02.H : allocation brute. `ok` avec l'effet
-`State.alloc` si `AllocPreDec` ; `ub` sinon. -/
-def alloc (space base size align : Nat) (freeAuth : Option Nat) (s : State) : Outcome :=
+/-- MM-02.2 (création brute) et MM-02.H : allocation brute, sous l'invariant de
+fraîcheur `WF s` (MM-02.A) reçu en argument de preuve. `ok` avec l'effet
+`State.alloc` si `AllocPreDec`, équivalent à `AllocPre` sous `WF` ; `ub` sinon. -/
+def alloc (space base size align : Nat) (freeAuth : Option Nat) (s : State) (_hwf : WF s) :
+    Outcome :=
   if AllocPreDec s space base size align then .ok (s.alloc space base size align freeAuth)
   else .ub
 
@@ -524,8 +526,8 @@ inductive Reachable : State → Prop where
   | dealloc {s s' : State} (Compatible : Nat → Nat → Prop) [DecidableRel Compatible]
       (id auth : Nat) :
       Reachable s → dealloc Compatible id auth s = .ok s' → Reachable s'
-  | alloc {s s' : State} (space base size align : Nat) (freeAuth : Option Nat) :
-      Reachable s → alloc space base size align freeAuth s = .ok s' → Reachable s'
+  | alloc {s s' : State} (space base size align : Nat) (freeAuth : Option Nat) (hwf : WF s) :
+      Reachable s → alloc space base size align freeAuth s hwf = .ok s' → Reachable s'
 
 /-- P1, MM-02.B.1 : toute lecture permise porte sur une allocation vivante. -/
 theorem read_requires_live {s : State} {ac : Access} (h : Read s ac) :
@@ -727,21 +729,14 @@ theorem dealloc_eq_ok {Compatible : Nat → Nat → Prop} [DecidableRel Compatib
   split <;> simp_all [eq_comm]
 
 /-- MM-02.2 (création brute) et MM-02.H : une allocation brute a pour issue
-`ok s'` ssi `AllocPreDec` est satisfait et `s'` est l'effet `State.alloc`. -/
-theorem alloc_eq_ok {space base size align : Nat} {freeAuth : Option Nat} {s s' : State} :
-    alloc space base size align freeAuth s = .ok s' ↔
-      AllocPreDec s space base size align ∧ s' = s.alloc space base size align freeAuth := by
+`ok s'` ssi `AllocPre` est satisfait et `s'` est l'effet `State.alloc`. -/
+theorem alloc_eq_ok {space base size align : Nat} {freeAuth : Option Nat} {s s' : State}
+    {hwf : WF s} :
+    alloc space base size align freeAuth s hwf = .ok s' ↔
+      AllocPre s space base size align ∧ s' = s.alloc space base size align freeAuth := by
+  rw [← allocPreDec_iff hwf]
   unfold alloc
   split <;> simp_all [eq_comm]
-
-/-- MM-02.2 (création brute), MM-02.A et MM-02.H : sous l'invariant de
-fraîcheur, une allocation brute a pour issue `ok s'` ssi `AllocPre` est
-satisfait et `s'` est l'effet `State.alloc`. -/
-theorem alloc_eq_ok_of_wf {space base size align : Nat} {freeAuth : Option Nat} {s s' : State}
-    (hwf : WF s) :
-    alloc space base size align freeAuth s = .ok s' ↔
-      AllocPre s space base size align ∧ s' = s.alloc space base size align freeAuth := by
-  rw [alloc_eq_ok, allocPreDec_iff hwf]
 
 /-- MM-02.B et MM-02.H : une lecture brute a pour issue `ok s'` ssi `Read` et les
 obligations `ObR` sont satisfaites et `s' = s`. -/
@@ -848,8 +843,8 @@ brutes par `ac` ont pour issue `ub`. -/
 theorem reuse_does_not_restore {Compatible : Nat → Nat → Prop} [DecidableRel Compatible]
     {ObR : ReadObl} {ObW : WriteObl}
     {ac : Access} {auth : Nat} (space base size align : Nat) (freeAuth : Option Nat)
-    {s s₁ s₂ : State} (h₁ : dealloc Compatible ac.prov auth s = .ok s₁)
-    (h₂ : alloc space base size align freeAuth s₁ = .ok s₂) :
+    {s s₁ s₂ : State} (h₁ : dealloc Compatible ac.prov auth s = .ok s₁) {hwf₁ : WF s₁}
+    (h₂ : alloc space base size align freeAuth s₁ hwf₁ = .ok s₂) :
     (∀ hs, read ObR ac s₂ hs = .ub) ∧ ∀ w hs, write ObW ac w s₂ hs = .ub := by
   obtain ⟨⟨a, ha, -⟩, hs₁⟩ := dealloc_eq_ok.1 h₁
   obtain ⟨⟨hf, -⟩, hs₂⟩ := alloc_eq_ok.1 h₂
@@ -869,12 +864,14 @@ theorem reuse_does_not_restore {Compatible : Nat → Nat → Prop} [DecidableRel
 /-- MM-02, exemple 1 (adresse réutilisée) : allocation, désallocation, puis
 nouvelle allocation à la même base ; les hypothèses de `reuse_does_not_restore`
 sont satisfiables avec une base identique. -/
-example : ∃ s₁ s₂ s₃ : State,
-    alloc 0 96 8 8 (some 0) ⟨fun _ => none, 0⟩ = .ok s₁ ∧
+example : ∃ (s₁ s₂ s₃ : State) (hwf₂ : WF s₂),
+    alloc 0 96 8 8 (some 0) ⟨fun _ => none, 0⟩ (fun _ _ => rfl) = .ok s₁ ∧
     dealloc (fun _ _ => True) 0 0 s₁ = .ok s₂ ∧
-    alloc 0 96 8 8 none s₂ = .ok s₃ := by
-  exact ⟨_, _, _, alloc_eq_ok.2 ⟨by decide, rfl⟩, dealloc_eq_ok.2 ⟨by decide, rfl⟩,
-    alloc_eq_ok.2 ⟨by decide, rfl⟩⟩
+    alloc 0 96 8 8 none s₂ hwf₂ = .ok s₃ := by
+  have hwf₀ : WF ⟨fun _ => none, 0⟩ := fun _ _ => rfl
+  have hwf₂ := dealloc_wf (alloc_wf hwf₀ 0 96 8 8 (some 0)) 0
+  exact ⟨_, _, _, hwf₂, alloc_eq_ok.2 ⟨(allocPreDec_iff hwf₀).1 (by decide), rfl⟩,
+    dealloc_eq_ok.2 ⟨by decide, rfl⟩, alloc_eq_ok.2 ⟨(allocPreDec_iff hwf₂).1 (by decide), rfl⟩⟩
 
 /-- MM-02.C (écriture valide) : cadre de l'effet d'écriture. Toute allocation
 autre que `ac.prov` est inchangée ; dans `ac.prov`, seuls les octets changent et
@@ -1173,8 +1170,9 @@ theorem inv_dealloc {Compatible : Nat → Nat → Prop} [DecidableRel Compatible
 /-- MM-02.H et MM-02.2 (création brute) : une allocation brute d'issue `ok`
 préserve l'invariant global. -/
 theorem inv_alloc {space base size align : Nat} {freeAuth : Option Nat} {s s' : State}
-    (h : alloc space base size align freeAuth s = .ok s') (hi : Inv s) : Inv s' := by
-  obtain ⟨hp, rfl⟩ := (alloc_eq_ok_of_wf hi.1).1 h
+    {hwf : WF s} (h : alloc space base size align freeAuth s hwf = .ok s') (hi : Inv s) :
+    Inv s' := by
+  obtain ⟨hp, rfl⟩ := alloc_eq_ok.1 h
   exact ⟨alloc_wf hi.1 space base size align freeAuth, liveDisjoint_alloc hi.2.1 hp freeAuth,
     aligned_alloc hi.2.2 hp freeAuth⟩
 
@@ -1185,7 +1183,7 @@ theorem reachable_inv {s : State} (h : Reachable s) : Inv s := by
   | @read _ _ _ _ _ _ h ih => exact inv_read h ih
   | @write _ _ _ _ _ _ _ h ih => exact inv_write h ih
   | @dealloc _ _ _ _ _ _ _ h ih => exact inv_dealloc h ih
-  | @alloc _ _ _ _ _ _ _ _ h ih => exact inv_alloc h ih
+  | @alloc _ _ _ _ _ _ _ _ _ h ih => exact inv_alloc h ih
 
 /-- MM-02.A : une identité absente reste absente après l'effet d'une écriture. -/
 theorem write_absent {s : State} {i : Nat} (h : s.allocs i = none) (ac : Access)
@@ -1388,11 +1386,11 @@ theorem dealloc_complete {Compatible : Nat → Nat → Prop} [DecidableRel Compa
   | ok h => exact ite_eq_left h
   | ub h => exact ite_eq_right h
 
-/-- MM-02.2 (création brute), MM-02.A et MM-02.H : sous l'invariant de
-fraîcheur, l'issue rendue par l'interpréteur `alloc` est une issue de la
+/-- MM-02.2 (création brute), MM-02.A et MM-02.H : l'issue rendue par
+l'interpréteur `alloc`, appelé avec une preuve de `WF`, est une issue de la
 sémantique `AllocStep`. -/
-theorem alloc_sound_of_wf {space base size align : Nat} {freeAuth : Option Nat} {s : State}
-    {o : Outcome} (hwf : WF s) (h : alloc space base size align freeAuth s = o) :
+theorem alloc_sound {space base size align : Nat} {freeAuth : Option Nat} {s : State}
+    {hwf : WF s} {o : Outcome} (h : alloc space base size align freeAuth s hwf = o) :
     AllocStep space base size align freeAuth s o := by
   subst h
   unfold alloc
@@ -1400,12 +1398,14 @@ theorem alloc_sound_of_wf {space base size align : Nat} {freeAuth : Option Nat} 
   · next hc => exact .ok ((allocPreDec_iff hwf).1 hc)
   · next hc => exact .ub (mt (allocPreDec_iff hwf).2 hc)
 
-/-- MM-02.2 (création brute), MM-02.A et MM-02.H : sous l'invariant de
-fraîcheur, toute issue de la sémantique `AllocStep` est celle que rend
-l'interpréteur `alloc`. -/
-theorem alloc_complete_of_wf {space base size align : Nat} {freeAuth : Option Nat} {s : State}
-    {o : Outcome} (hwf : WF s) (h : AllocStep space base size align freeAuth s o) :
-    alloc space base size align freeAuth s = o := by
+/-- MM-02.2 (création brute), MM-02.A et MM-02.H : toute issue de la sémantique
+`AllocStep` est celle que rend l'interpréteur `alloc`, pour toute preuve de
+`WF`. Quand `WF` est faux, aucune telle preuve n'existe : l'énoncé ne dit alors
+rien de l'interpréteur, qui n'est pas appelable. -/
+theorem alloc_complete {space base size align : Nat} {freeAuth : Option Nat} {s : State}
+    {o : Outcome} (h : AllocStep space base size align freeAuth s o) :
+    ∀ hwf, alloc space base size align freeAuth s hwf = o := by
+  intro hwf
   unfold alloc
   cases h with
   | ok h => exact ite_eq_left ((allocPreDec_iff hwf).2 h)
@@ -1459,8 +1459,7 @@ theorem reachableStep_iff_reachable {s : State} : ReachableStep s ↔ Reachable 
       exact .dealloc (fun _ _ => True) id auth ih
         (dealloc_eq_ok.2 ⟨⟨a, ha, hl, d, hd, trivial⟩, rfl⟩)
     | alloc space base size align freeAuth _ h ih =>
-      exact .alloc space base size align freeAuth ih
-        (alloc_complete_of_wf (reachable_inv ih).1 h)
+      exact .alloc space base size align freeAuth (reachable_inv ih).1 ih (alloc_complete h _)
   · intro h
     induction h with
     | empty => exact .empty
@@ -1470,8 +1469,8 @@ theorem reachableStep_iff_reachable {s : State} : ReachableStep s ↔ Reachable 
     | @write _ _ ObW ac w _ _ h ih => exact .write ObW ac w ih (write_sound h)
     | @dealloc _ _ Compatible _ id auth _ h ih =>
       exact .dealloc Compatible id auth ih (dealloc_sound h)
-    | @alloc _ _ space base size align freeAuth hr h ih =>
-      exact .alloc space base size align freeAuth ih (alloc_sound_of_wf (reachable_inv hr).1 h)
+    | @alloc _ _ space base size align freeAuth _ _ h ih =>
+      exact .alloc space base size align freeAuth ih (alloc_sound h)
 
 namespace Witness
 
@@ -1505,11 +1504,12 @@ def w0 : Nat → UInt8 × Option Nat := fun i => (i.toUInt8 + 1, none)
 def s2 : State := s1.write acW w0
 
 /-- MM-02.2 : allocation brute valide depuis `State.empty`. -/
-example : (alloc 0 96 8 8 (some 7) State.empty).isOk = true := by decide
+example : (alloc 0 96 8 8 (some 7) State.empty inv_empty.1).isOk = true := by decide
 /-- MM-02.2 : allocation brute à une base non alignée. -/
-example : (alloc 0 97 8 8 none State.empty).isOk = false := by decide
+example : (alloc 0 97 8 8 none State.empty inv_empty.1).isOk = false := by decide
 /-- MM-02.2 : allocation brute chevauchant une allocation vivante du même espace. -/
-example : (alloc 0 100 4 4 none s1).isOk = false := by decide
+example : (alloc 0 100 4 4 none s1 (alloc_wf inv_empty.1 0 96 8 8 (some 7))).isOk = false := by
+  decide
 
 /-- MM-02.C : écriture brute valide. -/
 example : (write obW acW w0 s1 trivial).isOk = true := by decide
