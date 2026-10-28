@@ -1162,6 +1162,109 @@ theorem dealloc_absent {s : State} {i : Nat} (h : s.allocs i = none) (id : Nat) 
     (s.dealloc id).allocs i = none := by
   simp [State.dealloc, h]
 
+/-- MM-02.H : une lecture brute a au plus une issue. -/
+theorem ReadStep_det {ObR : ReadObl} {ac : Access} {s : State} {o₁ o₂ : Outcome}
+    (h₁ : ReadStep ObR ac s o₁) (h₂ : ReadStep ObR ac s o₂) : o₁ = o₂ := by
+  cases h₁ <;> cases h₂ <;> first | rfl | contradiction
+
+/-- MM-02.H : une écriture brute a au plus une issue. -/
+theorem WriteStep_det {ObW : WriteObl} {ac : Access} {w : Nat → UInt8 × Option Nat} {s : State}
+    {o₁ o₂ : Outcome} (h₁ : WriteStep ObW ac w s o₁) (h₂ : WriteStep ObW ac w s o₂) :
+    o₁ = o₂ := by
+  cases h₁ <;> cases h₂ <;> first | rfl | contradiction
+
+/-- MM-02.H : une désallocation brute a au plus une issue. -/
+theorem DeallocStep_det {Compatible : Nat → Nat → Prop} {id auth : Nat} {s : State}
+    {o₁ o₂ : Outcome} (h₁ : DeallocStep Compatible id auth s o₁)
+    (h₂ : DeallocStep Compatible id auth s o₂) : o₁ = o₂ := by
+  cases h₁ <;> cases h₂ <;> first | rfl | contradiction
+
+/-- MM-02.H : une allocation brute a au plus une issue. -/
+theorem AllocStep_det {space base size align : Nat} {freeAuth : Option Nat} {s : State}
+    {o₁ o₂ : Outcome} (h₁ : AllocStep space base size align freeAuth s o₁)
+    (h₂ : AllocStep space base size align freeAuth s o₂) : o₁ = o₂ := by
+  cases h₁ <;> cases h₂ <;> first | rfl | contradiction
+
+/-- MM-02.B et MM-02.H : une lecture brute a pour issue `ok s'` ssi `Read`,
+`ObR.dec` et `ObR.stat` sont satisfaits et `s' = s`. -/
+theorem ReadStep_ok_iff {ObR : ReadObl} {ac : Access} {s s' : State} :
+    ReadStep ObR ac s (.ok s') ↔ (Read s ac ∧ ObR.dec s ac ∧ ObR.stat s ac) ∧ s' = s :=
+  ⟨fun h => by cases h with | ok h => exact ⟨h, rfl⟩, fun ⟨h, e⟩ => by subst e; exact .ok h⟩
+
+/-- MM-02.B, MM-02.H et MM-01.5 : une lecture brute a pour issue `ub` ssi `Read`,
+`ObR.dec` ou `ObR.stat` n'est pas satisfait. -/
+theorem ReadStep_ub_iff {ObR : ReadObl} {ac : Access} {s : State} :
+    ReadStep ObR ac s .ub ↔ ¬ (Read s ac ∧ ObR.dec s ac ∧ ObR.stat s ac) :=
+  ⟨fun h => by cases h with | ub h => exact h, .ub⟩
+
+/-- MM-02.C et MM-02.H : une écriture brute a pour issue `ok s'` ssi `CanWrite`,
+`ObW.dec` et `ObW.stat` sont satisfaits et `s'` est l'effet `State.write`. -/
+theorem WriteStep_ok_iff {ObW : WriteObl} {ac : Access} {w : Nat → UInt8 × Option Nat}
+    {s s' : State} :
+    WriteStep ObW ac w s (.ok s') ↔
+      (CanWrite s ac ∧ ObW.dec s ac w ∧ ObW.stat s ac w) ∧ s' = s.write ac w :=
+  ⟨fun h => by cases h with | ok h => exact ⟨h, rfl⟩, fun ⟨h, e⟩ => by subst e; exact .ok h⟩
+
+/-- MM-02.C, MM-02.H et MM-01.5 : une écriture brute a pour issue `ub` ssi
+`CanWrite`, `ObW.dec` ou `ObW.stat` n'est pas satisfait. -/
+theorem WriteStep_ub_iff {ObW : WriteObl} {ac : Access} {w : Nat → UInt8 × Option Nat}
+    {s : State} :
+    WriteStep ObW ac w s .ub ↔ ¬ (CanWrite s ac ∧ ObW.dec s ac w ∧ ObW.stat s ac w) :=
+  ⟨fun h => by cases h with | ub h => exact h, .ub⟩
+
+/-- MM-02.D et MM-02.H : une désallocation brute a pour issue `ok s'` ssi
+`CanDealloc` est satisfait et `s'` est l'effet `State.dealloc`. -/
+theorem DeallocStep_ok_iff {Compatible : Nat → Nat → Prop} {id auth : Nat} {s s' : State} :
+    DeallocStep Compatible id auth s (.ok s') ↔
+      CanDealloc Compatible s id auth ∧ s' = s.dealloc id :=
+  ⟨fun h => by cases h with | ok h => exact ⟨h, rfl⟩, fun ⟨h, e⟩ => by subst e; exact .ok h⟩
+
+/-- MM-02.D, MM-02.H et MM-01.5 : une désallocation brute a pour issue `ub` ssi
+`CanDealloc` n'est pas satisfait. -/
+theorem DeallocStep_ub_iff {Compatible : Nat → Nat → Prop} {id auth : Nat} {s : State} :
+    DeallocStep Compatible id auth s .ub ↔ ¬ CanDealloc Compatible s id auth :=
+  ⟨fun h => by cases h with | ub h => exact h, .ub⟩
+
+/-- MM-02.2 (création brute) et MM-02.H : une allocation brute a pour issue
+`ok s'` ssi `AllocPre` est satisfait et `s'` est l'effet `State.alloc`. -/
+theorem AllocStep_ok_iff {space base size align : Nat} {freeAuth : Option Nat} {s s' : State} :
+    AllocStep space base size align freeAuth s (.ok s') ↔
+      AllocPre s space base size align ∧ s' = s.alloc space base size align freeAuth :=
+  ⟨fun h => by cases h with | ok h => exact ⟨h, rfl⟩, fun ⟨h, e⟩ => by subst e; exact .ok h⟩
+
+/-- MM-02.2 (création brute), MM-02.H et MM-01.5 : une allocation brute a pour
+issue `ub` ssi `AllocPre` n'est pas satisfait. -/
+theorem AllocStep_ub_iff {space base size align : Nat} {freeAuth : Option Nat} {s : State} :
+    AllocStep space base size align freeAuth s .ub ↔ ¬ AllocPre s space base size align :=
+  ⟨fun h => by cases h with | ub h => exact h, .ub⟩
+
+/-- MM-02.H : toute lecture brute a une issue, dans tout état. Preuve classique :
+`ObR.stat` n'est pas décidable. -/
+theorem ReadStep_total (ObR : ReadObl) (ac : Access) (s : State) : ∃ o, ReadStep ObR ac s o :=
+  (Classical.em (Read s ac ∧ ObR.dec s ac ∧ ObR.stat s ac)).elim
+    (fun h => ⟨_, .ok h⟩) (fun h => ⟨_, .ub h⟩)
+
+/-- MM-02.H : toute écriture brute a une issue, dans tout état. Preuve
+classique : `ObW.stat` n'est pas décidable. -/
+theorem WriteStep_total (ObW : WriteObl) (ac : Access) (w : Nat → UInt8 × Option Nat)
+    (s : State) : ∃ o, WriteStep ObW ac w s o :=
+  (Classical.em (CanWrite s ac ∧ ObW.dec s ac w ∧ ObW.stat s ac w)).elim
+    (fun h => ⟨_, .ok h⟩) (fun h => ⟨_, .ub h⟩)
+
+/-- MM-02.H : toute désallocation brute a une issue, dans tout état. Preuve
+classique : `Compatible` n'est pas supposée décidable. -/
+theorem DeallocStep_total (Compatible : Nat → Nat → Prop) (id auth : Nat) (s : State) :
+    ∃ o, DeallocStep Compatible id auth s o :=
+  (Classical.em (CanDealloc Compatible s id auth)).elim
+    (fun h => ⟨_, .ok h⟩) (fun h => ⟨_, .ub h⟩)
+
+/-- MM-02.H : toute allocation brute a une issue, dans tout état. Preuve
+classique : `AllocPre` quantifie sur toutes les identités. -/
+theorem AllocStep_total (space base size align : Nat) (freeAuth : Option Nat) (s : State) :
+    ∃ o, AllocStep space base size align freeAuth s o :=
+  (Classical.em (AllocPre s space base size align)).elim
+    (fun h => ⟨_, .ok h⟩) (fun h => ⟨_, .ub h⟩)
+
 namespace Witness
 
 /-! Témoins exécutables (MM-02.H) : chaque opération brute et vérifiée sur des
