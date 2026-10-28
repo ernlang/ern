@@ -87,6 +87,30 @@ def Read (s : State) (ac : Access) : Prop :=
 def CanWrite (s : State) (ac : Access) : Prop :=
   ∃ a, s.allocs ac.prov = some a ∧ a.live = true ∧ Spatial a ac ∧ Auth.write ≤ ac.auth
 
+/-- MM-02.B : la validité spatiale est décidable. -/
+instance (a : Alloc) (ac : Access) : Decidable (Spatial a ac) :=
+  inferInstanceAs (Decidable (a.base ≤ ac.addr ∧ ac.addr + ac.len ≤ a.base + a.size))
+
+/-- MM-02.4 : résolution partielle d'un moyen d'accès vers un emplacement :
+`some` exactement quand la provenance désigne une allocation existante et que la
+plage de l'accès y est spatialement contenue (MM-02.B). -/
+def Access.toPlace (s : State) (ac : Access) : Option Place :=
+  match s.allocs ac.prov with
+  | some a => if Spatial a ac then some ⟨ac.prov, ac.addr - a.base, ac.len⟩ else none
+  | none => none
+
+/-- MM-02.B et MM-02.4 : lecture permise formulée sur l'emplacement résolu.
+Condition 2 portée par la résolution ; conditions 1, 3, 5 vérifiées séparément. -/
+def ReadPlace (s : State) (ac : Access) : Prop :=
+  ∃ p, ac.toPlace s = some p ∧ ∃ a, s.allocs p.alloc = some a ∧ a.live = true ∧
+    a.InitRange p.off p.len ∧ Auth.read ≤ ac.auth
+
+/-- MM-02.C et MM-02.4 : écriture permise formulée sur l'emplacement résolu.
+Condition 2 portée par la résolution ; conditions 1, 3 vérifiées séparément. -/
+def CanWritePlace (s : State) (ac : Access) : Prop :=
+  ∃ p, ac.toPlace s = some p ∧ ∃ a, s.allocs p.alloc = some a ∧ a.live = true ∧
+    Auth.write ≤ ac.auth
+
 /-- MM-02.C : effet d'une écriture sur le stockage. Les `len` octets à partir
 du décalage `off` deviennent `init`, avec `w i = (valeur, provenance)` du
 i-ème octet écrit ; les autres octets sont inchangés. -/
@@ -302,5 +326,44 @@ theorem liveDisjoint_alloc {s : State} (hd : LiveDisjoint s) {space base size al
   · rw [ite_eq_right hi] at ha
     rw [ite_eq_right hj] at hb
     exact hd i j a b hij ha hb hla hlb hsp
+
+/-- MM-02.4 : `ac.toPlace s = some p` ssi la provenance désigne une allocation
+existante `a`, l'accès est spatialement contenu dans `a`, et `p` est la portion
+désignée. -/
+theorem toPlace_eq_some {s : State} {ac : Access} {p : Place} :
+    ac.toPlace s = some p ↔
+      ∃ a, s.allocs ac.prov = some a ∧ Spatial a ac ∧
+        p = ⟨ac.prov, ac.addr - a.base, ac.len⟩ := by
+  unfold Access.toPlace
+  split
+  · next a ha =>
+    by_cases hs : Spatial a ac
+    · simp [hs, ha, eq_comm]
+    · simp [hs, ha]
+  · next ha => simp [ha]
+
+/-- MM-02.4 et MM-02.B : la lecture formulée par résolution équivaut à `Read`. -/
+theorem read_iff_place {s : State} {ac : Access} : Read s ac ↔ ReadPlace s ac := by
+  constructor
+  · rintro ⟨a, ha, hl, hs, hi, hr⟩
+    exact ⟨_, toPlace_eq_some.2 ⟨a, ha, hs, rfl⟩, a, ha, hl, hi, hr⟩
+  · rintro ⟨p, hp, b, hb, hl, hi, hr⟩
+    obtain ⟨a, ha, hs, rfl⟩ := toPlace_eq_some.1 hp
+    have hb : s.allocs ac.prov = some b := hb
+    rw [ha] at hb
+    cases hb
+    exact ⟨_, ha, hl, hs, hi, hr⟩
+
+/-- MM-02.4 et MM-02.C : l'écriture formulée par résolution équivaut à `CanWrite`. -/
+theorem canWrite_iff_place {s : State} {ac : Access} : CanWrite s ac ↔ CanWritePlace s ac := by
+  constructor
+  · rintro ⟨a, ha, hl, hs, hr⟩
+    exact ⟨_, toPlace_eq_some.2 ⟨a, ha, hs, rfl⟩, a, ha, hl, hr⟩
+  · rintro ⟨p, hp, b, hb, hl, hr⟩
+    obtain ⟨a, ha, hs, rfl⟩ := toPlace_eq_some.1 hp
+    have hb : s.allocs ac.prov = some b := hb
+    rw [ha] at hb
+    cases hb
+    exact ⟨_, ha, hl, hs, hr⟩
 
 end Ern.MM02
