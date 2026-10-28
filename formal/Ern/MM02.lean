@@ -515,19 +515,23 @@ def checkedRead (ObR : ReadObl) (ac : Access) (s : State) (hs : ObR.stat s ac) :
   | none => .fail s
 
 /-- MM-02.A et MM-02.H : états atteignables depuis `State.empty` par des
-opérations brutes d'issue `ok`. -/
-inductive Reachable : State → Prop where
-  | empty : Reachable State.empty
-  | read {s s' : State} (ObR : ReadObl) (ac : Access) (hs : ObR.stat s ac) :
-      Reachable s → read ObR ac s hs = .ok s' → Reachable s'
-  | write {s s' : State} (ObW : WriteObl) (ac : Access) (w : Nat → UInt8 × Option Nat)
-      (hs : ObW.stat s ac w) :
-      Reachable s → write ObW ac w s hs = .ok s' → Reachable s'
-  | dealloc {s s' : State} (Compatible : Nat → Nat → Prop) [DecidableRel Compatible]
-      (id auth : Nat) :
-      Reachable s → dealloc Compatible id auth s = .ok s' → Reachable s'
+opérations brutes d'issue `ok`, avec la compatibilité `Compatible` et les
+obligations `ObR`, `ObW` fixées pour toute l'exécution. -/
+inductive Reachable (Compatible : Nat → Nat → Prop) [DecidableRel Compatible] (ObR : ReadObl)
+    (ObW : WriteObl) : State → Prop where
+  | empty : Reachable Compatible ObR ObW State.empty
+  | read {s s' : State} (ac : Access) (hs : ObR.stat s ac) :
+      Reachable Compatible ObR ObW s → read ObR ac s hs = .ok s' →
+      Reachable Compatible ObR ObW s'
+  | write {s s' : State} (ac : Access) (w : Nat → UInt8 × Option Nat) (hs : ObW.stat s ac w) :
+      Reachable Compatible ObR ObW s → write ObW ac w s hs = .ok s' →
+      Reachable Compatible ObR ObW s'
+  | dealloc {s s' : State} (id auth : Nat) :
+      Reachable Compatible ObR ObW s → dealloc Compatible id auth s = .ok s' →
+      Reachable Compatible ObR ObW s'
   | alloc {s s' : State} (space base size align : Nat) (freeAuth : Option Nat) (hwf : WF s) :
-      Reachable s → alloc space base size align freeAuth s hwf = .ok s' → Reachable s'
+      Reachable Compatible ObR ObW s → alloc space base size align freeAuth s hwf = .ok s' →
+      Reachable Compatible ObR ObW s'
 
 /-- P1, MM-02.B.1 : toute lecture permise porte sur une allocation vivante. -/
 theorem read_requires_live {s : State} {ac : Access} (h : Read s ac) :
@@ -1177,13 +1181,14 @@ theorem inv_alloc {space base size align : Nat} {freeAuth : Option Nat} {s s' : 
     aligned_alloc hi.2.2 hp freeAuth⟩
 
 /-- MM-02.A, MM-02.2 et MM-02.H : tout état atteignable satisfait l'invariant global. -/
-theorem reachable_inv {s : State} (h : Reachable s) : Inv s := by
+theorem reachable_inv {Compatible : Nat → Nat → Prop} [DecidableRel Compatible] {ObR : ReadObl}
+    {ObW : WriteObl} {s : State} (h : Reachable Compatible ObR ObW s) : Inv s := by
   induction h with
   | empty => exact inv_empty
-  | @read _ _ _ _ _ _ h ih => exact inv_read h ih
-  | @write _ _ _ _ _ _ _ h ih => exact inv_write h ih
-  | @dealloc _ _ _ _ _ _ _ h ih => exact inv_dealloc h ih
-  | @alloc _ _ _ _ _ _ _ _ _ h ih => exact inv_alloc h ih
+  | read _ _ _ h ih => exact inv_read h ih
+  | write _ _ _ _ h ih => exact inv_write h ih
+  | dealloc _ _ _ h ih => exact inv_dealloc h ih
+  | alloc _ _ _ _ _ _ _ h ih => exact inv_alloc h ih
 
 /-- MM-02.A : une identité absente reste absente après l'effet d'une écriture. -/
 theorem write_absent {s : State} {i : Nat} (h : s.allocs i = none) (ac : Access)
@@ -1412,29 +1417,36 @@ theorem alloc_complete {space base size align : Nat} {freeAuth : Option Nat} {s 
   | ub h => exact ite_eq_right (mt (allocPreDec_iff hwf).1 h)
 
 /-- MM-02.A et MM-02.H : états atteignables depuis `State.empty` par des pas de la
-sémantique d'issue `ok`, avec des obligations et une compatibilité quelconques à
-chaque pas. -/
-inductive ReachableStep : State → Prop where
-  | empty : ReachableStep State.empty
-  | read {s : State} (ObR : ReadObl) (ac : Access) (v : List AByte) :
-      ReachableStep s → ReadStep ObR.toSpec ac s (.ok v) → ReachableStep s
-  | write {s s' : State} (ObW : WriteObl) (ac : Access) (w : Nat → UInt8 × Option Nat) :
-      ReachableStep s → WriteStep ObW.toSpec ac w s (.ok s') → ReachableStep s'
-  | dealloc {s s' : State} (Compatible : Nat → Nat → Prop) (id auth : Nat) :
-      ReachableStep s → DeallocStep Compatible id auth s (.ok s') → ReachableStep s'
+sémantique d'issue `ok`, avec la compatibilité `Compatible` et les obligations
+`ObR`, `ObW` fixées pour toute l'exécution. Un pas de lecture ne change pas
+l'état. -/
+inductive ReachableStep (Compatible : Nat → Nat → Prop) (ObR : ReadOblSpec)
+    (ObW : WriteOblSpec) : State → Prop where
+  | empty : ReachableStep Compatible ObR ObW State.empty
+  | read {s : State} (ac : Access) (v : List AByte) :
+      ReachableStep Compatible ObR ObW s → ReadStep ObR ac s (.ok v) →
+      ReachableStep Compatible ObR ObW s
+  | write {s s' : State} (ac : Access) (w : Nat → UInt8 × Option Nat) :
+      ReachableStep Compatible ObR ObW s → WriteStep ObW ac w s (.ok s') →
+      ReachableStep Compatible ObR ObW s'
+  | dealloc {s s' : State} (id auth : Nat) :
+      ReachableStep Compatible ObR ObW s → DeallocStep Compatible id auth s (.ok s') →
+      ReachableStep Compatible ObR ObW s'
   | alloc {s s' : State} (space base size align : Nat) (freeAuth : Option Nat) :
-      ReachableStep s → AllocStep space base size align freeAuth s (.ok s') → ReachableStep s'
+      ReachableStep Compatible ObR ObW s → AllocStep space base size align freeAuth s (.ok s') →
+      ReachableStep Compatible ObR ObW s'
 
 /-- MM-02.A, MM-02.2 et MM-02.H : tout état atteignable par la sémantique
 satisfait l'invariant global. -/
-theorem reachableStep_inv {s : State} (h : ReachableStep s) : Inv s := by
+theorem reachableStep_inv {Compatible : Nat → Nat → Prop} {ObR : ReadOblSpec}
+    {ObW : WriteOblSpec} {s : State} (h : ReachableStep Compatible ObR ObW s) : Inv s := by
   induction h with
   | empty => exact inv_empty
-  | read _ _ _ _ _ ih => exact ih
-  | write _ ac w _ h ih =>
+  | read _ _ _ _ ih => exact ih
+  | write ac w _ h ih =>
     obtain ⟨-, rfl⟩ := WriteStep_ok_iff.1 h
     exact ⟨write_wf ih.1 ac w, liveDisjoint_write ih.2.1 ac w, aligned_write ih.2.2 ac w⟩
-  | dealloc _ id _ _ h ih =>
+  | dealloc id _ _ h ih =>
     obtain ⟨-, rfl⟩ := DeallocStep_ok_iff.1 h
     exact ⟨dealloc_wf ih.1 id, liveDisjoint_dealloc ih.2.1 id, aligned_dealloc ih.2.2 id⟩
   | alloc space base size align freeAuth _ h ih =>
@@ -1442,34 +1454,32 @@ theorem reachableStep_inv {s : State} (h : ReachableStep s) : Inv s := by
     exact ⟨alloc_wf ih.1 space base size align freeAuth, liveDisjoint_alloc ih.2.1 hp freeAuth,
       aligned_alloc ih.2.2 hp freeAuth⟩
 
-/-- MM-02.A et MM-02.H : les états atteignables par la sémantique sont ceux
-qu'atteignent les interpréteurs. Une compatibilité non décidable est remplacée
-par la relation pleine, l'effet de désallocation n'en dépendant pas. -/
-theorem reachableStep_iff_reachable {s : State} : ReachableStep s ↔ Reachable s := by
+/-- MM-02.A et MM-02.H : sous la même compatibilité et les mêmes obligations,
+fixées pour l'exécution, les états atteignables par la sémantique sont ceux
+qu'atteignent les interpréteurs. -/
+theorem reachableStep_iff_reachable {Compatible : Nat → Nat → Prop} [DecidableRel Compatible]
+    {ObR : ReadObl} {ObW : WriteObl} {s : State} :
+    ReachableStep Compatible ObR.toSpec ObW.toSpec s ↔ Reachable Compatible ObR ObW s := by
   constructor
   · intro h
     induction h with
     | empty => exact .empty
-    | read ObR ac _ _ h ih =>
-      exact .read ObR ac _ ih (read_complete_ok h (ReadStep_ok_iff.1 h).1.2.2).1
-    | write ObW ac w _ h ih =>
-      exact .write ObW ac w _ ih (write_complete h (WriteStep_ok_iff.1 h).1.2.2)
-    | dealloc _ id auth _ h ih =>
-      obtain ⟨⟨a, ha, hl, d, hd, -⟩, rfl⟩ := DeallocStep_ok_iff.1 h
-      exact .dealloc (fun _ _ => True) id auth ih
-        (dealloc_eq_ok.2 ⟨⟨a, ha, hl, d, hd, trivial⟩, rfl⟩)
+    | read ac _ _ h ih =>
+      exact .read ac _ ih (read_complete_ok h (ReadStep_ok_iff.1 h).1.2.2).1
+    | write ac w _ h ih =>
+      exact .write ac w _ ih (write_complete h (WriteStep_ok_iff.1 h).1.2.2)
+    | dealloc id auth _ h ih => exact .dealloc id auth ih (dealloc_complete h)
     | alloc space base size align freeAuth _ h ih =>
       exact .alloc space base size align freeAuth (reachable_inv ih).1 ih (alloc_complete h _)
   · intro h
     induction h with
     | empty => exact .empty
-    | @read _ _ ObR ac _ _ h ih =>
+    | read ac _ _ h ih =>
       obtain ⟨rfl, v, -, hv⟩ := read_sound_ok h
-      exact .read ObR ac v ih hv
-    | @write _ _ ObW ac w _ _ h ih => exact .write ObW ac w ih (write_sound h)
-    | @dealloc _ _ Compatible _ id auth _ h ih =>
-      exact .dealloc Compatible id auth ih (dealloc_sound h)
-    | @alloc _ _ space base size align freeAuth _ _ h ih =>
+      exact .read ac v ih hv
+    | write ac w _ _ h ih => exact .write ac w ih (write_sound h)
+    | dealloc id auth _ h ih => exact .dealloc id auth ih (dealloc_sound h)
+    | alloc space base size align freeAuth _ _ h ih =>
       exact .alloc space base size align freeAuth ih (alloc_sound h)
 
 namespace Witness
