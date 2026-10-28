@@ -10,8 +10,11 @@ tout état, sans décision des obligations ni des préconditions ; la lecture re
 la valeur lue (`ReadOutcome`) et n'a pas d'effet sur l'état.
 `read`, `write`, `dealloc`, `alloc` : interpréteurs de ces relations. Chacun
 reçoit en argument de preuve les conditions établies statiquement (part `stat`
-pour `read`, `write` ; `WF` pour `alloc`) et n'est appelable que sur ce domaine ;
-tout résultat qu'il rend est une issue de la relation.
+pour `read`, `write` ; `WF` pour `alloc` ; aucune pour `dealloc`) et n'est
+appelable que sur ce domaine. Tout résultat rendu par `write`, `dealloc`,
+`alloc` est une issue de la relation ; pour `read`, qui rend une `Outcome`,
+l'accord porte sur l'état, la valeur lue par `readBytes` et l'issue
+(`read_sound_ok`, `read_sound_ub`).
 `checkedRead`, `checkedWrite`, `checkedDealloc` : variantes vérifiées,
 vérifications instrumentées du modèle exploratoire et non primitives d'ERN. Ces
 fonctions sont calculables, sans décision classique.
