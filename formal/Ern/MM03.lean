@@ -11,8 +11,10 @@ handles, ni nettoyage différé.
 
 Chaque opération est une relation `… → S3 → Outcome3 S3` de forme `Guarded` : `ok` avec l'effet
 si sa précondition tient, `reject` sinon (MM-03.3 §3, arbitrage 6). `Inv3` seul n'est pas
-inductif (`inv3_not_inductive`) ; les préservations sont énoncées sous l'invariant structurel
-`WF3`, établi pour tout état atteint (`reachable_access_invariant_underDD`). Les théorèmes
+inductif (`inv3_not_inductive`) ; les préservations par `release`, `enterFrame` et `exitFrame`
+sont énoncées sous l'invariant structurel
+`WF3`, établi pour tout état atteint sous l'obligation `DDSound`
+(`reachable_access_invariant_underDD`). Les théorèmes
 conditionnés à une obligation de `K` portent le suffixe `_underDD` ou `_underInv` (arbitrage 5).
 -/
 
@@ -127,20 +129,6 @@ structure Authority where
   active : Bool
 deriving DecidableEq, Repr
 
-/-- Contrats `K` (MM-03.3.8), fixés pour l'exécution (arbitrage 5). Les types sont un choix de
-représentation : régions comme listes de feuilles, feuilles, et `Invalidates r x` pour
-« l'opération invalidante de la ressource `r` invalide l'ancre `x` ». Les obligations
-accompagnant chaque contrat sont des hypothèses nommées des théorèmes, jamais des champs. -/
-structure K where
-  DeclaredDisjoint : List Nat → List Nat → Prop
-  SharedMutable : Nat → Prop
-  Pinned : Nat → Prop
-  Invalidates : Nat → Nat → Prop
-
-/-- Obligation de `DeclaredDisjoint` (MM-03.3.8) : une déclaration de disjonction ne couvre
-jamais deux régions qui se chevauchent réellement. -/
-def DDSound (k : K) : Prop := ∀ r r', k.DeclaredDisjoint r r' → ∀ l ∈ r, l ∉ r'
-
 /-- État `S3 = (F, P, I, A, D)` (MM-03.3 §1), sans composante `M` (arbitrage 1). `nF` est la
 prochaine identité de cadre, pour que l'identité d'un cadre sorti ne soit jamais réutilisée.
 `I` est total sur les identités ; seules les feuilles sont lues. `D q` est la liste des ancres
@@ -152,6 +140,21 @@ structure S3 where
   I : Nat → InitSt
   A : List Authority
   D : Nat → List Nat
+
+/-- Contrats `K` (MM-03.3.8), fixés pour l'exécution (arbitrage 5). Les types sont un choix de
+représentation : régions comme listes de feuilles, feuilles, et `Invalidates s r x` pour
+« dans l'état `s`, l'opération invalidante de la ressource `r` invalide l'ancre `x` » ; un
+prédicat fixé peut dépendre de l'état. Les obligations accompagnant chaque contrat sont des
+hypothèses nommées des théorèmes, jamais des champs. -/
+structure K where
+  DeclaredDisjoint : List Nat → List Nat → Prop
+  SharedMutable : Nat → Prop
+  Pinned : Nat → Prop
+  Invalidates : S3 → Nat → Nat → Prop
+
+/-- Obligation de `DeclaredDisjoint` (MM-03.3.8) : une déclaration de disjonction ne couvre
+jamais deux régions qui se chevauchent réellement. -/
+def DDSound (k : K) : Prop := ∀ r r', k.DeclaredDisjoint r r' → ∀ l ∈ r, l ∉ r'
 
 /-- État initial : un cadre, aucun emplacement, aucune autorité. -/
 def S3.init : S3 := ⟨[0], 1, [], fun _ => .uninit, [], fun _ => []⟩
@@ -445,15 +448,17 @@ def ActiveDerivedOn (s : S3) (j : Nat) (ls : List Nat) : Prop :=
 
 /-- Préconditions de `transfer` (MM-03.3 §3, O4), dans l'ordre : source encore utilisable
 (MM-03.3.1) et 1 initialisée ; 2 destination encore utilisable, sans valeur initialisée, sans
-feuille commune avec la source, et autorités transférées actives et détenues par le cadre de la
-source ; 4 aucun accès actif dérivé, hors `auths`, sur la source ; 5 ancres de la valeur
+feuille commune avec la source, et autorités transférées actives, détenues par le cadre de la
+source et dérivées : une autorité racine reste attachée à son emplacement (arbitrage 2), et
+« Une autorité dont l'origine est strictement locale au cadre appelé ne peut pas être rendue
+persistante dans l'appelant par cette seule opération » (O4) ; 4 aucun accès actif dérivé, hors `auths`, sur la source ; 5 ancres de la valeur
 valides ; 6 non-échappement (MM-03.3.6) vers le cadre de la destination ; 7 aucune feuille de la
 source épinglée (`Pinned`, MM-03.3.8). O4.3 tient par construction
 (`transfer_no_duplicate_authority`). -/
 def TransferPre (k : K) (s : S3) (src dst : Nat) (auths : List Nat) : Prop :=
   s.Usable src ∧ (∀ l ∈ footprint s.P src, s.I l = .init) ∧
   s.Usable dst ∧ (∀ l ∈ footprint s.P dst, s.I l ≠ .init) ∧ ¬ overlap s.P src dst ∧
-  (∀ b ∈ auths, s.Active b ∧ s.frameOf b = placeFrame s.P src) ∧
+  (∀ b ∈ auths, s.Active b ∧ s.frameOf b = placeFrame s.P src ∧ s.org b ≠ none) ∧
   (∀ j ∈ List.range s.A.length, j ∉ auths → ¬ ActiveDerivedOn s j (footprint s.P src)) ∧
   (∀ x ∈ depsOf s src, s.Active x) ∧
   (∀ x ∈ depsOf s src, NoEscape s x (placeFrame s.P dst)) ∧
@@ -809,9 +814,9 @@ theorem effective_eq {s : S3} {a p : Nat} {x : Authority} (hx : s.A[a]? = some x
     effective s a p = effOf x.mode (descModes s a p) := by
   simp [effective, hx, ha, hp]
 
-/-- Le mode effectif n'excède pas le mode de l'autorité (MM-03.3.5). -/
 theorem Mode.le_refl (m : Mode) : m.le m := by cases m <;> simp [Mode.le]
 
+/-- Le mode effectif n'excède pas le mode de l'autorité (MM-03.3.5). -/
 theorem effective_le {s : S3} {a p : Nat} {m : Mode} {x : Authority} (hx : s.A[a]? = some x)
     (h : effective s a p = some m) : m.le x.mode := by
   obtain ⟨x', hx', -, -, he⟩ := effective_some h
@@ -822,8 +827,9 @@ theorem effective_le {s : S3} {a p : Nat} {m : Mode} {x : Authority} (hx : s.A[a
 
 /-! ## Invariant structurel `WF3`
 
-I1 seul n'est pas préservé par `release` (`inv3_not_inductive`). La préservation est établie
-sous l'invariant structurel `WF3`, atteint par toute exécution (`reachable_access_invariant`).
+I1 seul n'est pas préservé par `release` (`inv3_not_inductive`). La préservation par `release`,
+`enterFrame` et `exitFrame` est établie sous l'invariant structurel `WF3`, qui tient dans tout
+état atteint quand `DDSound k` tient (`reachable_access_invariant_underDD`).
 Sa clause centrale `Tree` dit que deux autorités actives non apparentées couvrant une même
 feuille sont en observation. -/
 
@@ -1046,6 +1052,111 @@ theorem new_vs_old {s : S3} (ht : Tree s) {src b p : Nat} {x y : Authority} {m :
     · exact ⟨Mode.le_observe (h₁ ▸ hl), h₂⟩
     · exact ⟨rfl, h₂⟩
 
+theorem Compat.symm {m₁ m₂ : Mode} (h : Compat m₁ m₂) : Compat m₂ m₁ := ⟨h.2, h.1⟩
+
+theorem effOf_some_of_not_mem {m : Mode} {ds : List Mode} (h : Mode.modify ∉ ds) :
+    ∃ e, effOf m ds = some e := by
+  unfold effOf; by_cases h0 : ds = []
+  · simp [h0]
+  · simp [h0, h]
+
+/-- Ajouter une autorité ne fait que réduire les modes effectifs des autorités existantes
+(MM-03.3.5) : un mode effectif présent après l'ajout l'était avant, inchangé ou devenu
+`Observe`. -/
+theorem effective_addAuth_old {s : S3} {y₀ : Authority} {a p : Nat} {e' : Mode}
+    (ha : a < s.A.length) (h : effective (s.addAuth y₀) a p = some e') :
+    ∃ e, effective s a p = some e ∧ (e' = e ∨ e' = .observe) := by
+  obtain ⟨x, hx, xa, xp, he⟩ := effective_some h
+  rw [addAuth_lt ha] at hx
+  rw [effective_eq hx xa xp]
+  rw [descModes_addAuth] at he
+  split at he
+  · rcases effOf_cases he with ⟨h0, -⟩ | ⟨-, hn, rfl⟩
+    · simp at h0
+    · obtain ⟨e, he'⟩ := effOf_some_of_not_mem (m := x.mode) fun hm => hn (List.mem_append_left _ hm)
+      exact ⟨e, he', .inr rfl⟩
+  · rw [List.append_nil] at he; exact ⟨e', he, .inl rfl⟩
+
+/-- Une autorité dérivée de `src`, de mode permis par l'autorité effective de `src` sur chaque
+feuille de son empreinte, préserve I1 (MM-03.3 §2, I1 ; §3, O1.3). Seul I1 est supposé. -/
+theorem addAuth_I1 {s : S3} (h1 : I1 s) {src : Nat} {x : Authority} {m : Mode} {fp : List Nat}
+    {f : Nat} (hx : s.A[src]? = some x) (hal : ∀ p ∈ fp, Allows (effective s src p) m) :
+    I1 (s.addAuth ⟨m, some src, fp, f, true⟩) := by
+  have hs := lt_of_getElem? hx
+  have hn : ∀ p e, effective (s.addAuth ⟨m, some src, fp, f, true⟩) s.A.length p = some e →
+      p ∈ fp ∧ e = m := by
+    intro p e he
+    obtain ⟨z, hz, -, zp, hze⟩ := effective_some he
+    rw [addAuth_self] at hz; cases hz
+    have : descModes (s.addAuth ⟨m, some src, fp, f, true⟩) s.A.length p = [] := by
+      apply nil_of_forall_not_mem; intro d hd
+      obtain ⟨j, y, hy, -, -, hj, -⟩ := mem_descModes.1 hd
+      have h1 := chain_lt hj
+      have h2 := lt_of_getElem? hy; simp [S3.addAuth] at h2; omega
+    rw [this] at hze; simp [effOf] at hze; exact ⟨zp, hze.symm⟩
+  have hrel : ∀ b p e, b < s.A.length → p ∈ fp → (b = src ∨ b ∈ s.ancs src) →
+      effective (s.addAuth ⟨m, some src, fp, f, true⟩) b p = some e → e = .observe ∧ m = .observe := by
+    intro b p e hb hp hbs he
+    obtain ⟨z, hz, za, zp, hze⟩ := effective_some he
+    have hm : m ∈ descModes (s.addAuth ⟨m, some src, fp, f, true⟩) b p := by
+      rw [descModes_addAuth, ancs_addAuth_self rfl hs]
+      simp only [hp, true_and]
+      rcases hbs with rfl | hbs <;> simp_all
+    rcases effOf_cases hze with ⟨h0, -⟩ | ⟨-, hnm, rfl⟩
+    · simp [h0] at hm
+    · exact ⟨rfl, mode_eq_observe fun e => hnm (e ▸ hm)⟩
+  have hunrel : ∀ b p, b < s.A.length → ¬ (b = src ∨ b ∈ s.ancs src) →
+      effective (s.addAuth ⟨m, some src, fp, f, true⟩) b p = effective s b p := by
+    intro b p hb hbs
+    unfold effective; rw [addAuth_lt hb, descModes_addAuth, ancs_addAuth_self rfl hs]
+    have : b ∉ src :: s.ancs src := fun h => hbs (List.mem_cons.1 h)
+    simp [this]
+  have newold : ∀ b p e e', b < s.A.length →
+      effective (s.addAuth ⟨m, some src, fp, f, true⟩) s.A.length p = some e →
+      effective (s.addAuth ⟨m, some src, fp, f, true⟩) b p = some e' → Compat e e' := by
+    intro b p e e' hb he he'
+    obtain ⟨hp, rfl⟩ := hn p e he
+    by_cases hbs : b = src ∨ b ∈ s.ancs src
+    · obtain ⟨h₁, h₂⟩ := hrel b p e' hb hp hbs he'; exact ⟨h₂, h₁⟩
+    · rw [hunrel b p hb hbs] at he'
+      have hbs' : src ≠ b := fun h => hbs (.inl h.symm)
+      have hal' := hal p hp
+      unfold Allows OptP at hal'; split at hal'
+      · rename_i e₀ he₀
+        obtain ⟨c₁, c₂⟩ := h1 src b p e₀ e' hbs' he₀ he'
+        exact ⟨Mode.le_observe (c₁ ▸ hal'), c₂⟩
+      · exact hal'.elim
+  intro a b p m₁ m₂ hab ha hb
+  obtain ⟨_, ha', -⟩ := effective_some ha
+  obtain ⟨_, hb', -⟩ := effective_some hb
+  rcases addAuth_get ha' with ⟨hal₁, -⟩ | ⟨rfl, -⟩ <;> rcases addAuth_get hb' with ⟨hbl, -⟩ | ⟨rfl, -⟩
+  · obtain ⟨e₁, he₁, o₁⟩ := effective_addAuth_old hal₁ ha
+    obtain ⟨e₂, he₂, o₂⟩ := effective_addAuth_old hbl hb
+    obtain ⟨c₁, c₂⟩ := h1 a b p e₁ e₂ hab he₁ he₂
+    exact ⟨by rcases o₁ with rfl | rfl <;> first | rfl | assumption,
+      by rcases o₂ with rfl | rfl <;> first | rfl | assumption⟩
+  · exact (newold a p m₂ m₁ hal₁ hb ha).symm
+  · exact newold b p m₁ m₂ hbl ha hb
+  · exact absurd rfl hab
+
+/-- Partie `Inv3` de `addAuth_preserves`, sans `WF3`. -/
+theorem addAuth_inv3 {s : S3} (hinv : Inv3 s) {src : Nat} {x : Authority} {m : Mode}
+    {fp : List Nat} {f : Nat} (hx : s.A[src]? = some x) (hfp : ∀ p ∈ fp, p ∈ x.footprint)
+    (hal : ∀ p ∈ fp, Allows (effective s src p) m) :
+    Inv3 (s.addAuth ⟨m, some src, fp, f, true⟩) := by
+  obtain ⟨i1, i2, i3, -⟩ := hinv
+  have hs := lt_of_getElem? hx
+  refine ⟨addAuth_I1 i1 hx hal, fun b y a hb ho => ?_, fun q hq y hy => active_addAuth (i3 q hq y hy),
+    i4_always _⟩
+  rcases addAuth_get hb with ⟨-, hb''⟩ | ⟨rfl, rfl⟩
+  · obtain ⟨x₁, hx₁, h⟩ := i2 b y a hb'' ho
+    exact ⟨x₁, by rw [addAuth_lt (lt_of_getElem? hx₁)]; exact hx₁, h⟩
+  · cases ho
+    refine ⟨x, by rw [addAuth_lt hs]; exact hx, fun p hp => ⟨hfp p hp, ?_⟩⟩
+    have := hal p hp; unfold Allows OptP at this; split at this
+    · rename_i e he; exact Mode.le_trans this (effective_le hx he)
+    · exact this.elim
+
 /-- Ajout d'une autorité dérivée de `src`, active, d'empreinte incluse dans celle de `src`, de
 mode permis sur chaque feuille : `WF3` et `Inv3` sont préservés. Lemme commun à `derive`,
 `split` et `arena.issue`. -/
@@ -1183,6 +1294,20 @@ theorem SameSkel.preserves {s s' : S3} (h : SameSkel s s') (hP : s'.P = s.P) (hF
 
 theorem SameSkel.refl (s : S3) : SameSkel s s := ⟨rfl, fun _ => rfl⟩
 
+/-- `Inv3` passe à un état de même squelette, mêmes emplacements, même pile, sans `WF3`. -/
+theorem SameSkel.inv3 {s s' : S3} (h : SameSkel s s') (hP : s'.P = s.P) (hF : s'.F = s.F)
+    (hinv : Inv3 s) (hD : ∀ q, s.Usable q → ∀ x ∈ s'.D q, s.Active x) : Inv3 s' := by
+  obtain ⟨i1, i2, -, -⟩ := hinv
+  have us : ∀ q, s'.Usable q ↔ s.Usable q := fun q => by simp [S3.Usable, hP, hF]
+  refine ⟨fun a b p m₁ m₂ hab ha hb => ?_, fun b y a hb ho => ?_,
+    fun q hq x hx => h.active.2 (hD q ((us q).1 hq) x hx), i4_always _⟩
+  · rw [h.effective] at ha hb; exact i1 a b p m₁ m₂ hab ha hb
+  · obtain ⟨y₀, hy₀, e⟩ := h.get hb; simp [skel] at e
+    obtain ⟨x₀, hx₀, hh⟩ := i2 b y₀ a hy₀ (e.2.1 ▸ ho)
+    obtain ⟨x', hx', e'⟩ := h.get' hx₀; simp [skel] at e'
+    exact ⟨x', hx', fun p hp => by
+      rw [e.1, e'.1, e'.2.2.1]; exact hh p (e.2.2.1 ▸ hp)⟩
+
 /-! ## Préservation par opération (MM-03.3 §10) -/
 
 /-- `derive` préserve `WF3` et `Inv3` (MM-03.3 §3, O1 ; §10). La preuve n'utilise pas O1.4. -/
@@ -1191,10 +1316,23 @@ theorem derive_preserves {s s' : S3} {src q : Nat} {m : Mode} (hwf : WF3 s) (hin
   obtain ⟨⟨⟨x, hx, xa⟩, -, hfp, hal, -⟩, rfl⟩ := derive_ok_iff.1 h
   exact addAuth_preserves hwf hinv hx xa (fun p hp => by simpa [S3.afp, hx] using hfp p hp) hal
 
-/-- `derive_preserves_exclusivity` (MM-03.3 §10). -/
-theorem derive_preserves_exclusivity {s s' : S3} {src q : Nat} {m : Mode} (hwf : WF3 s)
-    (hinv : Inv3 s) (h : DeriveStep src q m s (.ok s')) : I1 s' :=
-  (derive_preserves hwf hinv h).2.1
+/-- `derive_preserves_exclusivity` (MM-03.3 §10) : `derive` préserve I1, sous I1 seul. La preuve
+n'utilise pas O1.4. -/
+theorem derive_preserves_exclusivity {s s' : S3} {src q : Nat} {m : Mode} (h1 : I1 s)
+    (h : DeriveStep src q m s (.ok s')) : I1 s' := by
+  obtain ⟨⟨⟨x, hx, -⟩, -, -, hal, -⟩, rfl⟩ := derive_ok_iff.1 h
+  exact addAuth_I1 h1 hx hal
+
+/-- `derive` préserve `Inv3`, sans `WF3` (MM-03.3 §3, O1 ; §2). -/
+theorem derive_preserves_inv3 {s s' : S3} {src q : Nat} {m : Mode} (hinv : Inv3 s)
+    (h : DeriveStep src q m s (.ok s')) : Inv3 s' := by
+  obtain ⟨⟨⟨x, hx, -⟩, -, hfp, hal, -⟩, rfl⟩ := derive_ok_iff.1 h
+  exact addAuth_inv3 hinv hx (fun p hp => by simpa [S3.afp, hx] using hfp p hp) hal
+
+/-- `derive` ne désactive aucune autorité : O1.5 (« Les ancres nécessaires restent valides »)
+tient toujours (MM-03.3 §3, O1). -/
+theorem derive_keeps_active {s : S3} {src q x : Nat} {m : Mode} (h : s.Active x) :
+    (deriveEff s src q m).Active x := active_addAuth h
 
 /-- O1.4 découle de O1.1 à O1.3 sous `WF3` et `Inv3` (MM-03.3 §3, O1). -/
 theorem derive_pre4_of {s : S3} {src q : Nat} {m : Mode} (hwf : WF3 s) (hinv : Inv3 s)
@@ -1255,10 +1393,37 @@ theorem split_preserves_underDD {k : K} (hdd : DDSound k) {s s' : S3} {src : Nat
     (h3.imp fun {r r'} h => h.elim id fun hd => hdd r r' hd)
   simpa [S3.afp, hx] using (h2 r hr p hp).1
 
-/-- `split_preserves_exclusivity` (MM-03.3 §10), conditionné à `DDSound k` (MM-03.3.8). -/
+theorem split_aux_inv3 {src : Nat} {x : Authority} : ∀ (rs : List (List Nat)) (s : S3), Inv3 s →
+    s.A[src]? = some x →
+    (∀ r ∈ rs, ∀ p ∈ r, effective s src p = some .modify ∧ p ∈ x.footprint) →
+    rs.Pairwise (fun r r' => ∀ l ∈ r, l ∉ r') → Inv3 (splitEff s src rs)
+  | [], s, hinv, _, _, _ => by
+    have : splitEff s src [] = s := by simp [splitEff]
+    rw [this]; exact hinv
+  | r :: rs, s, hinv, hx, hr, hpw => by
+    rw [splitEff_cons]
+    have hs := lt_of_getElem? hx
+    have hinv₁ := addAuth_inv3 (m := .modify) (f := s.top) hinv hx (fun p hp => (hr r (List.mem_cons_self ..) p hp).2)
+      (fun p hp => by rw [(hr r (List.mem_cons_self ..) p hp).1]; simp [Allows, OptP, Mode.le])
+    obtain ⟨hpr, hpw⟩ := List.pairwise_cons.1 hpw
+    refine split_aux_inv3 rs _ hinv₁ (by rw [addAuth_lt hs]; exact hx) (fun r' hr' p hp => ?_) hpw
+    rw [effective_addAuth_notin hs fun h => hpr r' hr' p h hp]
+    exact hr r' (List.mem_cons_of_mem _ hr') p hp
+
+/-- `split` préserve `Inv3`, sans `WF3` (MM-03.3 §3, O2), conditionné à `DDSound k`
+(MM-03.3.8). -/
+theorem split_preserves_inv3_underDD {k : K} (hdd : DDSound k) {s s' : S3} {src : Nat}
+    {rs : List (List Nat)} (hinv : Inv3 s) (h : SplitStep k src rs s (.ok s')) : Inv3 s' := by
+  obtain ⟨⟨⟨x, hx, -⟩, h1, h2, h3, -⟩, rfl⟩ := split_ok_iff.1 h
+  refine split_aux_inv3 rs s hinv hx (fun r hr p hp => ⟨h1 r hr p hp, ?_⟩)
+    (h3.imp fun {r r'} h => h.elim id fun hd => hdd r r' hd)
+  simpa [S3.afp, hx] using (h2 r hr p hp).1
+
+/-- `split_preserves_exclusivity` (MM-03.3 §10), sous `Inv3` seul, conditionné à `DDSound k`
+(MM-03.3.8). -/
 theorem split_preserves_exclusivity_underDD {k : K} (hdd : DDSound k) {s s' : S3} {src : Nat}
-    {rs : List (List Nat)} (hwf : WF3 s) (hinv : Inv3 s) (h : SplitStep k src rs s (.ok s')) :
-    I1 s' := (split_preserves_underDD hdd hwf hinv h).2.1
+    {rs : List (List Nat)} (hinv : Inv3 s) (h : SplitStep k src rs s (.ok s')) : I1 s' :=
+  (split_preserves_inv3_underDD hdd hinv h).1
 
 theorem set_get {l : List Authority} {a j : Nat} {x' : Authority} (ha : a < l.length) :
     (l.set a x')[j]? = if a = j then some x' else l[j]? := by
@@ -1378,6 +1543,20 @@ theorem transfer_preserves {k : K} {s s' : S3} {src dst : Nat} {auths : List Nat
     · simp at hx
     · exact hinv.2.2.1 q hq x hx
 
+/-- `transfer` préserve `Inv3`, sans `WF3` (MM-03.3 §3, O4). -/
+theorem transfer_preserves_inv3 {k : K} {s s' : S3} {src dst : Nat} {auths : List Nat}
+    (hinv : Inv3 s) (h : TransferStep k src dst auths s (.ok s')) : Inv3 s' := by
+  obtain ⟨⟨-, -, -, -, -, -, -, h5, -, -⟩, rfl⟩ := transfer_ok_iff.1 h
+  refine (transfer_skel s src dst auths).inv3 rfl rfl hinv fun q hq x hx => ?_
+  simp only [transferEff] at hx
+  split at hx
+  · rename_i hqd; subst hqd; rcases List.mem_append.1 hx with hx | hx
+    · exact hinv.2.2.1 _ hq x hx
+    · exact h5 x hx
+  · split at hx
+    · simp at hx
+    · exact hinv.2.2.1 q hq x hx
+
 /-- `transfer_no_duplicate_authority` (MM-03.3 §3, O4.3 ; §2, I4 ; §10) : aucune autorité n'est
 créée ni dupliquée ; chaque autorité garde mode, origine, empreinte et activité ; les autorités
 transférées passent au cadre de la destination. -/
@@ -1386,7 +1565,7 @@ theorem transfer_no_duplicate_authority {k : K} {s s' : S3} {src dst : Nat} {aut
     SameSkel s s' ∧ ∀ b ∈ auths, s'.frameOf b = some ((placeFrame s.P dst).getD 0) := by
   obtain ⟨⟨-, -, -, -, -, hauth, -⟩, rfl⟩ := transfer_ok_iff.1 h
   refine ⟨transfer_skel s src dst auths, fun b hb => ?_⟩
-  obtain ⟨⟨y, hy, -⟩, -⟩ := hauth b hb
+  obtain ⟨⟨y, hy, -⟩, -, -⟩ := hauth b hb
   simp [S3.frameOf, transferEff, getElem?_mapI, hy, hb]
 
 /-- `transfer_invalidates_source` (MM-03.3 §3, O4 ; §2, I4) : après un transfert, chaque feuille
@@ -1422,6 +1601,19 @@ theorem depend_preserves {s s' : S3} {q x : Nat} (hwf : WF3 s) (hinv : Inv3 s)
     · simp at hy; exact hy ▸ hx
   · exact hinv.2.2.1 r hr y hy
 
+/-- `depend` préserve `Inv3`, sans `WF3` (MM-03.3 §3, O5). -/
+theorem depend_preserves_inv3 {s s' : S3} {q x : Nat} (hinv : Inv3 s)
+    (h : DependStep q x s (.ok s')) : Inv3 s' := by
+  obtain ⟨⟨-, hx, -⟩, rfl⟩ := depend_ok_iff.1 h
+  refine (show SameSkel s (dependEff s q x) from ⟨rfl, fun _ => rfl⟩).inv3 rfl rfl hinv
+    fun r hr y hy => ?_
+  simp only [dependEff] at hy
+  split at hy
+  · subst_vars; rcases List.mem_append.1 hy with hy | hy
+    · exact hinv.2.2.1 _ hr y hy
+    · simp at hy; exact hy ▸ hx
+  · exact hinv.2.2.1 r hr y hy
+
 /-- `depend_preserves_anchor_validity` (MM-03.3 §3, O5 ; §2, I3 ; §10) : I3 est préservé et la
 validité de toute ancre est inchangée, `depend` n'allongeant celle d'aucune origine. -/
 theorem depend_preserves_anchor_validity {s s' : S3} {q x : Nat} (hi3 : I3 s)
@@ -1438,6 +1630,13 @@ theorem depend_preserves_anchor_validity {s s' : S3} {q x : Nat} (hi3 : I3 s)
 /-- `read3` préserve l'état (MM-03.3 §5 : la lecture ne modifie pas l'état des autorités). -/
 theorem read3_preserves {s s' : S3} {a : Nat} {ls : List Nat} (h : Read3Step a ls s (.ok s')) :
     s' = s := (read3_ok_iff.1 h).2
+
+/-- `write3` préserve `Inv3`, sans `WF3` (MM-03.3 §5). -/
+theorem write3_preserves_inv3 {s s' : S3} {a : Nat} {ls : List Nat} (hinv : Inv3 s)
+    (h : Write3Step a ls s (.ok s')) : Inv3 s' := by
+  obtain ⟨-, rfl⟩ := write3_ok_iff.1 h
+  exact (show SameSkel s (write3Eff s ls) from ⟨rfl, fun _ => rfl⟩).inv3 rfl rfl hinv
+    fun q hq y hy => hinv.2.2.1 q hq y hy
 
 /-- `write3` préserve `WF3` et `Inv3` (MM-03.3 §5 ; §10). -/
 theorem write3_preserves {s s' : S3} {a : Nat} {ls : List Nat} (hwf : WF3 s) (hinv : Inv3 s)
@@ -1865,22 +2064,27 @@ stockage administré. Clauses 1 à 3 de MM-03.3 §6 : régions émises incluses 
 administré ; deux régions émises simultanément valides (autorités actives) disjointes ;
 régions disponibles disjointes des régions encore distribuées. La clause 4 (accès distribués
 dépendants de l'ancre de l'arène) n'est pas représentée : l'état ne relie pas une autorité à la
-valeur qui la contient. La dernière clause, propre à l'abstraction, relie chaque émission à son
-autorité dérivée de `internal` (arbitrage 3). -/
+valeur qui la contient. La clause suivante, propre à l'abstraction, relie chaque émission à son
+autorité dérivée de `internal`. Les dernières clauses traduisent l'arbitrage 3 : `internal` est
+une autorité racine distincte de l'ancre, le stockage administré est sous `internal`, et
+l'empreinte de la valeur `arena` (celle de l'ancre) ne contient pas ce stockage. -/
 def ArenaInv (s : S3) (ar : Arena) : Prop :=
   (∀ l ∈ ar.available, l ∈ ar.storage) ∧
   (∀ e ∈ ar.issued, ∀ l ∈ e.1, l ∈ ar.storage) ∧
   ar.issued.Pairwise (fun e e' => s.Active e.2 → s.Active e'.2 → ∀ l ∈ e.1, l ∉ e'.1) ∧
   (∀ e ∈ ar.issued, s.Active e.2 → ∀ l ∈ e.1, l ∉ ar.available) ∧
   (∀ e ∈ ar.issued, ∃ y, s.A[e.2]? = some y ∧ y.origin = some ar.internal ∧
-    y.footprint = e.1 ∧ y.mode = .modify)
+    y.footprint = e.1 ∧ y.mode = .modify) ∧
+  s.org ar.internal = none ∧ ar.internal ≠ ar.anchor ∧
+  (∀ l ∈ ar.storage, l ∈ s.afp ar.internal) ∧ (∀ l ∈ ar.storage, l ∉ s.afp ar.anchor)
 
 /-- Préconditions de `arena.issue(region)` (MM-03.3 §6), dans l'ordre : la région est disponible ;
 elle est disjointe des régions émises encore actives ; l'abstraction dispose, par `internal`, de
 l'autorité effective de modification sur la région ; l'autorité `via` atteint l'arène (`anchor`
 ou une dérivée) et peut modifier les métadonnées, par un mode effectif `Modify` ou, à défaut,
 par `SharedMutable` (MM-03.3.8) ; la destination `dst` du bloc est encore utilisable
-(MM-03.3.1). -/
+(MM-03.3.1), peut recevoir une valeur (sans feuille `Init`, comme pour O4.2) et respecte la
+restriction de non-échappement envers `via` (MM-03.3.6). -/
 def IssuePre (k : K) (s : S3) (ar : Arena) (via : Nat) (region : List Nat) (dst : Nat) : Prop :=
   (∀ l ∈ region, l ∈ ar.available) ∧
   (∀ e ∈ ar.issued, s.Active e.2 → ∀ l ∈ region, l ∉ e.1) ∧
@@ -1888,11 +2092,11 @@ def IssuePre (k : K) (s : S3) (ar : Arena) (via : Nat) (region : List Nat) (dst 
   s.Active via ∧ (via = ar.anchor ∨ ar.anchor ∈ s.ancs via) ∧
   (∀ l ∈ s.afp ar.anchor, effective s via l = some .modify ∨
     (effective s via l ≠ none ∧ k.SharedMutable l)) ∧
-  s.Usable dst
+  s.Usable dst ∧ (∀ l ∈ footprint s.P dst, s.I l ≠ .init) ∧ NoEscape s via (placeFrame s.P dst)
 
 instance (k : K) [DecidablePred k.SharedMutable] (s : S3) (ar : Arena) (via : Nat)
     (region : List Nat) (dst : Nat) : Decidable (IssuePre k s ar via region dst) := by
-  unfold IssuePre; infer_instance
+  unfold IssuePre NoEscape; infer_instance
 
 /-- Effet de `arena.issue(region)` (MM-03.3 §6) : retrait de `available` ; autorité exclusive
 dérivée de `internal` sur la région, détenue par le cadre courant ; ajout à `issued` ; la valeur
@@ -1915,9 +2119,9 @@ aucune valeur encore utilisable n'a une ancre que la réinitialisation invalide 
 MM-03.3.8). Aucune condition d'exclusivité (arbitrage 3). -/
 def ResetPre (k : K) (s : S3) (ar : Arena) : Prop :=
   (∀ e ∈ ar.issued, ¬ s.Active e.2) ∧
-  (∀ q ∈ List.range s.P.length, s.Usable q → ∀ x ∈ s.D q, ¬ k.Invalidates ar.anchor x)
+  (∀ q ∈ List.range s.P.length, s.Usable q → ∀ x ∈ s.D q, ¬ k.Invalidates s ar.anchor x)
 
-instance (k : K) [∀ r x, Decidable (k.Invalidates r x)] (s : S3) (ar : Arena) :
+instance (k : K) [∀ s r x, Decidable (k.Invalidates s r x)] (s : S3) (ar : Arena) :
     Decidable (ResetPre k s ar) := by
   unfold ResetPre; infer_instance
 
@@ -1930,10 +2134,12 @@ def resetEff (s : S3) (ar : Arena) : S3 × Arena :=
 def ResetStep (k : K) (ar : Arena) (s : S3) : Outcome3 (S3 × Arena) → Prop :=
   Guarded (ResetPre k s ar) (resetEff s ar)
 
+/-- Issue `ok` de `arena.issue` (MM-03.3 §6). -/
 theorem issue_ok_iff {k : K} {ar ar' : Arena} {via dst : Nat} {region : List Nat} {s s' : S3} :
     IssueStep k ar via region dst s (.ok (s', ar')) ↔
       IssuePre k s ar via region dst ∧ (s', ar') = issueEff s ar via region dst := Guarded.ok_iff
 
+/-- Issue `ok` de `arena.reset` (MM-03.3 §6). -/
 theorem reset_ok_iff {k : K} {ar ar' : Arena} {s s' : S3} :
     ResetStep k ar s (.ok (s', ar')) ↔ ResetPre k s ar ∧ (s', ar') = resetEff s ar :=
   Guarded.ok_iff
@@ -1946,7 +2152,7 @@ theorem arena_issue_disjoint_of_authority {s : S3} {ar : Arena} {region : List N
     (hm : ∀ l ∈ region, effective s ar.internal l = some .modify) :
     ∀ e ∈ ar.issued, s.Active e.2 → ∀ l ∈ region, l ∉ e.1 := by
   intro e he ha l hl hle
-  obtain ⟨y, hy, ho, hf, hmd⟩ := hai.2.2.2.2 e he
+  obtain ⟨y, hy, ho, hf, hmd⟩ := hai.2.2.2.2.1 e he
   obtain ⟨y', hy', ya⟩ := ha; rw [hy] at hy'; cases hy'
   have hlt := hwf.1 e.2 y ar.internal hy ho
   have hanc : ar.internal ∈ s.ancs e.2 := by
@@ -1957,6 +2163,12 @@ theorem arena_issue_disjoint_of_authority {s : S3} {ar : Arena} {region : List N
   rcases effOf_cases he' with ⟨h0, -⟩ | ⟨-, hn, -⟩
   · simp [h0] at hd
   · exact hn hd
+
+theorem org_addAuth_lt {s : S3} {y₀ : Authority} {j : Nat} (h : j < s.A.length) :
+    (s.addAuth y₀).org j = s.org j := by simp only [S3.org, addAuth_lt h]
+
+theorem afp_addAuth_lt {s : S3} {y₀ : Authority} {j : Nat} (h : j < s.A.length) :
+    (s.addAuth y₀).afp j = s.afp j := by simp only [S3.afp, addAuth_lt h]
 
 theorem active_addAuth_iff {s : S3} {y₀ : Authority} {x : Nat} (hx : x < s.A.length) :
     (s.addAuth y₀).Active x ↔ s.Active x := by
@@ -1970,7 +2182,7 @@ theorem arena_issue_preserves_disjointness {k : K} {s s' : S3} {ar ar' : Arena} 
     {region : List Nat} (hwf : WF3 s) (hinv : Inv3 s) (hai : ArenaInv s ar)
     (h : IssueStep k ar via region dst s (.ok (s', ar'))) :
     WF3 s' ∧ Inv3 s' ∧ ArenaInv s' ar' := by
-  obtain ⟨⟨h1, -, ⟨x, hx, xa⟩, h4, hvia, -, -, -⟩, e⟩ := issue_ok_iff.1 h
+  obtain ⟨⟨h1, -, ⟨x, hx, xa⟩, h4, hvia, hvr, -, -⟩, e⟩ := issue_ok_iff.1 h
   have e1 := congrArg Prod.fst e; have e2 := congrArg Prod.snd e
   simp only [issueEff] at e1 e2; subst e1 e2
   have hs := lt_of_getElem? hx
@@ -1989,11 +2201,16 @@ theorem arena_issue_preserves_disjointness {k : K} {s s' : S3} {ar ar' : Arena} 
         · simp at hy; subst hy; exact active_addAuth hvia
       · exact hinv₁.2.2.1 q hq y hy
   have hdis := arena_issue_disjoint_of_authority hwf hai h4
-  obtain ⟨c0, c1, c2, c3, c4⟩ := hai
+  obtain ⟨c0, c1, c2, c3, c4, a1, a2, a3, a4⟩ := hai
   have old : ∀ e ∈ ar.issued, e.2 < s.A.length := fun e he => by
     obtain ⟨y, hy, -⟩ := c4 e he; exact lt_of_getElem? hy
+  have hanc : ar.anchor < s.A.length := by
+    obtain ⟨y, hy, -⟩ := hvia; have := lt_of_getElem? hy
+    rcases hvr with e | e
+    · omega
+    · have := chain_lt e; omega
   refine ⟨hwf', hinv', fun l hl => ?_, fun e he l hl => ?_, ?_, fun e he ha l hl => ?_,
-    fun e he => ?_⟩
+    fun e he => ?_, (org_addAuth_lt hs).trans a1, a2, fun l hl => ?_, fun l hl => ?_⟩
   · exact c0 l (List.mem_filter.1 hl).1
   · rcases List.mem_cons.1 he with rfl | he
     · exact c0 l (h1 l hl)
@@ -2009,6 +2226,8 @@ theorem arena_issue_preserves_disjointness {k : K} {s s' : S3} {ar ar' : Arena} 
     · exact ⟨_, addAuth_self _ _, rfl, rfl, rfl⟩
     · obtain ⟨y, hy, hh⟩ := c4 e he
       exact ⟨y, by show (s.addAuth _).A[e.2]? = _; rw [addAuth_lt (old e he)]; exact hy, hh⟩
+  · show l ∈ (s.addAuth _).afp ar.internal; rw [afp_addAuth_lt hs]; exact a3 l hl
+  · show l ∉ (s.addAuth _).afp ar.anchor; rw [afp_addAuth_lt hanc]; exact a4 l hl
 
 /-- `arena_issue_keeps_earlier_blocks` (MM-03.3 §6, §10) : les émissions antérieures restent
 émises avec leur autorité inchangée, et la nouvelle région est disjointe de celles qui sont
@@ -2022,7 +2241,7 @@ theorem arena_issue_keeps_earlier_blocks {k : K} {s s' : S3} {ar ar' : Arena} {v
   have e1 := congrArg Prod.fst e; have e2 := congrArg Prod.snd e
   simp only [issueEff] at e1 e2; subst e1 e2
   intro e he
-  obtain ⟨y, hy, -⟩ := hai.2.2.2.2 e he
+  obtain ⟨y, hy, -⟩ := hai.2.2.2.2.1 e he
   exact ⟨List.mem_cons_of_mem _ he, addAuth_lt (lt_of_getElem? hy),
     arena_issue_disjoint_of_authority hwf hai h4 e he⟩
 
@@ -2035,7 +2254,7 @@ theorem arena_reset_rejects_live_issued {k : K} {s : S3} {ar : Arena} {e : List 
 /-- Obligation de `Invalidates` pour l'arène (MM-03.3.8, arbitrage 3) : `reset` invalide
 l'ancre de l'arène et toute autorité qui en dérive. -/
 def ArenaResetContract (k : K) (s : S3) (ar : Arena) : Prop :=
-  ∀ x, (x = ar.anchor ∨ ar.anchor ∈ s.ancs x) → k.Invalidates ar.anchor x
+  ∀ x, (x = ar.anchor ∨ ar.anchor ∈ s.ancs x) → k.Invalidates s ar.anchor x
 
 /-- `arena_reset_rejects_live_dependents` (MM-03.3 §6, I3, §10), conditionné à l'obligation
 `ArenaResetContract` de `Invalidates` (MM-03.3.8) : si une valeur encore utilisable est ancrée
@@ -2054,8 +2273,9 @@ theorem arena_reset_preserves {k : K} {s s' : S3} {ar ar' : Arena} (hai : ArenaI
   obtain ⟨-, e⟩ := reset_ok_iff.1 h
   have e1 := congrArg Prod.fst e; have e2 := congrArg Prod.snd e
   simp only [resetEff] at e1 e2; subst e1 e2
+  obtain ⟨-, -, -, -, -, a1, a2, a3, a4⟩ := hai
   exact ⟨rfl, fun l hl => hl, fun _ he => (by cases he), List.Pairwise.nil,
-    fun _ he => (by cases he), fun _ he => (by cases he)⟩
+    fun _ he => (by cases he), fun _ he => (by cases he), a1, a2, a3, a4⟩
 
 /-! ## Cas d'épreuve (MM-03.3 §11)
 
@@ -2065,19 +2285,23 @@ sont construits par les effets des opérations à partir de `S3.init`. Le classe
 
 /-- Contrats vides : aucune déclaration, aucune mutation partagée, aucun épinglage, aucune
 invalidation. -/
-def K0 : K := ⟨fun _ _ => False, fun _ => False, fun _ => False, fun _ _ => False⟩
+def K0 : K := ⟨fun _ _ => False, fun _ => False, fun _ => False, fun _ _ _ => False⟩
 instance : ∀ r r', Decidable (K0.DeclaredDisjoint r r') := fun _ _ => instDecidableFalse
 instance : DecidablePred K0.Pinned := fun _ => instDecidableFalse
 
 /-- Contrats de l'arène : métadonnées (feuille 0) en mutation partagée ; `reset` de l'arène
-d'ancre `r` invalide l'ancre `r`. -/
-def KA : K := ⟨fun _ _ => False, fun l => l = 0, fun _ => False, fun r x => x = r⟩
+d'ancre `r` invalide `r` et toute autorité qui en dérive. -/
+def KA : K := ⟨fun _ _ => False, fun l => l = 0, fun _ => False, fun s r x => x = r ∨ r ∈ s.ancs x⟩
 instance : DecidablePred KA.SharedMutable := fun l => inferInstanceAs (Decidable (l = 0))
 instance : DecidablePred KA.Pinned := fun _ => instDecidableFalse
-instance : ∀ r x, Decidable (KA.Invalidates r x) := fun r x => inferInstanceAs (Decidable (x = r))
+instance : ∀ s r x, Decidable (KA.Invalidates s r x) := fun s r x =>
+  inferInstanceAs (Decidable (x = r ∨ r ∈ s.ancs x))
+
+/-- `KA` satisfait l'obligation `ArenaResetContract` dans tout état, pour toute arène. -/
+theorem KA_contract (s : S3) (ar : Arena) : ArenaResetContract KA s ar := fun _ h => h
 
 /-- Contrats d'épinglage : la feuille 0 est épinglée. -/
-def KP : K := ⟨fun _ _ => False, fun _ => False, fun l => l = 0, fun _ _ => False⟩
+def KP : K := ⟨fun _ _ => False, fun _ => False, fun l => l = 0, fun _ _ _ => False⟩
 instance : DecidablePred KP.Pinned := fun l => inferInstanceAs (Decidable (l = 0))
 
 /-! ### Cas 1 : deux observations d'une même feuille (attendu : autorisé) -/
@@ -2141,6 +2365,14 @@ def c6b : S3 × Arena := issueEff c6a ar6 0 [2] 4
 example : IssueStep KA ar6 0 [2] 4 c6a (.ok c6b) := .ok (by decide)
 example : IssueStep KA c6b.2 0 [3] 5 c6b.1 (.ok (issueEff c6b.1 c6b.2 0 [3] 5)) := .ok (by decide)
 example : IssueStep KA c6b.2 0 [2] 5 c6b.1 .reject := .reject (by decide)
+
+/-- L'arène du cas 6 satisfait son invariant, et l'état de départ `WF3 ∧ Inv3` : les hypothèses
+de `arena_issue_preserves_disjointness` ne sont pas vides. -/
+example : ArenaInv c6a ar6 :=
+  ⟨(by decide), (by decide), (by decide), (by decide), fun _ h => (nomatch h), (by decide),
+    (by decide), (by decide), (by decide)⟩
+example : WF3 c6a ∧ Inv3 c6a :=
+  reachable_access_invariant_underDD (k := K0) (fun _ _ h => h.elim) (.enter .init (.ok (by decide)))
 
 /-! ### Cas 7 : `arena.reset()` avec dépendant encore utilisable (attendu : rejet) -/
 
@@ -2247,7 +2479,7 @@ example : TransferStep K0 2 0 [] (dependEff c17a 2 1) .reject := .reject (by dec
 /-! ## Constats cités par le rapport -/
 
 /-- Contrats déclarant disjointes toutes les régions, sans l'obligation `DDSound`. -/
-def KT : K := ⟨fun _ _ => True, fun _ => False, fun _ => False, fun _ _ => False⟩
+def KT : K := ⟨fun _ _ => True, fun _ => False, fun _ => False, fun _ _ _ => False⟩
 instance : ∀ r r', Decidable (KT.DeclaredDisjoint r r') := fun _ _ => instDecidableTrue
 
 /-- Sans l'obligation `DDSound` (MM-03.3.8), `split` (MM-03.3 §3, O2) accepte deux régions qui
@@ -2264,6 +2496,11 @@ local de l'appelant (0) vers son propre emplacement (2). -/
 example : TransferStep K0 0 2 [] (enterEff (write3Eff (enterEff S3.init [(none, 0), (none, 0)]) [0])
     [(none, 0)]) (.ok (transferEff (enterEff (write3Eff (enterEff S3.init [(none, 0), (none, 0)])
       [0]) [(none, 0)]) 0 2 [])) := .ok (by decide)
+
+/-- `transfer` refuse de transférer l'autorité racine d'un local de l'appelé (1) avec une valeur
+rendue à l'appelant (O4 ; arbitrage 2). -/
+example : TransferStep K0 2 0 [1] (write3Eff (write3Eff (enterEff (enterEff S3.init [(none, 0)])
+    [(none, 0), (none, 0)]) [1]) [2]) .reject := .reject (by decide)
 
 /-- `canRead3` (MM-03.3 §5) n'exige pas que l'autorité soit détenue par le cadre courant :
 l'appelé lit un emplacement de l'appelant par l'autorité racine de celui-ci. -/
