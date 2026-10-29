@@ -1836,4 +1836,217 @@ theorem reachable_access_invariant_underDD {k : K} (hdd : DDSound k) {s : S3}
   | read _ hs ih => rw [read3_preserves hs]; exact ih
   | write _ hs ih => exact write3_preserves ih.1 ih.2 hs
 
+/-! ## Arène : instance du modèle (MM-03.3 §6, arbitrage 3)
+
+L'empreinte de la valeur `arena` couvre ses seules métadonnées ; son autorité racine est
+`anchor`. Le stockage administré est sous une autorité racine séparée `internal`. `issue` dérive
+les blocs de `internal` et ancre la valeur qui reçoit le bloc sur l'autorité par laquelle
+l'arène est atteinte. `reset` est gouverné par I3 (via `Invalidates`), jamais par I1. -/
+
+/-- État logique de l'arène (MM-03.3 §6 : `Arena { anchor, storage, available, issued,
+internal_authority }`) : `issued` associe chaque région émise à l'autorité émise. -/
+structure Arena where
+  anchor : Nat
+  storage : List Nat
+  available : List Nat
+  issued : List (List Nat × Nat)
+  internal : Nat
+
+/-- Invariant de l'arène (MM-03.3 §6). Clause 0, ajoutée : l'espace disponible fait partie du
+stockage administré. Clauses 1 à 3 de MM-03.3 §6 : régions émises incluses dans le stockage
+administré ; deux régions émises simultanément valides (autorités actives) disjointes ;
+régions disponibles disjointes des régions encore distribuées. La clause 4 (accès distribués
+dépendants de l'ancre de l'arène) n'est pas représentée : l'état ne relie pas une autorité à la
+valeur qui la contient. La dernière clause, propre à l'abstraction, relie chaque émission à son
+autorité dérivée de `internal` (arbitrage 3). -/
+def ArenaInv (s : S3) (ar : Arena) : Prop :=
+  (∀ l ∈ ar.available, l ∈ ar.storage) ∧
+  (∀ e ∈ ar.issued, ∀ l ∈ e.1, l ∈ ar.storage) ∧
+  ar.issued.Pairwise (fun e e' => s.Active e.2 → s.Active e'.2 → ∀ l ∈ e.1, l ∉ e'.1) ∧
+  (∀ e ∈ ar.issued, s.Active e.2 → ∀ l ∈ e.1, l ∉ ar.available) ∧
+  (∀ e ∈ ar.issued, ∃ y, s.A[e.2]? = some y ∧ y.origin = some ar.internal ∧
+    y.footprint = e.1 ∧ y.mode = .modify)
+
+/-- Préconditions de `arena.issue(region)` (MM-03.3 §6), dans l'ordre : la région est disponible ;
+elle est disjointe des régions émises encore actives ; l'abstraction dispose, par `internal`, de
+l'autorité effective de modification sur la région ; l'autorité `via` atteint l'arène (`anchor`
+ou une dérivée) et peut modifier les métadonnées, par un mode effectif `Modify` ou, à défaut,
+par `SharedMutable` (MM-03.3.8) ; la destination `dst` du bloc est encore utilisable
+(MM-03.3.1). -/
+def IssuePre (k : K) (s : S3) (ar : Arena) (via : Nat) (region : List Nat) (dst : Nat) : Prop :=
+  (∀ l ∈ region, l ∈ ar.available) ∧
+  (∀ e ∈ ar.issued, s.Active e.2 → ∀ l ∈ region, l ∉ e.1) ∧
+  s.Active ar.internal ∧ (∀ l ∈ region, effective s ar.internal l = some .modify) ∧
+  s.Active via ∧ (via = ar.anchor ∨ ar.anchor ∈ s.ancs via) ∧
+  (∀ l ∈ s.afp ar.anchor, effective s via l = some .modify ∨
+    (effective s via l ≠ none ∧ k.SharedMutable l)) ∧
+  s.Usable dst
+
+instance (k : K) [DecidablePred k.SharedMutable] (s : S3) (ar : Arena) (via : Nat)
+    (region : List Nat) (dst : Nat) : Decidable (IssuePre k s ar via region dst) := by
+  unfold IssuePre; infer_instance
+
+/-- Effet de `arena.issue(region)` (MM-03.3 §6) : retrait de `available` ; autorité exclusive
+dérivée de `internal` sur la région, détenue par le cadre courant ; ajout à `issued` ; la valeur
+reçue en `dst` est initialisée et ancrée sur `via` ; les régions déjà émises sont inchangées. -/
+def issueEff (s : S3) (ar : Arena) (via : Nat) (region : List Nat) (dst : Nat) : S3 × Arena :=
+  ({ s.addAuth ⟨.modify, some ar.internal, region, s.top, true⟩ with
+      I := fun l => if l ∈ footprint s.P dst then .init else s.I l
+      D := fun q => if q = dst then s.D dst ++ [via] else s.D q },
+   { ar with
+      available := ar.available.filter fun l => decide (l ∉ region)
+      issued := (region, s.A.length) :: ar.issued })
+
+/-- `arena.issue` comme relation (MM-03.3 §6). -/
+def IssueStep (k : K) (ar : Arena) (via : Nat) (region : List Nat) (dst : Nat) (s : S3) :
+    Outcome3 (S3 × Arena) → Prop :=
+  Guarded (IssuePre k s ar via region dst) (issueEff s ar via region dst)
+
+/-- Préconditions de `arena.reset()` (MM-03.3 §6 ; I3) : aucune autorité émise encore active ;
+aucune valeur encore utilisable n'a une ancre que la réinitialisation invalide (`Invalidates`,
+MM-03.3.8). Aucune condition d'exclusivité (arbitrage 3). -/
+def ResetPre (k : K) (s : S3) (ar : Arena) : Prop :=
+  (∀ e ∈ ar.issued, ¬ s.Active e.2) ∧
+  (∀ q ∈ List.range s.P.length, s.Usable q → ∀ x ∈ s.D q, ¬ k.Invalidates ar.anchor x)
+
+instance (k : K) [∀ r x, Decidable (k.Invalidates r x)] (s : S3) (ar : Arena) :
+    Decidable (ResetPre k s ar) := by
+  unfold ResetPre; infer_instance
+
+/-- Effet de `arena.reset()` (MM-03.3 §6) : le stockage administré redevient disponible et les
+anciennes émissions sont oubliées ; l'état `S3` est inchangé. -/
+def resetEff (s : S3) (ar : Arena) : S3 × Arena :=
+  (s, { ar with available := ar.storage, issued := [] })
+
+/-- `arena.reset` comme relation (MM-03.3 §6). -/
+def ResetStep (k : K) (ar : Arena) (s : S3) : Outcome3 (S3 × Arena) → Prop :=
+  Guarded (ResetPre k s ar) (resetEff s ar)
+
+theorem issue_ok_iff {k : K} {ar ar' : Arena} {via dst : Nat} {region : List Nat} {s s' : S3} :
+    IssueStep k ar via region dst s (.ok (s', ar')) ↔
+      IssuePre k s ar via region dst ∧ (s', ar') = issueEff s ar via region dst := Guarded.ok_iff
+
+theorem reset_ok_iff {k : K} {ar ar' : Arena} {s s' : S3} :
+    ResetStep k ar s (.ok (s', ar')) ↔ ResetPre k s ar ∧ (s', ar') = resetEff s ar :=
+  Guarded.ok_iff
+
+/-- Une autorité active dérivée de `internal` couvrant `l` retire à `internal` l'autorité
+effective de modification sur `l` : la disjonction d'une nouvelle émission avec les émissions
+actives découle de la discipline d'accès (MM-03.3 §6). -/
+theorem arena_issue_disjoint_of_authority {s : S3} {ar : Arena} {region : List Nat}
+    (hwf : WF3 s) (hai : ArenaInv s ar)
+    (hm : ∀ l ∈ region, effective s ar.internal l = some .modify) :
+    ∀ e ∈ ar.issued, s.Active e.2 → ∀ l ∈ region, l ∉ e.1 := by
+  intro e he ha l hl hle
+  obtain ⟨y, hy, ho, hf, hmd⟩ := hai.2.2.2.2 e he
+  obtain ⟨y', hy', ya⟩ := ha; rw [hy] at hy'; cases hy'
+  have hlt := hwf.1 e.2 y ar.internal hy ho
+  have hanc : ar.internal ∈ s.ancs e.2 := by
+    unfold S3.ancs; rw [chain_cons (by simp [S3.org, hy, ho]) hlt]; exact List.mem_cons_self ..
+  have hd : Mode.modify ∈ descModes s ar.internal l :=
+    mem_descModes.2 ⟨e.2, y, hy, ya, hf ▸ hle, hanc, hmd⟩
+  obtain ⟨x, hx, -, -, he'⟩ := effective_some (hm l hl)
+  rcases effOf_cases he' with ⟨h0, -⟩ | ⟨-, hn, -⟩
+  · simp [h0] at hd
+  · exact hn hd
+
+theorem active_addAuth_iff {s : S3} {y₀ : Authority} {x : Nat} (hx : x < s.A.length) :
+    (s.addAuth y₀).Active x ↔ s.Active x := by
+  simp only [S3.Active, addAuth_lt hx]
+
+/-- `arena_issue_preserves_disjointness` (MM-03.3 §6, §10) : `issue` préserve `WF3`, `Inv3` et
+l'invariant de l'arène. La disjonction de la nouvelle région avec les émissions actives est
+obtenue de la discipline d'accès (`arena_issue_disjoint_of_authority`), non de la précondition
+correspondante. Aucune hypothèse sur `K`. -/
+theorem arena_issue_preserves_disjointness {k : K} {s s' : S3} {ar ar' : Arena} {via dst : Nat}
+    {region : List Nat} (hwf : WF3 s) (hinv : Inv3 s) (hai : ArenaInv s ar)
+    (h : IssueStep k ar via region dst s (.ok (s', ar'))) :
+    WF3 s' ∧ Inv3 s' ∧ ArenaInv s' ar' := by
+  obtain ⟨⟨h1, -, ⟨x, hx, xa⟩, h4, hvia, -, -, -⟩, e⟩ := issue_ok_iff.1 h
+  have e1 := congrArg Prod.fst e; have e2 := congrArg Prod.snd e
+  simp only [issueEff] at e1 e2; subst e1 e2
+  have hs := lt_of_getElem? hx
+  have hfp : ∀ l ∈ region, l ∈ x.footprint := fun l hl => by
+    obtain ⟨x', hx', -, hp, -⟩ := effective_some (h4 l hl); rw [hx] at hx'; cases hx'; exact hp
+  obtain ⟨hwf₁, hinv₁⟩ := addAuth_preserves (f := s.top) hwf hinv hx xa hfp
+    (fun l hl => by rw [h4 l hl]; simp [Allows, OptP, Mode.le])
+  obtain ⟨hwf', hinv'⟩ := (show SameSkel (s.addAuth ⟨.modify, some ar.internal, region, s.top, true⟩)
+      { s.addAuth ⟨.modify, some ar.internal, region, s.top, true⟩ with
+        I := fun l => if l ∈ footprint s.P dst then .init else s.I l
+        D := fun q => if q = dst then s.D dst ++ [via] else s.D q } from ⟨rfl, fun _ => rfl⟩).preserves
+    rfl rfl rfl hwf₁ hinv₁ fun q hq y hy => by
+      simp only at hy; split at hy
+      · rename_i hqd; subst hqd; rcases List.mem_append.1 hy with hy | hy
+        · exact hinv₁.2.2.1 _ hq y hy
+        · simp at hy; subst hy; exact active_addAuth hvia
+      · exact hinv₁.2.2.1 q hq y hy
+  have hdis := arena_issue_disjoint_of_authority hwf hai h4
+  obtain ⟨c0, c1, c2, c3, c4⟩ := hai
+  have old : ∀ e ∈ ar.issued, e.2 < s.A.length := fun e he => by
+    obtain ⟨y, hy, -⟩ := c4 e he; exact lt_of_getElem? hy
+  refine ⟨hwf', hinv', fun l hl => ?_, fun e he l hl => ?_, ?_, fun e he ha l hl => ?_,
+    fun e he => ?_⟩
+  · exact c0 l (List.mem_filter.1 hl).1
+  · rcases List.mem_cons.1 he with rfl | he
+    · exact c0 l (h1 l hl)
+    · exact c1 e he l hl
+  · refine List.pairwise_cons.2 ⟨fun e he _ ha l hl hle => ?_, c2.imp_of_mem fun {e e'} he he' h ha ha' =>
+      h ((active_addAuth_iff (old e he)).1 ha) ((active_addAuth_iff (old e' he')).1 ha')⟩
+    · exact hdis e he ((active_addAuth_iff (old e he)).1 ha) l hl hle
+  · rcases List.mem_cons.1 he with rfl | he
+    · intro h'; have := (List.mem_filter.1 h').2; simp at this; exact this hl
+    · have := c3 e he ((active_addAuth_iff (old e he)).1 ha) l hl
+      exact fun h' => this (List.mem_filter.1 h').1
+  · rcases List.mem_cons.1 he with rfl | he
+    · exact ⟨_, addAuth_self _ _, rfl, rfl, rfl⟩
+    · obtain ⟨y, hy, hh⟩ := c4 e he
+      exact ⟨y, by show (s.addAuth _).A[e.2]? = _; rw [addAuth_lt (old e he)]; exact hy, hh⟩
+
+/-- `arena_issue_keeps_earlier_blocks` (MM-03.3 §6, §10) : les émissions antérieures restent
+émises avec leur autorité inchangée, et la nouvelle région est disjointe de celles qui sont
+encore actives. Aucune hypothèse sur `K`. -/
+theorem arena_issue_keeps_earlier_blocks {k : K} {s s' : S3} {ar ar' : Arena} {via dst : Nat}
+    {region : List Nat} (hwf : WF3 s) (hai : ArenaInv s ar)
+    (h : IssueStep k ar via region dst s (.ok (s', ar'))) :
+    ∀ e ∈ ar.issued, e ∈ ar'.issued ∧ s'.A[e.2]? = s.A[e.2]? ∧
+      (s.Active e.2 → ∀ l ∈ region, l ∉ e.1) := by
+  obtain ⟨⟨-, -, -, h4, -⟩, e⟩ := issue_ok_iff.1 h
+  have e1 := congrArg Prod.fst e; have e2 := congrArg Prod.snd e
+  simp only [issueEff] at e1 e2; subst e1 e2
+  intro e he
+  obtain ⟨y, hy, -⟩ := hai.2.2.2.2 e he
+  exact ⟨List.mem_cons_of_mem _ he, addAuth_lt (lt_of_getElem? hy),
+    arena_issue_disjoint_of_authority hwf hai h4 e he⟩
+
+/-- Une autorité émise encore active rend `reset` refusé (MM-03.3 §6). Aucune hypothèse sur
+`K`. -/
+theorem arena_reset_rejects_live_issued {k : K} {s : S3} {ar : Arena} {e : List Nat × Nat}
+    (he : e ∈ ar.issued) (ha : s.Active e.2) : ResetStep k ar s .reject :=
+  .reject fun h => h.1 e he ha
+
+/-- Obligation de `Invalidates` pour l'arène (MM-03.3.8, arbitrage 3) : `reset` invalide
+l'ancre de l'arène et toute autorité qui en dérive. -/
+def ArenaResetContract (k : K) (s : S3) (ar : Arena) : Prop :=
+  ∀ x, (x = ar.anchor ∨ ar.anchor ∈ s.ancs x) → k.Invalidates ar.anchor x
+
+/-- `arena_reset_rejects_live_dependents` (MM-03.3 §6, I3, §10), conditionné à l'obligation
+`ArenaResetContract` de `Invalidates` (MM-03.3.8) : si une valeur encore utilisable est ancrée
+sur l'arène ou sur une autorité qui en dérive, `reset` est refusé. -/
+theorem arena_reset_rejects_live_dependents_underInv {k : K} {s : S3} {ar : Arena}
+    (hk : ArenaResetContract k s ar) {q x : Nat} (hq : s.Usable q) (hx : x ∈ s.D q)
+    (hxa : x = ar.anchor ∨ ar.anchor ∈ s.ancs x) : ResetStep k ar s .reject := by
+  refine .reject fun h => h.2 q ?_ hq x hx (hk x hxa)
+  obtain ⟨f, hf, -⟩ := hq; simp [placeFrame] at hf
+  obtain ⟨pl, hpl, -⟩ := hf; exact List.mem_range.2 (lt_of_getElem? hpl)
+
+/-- `reset` préserve l'invariant de l'arène (MM-03.3 §6 : préservation des invariants de
+disjonction) ; l'état `S3` est inchangé. -/
+theorem arena_reset_preserves {k : K} {s s' : S3} {ar ar' : Arena} (hai : ArenaInv s ar)
+    (h : ResetStep k ar s (.ok (s', ar'))) : s' = s ∧ ArenaInv s' ar' := by
+  obtain ⟨-, e⟩ := reset_ok_iff.1 h
+  have e1 := congrArg Prod.fst e; have e2 := congrArg Prod.snd e
+  simp only [resetEff] at e1 e2; subst e1 e2
+  exact ⟨rfl, fun l hl => hl, fun _ he => (by cases he), List.Pairwise.nil,
+    fun _ he => (by cases he), fun _ he => (by cases he)⟩
+
 end Ern.MM03
