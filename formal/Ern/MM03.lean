@@ -2481,6 +2481,466 @@ theorem dependent_cannot_escape_frame {s s' : S3} {f : Nat} {F₀ : Frames} (hwf
   obtain ⟨y, hy, ya⟩ := (exit_preserves hwf hinv h).2.2.2.1 q hq x hx
   exact ⟨y, hy, ya, exitFrame_releases_all hwf hinv hF h x y hy ya⟩
 
+/-! ## Release of authorities whose holder died (A4, A5, A6) -/
+
+/-- Releases every authority whose holder is no longer live (A4, A5): its value has ended or its
+storage is dead. -/
+def cleanup (s : S3) : S3 :=
+  { s with A := s.A.map fun y => if HolderLive s y.holder then y else { y with active := false } }
+
+/-- The authorities of `s₁` are those of `s`, some of them released. -/
+def OnlyReleases (s s₁ : S3) : Prop :=
+  s₁.A.length = s.A.length ∧ ∀ (j : Nat) (z : Authority), s₁.A[j]? = some z →
+    ∃ y, s.A[j]? = some y ∧ z.mode = y.mode ∧ z.origin = y.origin ∧ z.footprint = y.footprint ∧
+      z.holder = y.holder ∧ (z.active = true → y.active = true)
+
+theorem OnlyReleases.org {s s₁ : S3} (h : OnlyReleases s s₁) : s₁.org = s.org := by
+  funext j; simp only [S3.org]
+  cases hz : s₁.A[j]? with
+  | none =>
+    have : s.A.length ≤ j := by have := List.getElem?_eq_none_iff.1 hz; rw [h.1] at this; exact this
+    rw [List.getElem?_eq_none_iff.2 this]
+  | some z => obtain ⟨y, hy, -, ho, -⟩ := h.2 j z hz; simp [hy, ho]
+
+theorem cleanup_get (s : S3) (j : Nat) : (cleanup s).A[j]? =
+    (s.A[j]?).map fun y => if HolderLive s y.holder then y else { y with active := false } := by
+  simp [cleanup]
+
+theorem cleanup_releases {s : S3} : OnlyReleases s (cleanup s) := by
+  refine ⟨by simp [cleanup], fun j z hz => ?_⟩
+  rw [cleanup_get] at hz
+  cases hy : s.A[j]? with
+  | none => rw [hy] at hz; cases hz
+  | some y =>
+    rw [hy] at hz; simp only [Option.map_some, Option.some.injEq] at hz; subst hz
+    refine ⟨y, rfl, ?_⟩; split <;> simp_all
+
+theorem OnlyReleases.trans {s s₁ s₂ : S3} (h₁ : OnlyReleases s s₁) (h₂ : OnlyReleases s₁ s₂) :
+    OnlyReleases s s₂ := by
+  refine ⟨h₂.1.trans h₁.1, fun j z hz => ?_⟩
+  obtain ⟨y₁, hy₁, m₁, o₁, f₁, h₁', a₁⟩ := h₂.2 j z hz
+  obtain ⟨y, hy, m, o, f, hh, a⟩ := h₁.2 j y₁ hy₁
+  exact ⟨y, hy, m₁.trans m, o₁.trans o, f₁.trans f, h₁'.trans hh, fun h => a (a₁ h)⟩
+
+/-- Releasing authorities, marking places dead, and then releasing those whose holder died
+preserves `WF3` and `Inv3`, provided the dead marks respect parts and no usable place keeps an
+anchor that is released. Shared by `endUse` and `free` (A6). -/
+theorem releases_preserve {s s₁ : S3} (hwf : WF3 s) (hinv : Inv3 s) (hr : OnlyReleases s s₁)
+    (hP : s₁.P = s.P) (hF : s₁.F = s.F) (hn : s₁.nF = s.nF)
+    (hparts : ∀ (q : Nat) (pl : Place) (r : Nat), s.P[q]? = some pl → pl.parent = some r →
+      s₁.dead r = s₁.dead q)
+    (hI3 : ∀ q, s₁.Usable q → ∀ x ∈ s₁.D q, (cleanup s₁).Active x) :
+    WF3 (cleanup s₁) ∧ Inv3 (cleanup s₁) := by
+  have hc := hr.trans cleanup_releases
+  obtain ⟨i1, i2, -, -⟩ := hinv
+  have horg := hc.org
+  have hancs : (cleanup s₁).ancs = s.ancs := by funext j; simp only [S3.ancs, horg]
+  have cP : (cleanup s₁).P = s.P := hP
+  have cF : (cleanup s₁).F = s.F := hF
+  have live₁ : ∀ hh, HolderLive (cleanup s₁) hh ↔ HolderLive s₁ hh := HolderLive.congr rfl rfl rfl
+  refine ⟨⟨fun b y a hb ho => ?_, fun a x hx l hl => ?_, cF ▸ hwf.ne, cF ▸ hwf.nodup,
+    by rw [cF, show (cleanup s₁).nF = s.nF from hn]; exact hwf.frames,
+    by rw [cP, show (cleanup s₁).nF = s.nF from hn]; exact hwf.ownerFrame,
+    by rw [cP]; exact hwf.ownerPlace, fun q pl r hq hp => ?_, fun a y hy ya => ?_⟩,
+    fun a b x y p hab ha hb xa ya xp yp hnab hnba => ?_, fun b y a hb ho => ?_,
+    fun q hq x hx => hI3 q ((S3.Usable.congr (s := s₁) (s' := cleanup s₁) rfl rfl rfl).1 hq) x hx,
+    i4_always _⟩
+  · obtain ⟨y₀, hy₀, -, e, -⟩ := hc.2 b y hb; exact hwf.origin b y₀ a hy₀ (e ▸ ho)
+  · obtain ⟨x₀, hx₀, -, -, e, -⟩ := hc.2 a x hx; rw [cP]; exact hwf.fp a x₀ hx₀ l (e ▸ hl)
+  · rw [cP] at hq
+    obtain ⟨pr, hpr, hlt, ho, -⟩ := hwf.parts q pl r hq hp
+    exact ⟨pr, by rw [cP]; exact hpr, hlt, ho, hparts q pl r hq hp⟩
+  · rw [cleanup_get] at hy
+    cases hz : s₁.A[a]? with
+    | none => rw [hz] at hy; cases hy
+    | some z =>
+      rw [hz] at hy; simp only [Option.map_some, Option.some.injEq] at hy
+      split at hy
+      · subst hy; exact (live₁ _).2 ‹_›
+      · subst hy; simp at ya
+  · obtain ⟨x₀, hx₀, m₁, -, f₁, -, a₁⟩ := hc.2 a x ha
+    obtain ⟨y₀, hy₀, m₂, -, f₂, -, a₂⟩ := hc.2 b y hb
+    rw [hancs] at hnab hnba; rw [m₁, m₂]
+    exact i1 a b x₀ y₀ p hab hx₀ hy₀ (a₁ xa) (a₂ ya) (f₁ ▸ xp) (f₂ ▸ yp) hnab hnba
+  · obtain ⟨y₀, hy₀, m₀, e, f₀, -⟩ := hc.2 b y hb
+    obtain ⟨x₁, hx₁, hh⟩ := i2 b y₀ a hy₀ (e ▸ ho)
+    have hlen : a < (cleanup s₁).A.length := by rw [hc.1]; exact lt_of_getElem? hx₁
+    obtain ⟨x', hx'⟩ : ∃ x', (cleanup s₁).A[a]? = some x' :=
+      ⟨_, (List.getElem?_eq_some_iff.2 ⟨hlen, rfl⟩)⟩
+    obtain ⟨x₂, hx₂, mx, -, fx, -⟩ := hc.2 a x' hx'
+    rw [hx₁] at hx₂; cases hx₂
+    exact ⟨x', hx', fun p hp => by rw [m₀, mx, fx]; exact hh p (f₀ ▸ hp)⟩
+
+/-! ## `writeShared` (A9) -/
+
+/-- Preconditions of `writeShared` (A9), the only mutation permitted from an `Observe`
+authority: `a` exercisable (A2); on each leaf, a present effective mode of `a`, a
+`SharedMutable` leaf (MM-03.3.8), valid dependencies. -/
+def WriteSharedPre (k : K) (s : S3) (a : Nat) (ls : List Nat) : Prop :=
+  s.Exercisable a ∧ ∀ p ∈ ls, effective s a p ≠ none ∧ k.SharedMutable p ∧ DepsValid s p
+
+instance (k : K) [DecidablePred k.SharedMutable] (s : S3) (a : Nat) (ls : List Nat) :
+    Decidable (WriteSharedPre k s a ls) := by
+  unfold WriteSharedPre; infer_instance
+
+/-- `writeShared` as a relation (A9): written leaves become `Init`; no authority changes. -/
+def WriteSharedStep (k : K) (a : Nat) (ls : List Nat) (s : S3) : Outcome3 S3 → Prop :=
+  Guarded (WriteSharedPre k s a ls) (write3Eff s ls)
+
+/-- `writeShared_only_shared` (A9): a shared write only touches `SharedMutable` leaves. -/
+theorem writeShared_only_shared {k : K} {s s' : S3} {a : Nat} {ls : List Nat}
+    (h : WriteSharedStep k a ls s (.ok s')) : ∀ p ∈ ls, k.SharedMutable p :=
+  fun p hp => ((Guarded.ok_iff.1 h).1.2 p hp).2.1
+
+/-- `writeShared` preserves `WF3` and `Inv3` (A9: it does not weaken I1). -/
+theorem writeShared_preserves {k : K} {s s' : S3} {a : Nat} {ls : List Nat} (hwf : WF3 s)
+    (hinv : Inv3 s) (h : WriteSharedStep k a ls s (.ok s')) : WF3 s' ∧ Inv3 s' := by
+  obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
+  exact ⟨hwf.of_eq rfl rfl rfl rfl rfl, hinv.1, hinv.2.1, fun q hq x hx =>
+    hinv.2.2.1 q ((S3.Usable.congr (s := s) (s' := write3Eff s ls) rfl rfl rfl).1 hq) x hx,
+    i4_always _⟩
+
+/-! ## Dynamic pinning (A8) -/
+
+/-- Preconditions of `pin p` (A8): `p` usable, exercisable `Modify` on `p` (A2). -/
+def PinPre (s : S3) (p : Nat) : Prop := s.Usable p ∧ HasRight s .modify p
+
+instance (s : S3) (p : Nat) : Decidable (PinPre s p) := by unfold PinPre; infer_instance
+
+/-- Effect of `pin p` / `unpin p` (A8): the leaves of `p` become pinned or unpinned. -/
+def pinEff (s : S3) (p : Nat) (b : Bool) : S3 :=
+  { s with pin := fun l => if l ∈ footprint s.P p then b else s.pin l }
+
+/-- `pin` as a relation (A8). -/
+def PinStep (p : Nat) (s : S3) : Outcome3 S3 → Prop := Guarded (PinPre s p) (pinEff s p true)
+
+/-- Preconditions of `unpin p` (A8): `p` usable, and the external use of every leaf of `p` is
+done (`ExternalDone`, MM-03.3.8). -/
+def UnpinPre (k : K) (s : S3) (p : Nat) : Prop :=
+  s.Usable p ∧ ∀ l ∈ footprint s.P p, k.ExternalDone l
+
+instance (k : K) [DecidablePred k.ExternalDone] (s : S3) (p : Nat) :
+    Decidable (UnpinPre k s p) := by
+  unfold UnpinPre; infer_instance
+
+/-- `unpin` as a relation (A8). -/
+def UnpinStep (k : K) (p : Nat) (s : S3) : Outcome3 S3 → Prop :=
+  Guarded (UnpinPre k s p) (pinEff s p false)
+
+/-- Pinning changes neither authorities nor places: `WF3` and `Inv3` are preserved (A8). -/
+theorem pinEff_preserves {s : S3} {p : Nat} {b : Bool} (hwf : WF3 s) (hinv : Inv3 s) :
+    WF3 (pinEff s p b) ∧ Inv3 (pinEff s p b) :=
+  ⟨hwf.of_eq rfl rfl rfl rfl rfl, hinv.1, hinv.2.1, fun q hq x hx =>
+    hinv.2.2.1 q ((S3.Usable.congr (s := s) (s' := pinEff s p b) rfl rfl rfl).1 hq) x hx,
+    i4_always _⟩
+
+/-! ## `endUse` (A6) -/
+
+/-- The value at `p` ends (A6), before releasing authorities whose holder died: the leaves of
+`p` become `Uninit`; the authorities held by `p` or one of its parts are released; the anchors
+of `p` and its parts are removed; the places owned by `p` or one of its parts are logically
+dead. -/
+def endUseS (s : S3) (p : Nat) : S3 :=
+  { s with
+    I := fun l => if l ∈ footprint s.P p then .uninit else s.I l
+    D := fun q => if partOf s.P q p then [] else s.D q
+    dead := fun q => s.dead q || match s.P[q]? with
+      | some pl => decide (heldIn s.P p pl.owner)
+      | none => false
+    A := s.A.map fun y => if heldIn s.P p y.holder then { y with active := false } else y }
+
+/-- Effect of `endUse p` (A6): `endUseS`, then the authorities whose holder died are released.
+No storage is released: `freed` is unchanged. -/
+def endUseEff (s : S3) (p : Nat) : S3 := cleanup (endUseS s p)
+
+/-- Leaves that end with the value at `p` (A6): those of `p`, and those of places that stop
+being usable. -/
+def EndingLeaf (s : S3) (p l : Nat) : Prop :=
+  l ∈ footprint s.P p ∨ (s.Usable l ∧ ¬ (endUseS s p).Usable l)
+
+instance (s : S3) (p l : Nat) : Decidable (EndingLeaf s p l) := by
+  unfold EndingLeaf; infer_instance
+
+/-- Root of the value at `p` (A6, pass-1 arbitrage 2): an authority without origin covering a
+leaf of `p`. -/
+def IsRootOf (s : S3) (p : Nat) (y : Authority) : Prop :=
+  y.origin = none ∧ ∃ l ∈ footprint s.P p, l ∈ y.footprint
+
+instance (s : S3) (p : Nat) (y : Authority) : Decidable (IsRootOf s p y) := by
+  unfold IsRootOf; infer_instance
+
+/-- Authority `j` does not block the end of the value at `p` (A6): if it is an active derived
+authority on an ending leaf, it is held within `p` or its holder dies. -/
+def EndUseAccessOK (s : S3) (p j : Nat) : Prop :=
+  OptP (s.A[j]?) (fun y => y.active = true → y.origin ≠ none →
+    (∃ l ∈ y.footprint, EndingLeaf s p l) →
+      heldIn s.P p y.holder ∨ ¬ HolderLive (endUseS s p) y.holder) True
+
+instance (s : S3) (p j : Nat) : Decidable (EndUseAccessOK s p j) := by
+  unfold EndUseAccessOK OptP; split <;> infer_instance
+
+/-- Anchor `x` survives the end of the value at `p` (A6): not held within `p`, not the root of
+`p`, with a holder that stays live. -/
+def EndUseAnchorOK (s : S3) (p x : Nat) : Prop :=
+  OptP (s.A[x]?) (fun y => ¬ heldIn s.P p y.holder ∧ ¬ IsRootOf s p y ∧
+    HolderLive (endUseS s p) y.holder) True
+
+instance (s : S3) (p x : Nat) : Decidable (EndUseAnchorOK s p x) := by
+  unfold EndUseAnchorOK OptP; split <;> infer_instance
+
+/-- Preconditions of `endUse p` (A6), in order: `p` usable; exercisable `Modify` on `p` (A2);
+no active derived authority on an ending leaf held elsewhere than in `p` and staying live; no
+usable place anchored on an authority held by `p`, on its root, or held by a holder that dies;
+no ending leaf pinned (dynamically, A8, or statically, `Pinned`) without `ExternalDone`. The
+ending leaves include those of the owned places, which die (A6). -/
+def EndUsePre (k : K) (s : S3) (p : Nat) : Prop :=
+  s.Usable p ∧ HasRight s .modify p ∧
+  (∀ j ∈ List.range s.A.length, EndUseAccessOK s p j) ∧
+  (∀ q ∈ List.range s.P.length, (endUseS s p).Usable q → ∀ x ∈ (endUseS s p).D q,
+    EndUseAnchorOK s p x) ∧
+  (∀ l ∈ List.range s.P.length, EndingLeaf s p l → (s.pin l = true ∨ k.Pinned l) →
+    k.ExternalDone l)
+
+instance (k : K) [DecidablePred k.Pinned] [DecidablePred k.ExternalDone] (s : S3) (p : Nat) :
+    Decidable (EndUsePre k s p) := by
+  unfold EndUsePre; infer_instance
+
+/-- `endUse` as a relation (A6). -/
+def EndUseStep (k : K) (p : Nat) (s : S3) : Outcome3 S3 → Prop :=
+  Guarded (EndUsePre k s p) (endUseEff s p)
+
+theorem endUseS_releases (s : S3) (p : Nat) : OnlyReleases s (endUseS s p) := by
+  refine ⟨by simp [endUseS], fun j z hz => ?_⟩
+  simp only [endUseS, List.getElem?_map] at hz
+  cases hy : s.A[j]? with
+  | none => rw [hy] at hz; cases hz
+  | some y =>
+    rw [hy] at hz; simp only [Option.map_some, Option.some.injEq] at hz; subst hz
+    refine ⟨y, rfl, ?_⟩; split <;> simp_all
+
+theorem endUseS_get (s : S3) (p j : Nat) : (endUseS s p).A[j]? =
+    (s.A[j]?).map fun y => if heldIn s.P p y.holder then { y with active := false } else y := by
+  simp [endUseS]
+
+/-- `endUse` preserves `WF3` and `Inv3` (A6). -/
+theorem endUse_preserves {k : K} {s s' : S3} {p : Nat} (hwf : WF3 s) (hinv : Inv3 s)
+    (h : EndUseStep k p s (.ok s')) : WF3 s' ∧ Inv3 s' := by
+  obtain ⟨⟨-, -, -, hanc, -⟩, rfl⟩ := Guarded.ok_iff.1 h
+  refine releases_preserve hwf hinv (endUseS_releases s p) rfl rfl rfl ?_ ?_
+  · intro q pl r hq hp
+    obtain ⟨pr, hpr, -, ho, hd⟩ := hwf.parts q pl r hq hp
+    simp only [endUseS, hq, hpr, ho, hd]
+  · intro q hq x hx
+    have hq₀ : s.Usable q := S3.Usable.mono (s := s) (s' := endUseS s p) rfl (fun _ h => h)
+      (fun q h => by simp only [endUseS, Bool.or_eq_false_iff] at h; exact h.1) hq
+    have hx₀ : x ∈ s.D q := by
+      simp only [endUseS] at hx; split at hx
+      · simp at hx
+      · exact hx
+    obtain ⟨y, hy, ya⟩ := hinv.2.2.1 q hq₀ x hx₀
+    have hc := hanc q (List.mem_range.2 hq₀.lt) hq x hx
+    unfold EndUseAnchorOK OptP at hc
+    rw [hy] at hc; obtain ⟨hnh, -, hl⟩ := hc
+    refine ⟨_, by rw [cleanup_get, endUseS_get, hy]; rfl, ?_⟩
+    simp only [hnh, ↓reduceIte]
+    have : HolderLive (endUseS s p) y.holder := hl
+    simp only [this, ↓reduceIte, ya]
+
+/-- `endUse_no_dealloc_event` (A6): `endUse` releases no storage and kills no owned place
+physically: `freed` is unchanged. -/
+theorem endUse_no_dealloc_event {k : K} {s s' : S3} {p : Nat} (h : EndUseStep k p s (.ok s')) :
+    s'.freed = s.freed := by
+  obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h; rfl
+
+/-- `endUse_preserves_dependents` (A6): no usable dependent loses an anchor; a usable place other
+than a part of `p` keeps its anchors, all valid. -/
+theorem endUse_preserves_dependents {k : K} {s s' : S3} {p : Nat} (hwf : WF3 s) (hinv : Inv3 s)
+    (h : EndUseStep k p s (.ok s')) :
+    ∀ q, s'.Usable q → ¬ partOf s.P q p → s'.D q = s.D q ∧ ∀ x ∈ s'.D q, s'.Active x := by
+  have hp := endUse_preserves hwf hinv h
+  obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
+  intro q hq hnp
+  exact ⟨by simp [endUseEff, cleanup, endUseS, hnp], hp.2.2.2.1 q hq⟩
+
+/-! ## `free` (A6) -/
+
+/-- The holder is a place (A4, A5). -/
+def Holder.isPlace : Holder → Bool
+  | .place _ => true
+  | .frame _ => false
+
+/-- The place `p` is an owned root (A6, owned place): no parent, owned by a place. -/
+def OwnedRoot (s : S3) (p : Nat) : Prop :=
+  OptP (s.P[p]?) (fun pl => pl.parent = none ∧ pl.owner.isPlace = true) False
+
+instance (s : S3) (p : Nat) : Decidable (OwnedRoot s p) := by
+  unfold OwnedRoot; infer_instance
+
+/-- Storage at `p` released (A6), before releasing authorities whose holder died: `p` and its
+parts are dead, `p` is freed, every authority covering a leaf of `p` or held within `p` is
+released, the anchors of `p` and its parts are removed. -/
+def freeS (s : S3) (p : Nat) : S3 :=
+  { s with
+    D := fun q => if partOf s.P q p then [] else s.D q
+    dead := fun q => s.dead q || decide (partOf s.P q p)
+    freed := fun q => s.freed q || decide (q = p)
+    A := s.A.map fun y => if (∃ l ∈ y.footprint, l ∈ footprint s.P p) ∨ heldIn s.P p y.holder then
+      { y with active := false } else y }
+
+/-- Effect of `free p auth` (A6): `freeS`, then the authorities whose holder died are
+released. -/
+def freeEff (s : S3) (p : Nat) : S3 := cleanup (freeS s p)
+
+/-- Authority `j` does not block the release of `p` (A6): if it is an active derived authority on
+a leaf of `p`, it is held within `p` or its holder dies. -/
+def FreeAccessOK (s : S3) (p j : Nat) : Prop :=
+  OptP (s.A[j]?) (fun y => y.active = true → y.origin ≠ none →
+    (∃ l ∈ y.footprint, l ∈ footprint s.P p) →
+      heldIn s.P p y.holder ∨ ¬ HolderLive (freeS s p) y.holder) True
+
+instance (s : S3) (p j : Nat) : Decidable (FreeAccessOK s p j) := by
+  unfold FreeAccessOK OptP; split <;> infer_instance
+
+/-- Anchor `x` survives the release of `p` (A6): it covers no leaf of `p`, is not held within
+`p`, and its holder stays live. -/
+def FreeAnchorOK (s : S3) (p x : Nat) : Prop :=
+  OptP (s.A[x]?) (fun y => ¬ (∃ l ∈ y.footprint, l ∈ footprint s.P p) ∧ ¬ heldIn s.P p y.holder ∧
+    HolderLive (freeS s p) y.holder) True
+
+instance (s : S3) (p x : Nat) : Decidable (FreeAnchorOK s p x) := by
+  unfold FreeAnchorOK OptP; split <;> infer_instance
+
+/-- Preconditions of `free p auth` (A6), in order: `p` deallocable by the allocator contract
+(`Deallocable`) and `auth` a compatible deallocation authority (`FreeCompat`, MM-03.3.8); `p` a
+usable owned root; exercisable `Modify` on `p` (A2); no active derived authority on a leaf of
+`p` held elsewhere and staying live; no usable place anchored on an authority covering `p`, held
+within `p`, or whose holder dies; no pinned leaf of `p` without `ExternalDone` (A8). -/
+def FreePre (k : K) (s : S3) (p auth : Nat) : Prop :=
+  k.Deallocable p ∧ k.FreeCompat p auth ∧ s.Usable p ∧ OwnedRoot s p ∧ HasRight s .modify p ∧
+  (∀ j ∈ List.range s.A.length, FreeAccessOK s p j) ∧
+  (∀ q ∈ List.range s.P.length, (freeS s p).Usable q → ∀ x ∈ (freeS s p).D q,
+    FreeAnchorOK s p x) ∧
+  (∀ l ∈ footprint s.P p, (s.pin l = true ∨ k.Pinned l) → k.ExternalDone l)
+
+instance (k : K) [DecidablePred k.Pinned] [DecidablePred k.ExternalDone]
+    [DecidablePred k.Deallocable] [∀ p a, Decidable (k.FreeCompat p a)] (s : S3) (p auth : Nat) :
+    Decidable (FreePre k s p auth) := by
+  unfold FreePre; infer_instance
+
+/-- `free` as a relation (A6). -/
+def FreeStep (k : K) (p auth : Nat) (s : S3) : Outcome3 S3 → Prop :=
+  Guarded (FreePre k s p auth) (freeEff s p)
+
+theorem freeS_get (s : S3) (p j : Nat) : (freeS s p).A[j]? = (s.A[j]?).map fun y =>
+    if (∃ l ∈ y.footprint, l ∈ footprint s.P p) ∨ heldIn s.P p y.holder then
+      { y with active := false } else y := by
+  simp [freeS]
+
+theorem freeS_releases (s : S3) (p : Nat) : OnlyReleases s (freeS s p) := by
+  refine ⟨by simp [freeS], fun j z hz => ?_⟩
+  rw [freeS_get] at hz
+  cases hy : s.A[j]? with
+  | none => rw [hy] at hz; cases hz
+  | some y =>
+    rw [hy] at hz; simp only [Option.map_some, Option.some.injEq] at hz; subst hz
+    refine ⟨y, rfl, ?_⟩; split <;> simp_all
+
+theorem partOf_parent {P : List Place} {q r p : Nat} (hp : parentOf P q = some r)
+    (hlt : r < q) (hr : r < P.length) (hroot : parentOf P p = none) :
+    partOf P q p ↔ partOf P r p := by
+  have hq : q < P.length := by
+    simp only [parentOf] at hp
+    cases h : P[q]? with
+    | none => rw [h] at hp; cases hp
+    | some _ => exact lt_of_getElem? h
+  simp only [partOf, hq, hr, true_and]
+  rw [chain_cons hp hlt]
+  constructor
+  · rintro (rfl | h)
+    · rw [hroot] at hp; cases hp
+    · rcases List.mem_cons.1 h with rfl | h
+      · exact .inl rfl
+      · exact .inr h
+  · rintro (rfl | h)
+    · exact .inr (List.mem_cons_self ..)
+    · exact .inr (List.mem_cons_of_mem _ h)
+
+/-- `free` preserves `WF3` and `Inv3` (A6). -/
+theorem free_preserves {k : K} {s s' : S3} {p auth : Nat} (hwf : WF3 s) (hinv : Inv3 s)
+    (h : FreeStep k p auth s (.ok s')) : WF3 s' ∧ Inv3 s' := by
+  obtain ⟨⟨-, -, -, hroot, -, -, hanc, -⟩, rfl⟩ := Guarded.ok_iff.1 h
+  have hpr : parentOf s.P p = none := by
+    unfold OwnedRoot OptP at hroot; split at hroot
+    · rename_i pl hpl; simp [parentOf, hpl, hroot.1]
+    · exact hroot.elim
+  refine releases_preserve hwf hinv (freeS_releases s p) rfl rfl rfl ?_ ?_
+  · intro q pl r hq hp
+    obtain ⟨pr, hpr', hlt, -, hd⟩ := hwf.parts q pl r hq hp
+    have hpo : parentOf s.P q = some r := by simp [parentOf, hq, hp]
+    simp only [freeS, hd, partOf_parent hpo hlt (lt_of_getElem? hpr') hpr]
+  · intro q hq x hx
+    have hq₀ : s.Usable q := S3.Usable.mono (s := s) (s' := freeS s p) rfl (fun _ h => h)
+      (fun q h => by simp only [freeS, Bool.or_eq_false_iff] at h; exact h.1) hq
+    have hx₀ : x ∈ s.D q := by
+      simp only [freeS] at hx; split at hx
+      · simp at hx
+      · exact hx
+    obtain ⟨y, hy, ya⟩ := hinv.2.2.1 q hq₀ x hx₀
+    have hc := hanc q (List.mem_range.2 hq₀.lt) hq x hx
+    unfold FreeAnchorOK OptP at hc
+    rw [hy] at hc; obtain ⟨hcov, hnh, hl⟩ := hc
+    refine ⟨_, by rw [cleanup_get, freeS_get, hy]; rfl, ?_⟩
+    have hn : ¬ ((∃ l ∈ y.footprint, l ∈ footprint s.P p) ∨ heldIn s.P p y.holder) :=
+      fun h => h.elim hcov hnh
+    simp only [hn, ↓reduceIte]
+    have : HolderLive (freeS s p) y.holder := hl
+    simp only [this, ↓reduceIte, ya]
+
+/-- `free_no_dangling` (A6): after `free p`, no active authority covers a leaf of `p`, and every
+active authority has a live holder: no usable access reaches the released storage. -/
+theorem free_no_dangling {k : K} {s s' : S3} {p auth : Nat} (hwf : WF3 s) (hinv : Inv3 s)
+    (h : FreeStep k p auth s (.ok s')) :
+    ∀ (j : Nat) (y : Authority), s'.A[j]? = some y → y.active = true →
+      (∀ l ∈ y.footprint, l ∉ footprint s.P p) ∧ HolderLive s' y.holder := by
+  have hp := free_preserves hwf hinv h
+  obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
+  intro j y hy ya
+  refine ⟨fun l hl hlp => ?_, hp.1.poss j y hy ya⟩
+  rw [freeEff, cleanup_get, freeS_get] at hy
+  cases h₀ : s.A[j]? with
+  | none => rw [h₀] at hy; cases hy
+  | some y₀ =>
+    rw [h₀] at hy; simp only [Option.map_some, Option.some.injEq] at hy
+    by_cases hc : (∃ l ∈ y₀.footprint, l ∈ footprint s.P p) ∨ heldIn s.P p y₀.holder
+    · simp only [hc, ↓reduceIte] at hy; subst hy; split at ya <;> simp at ya
+    · simp only [hc, ↓reduceIte] at hy
+      split at hy
+      · subst hy; exact hc (.inl ⟨l, hl, hlp⟩)
+      · subst hy; simp at ya
+
+/-- `free` is the only operation that releases storage (A6): `freed` marks exactly `p` in
+addition. -/
+theorem free_marks_freed {k : K} {s s' : S3} {p auth : Nat} (h : FreeStep k p auth s (.ok s')) :
+    ∀ q, s'.freed q = (s.freed q || decide (q = p)) := by
+  obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h; intro q; rfl
+
+/-! ## Exercise requires holding (A2) -/
+
+/-- `exercise_requires_hold` (A2): an exercisable authority is active and held by the current
+frame, or held by a usable place on which the current frame already has an exercisable
+authority permitting its mode. -/
+theorem exercise_requires_hold {s : S3} {a : Nat} (h : s.Exercisable a) :
+    ∃ y, s.A[a]? = some y ∧ y.active = true ∧
+      (y.holder = .frame s.top ∨ ∃ p, y.holder = .place p ∧ s.Usable p ∧ HasRight s y.mode p) := by
+  cases h with
+  | base hy ha hf => exact ⟨_, hy, ha, .inl hf⟩
+  | @held _ p b y hy ha hp hu hb hc =>
+    have hlt : b < s.A.length := by
+      cases hb with
+      | base hy' _ _ => exact lt_of_getElem? hy'
+      | held hy' _ _ _ _ _ => exact lt_of_getElem? hy'
+    exact ⟨y, hy, ha, .inr ⟨p, hp, hu, b, List.mem_range.2 hlt, hb, hc⟩⟩
+
 /-! ## Reachability (MM-03.3 §10) -/
 
 /-- States reached from the initial state (one frame, no place) by `ok` transitions of the
@@ -2502,6 +2962,13 @@ inductive Reachable (k : K) : S3 → Prop where
       Reachable k s → Read3Step a ls s (.ok s') → Reachable k s'
   | write {s s' : S3} {a : Nat} {ls : List Nat} :
       Reachable k s → Write3Step a ls s (.ok s') → Reachable k s'
+  | writeShared {s s' : S3} {a : Nat} {ls : List Nat} :
+      Reachable k s → WriteSharedStep k a ls s (.ok s') → Reachable k s'
+  | pin {s s' : S3} {p : Nat} : Reachable k s → PinStep p s (.ok s') → Reachable k s'
+  | unpin {s s' : S3} {p : Nat} : Reachable k s → UnpinStep k p s (.ok s') → Reachable k s'
+  | endUse {s s' : S3} {p : Nat} : Reachable k s → EndUseStep k p s (.ok s') → Reachable k s'
+  | free {s s' : S3} {p auth : Nat} :
+      Reachable k s → FreeStep k p auth s (.ok s') → Reachable k s'
 
 theorem init_wf : WF3 S3.init ∧ Inv3 S3.init := by
   refine ⟨⟨fun _ _ _ h => by simp [S3.init] at h, fun _ _ h => by simp [S3.init] at h,
@@ -2526,5 +2993,10 @@ theorem reachable_access_invariant_underDD {k : K} (hdd : DDSound k) {s : S3}
   | exit _ hs ih => exact exit_preserves ih.1 ih.2 hs
   | read _ hs ih => rw [read3_preserves hs]; exact ih
   | write _ hs ih => exact write3_preserves ih.1 ih.2 hs
+  | writeShared _ hs ih => exact writeShared_preserves ih.1 ih.2 hs
+  | pin _ hs ih => rw [(Guarded.ok_iff.1 hs).2]; exact pinEff_preserves ih.1 ih.2
+  | unpin _ hs ih => rw [(Guarded.ok_iff.1 hs).2]; exact pinEff_preserves ih.1 ih.2
+  | endUse _ hs ih => exact endUse_preserves ih.1 ih.2 hs
+  | free _ hs ih => exact free_preserves ih.1 ih.2 hs
 
 end Ern.MM03
