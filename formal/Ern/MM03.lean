@@ -5,7 +5,15 @@ import Ern.MM02
 
 Couche abstraite de `formal/DESIGN.md` (« Abstract model ») : la mémoire est un arbre fini
 d'emplacements. Le raffinement vers MM-02 (MM-03.3 §9) est le jalon 2 et n'est pas traité ici ;
-le module importe `Ern.MM02` sans l'utiliser ni le modifier.
+le module importe `Ern.MM02` sans l'utiliser ni le modifier. Fragment couvert : exécution
+séquentielle des opérations du noyau (MM-03.3 §3–5) et de l'arène (§6) ; ni concurrence, ni
+handles, ni nettoyage différé.
+
+Chaque opération est une relation `… → S3 → Outcome3 S3` de forme `Guarded` : `ok` avec l'effet
+si sa précondition tient, `reject` sinon (MM-03.3 §3, arbitrage 6). `Inv3` seul n'est pas
+inductif (`inv3_not_inductive`) ; les préservations sont énoncées sous l'invariant structurel
+`WF3`, établi pour tout état atteint (`reachable_access_invariant_underDD`). Les théorèmes
+conditionnés à une obligation de `K` portent le suffixe `_underDD` ou `_underInv` (arbitrage 5).
 -/
 
 namespace Ern.MM03
@@ -2235,5 +2243,32 @@ rejet). Appelant : 0 destination. Appelé : 1 local, 2 valeur ancrée sur l'auto
 def c17a : S3 := write3Eff (enterEff (enterEff S3.init [(none, 0)]) [(none, 0), (none, 0)]) [2]
 example : DependStep 2 1 c17a (.ok (dependEff c17a 2 1)) := .ok (by decide)
 example : TransferStep K0 2 0 [] (dependEff c17a 2 1) .reject := .reject (by decide)
+
+/-! ## Constats cités par le rapport -/
+
+/-- Contrats déclarant disjointes toutes les régions, sans l'obligation `DDSound`. -/
+def KT : K := ⟨fun _ _ => True, fun _ => False, fun _ => False, fun _ _ => False⟩
+instance : ∀ r r', Decidable (KT.DeclaredDisjoint r r') := fun _ _ => instDecidableTrue
+
+/-- Sans l'obligation `DDSound` (MM-03.3.8), `split` (MM-03.3 §3, O2) accepte deux régions qui
+se chevauchent et viole I1 : l'hypothèse de `split_preserves_underDD` est nécessaire. -/
+theorem split_unsound_without_DD :
+    SplitStep KT 0 [[1], [1]] c3a (.ok (splitEff c3a 0 [[1], [1]])) ∧
+    ¬ I1 (splitEff c3a 0 [[1], [1]]) := by
+  refine ⟨.ok (by decide), fun h => ?_⟩
+  have := h 1 2 1 .modify .modify (by decide) (by decide) (by decide)
+  simp [Compat] at this
+
+/-- `transfer` (MM-03.3 §3, O4) n'exige aucun droit d'accès : l'appelé déplace un emplacement
+local de l'appelant (0) vers son propre emplacement (2). -/
+example : TransferStep K0 0 2 [] (enterEff (write3Eff (enterEff S3.init [(none, 0), (none, 0)]) [0])
+    [(none, 0)]) (.ok (transferEff (enterEff (write3Eff (enterEff S3.init [(none, 0), (none, 0)])
+      [0]) [(none, 0)]) 0 2 [])) := .ok (by decide)
+
+/-- `canRead3` (MM-03.3 §5) n'exige pas que l'autorité soit détenue par le cadre courant :
+l'appelé lit un emplacement de l'appelant par l'autorité racine de celui-ci. -/
+example : Read3Step 0 [0] (enterEff (write3Eff (enterEff S3.init [(none, 0), (none, 0)]) [0])
+    [(none, 0)]) (.ok (enterEff (write3Eff (enterEff S3.init [(none, 0), (none, 0)]) [0])
+      [(none, 0)])) := .ok (by decide)
 
 end Ern.MM03
