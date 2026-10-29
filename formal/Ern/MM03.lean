@@ -5168,6 +5168,47 @@ theorem init_wf (statics : Statics) (hsh : ShapeOK 0 (statics.map (·.1))) :
     obtain ⟨hql, -⟩ := init_fp_lt hl
     exact hq (init_usable hsh (q + 1) q (Nat.lt_succ_self _) hql)
 
+/-! ## Re-anchoring keeps modes and footprints (D4) -/
+
+/-- `exitG_keeps_modes_footprints` (D4; A7): re-anchoring at the exit changes only the origin of an
+authority, and its activity when it does not survive; never its mode, its footprint or its
+holder. The anchors (`D`) are the other component that the exit changes (`exitEff`). -/
+theorem exitG_keeps_modes_footprints (s : S3) (F₀ : Frames) (a : Nat) (y : Authority) :
+    ∃ (o : Option Nat) (b : Bool), exitG s F₀ a y = { y with origin := o, active := b } := by
+  unfold exitG; split
+  · split
+    · exact ⟨y.origin, y.active, rfl⟩
+    · exact ⟨_, y.active, rfl⟩
+  · exact ⟨y.origin, false, rfl⟩
+
+/-- An active `Modify` authority takes the effective right on each of its leaves away from all its
+ancestors (MM-03.3.5): their effective mode there is absent. -/
+theorem effective_none_of_desc_modify {s : S3} {j z l : Nat} {y : Authority}
+    (hy : s.A[j]? = some y) (ya : y.active = true) (hl : l ∈ y.footprint)
+    (hm : y.mode = .modify) (hz : z ∈ s.ancs j) : effective s z l = none := by
+  have hd : Mode.modify ∈ descModes s z l := mem_descModes.2 ⟨j, y, hy, ya, hl, hz, hm⟩
+  unfold effective
+  split
+  · split
+    · unfold effOf
+      have hne : descModes s z l ≠ [] := fun e => by rw [e] at hd; cases hd
+      simp [hne, hd]
+    · rfl
+  · rfl
+
+/-- D4: after the exit, the restrictions of a surviving `Modify` authority still bind its
+surviving ancestors through I1: it keeps its mode and footprint (`exitG_keeps_modes_footprints`),
+they stay its ancestors (A7), and their effective mode on its leaves stays absent. -/
+theorem exit_keeps_restrictions {k : K} {s s' : S3} {f : Nat} {F₀ : Frames} (hF : s.F = f :: F₀)
+    (h : ExitStep k s (.ok s')) {j z l : Nat} {y : Authority} (hy : s.A[j]? = some y)
+    (hm : y.mode = .modify) (hl : l ∈ y.footprint) (hsj : Survives s F₀ j) (hz : z ∈ s.ancs j)
+    (hsz : Survives s F₀ z) : effective s' z l = none := by
+  obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
+  have hy' : (exitEff s).A[j]? = some (exitG s F₀ j y) := by rw [exit_A_get hF, hy]; rfl
+  exact effective_none_of_desc_modify hy' (exitG_surv hy hsj)
+    (by rw [(exitG_same s F₀ j y).2.1]; exact hl) (by rw [(exitG_same s F₀ j y).1]; exact hm)
+    (exit_ancs_keep hF (j + 1) j (Nat.lt_succ_self j) z hz hsz)
+
 /-! ## Closure of the exit (MM-03.3 §4, O7; A4; B1) -/
 
 theorem WF3.ownerOf_aux {s : S3} (hw : WF3 s) :
