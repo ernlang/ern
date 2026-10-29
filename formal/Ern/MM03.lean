@@ -3483,4 +3483,297 @@ theorem arena_inv_preserved {k : K} {s s' : S3} {ar : Arena} (hwf : WF3 s) (hinv
     obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs
     exact releases _ ((freeS_releases s _).trans cleanup_releases) rfl
 
+/-! ## Test cases (MM-03.3 §11 and the task of pass 2)
+
+Each verdict is obtained by `decide` on the precondition of the operation concerned. States are
+built from `S3.init` by the effects of operations. Classification of each case (kernel,
+abstraction with `K` instantiated, out of kernel) is given in the report. -/
+
+/-- Test contracts: `SharedMutable`, `Pinned`, `ExternalDone`, `Deallocable` given by lists of
+leaves or places, `FreeCompat` by a list of pairs; no declared disjointness, no
+invalidation. -/
+def KT (sh pinned done dealloc : List Nat) (compat : List (Nat × Nat)) : K :=
+  ⟨fun _ _ => False, (· ∈ sh), (· ∈ pinned), fun _ _ _ => False, (· ∈ done), (· ∈ dealloc),
+    fun p a => (p, a) ∈ compat⟩
+
+section TestContracts
+variable (sh pinned done dealloc : List Nat) (compat : List (Nat × Nat))
+instance : ∀ r r', Decidable ((KT sh pinned done dealloc compat).DeclaredDisjoint r r') :=
+  fun _ _ => instDecidableFalse
+instance : DecidablePred (KT sh pinned done dealloc compat).SharedMutable :=
+  fun l => inferInstanceAs (Decidable (l ∈ sh))
+instance : DecidablePred (KT sh pinned done dealloc compat).Pinned :=
+  fun l => inferInstanceAs (Decidable (l ∈ pinned))
+instance : DecidablePred (KT sh pinned done dealloc compat).ExternalDone :=
+  fun l => inferInstanceAs (Decidable (l ∈ done))
+instance : DecidablePred (KT sh pinned done dealloc compat).Deallocable :=
+  fun p => inferInstanceAs (Decidable (p ∈ dealloc))
+instance : ∀ p a, Decidable ((KT sh pinned done dealloc compat).FreeCompat p a) :=
+  fun p a => inferInstanceAs (Decidable ((p, a) ∈ compat))
+end TestContracts
+
+/-- Empty contracts. -/
+abbrev K0 : K := KT [] [] [] [] []
+
+theorem KT_dd (sh pinned done dealloc : List Nat) (compat : List (Nat × Nat)) :
+    DDSound (KT sh pinned done dealloc compat) := fun _ _ h => h.elim
+
+/-- Entering frame 1 from the initial frame with locals `ls`. -/
+def enter1 (ls : List (Option Nat × Option Nat × Nat)) : S3 := enterEff S3.init [] ls
+
+/-! ### Case 1: two observations of a leaf (expected: allowed) -/
+
+def c1a : S3 := write3Eff (enter1 [(none, none, 0)]) [0]
+def c1b : S3 := deriveEff c1a 0 0 .observe
+def c1c : S3 := deriveEff c1b 0 0 .observe
+example : Write3Step 0 [0] (enter1 [(none, none, 0)]) (.ok c1a) := .ok (by decide)
+example : DeriveStep 0 0 .observe c1a (.ok c1b) := .ok (by decide)
+example : DeriveStep 0 0 .observe c1b (.ok c1c) := .ok (by decide)
+example : Read3Step 1 [0] c1c (.ok c1c) ∧ Read3Step 2 [0] c1c (.ok c1c) :=
+  ⟨.ok (by decide), .ok (by decide)⟩
+
+/-! ### Case 2: observation and incompatible modification (expected: reject) -/
+
+example : DeriveStep 0 0 .modify c1b .reject := .reject (by decide)
+example : Write3Step 0 [0] c1b .reject := .reject (by decide)
+
+/-! ### Case 3: two really disjoint fields (expected: simultaneous modifications allowed) -/
+
+def c3a : S3 := enter1 [(none, none, 0), (some 0, none, 0), (some 0, none, 0)]
+def c3b : S3 := deriveEff (deriveEff c3a 0 1 .modify) 0 2 .modify
+example : DeriveStep 0 1 .modify c3a (.ok (deriveEff c3a 0 1 .modify)) := .ok (by decide)
+example : DeriveStep 0 2 .modify (deriveEff c3a 0 1 .modify) (.ok c3b) := .ok (by decide)
+example : Write3Step 1 [1] c3b (.ok (write3Eff c3b [1])) := .ok (by decide)
+example : Write3Step 2 [2] (write3Eff c3b [1]) (.ok (write3Eff (write3Eff c3b [1]) [2])) :=
+  .ok (by decide)
+
+/-! ### Case 4: observation of an element and invalidating modification of the container
+(expected: reject). The elements are parts of the container (pass-1 arbitrage 3). -/
+
+def c4b : S3 := deriveEff c3a 0 1 .observe
+example : DeriveStep 0 1 .observe c3a (.ok c4b) := .ok (by decide)
+example : Write3Step 0 [1, 2] c4b .reject := .reject (by decide)
+example : Write3Step 0 [1, 2] c3a (.ok (write3Eff c3a [1, 2])) := .ok (by decide)
+
+/-! ### Case 5: split of a region into two parts (expected: independent authorities) -/
+
+def c5b : S3 := splitEff c3a 0 [[1], [2]]
+example : SplitStep K0 0 [[1], [2]] c3a (.ok c5b) := .ok (by decide)
+example : Write3Step 1 [1] c5b (.ok (write3Eff c5b [1])) := .ok (by decide)
+example : Write3Step 2 [2] c5b (.ok (write3Eff c5b [2])) := .ok (by decide)
+example : effective c5b 0 1 = none ∧ effective c5b 0 2 = none := by decide
+
+/-! ### Case 6: two successive emissions from an arena (expected: allowed)
+
+Frame 1: 0 arena value (metadata leaf), 1 storage owned by 0 with leaves 2 and 3, 4 and 5 block
+destinations. Root authorities: 0 (place 0), 1 (`internal`, held by place 0), 2, 3. -/
+
+abbrev KA : K := KT [0] [] [] [] []
+def c6a : S3 := enter1 [(none, none, 0), (none, some 0, 0), (some 1, some 0, 0),
+  (some 1, some 0, 0), (none, none, 0), (none, none, 0)]
+def ar6 : Arena := ⟨1, 1, [2, 3], []⟩
+def c6b : S3 × Arena := issueEff c6a ar6 [2] 4
+def c6c : S3 × Arena := issueEff c6b.1 c6b.2 [3] 5
+example : IssueStep KA ar6 0 [2] 4 c6a (.ok c6b.1 c6b.2) := .ok (by decide) (by decide)
+example : IssueStep KA c6b.2 0 [3] 5 c6b.1 (.ok c6c.1 c6c.2) := .ok (by decide) (by decide)
+example : IssueStep KA c6b.2 0 [2] 5 c6b.1 .reject := .reject (by decide)
+example : ArenaInv c6a ar6 :=
+  ⟨(by decide), (by decide), (by decide), (by decide), fun _ h => (nomatch h), (by decide),
+    ⟨_, _, rfl, rfl, rfl, rfl, rfl⟩⟩
+example : WF3 c6a ∧ Inv3 c6a :=
+  reachable_access_invariant_underDD (KT_dd [] [] [] [] []) (.enter .init (.ok (by decide)))
+
+/-! ### Case 7: `arena.reset()` with a usable dependent (expected: reject) -/
+
+def c7a : S3 := dependEff c6b.1 5 4
+example : DependStep 5 4 c6b.1 (.ok c7a) := .ok (by decide)
+example : ResetStep KA c6b.2 0 c7a .reject := .reject (by decide)
+example : ResetStep KA c6b.2 0 c6b.1 .reject := .reject (by decide)
+
+/-! ### Case 8: return of a buffer depending on a parameter of the caller (expected: allowed
+under contract). Caller: 0 data, 1 result. Parameters derived by the caller (A3): 2 observes 0,
+3 modifies 1. Callee: 2 value. -/
+
+def c8a : S3 := write3Eff (enter1 [(none, none, 0), (none, none, 0)]) [0]
+def c8b : S3 := deriveEff (deriveEff c8a 0 0 .observe) 1 1 .modify
+def c8c : S3 := enterEff c8b [2, 3] [(none, none, 0)]
+def c8d : S3 := dependEff (write3Eff c8c [2]) 2 2
+def c8e : S3 := transferEff c8d 2 1
+example : DeriveStep 0 0 .observe c8a (.ok (deriveEff c8a 0 0 .observe)) := .ok (by decide)
+example : DeriveStep 1 1 .modify (deriveEff c8a 0 0 .observe) (.ok c8b) := .ok (by decide)
+example : EnterStep [2, 3] [(none, none, 0)] c8b (.ok c8c) := .ok (by decide)
+example : Write3Step 4 [2] c8c (.ok (write3Eff c8c [2])) := .ok (by decide)
+example : DependStep 2 2 (write3Eff c8c [2]) (.ok c8d) := .ok (by decide)
+example : TransferStep K0 2 1 c8d (.ok c8e) := .ok (by decide)
+example : ExitStep c8e (.ok (exitEff c8e)) := .ok (by decide)
+example : (exitEff c8e).D 1 = [0] := by decide
+
+/-! ### Case 9: temporary capture of an access by a non-escaping value (expected: allowed) -/
+
+def c9a : S3 := write3Eff (deriveEff (enter1 [(none, none, 0), (none, none, 0)]) 0 0 .observe) [1]
+example : DependStep 1 2 c9a (.ok (dependEff c9a 1 2)) := .ok (by decide)
+example : ReleaseStep 2 (dependEff c9a 1 2) .reject := .reject (by decide)
+
+/-! ### Case 10: capture of a local access in an escaping value (expected: reject). Caller: 0
+result, parameter 1. Callee: 1 local, 2 value capturing access 4 derived from the local. -/
+
+def c10a : S3 := enterEff (deriveEff (enter1 [(none, none, 0)]) 0 0 .modify) [1]
+  [(none, none, 0), (none, none, 0)]
+def c10b : S3 := write3Eff (deriveEff c10a 2 1 .observe) [2]
+def c10c : S3 := transferEff (dependEff c10b 2 4) 2 0
+example : DeriveStep 2 1 .observe c10a (.ok (deriveEff c10a 2 1 .observe)) := .ok (by decide)
+example : DependStep 2 4 c10b (.ok (dependEff c10b 2 4)) := .ok (by decide)
+example : TransferStep K0 2 0 (dependEff c10b 2 4) (.ok c10c) := .ok (by decide)
+example : ExitStep c10c .reject := .reject (by decide)
+
+/-! ### Case 11: transfer invalidating an active projection (expected: reject) -/
+
+def c11a : S3 := write3Eff (enter1 [(none, none, 0), (some 0, none, 0), (some 0, none, 0),
+  (none, none, 0)]) [1, 2]
+example : TransferStep K0 0 3 (deriveEff c11a 0 1 .observe) .reject := .reject (by decide)
+example : TransferStep K0 0 3 c11a (.ok (transferEff c11a 0 3)) := .ok (by decide)
+
+/-! ### Case 13: pinned storage for DMA (expected: no physical move while registered) -/
+
+def c13a : S3 := write3Eff (enter1 [(none, none, 0), (none, none, 0)]) [0]
+example : PinStep 0 c13a (.ok (pinEff c13a 0 true)) := .ok (by decide)
+example : TransferStep K0 0 1 (pinEff c13a 0 true) .reject := .reject (by decide)
+example : UnpinStep K0 0 (pinEff c13a 0 true) .reject := .reject (by decide)
+example : UnpinStep (KT [] [] [0] [] []) 0 (pinEff c13a 0 true)
+    (.ok (pinEff (pinEff c13a 0 true) 0 false)) := .ok (by decide)
+example : TransferStep K0 0 1 (pinEff (pinEff c13a 0 true) 0 false)
+    (.ok (transferEff (pinEff (pinEff c13a 0 true) 0 false) 0 1)) := .ok (by decide)
+
+/-! ### Case 15: two disjoint SoA columns (expected: independent modifications) -/
+
+def c15a : S3 := enter1 [(none, none, 0), (some 0, none, 0), (some 0, none, 0), (some 1, none, 0),
+  (some 1, none, 0), (some 2, none, 0), (some 2, none, 0)]
+def c15b : S3 := deriveEff (deriveEff c15a 0 1 .modify) 0 2 .modify
+example : DeriveStep 0 2 .modify (deriveEff c15a 0 1 .modify) (.ok c15b) := .ok (by decide)
+example : Write3Step 1 [3, 4] c15b (.ok (write3Eff c15b [3, 4])) := .ok (by decide)
+example : Write3Step 2 [5, 6] (write3Eff c15b [3, 4])
+    (.ok (write3Eff (write3Eff c15b [3, 4]) [5, 6])) := .ok (by decide)
+
+/-! ### Case 16: return of a buffer depending on the caller's arena (expected: `ok`), then
+`endUse(buffer)` and `reset` (expected: `ok`). Caller: 0 arena value, 1 storage owned by 0 with
+leaves 2, 3; 4 buffer destination. Parameters: 3 observes the arena value, 4 modifies the
+destination. Callee: 5 receives the block. -/
+
+def c16a : S3 := enter1 [(none, none, 0), (none, some 0, 0), (some 1, some 0, 0),
+  (some 1, some 0, 0), (none, none, 0)]
+def ar16 : Arena := ⟨1, 1, [2, 3], []⟩
+def c16b : S3 := enterEff (deriveEff (deriveEff c16a 0 0 .observe) 2 4 .modify) [3, 4]
+  [(none, none, 0)]
+def c16c : S3 × Arena := issueEff c16b ar16 [2] 5
+def c16d : S3 := exitEff (transferEff c16c.1 5 4)
+example : EnterStep [3, 4] [(none, none, 0)] (deriveEff (deriveEff c16a 0 0 .observe) 2 4 .modify)
+    (.ok c16b) := .ok (by decide)
+example : IssueStep KA ar16 3 [2] 5 c16b (.ok c16c.1 c16c.2) := .ok (by decide) (by decide)
+example : TransferStep KA 5 4 c16c.1 (.ok (transferEff c16c.1 5 4)) := .ok (by decide)
+example : ExitStep (transferEff c16c.1 5 4) (.ok c16d) := .ok (by decide)
+example : c16d.Active 6 ∧ (c16d.A[6]?).map (·.holder) = some (.place 4) := by decide
+example : ResetStep KA c16c.2 0 c16d .reject := .reject (by decide)
+example : EndUseStep KA 4 c16d (.ok (endUseEff c16d 4)) := .ok (by decide)
+example : ResetStep KA c16c.2 0 (endUseEff c16d 4) (.ok (resetEff (endUseEff c16d 4) c16c.2)) :=
+  .ok (by decide)
+
+/-! ### Case 17: return of a value anchored on a local place of the callee (expected: reject) -/
+
+def c17a : S3 := write3Eff (enterEff (deriveEff (enter1 [(none, none, 0)]) 0 0 .modify) [1]
+  [(none, none, 0), (none, none, 0)]) [2]
+example : DependStep 2 2 c17a (.ok (dependEff c17a 2 2)) := .ok (by decide)
+example : TransferStep K0 2 0 (dependEff c17a 2 2) .reject := .reject (by decide)
+
+/-! ### New cases of pass 2 -/
+
+/-- The callee reads a local of the caller without a parameter (expected: reject). -/
+example : Read3Step 0 [0] (enterEff c13a [] [(none, none, 0)]) .reject := .reject (by decide)
+
+/-- `create_arena()` returned by a function (expected: `ok`, usable by the caller). Caller: 0
+result, 1 buffer destination; parameter 2 modifies 0. Callee: 2 arena value, 3 storage owned by
+2 with leaves 4, 5; `internal` is authority 4, held by place 2, then by place 0. -/
+def n2a : S3 := enterEff (deriveEff (enter1 [(none, none, 0), (none, none, 0)]) 0 0 .modify) [2]
+  [(none, none, 0), (none, some 2, 0), (some 3, some 2, 0), (some 3, some 2, 0)]
+def n2b : S3 := exitEff (transferEff (write3Eff n2a [2]) 2 0)
+def arN2 : Arena := ⟨3, 4, [4, 5], []⟩
+example : TransferStep KA 2 0 (write3Eff n2a [2]) (.ok (transferEff (write3Eff n2a [2]) 2 0)) :=
+  .ok (by decide)
+example : ExitStep (transferEff (write3Eff n2a [2]) 2 0) (.ok n2b) := .ok (by decide)
+example : n2b.Usable 3 ∧ n2b.Active 4 := by decide
+example : IssueStep KA arN2 0 [4] 1 n2b (.ok (issueEff n2b arN2 [4] 1).1
+    (issueEff n2b arN2 [4] 1).2) := .ok (by decide) (by decide)
+
+/-- `Vec` with owned storage returned by a function (expected: `ok`). Callee: 2 vector value,
+3 buffer owned by 2; the caller then reads the buffer. -/
+def n3a : S3 := enterEff (deriveEff (enter1 [(none, none, 0)]) 0 0 .modify) [1]
+  [(none, none, 0), (none, some 1, 0)]
+def n3b : S3 := exitEff (transferEff (write3Eff (write3Eff n3a [1]) [2]) 1 0)
+example : Write3Step 3 [2] (write3Eff n3a [1]) (.ok (write3Eff (write3Eff n3a [1]) [2])) :=
+  .ok (by decide)
+example : TransferStep K0 1 0 (write3Eff (write3Eff n3a [1]) [2])
+    (.ok (transferEff (write3Eff (write3Eff n3a [1]) [2]) 1 0)) := .ok (by decide)
+example : ExitStep (transferEff (write3Eff (write3Eff n3a [1]) [2]) 1 0) (.ok n3b) := .ok (by decide)
+example : Read3Step 3 [2] n3b (.ok n3b) := .ok (by decide)
+
+/-- `endUse(p)` with an active derived authority held elsewhere (expected: reject), and with a
+usable dependent anchored on `p` (expected: reject). -/
+example : EndUseStep K0 0 (deriveEff c13a 0 0 .observe) .reject := .reject (by decide)
+example : EndUseStep K0 0 (dependEff c13a 1 0) .reject := .reject (by decide)
+
+/-- `alloc`, `process`, `free` at the end of the frame (`defer`), then `endUse` (expected:
+`ok`); `free` during an active access, without a compatible deallocation authority, or of an
+arena block (expected: reject). Frame 1: 0 box value, 1 owned storage. -/
+abbrev KF : K := KT [] [] [] [1] [(1, 7)]
+def n6a : S3 := write3Eff (enter1 [(none, none, 0), (none, some 0, 0)]) [1]
+example : Write3Step 1 [1] (enter1 [(none, none, 0), (none, some 0, 0)]) (.ok n6a) := .ok (by decide)
+example : FreeStep KF 1 7 n6a (.ok (freeEff n6a 1)) := .ok (by decide)
+example : EndUseStep KF 0 (freeEff n6a 1) (.ok (endUseEff (freeEff n6a 1) 0)) := .ok (by decide)
+example : FreeStep KF 1 7 (deriveEff n6a 1 1 .observe) .reject := .reject (by decide)
+example : FreeStep KF 1 8 n6a .reject := .reject (by decide)
+example : FreeStep (KT [0] [] [] [1] [(2, 7)]) 2 7 c6b.1 .reject := .reject (by decide)
+
+/-- `endUse` of a value whose owned storage was not freed (expected: `ok`, reported as a leak):
+the storage is logically dead and not freed. -/
+example : EndUseStep KF 0 n6a (.ok (endUseEff n6a 0)) := .ok (by decide)
+example : (endUseEff n6a 0).dead 1 = true ∧ (endUseEff n6a 0).freed 1 = false := by decide
+
+/-- Two incompatible ordinary `Modify` authorities on a `SharedMutable` leaf (expected: reject);
+two observations and a `writeShared` within the contract (expected: `ok`). -/
+example : DeriveStep 0 0 .modify (deriveEff (enter1 [(none, none, 0)]) 0 0 .modify) .reject :=
+  .reject (by decide)
+example : WriteSharedStep KA 1 [0] c1c (.ok (write3Eff c1c [0])) := .ok (by decide)
+example : WriteSharedStep K0 1 [0] c1c .reject := .reject (by decide)
+
+/-- Return of a value anchored on a derivation of a derivation of a parameter (expected: `ok`).
+Callee of case 8: 5 derived from parameter 2, 6 derived from 5; the value depends on 6. -/
+def n9a : S3 := deriveEff (deriveEff c8c 2 0 .observe) 5 0 .observe
+def n9b : S3 := transferEff (dependEff (write3Eff n9a [2]) 2 6) 2 1
+example : DeriveStep 5 0 .observe (deriveEff c8c 2 0 .observe) (.ok n9a) := .ok (by decide)
+example : TransferStep K0 2 1 (dependEff (write3Eff n9a [2]) 2 6) (.ok n9b) := .ok (by decide)
+example : ExitStep n9b (.ok (exitEff n9b)) := .ok (by decide)
+example : (exitEff n9b).D 1 = [0] := by decide
+
+/-- Return of a value anchored on a local of the callee through two derivations (expected:
+reject). Callee of case 10: 4 derived from the root of the local, 5 derived from 4. -/
+def n9c : S3 := deriveEff (deriveEff c10a 2 1 .observe) 4 1 .observe
+def n9d : S3 := transferEff (dependEff (write3Eff n9c [2]) 2 5) 2 0
+example : TransferStep K0 2 0 (dependEff (write3Eff n9c [2]) 2 5) (.ok n9d) := .ok (by decide)
+example : ExitStep n9d .reject := .reject (by decide)
+
+/-- `issue` on a full arena (expected: `fail`, state unchanged): both regions issued, both
+blocks ended, no `reset`. -/
+def n10a : S3 := endUseEff (endUseEff c6c.1 4) 5
+example : EndUseStep KA 4 c6c.1 (.ok (endUseEff c6c.1 4)) := .ok (by decide)
+example : EndUseStep KA 5 (endUseEff c6c.1 4) (.ok n10a) := .ok (by decide)
+example : IssueStep KA c6c.2 0 [2] 4 n10a (.fail n10a c6c.2) := .fail (by decide) (by decide)
+
+/-- Pinning (A8): a value with an in-place pinned leaf cannot be transferred (case 13); a value
+whose only owned storage is pinned can; `endUse` on a pinned leaf without `ExternalDone` is
+rejected. -/
+def n11a : S3 := write3Eff (enter1 [(none, none, 0), (none, some 0, 0), (none, none, 0)]) [0]
+example : PinStep 1 n11a (.ok (pinEff n11a 1 true)) := .ok (by decide)
+example : TransferStep K0 0 2 (pinEff n11a 1 true) (.ok (transferEff (pinEff n11a 1 true) 0 2)) :=
+  .ok (by decide)
+example : EndUseStep K0 0 (pinEff c13a 0 true) .reject := .reject (by decide)
+
 end Ern.MM03
