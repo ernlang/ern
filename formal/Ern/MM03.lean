@@ -728,7 +728,7 @@ def deriveEff (s : S3) (src q : Nat) (m : Mode) : S3 :=
   s.addAuth ⟨m, some src, footprint s.P q, .frame s.top, true⟩
 
 /-- O1.4 (MM-03.3 §3): every existing authority stays compatible with the derived one in the
-resulting state. Not a precondition of `derive`: it follows from O1.1–O1.3 under I1
+resulting state. Not a precondition of `derive`: it follows from O1.1 and O1.3 under I1
 (`derive_compat_redundant`, A11). -/
 def DeriveCompat (s : S3) (src q : Nat) (m : Mode) : Prop :=
   ∀ b ∈ List.range s.A.length, ∀ p ∈ footprint s.P q,
@@ -1488,20 +1488,25 @@ theorem addAuth_dead (s : S3) (y : Authority) : (s.addAuth y).dead = s.dead := r
 /-- Adding a derived authority whose mode is permitted by the effective authority of its origin
 on each leaf of its footprint preserves I1 (MM-03.3 §2, I1, A1; §3, O1.3). -/
 theorem addAuth_I1 {s : S3} (ht : I1 s) {src : Nat} {x : Authority} {m : Mode} {fp : List Nat}
-    {hd : Holder} (hx : s.A[src]? = some x) (xa : x.active = true)
-    (hfp : ∀ p ∈ fp, p ∈ x.footprint) (hal : ∀ p ∈ fp, Allows (effective s src p) m) :
+    {hd : Holder} (hx : s.A[src]? = some x) (hal : ∀ p ∈ fp, Allows (effective s src p) m) :
     I1 (s.addAuth ⟨m, some src, fp, hd, true⟩) := by
   have hs := lt_of_getElem? hx
+  have hxp : ∀ p ∈ fp, x.active = true ∧ p ∈ x.footprint := fun p hp => by
+    have := hal p hp; unfold Allows OptP at this; split at this
+    · rename_i e he
+      obtain ⟨x', hx', xa', xp', -⟩ := effective_some he
+      rw [hx] at hx'; cases hx'; exact ⟨xa', xp'⟩
+    · exact this.elim
   intro a b x' y' p hab ha hb xa' ya' xp yp hnab hnba
   rcases addAuth_get ha with ⟨ha', ha''⟩ | ⟨rfl, rfl⟩ <;>
     rcases addAuth_get hb with ⟨hb', hb''⟩ | ⟨rfl, rfl⟩
   · rw [ancs_addAuth_lt hb'] at hnab; rw [ancs_addAuth_lt ha'] at hnba
     exact ht a b x' y' p hab ha'' hb'' xa' ya' xp yp hnab hnba
   · rw [ancs_addAuth_self rfl hs] at hnab
-    exact (new_vs_old ht hx xa (hfp p yp) (hal p yp) ha'' xa' xp
+    exact (new_vs_old ht hx (hxp p yp).1 (hxp p yp).2 (hal p yp) ha'' xa' xp
       (fun e => hnab (e ▸ List.mem_cons_self ..)) fun e => hnab (List.mem_cons_of_mem _ e)).symm
   · rw [ancs_addAuth_self rfl hs] at hnba
-    exact new_vs_old ht hx xa (hfp p xp) (hal p xp) hb'' ya' yp
+    exact new_vs_old ht hx (hxp p xp).1 (hxp p xp).2 (hal p xp) hb'' ya' yp
       (fun e => hnba (e ▸ List.mem_cons_self ..)) fun e => hnba (List.mem_cons_of_mem _ e)
   · exact absurd rfl hab
 
@@ -1509,7 +1514,7 @@ theorem addAuth_I1 {s : S3} (ht : I1 s) {src : Nat} {x : Authority} {m : Mode} {
 permitted on each leaf, and a live holder, preserves `WF3` and `Inv3`. Shared by `derive`,
 `split` and `issue`. -/
 theorem addAuth_preserves {s : S3} (hwf : WF3 s) (hinv : Inv3 s) {src : Nat} {x : Authority}
-    {m : Mode} {fp : List Nat} {hd : Holder} (hx : s.A[src]? = some x) (xa : x.active = true)
+    {m : Mode} {fp : List Nat} {hd : Holder} (hx : s.A[src]? = some x)
     (hfp : ∀ p ∈ fp, p ∈ x.footprint) (hal : ∀ p ∈ fp, Allows (effective s src p) m)
     (hl : HolderLive s hd) :
     WF3 (s.addAuth ⟨m, some src, fp, hd, true⟩) ∧ Inv3 (s.addAuth ⟨m, some src, fp, hd, true⟩) := by
@@ -1517,7 +1522,7 @@ theorem addAuth_preserves {s : S3} (hwf : WF3 s) (hinv : Inv3 s) {src : Nat} {x 
   have hs := lt_of_getElem? hx
   have live := HolderLive.congr (addAuth_P s ⟨m, some src, fp, hd, true⟩) rfl rfl
   refine ⟨⟨?_, ?_, hwf.ne, hwf.nodup, hwf.frames, hwf.ownerFrame, hwf.ownerPlace, hwf.parts, ?_⟩,
-    addAuth_I1 i1 hx xa hfp hal, ?_, fun q hq y hy => active_addAuth (i3 q ?_ y hy), i4_always _⟩
+    addAuth_I1 i1 hx hal, ?_, fun q hq y hy => active_addAuth (i3 q ?_ y hy), i4_always _⟩
   · intro b y a hb ho
     rcases addAuth_get hb with ⟨-, hb''⟩ | ⟨rfl, rfl⟩
     · exact hwf.origin b y a hb'' ho
@@ -1546,33 +1551,33 @@ theorem addAuth_preserves {s : S3} (hwf : WF3 s) (hinv : Inv3 s) {src : Nat} {x 
 /-- `derive` preserves `WF3` and `Inv3` (MM-03.3 §3, O1; §10). The proof does not use O1.4. -/
 theorem derive_preserves {s s' : S3} {src q : Nat} {m : Mode} (hwf : WF3 s) (hinv : Inv3 s)
     (h : DeriveStep src q m s (.ok s')) : WF3 s' ∧ Inv3 s' := by
-  obtain ⟨⟨⟨x, hx, xa⟩, -, -, hfp, hal⟩, rfl⟩ := Guarded.ok_iff.1 h
-  exact addAuth_preserves hwf hinv hx xa (fun p hp => by simpa [S3.afp, hx] using hfp p hp) hal
+  obtain ⟨⟨⟨x, hx, -⟩, -, -, hfp, hal⟩, rfl⟩ := Guarded.ok_iff.1 h
+  exact addAuth_preserves hwf hinv hx (fun p hp => by simpa [S3.afp, hx] using hfp p hp) hal
     (top_mem hwf.ne)
 
 /-- `derive_preserves_exclusivity` (MM-03.3 §10): `derive` preserves I1, under I1 alone. -/
 theorem derive_preserves_exclusivity {s s' : S3} {src q : Nat} {m : Mode} (h1 : I1 s)
     (h : DeriveStep src q m s (.ok s')) : I1 s' := by
-  obtain ⟨⟨⟨x, hx, xa⟩, -, -, hfp, hal⟩, rfl⟩ := Guarded.ok_iff.1 h
-  exact addAuth_I1 h1 hx xa (fun p hp => by simpa [S3.afp, hx] using hfp p hp) hal
+  obtain ⟨⟨⟨x, hx, -⟩, -, -, -, hal⟩, rfl⟩ := Guarded.ok_iff.1 h
+  exact addAuth_I1 h1 hx hal
 
 theorem split_aux {src : Nat} {x : Authority} : ∀ (rs : List (List Nat)) (s : S3), WF3 s →
-    Inv3 s → s.A[src]? = some x → x.active = true →
+    Inv3 s → s.A[src]? = some x →
     (∀ r ∈ rs, ∀ p ∈ r, effective s src p = some .modify ∧ p ∈ x.footprint) →
     rs.Pairwise (fun r r' => ∀ l ∈ r, l ∉ r') →
     WF3 (splitEff s src rs) ∧ Inv3 (splitEff s src rs)
-  | [], s, hwf, hinv, _, _, _, _ => by
+  | [], s, hwf, hinv, _, _, _ => by
     have : splitEff s src [] = s := by simp [splitEff]
     rw [this]; exact ⟨hwf, hinv⟩
-  | r :: rs, s, hwf, hinv, hx, xa, hr, hpw => by
+  | r :: rs, s, hwf, hinv, hx, hr, hpw => by
     rw [splitEff_cons]
     have hs := lt_of_getElem? hx
-    obtain ⟨hwf₁, hinv₁⟩ := addAuth_preserves (hd := .frame s.top) hwf hinv hx xa
+    obtain ⟨hwf₁, hinv₁⟩ := addAuth_preserves (hd := .frame s.top) hwf hinv hx
       (fun p hp => (hr r (List.mem_cons_self ..) p hp).2)
       (fun p hp => by rw [(hr r (List.mem_cons_self ..) p hp).1]; simp [Allows, OptP, Mode.le])
       (top_mem hwf.ne)
     obtain ⟨hpr, hpw⟩ := List.pairwise_cons.1 hpw
-    refine split_aux rs _ hwf₁ hinv₁ (by rw [addAuth_lt hs]; exact hx) xa (fun r' hr' p hp => ?_) hpw
+    refine split_aux rs _ hwf₁ hinv₁ (by rw [addAuth_lt hs]; exact hx) (fun r' hr' p hp => ?_) hpw
     rw [effective_addAuth_notin hs fun h => hpr r' hr' p h hp]
     exact hr r' (List.mem_cons_of_mem _ hr') p hp
 
@@ -1581,8 +1586,8 @@ of `DeclaredDisjoint` (MM-03.3.8). -/
 theorem split_preserves_underDD {k : K} (hdd : DDSound k) {s s' : S3} {src : Nat}
     {rs : List (List Nat)} (hwf : WF3 s) (hinv : Inv3 s) (h : SplitStep k src rs s (.ok s')) :
     WF3 s' ∧ Inv3 s' := by
-  obtain ⟨⟨⟨x, hx, xa⟩, -, h1, h2, h3, -⟩, rfl⟩ := Guarded.ok_iff.1 h
-  refine split_aux rs s hwf hinv hx xa (fun r hr p hp => ⟨h1 r hr p hp, ?_⟩)
+  obtain ⟨⟨⟨x, hx, -⟩, -, h1, h2, h3, -⟩, rfl⟩ := Guarded.ok_iff.1 h
+  refine split_aux rs s hwf hinv hx (fun r hr p hp => ⟨h1 r hr p hp, ?_⟩)
     (h3.imp fun {r r'} h => h.elim id fun hd => hdd r r' hd)
   simpa [S3.afp, hx] using (h2 r hr p hp).1
 
@@ -1985,10 +1990,16 @@ theorem enter_root_fp_ge {s : S3} {ls : List (Option Nat × Option Nat × Nat)} 
   · have := chain_lt h; omega
 
 theorem enter_roots_disjoint {s : S3} {ls : List (Option Nat × Option Nat × Nat)} {i i' l : Nat}
-    (hii : i ≠ i') (hi : i < ls.length) (hi' : i' < ls.length) (hn : (ls[i]?).bind (·.1) = none)
-    (hn' : (ls[i']?).bind (·.1) = none)
+    (hii : i ≠ i') (hn : (ls[i]?).bind (·.1) = none) (hn' : (ls[i']?).bind (·.1) = none)
     (h : l ∈ footprint (enterP s ls) (s.P.length + i))
     (h' : l ∈ footprint (enterP s ls) (s.P.length + i')) : False := by
+  have hlt : ∀ {j}, l ∈ footprint (enterP s ls) (s.P.length + j) → j < ls.length := fun hj => by
+    obtain ⟨hl, -, -, hq⟩ := mem_footprint.1 hj
+    rw [enterP_len] at hl
+    rcases hq with hq | hq
+    · omega
+    · have := chain_lt hq; omega
+  have hi := hlt h; have hi' := hlt h'
   have r := enter_parentOf_new (s := s) hi; rw [hn] at r
   have r' := enter_parentOf_new (s := s) hi'; rw [hn'] at r'
   obtain ⟨-, -, -, h | h⟩ := mem_footprint.1 h <;> obtain ⟨-, -, -, h' | h'⟩ := mem_footprint.1 h'
@@ -2146,8 +2157,7 @@ theorem enter_preserves {s s' : S3} {ps : List Nat} {ls : List (Option Nat × Op
     · have hk : a - s.A.length ≠ b - s.A.length := by omega
       have hii : i ≠ i' := fun e => hk ((nodup.getElem?_inj (lt_of_getElem? hi)).1 (by
         rw [hi, hi', e]))
-      exact (enter_roots_disjoint hii (rootIdx_mem hi).1 (rootIdx_mem hi').1 (rootIdx_mem hi).2
-        (rootIdx_mem hi').2 xp yp).elim
+      exact (enter_roots_disjoint hii (rootIdx_mem hi).2 (rootIdx_mem hi').2 xp yp).elim
   · intro b y a hb ho
     rcases enter_get hb with ⟨-, y₀, hy₀, rfl⟩ | ⟨-, _, -, hz⟩
     · obtain ⟨x₁, hx₁, hh⟩ := i2 b y₀ a hy₀ (by split at ho <;> exact ho)
@@ -2414,20 +2424,26 @@ theorem exit_preserves {s s' : S3} (hwf : WF3 s) (hinv : Inv3 s) (h : ExitStep s
   · exact hpre.elim
 
 /-- `exitFrame_releases_all` (MM-03.3 §4, O7; §10): after the exit, every active authority has
-a live holder; none is held by the exited frame. -/
-theorem exitFrame_releases_all {s s' : S3} {f : Nat} {F₀ : Frames} (hwf : WF3 s) (hinv : Inv3 s)
+a live holder; none is held by the exited frame. The stack has no duplicate (a clause of `WF3`):
+otherwise the exited frame is still on the stack and its authorities survive
+(`exit_duplicate_frame`). -/
+theorem exitFrame_releases_all {s s' : S3} {f : Nat} {F₀ : Frames} (hnd : s.F.Nodup)
     (hF : s.F = f :: F₀) (h : ExitStep s (.ok s')) :
     ∀ (j : Nat) (y : Authority), s'.A[j]? = some y → y.active = true →
       HolderLive s' y.holder ∧ y.holder ≠ .frame f := by
-  have hp := exit_preserves hwf hinv h
   obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
   intro j y hy ya
-  have hl := hp.1.poss j y hy ya
-  refine ⟨hl, fun he => ?_⟩
+  rw [exit_A_get hF] at hy
+  obtain ⟨y₀, hy₀, rfl⟩ := Option.map_eq_some_iff.1 hy
+  have hs := exitG_active ya
+  unfold Survives at hs; rw [hy₀] at hs
+  obtain ⟨-, hl⟩ := hs
+  rw [(exitG_same s F₀ j y₀).2.2]
+  have e := exitEff_eq hF
+  refine ⟨(HolderLive.congr (s := ({ s with F := F₀ } : S3)) (s' := exitEff s) (by rw [e])
+    (by rw [e]) (by rw [e]) _).2 hl, fun he => ?_⟩
   rw [he] at hl
-  have hnd := List.nodup_cons.1 (hF ▸ hwf.nodup)
-  have : (exitEff s).F = F₀ := by rw [exitEff_eq hF]
-  exact hnd.1 (this ▸ hl)
+  exact (List.nodup_cons.1 (hF ▸ hnd)).1 hl
 
 /-- `exitFrame_kills_locals` (MM-03.3.1; MM-03.3 §4, O7; A5): after the exit, every usable place
 was usable before; a place owned by the exited frame is no longer usable; and no active
@@ -2458,7 +2474,8 @@ exit is replaced by the first surviving authority among itself and its ancestors
 which is valid after the exit. -/
 theorem exitFrame_reanchors_to_origin {s s' : S3} {f : Nat} {F₀ : Frames} (hwf : WF3 s)
     (hinv : Inv3 s) (hF : s.F = f :: F₀) (h : ExitStep s (.ok s')) :
-    ∀ q, s'.Usable q → ∀ x ∈ s.D q, ∃ z, (z = x ∨ z ∈ s.ancs x) ∧ z ∈ s'.D q ∧ s'.Active z := by
+    ∀ q, s'.Usable q → ∀ x ∈ s.D q, ∃ z, firstSurv s F₀ (x :: s.ancs x) = some z ∧
+      (z = x ∨ z ∈ s.ancs x) ∧ z ∈ s'.D q ∧ s'.Active z := by
   have hp := exit_preserves hwf hinv h
   obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
   unfold ExitPre at hpre; rw [hF] at hpre
@@ -2473,7 +2490,7 @@ theorem exitFrame_reanchors_to_origin {s s' : S3} {f : Nat} {F₀ : Frames} (hwf
   | some z =>
     have hmem : z ∈ (exitEff s).D q := by
       rw [e]; exact List.mem_map.2 ⟨x, hx, by simp [hz]⟩
-    refine ⟨z, ?_, hmem, hp.2.2.2.1 q hq z hmem⟩
+    refine ⟨z, rfl, ?_, hmem, hp.2.2.2.1 q hq z hmem⟩
     exact List.mem_cons.1 (firstSurv_some hz).1
 
 /-- `dependent_cannot_escape_frame` (MM-03.3.6; MM-03.3 §4, O7.3; §10): after the exit, every
@@ -2485,7 +2502,7 @@ theorem dependent_cannot_escape_frame {s s' : S3} {f : Nat} {F₀ : Frames} (hwf
       HolderLive s' y.holder ∧ y.holder ≠ .frame f := by
   intro q hq x hx
   obtain ⟨y, hy, ya⟩ := (exit_preserves hwf hinv h).2.2.2.1 q hq x hx
-  exact ⟨y, hy, ya, exitFrame_releases_all hwf hinv hF h x y hy ya⟩
+  exact ⟨y, hy, ya, exitFrame_releases_all hwf.nodup hF h x y hy ya⟩
 
 /-! ## Release of authorities whose holder died (A4, A5, A6) -/
 
@@ -3037,14 +3054,12 @@ theorem reachable_access_invariant_underDD {k : K} (hdd : DDSound k) {s : S3}
 
 /-! ## Redundant preconditions (A11) -/
 
-/-- O1.4 follows from O1.1–O1.3 under I1 (MM-03.3 §3, O1; A11): it is not a precondition of
+/-- O1.4 follows from O1.1 and O1.3 under I1 (MM-03.3 §3, O1; A11): it is not a precondition of
 `derive`. -/
 theorem derive_compat_redundant {s : S3} {src q : Nat} {m : Mode} (h1 : I1 s) (hs : s.Active src)
-    (h2 : ∀ p ∈ footprint s.P q, p ∈ s.afp src)
     (h3 : ∀ p ∈ footprint s.P q, Allows (effective s src p) m) : DeriveCompat s src q m := by
-  obtain ⟨x, hx, xa⟩ := hs
-  have hI := addAuth_I1 (hd := .frame s.top) h1 hx xa
-    (fun p hp => by simpa [S3.afp, hx] using h2 p hp) h3
+  obtain ⟨x, hx, -⟩ := hs
+  have hI := addAuth_I1 (hd := .frame s.top) h1 hx h3
   intro b hb p hpq
   have hn : effective (deriveEff s src q m) s.A.length p = some m := by
     rw [deriveEff, effective_eq (addAuth_self _ _) rfl hpq]
@@ -3186,6 +3201,17 @@ theorem issue_det {k : K} {ar : Arena} {via dst : Nat} {region : List Nat} {s : 
     (h₂ : IssueStep k ar via region dst s o₂) : o₁ = o₂ := by
   cases h₁ <;> cases h₂ <;> first | rfl | contradiction
 
+/-- `ok` outcome of `arena.issue` (MM-03.3 §6; A10). -/
+theorem issue_ok_iff {k : K} {ar ar' : Arena} {via dst : Nat} {region : List Nat} {s s' : S3} :
+    IssueStep k ar via region dst s (.ok s' ar') ↔ IssueStatic k s ar via region dst ∧
+      Avail ar region ∧ IssueRight s ar region ∧ (s', ar') = issueEff s ar region dst := by
+  constructor
+  · intro h; cases h with
+    | ok h1 h2 h3 => exact ⟨h1, h2, h3, rfl⟩
+  · rintro ⟨h1, h2, h3, e⟩
+    have e1 := congrArg Prod.fst e; have e2 := congrArg Prod.snd e
+    simp only at e1 e2; subst e1 e2; exact .ok h1 h2 h3
+
 /-- Preconditions of `arena.reset()` (MM-03.3 §6; A10): metadata right; no active authority
 derived from `internal`; no usable place anchored on `internal` or on an authority derived from
 it. -/
@@ -3250,11 +3276,11 @@ theorem arena_issue_preserves_disjointness {k : K} {s s' : S3} {ar ar' : Arena} 
     (h : IssueStep k ar via region dst s (.ok s' ar')) : WF3 s' ∧ Inv3 s' ∧ ArenaInv s' ar' := by
   cases h with
   | ok hp hav hright =>
-  obtain ⟨-, ⟨x, hx, xa⟩, hreg', hdst, -, -⟩ := hp
+  obtain ⟨-, ⟨x, hx, -⟩, hreg', hdst, -, -⟩ := hp
   have hreg : ∀ l ∈ region, l ∈ s.afp ar.internal ∧ effective s ar.internal l = some .modify :=
     fun l hl => ⟨hreg' l hl, hright l hl⟩
   have hs := lt_of_getElem? hx
-  obtain ⟨hwf₁, hinv₁⟩ := addAuth_preserves (hd := .place dst) hwf hinv hx xa
+  obtain ⟨hwf₁, hinv₁⟩ := addAuth_preserves (hd := .place dst) hwf hinv hx
     (fun l hl => by simpa [S3.afp, hx] using (hreg l hl).1)
     (fun l hl => by rw [(hreg l hl).2]; simp [Allows, OptP, Mode.le]) hdst
   have hdis := issue_disjoint_redundant hwf hai fun l hl => (hreg l hl).2
@@ -3322,6 +3348,17 @@ theorem arena_reset_rejects_live_access {k : K} {s : S3} {ar : Arena} {via j : N
   .reject fun h => by
     obtain ⟨y, hy, ya⟩ := ha
     exact h.2.1 j (List.mem_range.2 (lt_of_getElem? hy)) hj ⟨y, hy, ya⟩
+
+/-- A live issued block makes `reset` rejected (MM-03.3 §6; A10): under the arena invariant and
+the order of origins of `WF3`, an issued block derives from `internal`. -/
+theorem arena_reset_rejects_live_issued {k : K} {s : S3} {ar : Arena} {via : Nat}
+    {e : List Nat × Nat} (hwf : WF3 s) (hai : ArenaInv s ar) (he : e ∈ ar.issued)
+    (ha : s.Active e.2) : ResetStep k ar via s .reject := by
+  obtain ⟨y, hy, ho, -, -⟩ := hai.2.2.2.2.1 e he
+  have hor : s.org e.2 = some ar.internal := by simp [S3.org, hy, ho]
+  exact arena_reset_rejects_live_access
+    (by rw [S3.ancs, chain_cons hor (hwf.origin e.2 y ar.internal hy ho)]; exact List.mem_cons_self ..)
+    ha
 
 /-- `reset` preserves the arena invariant, and modifies `available` and `issued`
 (MM-03.3 §6; A10). -/
@@ -3732,12 +3769,12 @@ theorem derive_keeps_active {s : S3} {src q x : Nat} {m : Mode} (h : s.Active x)
 
 /-- `Inv3` part of `addAuth_preserves`, without `WF3`. -/
 theorem addAuth_inv3 {s : S3} (hinv : Inv3 s) {src : Nat} {x : Authority} {m : Mode}
-    {fp : List Nat} {hd : Holder} (hx : s.A[src]? = some x) (xa : x.active = true)
+    {fp : List Nat} {hd : Holder} (hx : s.A[src]? = some x)
     (hfp : ∀ p ∈ fp, p ∈ x.footprint) (hal : ∀ p ∈ fp, Allows (effective s src p) m) :
     Inv3 (s.addAuth ⟨m, some src, fp, hd, true⟩) := by
   obtain ⟨i1, i2, i3, -⟩ := hinv
   have hs := lt_of_getElem? hx
-  refine ⟨addAuth_I1 i1 hx xa hfp hal, fun b y a hb ho => ?_, fun q hq y hy =>
+  refine ⟨addAuth_I1 i1 hx hal, fun b y a hb ho => ?_, fun q hq y hy =>
     active_addAuth (i3 q ((S3.Usable.congr (addAuth_P s _) rfl rfl).1 hq) y hy), i4_always _⟩
   rcases addAuth_get hb with ⟨-, hb''⟩ | ⟨rfl, rfl⟩
   · obtain ⟨x₁, hx₁, h⟩ := i2 b y a hb'' ho
@@ -3751,24 +3788,24 @@ theorem addAuth_inv3 {s : S3} (hinv : Inv3 s) {src : Nat} {x : Authority} {m : M
 /-- `derive` preserves `Inv3` without `WF3` (MM-03.3 §3, O1; A1). -/
 theorem derive_preserves_inv3 {s s' : S3} {src q : Nat} {m : Mode} (hinv : Inv3 s)
     (h : DeriveStep src q m s (.ok s')) : Inv3 s' := by
-  obtain ⟨⟨⟨x, hx, xa⟩, -, -, hfp, hal⟩, rfl⟩ := Guarded.ok_iff.1 h
-  exact addAuth_inv3 hinv hx xa (fun p hp => by simpa [S3.afp, hx] using hfp p hp) hal
+  obtain ⟨⟨⟨x, hx, -⟩, -, -, hfp, hal⟩, rfl⟩ := Guarded.ok_iff.1 h
+  exact addAuth_inv3 hinv hx (fun p hp => by simpa [S3.afp, hx] using hfp p hp) hal
 
 theorem split_aux_inv3 {src : Nat} {x : Authority} : ∀ (rs : List (List Nat)) (s : S3), Inv3 s →
-    s.A[src]? = some x → x.active = true →
+    s.A[src]? = some x →
     (∀ r ∈ rs, ∀ p ∈ r, effective s src p = some .modify ∧ p ∈ x.footprint) →
     rs.Pairwise (fun r r' => ∀ l ∈ r, l ∉ r') → Inv3 (splitEff s src rs)
-  | [], s, hinv, _, _, _, _ => by
+  | [], s, hinv, _, _, _ => by
     have : splitEff s src [] = s := by simp [splitEff]
     rw [this]; exact hinv
-  | r :: rs, s, hinv, hx, xa, hr, hpw => by
+  | r :: rs, s, hinv, hx, hr, hpw => by
     rw [splitEff_cons]
     have hs := lt_of_getElem? hx
-    have hinv₁ := addAuth_inv3 (m := .modify) (hd := .frame s.top) hinv hx xa
+    have hinv₁ := addAuth_inv3 (m := .modify) (hd := .frame s.top) hinv hx
       (fun p hp => (hr r (List.mem_cons_self ..) p hp).2)
       (fun p hp => by rw [(hr r (List.mem_cons_self ..) p hp).1]; simp [Allows, OptP, Mode.le])
     obtain ⟨hpr, hpw⟩ := List.pairwise_cons.1 hpw
-    refine split_aux_inv3 rs _ hinv₁ (by rw [addAuth_lt hs]; exact hx) xa (fun r' hr' p hp => ?_) hpw
+    refine split_aux_inv3 rs _ hinv₁ (by rw [addAuth_lt hs]; exact hx) (fun r' hr' p hp => ?_) hpw
     rw [effective_addAuth_notin hs fun h => hpr r' hr' p h hp]
     exact hr r' (List.mem_cons_of_mem _ hr') p hp
 
@@ -3776,8 +3813,8 @@ theorem split_aux_inv3 {src : Nat} {x : Authority} : ∀ (rs : List (List Nat)) 
 (MM-03.3.8). -/
 theorem split_preserves_inv3_underDD {k : K} (hdd : DDSound k) {s s' : S3} {src : Nat}
     {rs : List (List Nat)} (hinv : Inv3 s) (h : SplitStep k src rs s (.ok s')) : Inv3 s' := by
-  obtain ⟨⟨⟨x, hx, xa⟩, -, h1, h2, h3, -⟩, rfl⟩ := Guarded.ok_iff.1 h
-  refine split_aux_inv3 rs s hinv hx xa (fun r hr p hp => ⟨h1 r hr p hp, ?_⟩)
+  obtain ⟨⟨⟨x, hx, -⟩, -, h1, h2, h3, -⟩, rfl⟩ := Guarded.ok_iff.1 h
+  refine split_aux_inv3 rs s hinv hx (fun r hr p hp => ⟨h1 r hr p hp, ?_⟩)
     (h3.imp fun {r r'} h => h.elim id fun hd => hdd r r' hd)
   simpa [S3.afp, hx] using (h2 r hr p hp).1
 
@@ -4230,5 +4267,52 @@ is shared in `Observe`, the root of its owned storage, a `Modify` authority held
 cannot be exercised, even to read. Frame 1: 0 value, 1 owned storage. -/
 example : Read3Step 1 [1] n6a (.ok n6a) := .ok (by decide)
 example : Read3Step 1 [1] (deriveEff n6a 0 0 .observe) .reject := .reject (by decide)
+
+/-- `transfer` (MM-03.3 §3, O4; A5) does not preserve `Inv3` alone (A1): a part with another
+owner than its parent (excluded by `WF3`) is not usable while its parent is; a place owned by
+that part is not usable either and keeps an invalid anchor (5, which does not exist). The
+transfer gives that place to the destination: it becomes usable with an invalid anchor. -/
+theorem transfer_not_inv3_preserving :
+    let s : S3 := ⟨[1, 0], 2, [⟨none, .frame 1, 0⟩, ⟨some 0, .frame 5, 0⟩, ⟨none, .place 1, 0⟩,
+      ⟨none, .frame 1, 0⟩], fun l => if l = 1 then .init else .uninit,
+      [⟨.modify, none, [1], .frame 1, true⟩, ⟨.modify, none, [3], .frame 1, true⟩],
+      fun q => if q = 2 then [5] else [], fun _ => false, fun _ => false, fun _ => false⟩
+    Inv3 s ∧ TransferStep K0 0 3 s (.ok (transferEff s 0 3)) ∧ ¬ I3 (transferEff s 0 3) := by
+  intro s
+  refine ⟨⟨fun a b x y p hab ha hb _ _ xp yp _ _ => ?_, fun b y a hb ho => ?_,
+    fun q hq z hz => ?_, i4_always _⟩, .ok (by decide), fun h => ?_⟩
+  · have h1 := lt_of_getElem? ha; have h2 := lt_of_getElem? hb
+    simp [s] at h1 h2
+    obtain rfl | rfl : a = 0 ∨ a = 1 := by omega
+    all_goals obtain rfl | rfl : b = 0 ∨ b = 1 := by omega
+    all_goals first | exact absurd rfl hab | (simp [s] at ha hb; subst ha hb; simp at xp yp; omega)
+  · have := lt_of_getElem? hb; simp [s] at this
+    obtain rfl | rfl : b = 0 ∨ b = 1 := by omega
+    all_goals simp [s] at hb; subst hb; cases ho
+  · cases Nat.decEq q 2 with
+    | isTrue e => subst e; exact absurd hq (by decide)
+    | isFalse e => simp [s, e] at hz
+  · exact absurd (h 2 (by decide) 5 (by decide)) (by decide)
+
+/-- With a duplicated frame on the stack (excluded by `WF3`), `exitFrame` (MM-03.3 §4, O7; A4)
+keeps active an authority held by the exited frame: the hypothesis `s.F.Nodup` of
+`exitFrame_releases_all` is needed. -/
+theorem exit_duplicate_frame :
+    let s : S3 := { enter1 [(none, none, 0)] with F := [1, 1, 0] }
+    ExitStep s (.ok (exitEff s)) ∧
+      (exitEff s).A[0]? = some ⟨.modify, none, [0], .frame 1, true⟩ := by
+  intro s; exact ⟨.ok (by decide), by decide⟩
+
+/-- Adding an authority held by a holder that is not live breaks the possession clause of `WF3`
+(A4): the hypothesis `HolderLive s hd` of `addAuth_preserves` is needed. -/
+theorem addAuth_needs_live_holder :
+    let s : S3 := enter1 [(none, none, 0)]
+    WF3 s ∧ Inv3 s ∧ Allows (effective s 0 0) .observe ∧
+      ¬ WF3 (s.addAuth ⟨.observe, some 0, [0], .frame 7, true⟩) := by
+  intro s
+  have h : WF3 s ∧ Inv3 s :=
+    reachable_access_invariant_underDD (KT_dd [] [] [] [] []) (.enter .init (.ok (by decide)))
+  refine ⟨h.1, h.2, by decide, fun h' => ?_⟩
+  exact absurd (h'.poss 1 ⟨.observe, some 0, [0], .frame 7, true⟩ (by decide) rfl) (by decide)
 
 end Ern.MM03
