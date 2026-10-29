@@ -7593,6 +7593,12 @@ theorem staticPinnedBottom_forces_empty {k : K} {s : S3} (hr : Reachable k s)
   | frame hpl ho => exact hP _ (List.mem_of_getElem? hpl) ho
   | place _ _ _ ih => exact ih
 
+/-- Reading the base frame of C5 as the first frame entered does not help: in `c13a`, the local 0
+belongs to frame 1, the first frame entered, and stops being usable when frame 1 exits. -/
+example : c13a.F = [1, 0] ∧ c13a.Usable 0 ∧ ¬ ({ c13a with F := [0] } : S3).Usable 0 ∧
+    0 ∈ footprint c13a.P 0 ∧ OwnedByFrame c13a.P 1 0 :=
+  ⟨rfl, by decide, by decide, by decide, .frame (pl := ⟨none, .frame 1, 0⟩) rfl rfl⟩
+
 /-- `alloc` of the empty shape (C6): the encoding of the locals of `enterFrame` admits it, no
 precondition excludes it, and the outcome is `ok` with no new place and no new authority, while
 B5 describes `ok` as a new root. -/
