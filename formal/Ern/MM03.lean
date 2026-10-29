@@ -4434,4 +4434,20 @@ theorem addAuth_needs_live_holder :
   refine ⟨h.1, h.2, by decide, fun h' => ?_⟩
   exact absurd (h'.poss 1 ⟨.observe, some 0, [0], .frame 7, true⟩ (by decide) rfl) (by decide)
 
+/-- A frame exit leaves owned storage unreleased (A6, leak): the owned storage 1 of the box value
+0 stops being usable at `exitFrame` (MM-03.3 §4, O7) without `free`; nothing requires its
+release. -/
+example : ExitStep n6a (.ok (exitEff n6a)) := .ok (by decide)
+example : ¬ (exitEff n6a).Usable 1 ∧ (exitEff n6a).freed 1 = false := by decide
+
+/-- `free` after the end of the owner value is rejected (A6): the owned storage is dead. A
+forgotten `free` cannot follow `endUse`. -/
+example : FreeStep KF 1 7 (endUseEff n6a 0) .reject := .reject (by decide)
+
+/-- An arena value cannot end while an issued block is live (A6, A10); once its blocks have ended,
+it ends, and its storage is dead and not freed (leak). -/
+example : EndUseStep KA 0 c6b.1 .reject := .reject (by decide)
+example : EndUseStep KA 0 n10a (.ok (endUseEff n10a 0)) := .ok (by decide)
+example : (endUseEff n10a 0).dead 1 = true ∧ (endUseEff n10a 0).freed 1 = false := by decide
+
 end Ern.MM03
