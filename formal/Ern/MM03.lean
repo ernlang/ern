@@ -263,10 +263,6 @@ structure K where
 really overlap. -/
 def DDSound (k : K) : Prop := ∀ r r', k.DeclaredDisjoint r r' → ∀ l ∈ r, l ∉ r'
 
-/-- Initial state: one frame, no place, no authority. -/
-def S3.init : S3 :=
-  ⟨[0], 1, [], fun _ => .uninit, [], fun _ => [], fun _ => false, fun _ => false, fun _ => false⟩
-
 /-- `origin` link of the authority with index `i` (MM-03.3.4). -/
 def S3.org (s : S3) (i : Nat) : Option Nat := (s.A[i]?).bind (·.origin)
 
@@ -4983,45 +4979,194 @@ theorem exercise_requires_hold_live {s : S3} {a : Nat} {m : Mode} (hwf : WF3 s)
   refine ⟨y, hy, ya, hm, hh.imp id fun ⟨p, hp, hr⟩ => ⟨p, hp, ?_, hr⟩⟩
   have := hwf.poss a y hy ya; rw [hp] at this; exact this
 
+/-! ## Static storage (D1) -/
+
+/-- Static storage (D1): each element is a local of `enterFrame` (parent, owning element, kind;
+C6) with the initial state of its leaves, `true` for a global with an initialiser (`Init`),
+`false` otherwise (`Uninit`). -/
+abbrev Statics := List ((Option Nat × Option Nat × Nat) × Bool)
+
+/-- Initial state (MM-03.3.1; D1) with the static storage `statics`: the base frame 0, which never
+exits (O7), and the elements of `statics` laid out as the locals of `enterFrame` (`shapeP`), owned
+by frame 0 or by an earlier static. One root authority `Modify` per root element, on its
+footprint, held by the owner of the element (A4): frame 0 for a static it owns. Leaves `Init` or
+`Uninit` as declared; no anchor; alive, not freed, not pinned. -/
+def S3.init (statics : Statics) : S3 :=
+  { F := [0]
+    nF := 1
+    P := shapeP [] (.frame 0) (statics.map (·.1))
+    I := fun l => if ((statics[l]?).map (·.2)).getD false then .init else .uninit
+    A := (rootIdx (statics.map (·.1))).map fun i =>
+      ⟨.modify, none, footprint (shapeP [] (.frame 0) (statics.map (·.1))) i,
+        shapeOwner (statics.map (·.1)) (.frame 0) i, true⟩
+    D := fun _ => []
+    dead := fun _ => false
+    freed := fun _ => false
+    pin := fun _ => false }
+
+section Init
+variable {statics : Statics}
+
+theorem init_len (statics : Statics) : (S3.init statics).P.length = statics.length := by
+  simp [S3.init, shapeP_len]
+
+theorem init_P_new {i : Nat} (hi : i < statics.length) : (S3.init statics).P[i]? =
+    some ⟨((statics.map (·.1))[i]?).bind (·.1), shapeOwner (statics.map (·.1)) (.frame 0) i,
+      (((statics.map (·.1))[i]?).map (·.2.2)).getD 0⟩ := by
+  have := shapeP_new (P := []) (hd := .frame 0) (ls := statics.map (·.1)) (i := i) (by simpa using hi)
+  rw [List.length_nil, Nat.zero_add] at this; exact this
+
+theorem init_P_get {q : Nat} {pl : Place} (h : (S3.init statics).P[q]? = some pl) :
+    q < statics.length ∧ pl = ⟨((statics.map (·.1))[q]?).bind (·.1),
+      shapeOwner (statics.map (·.1)) (.frame 0) q, (((statics.map (·.1))[q]?).map (·.2.2)).getD 0⟩ := by
+  have hq : q < statics.length := by have := lt_of_getElem? h; rwa [init_len] at this
+  rw [init_P_new hq] at h; cases h; exact ⟨hq, rfl⟩
+
+theorem init_parentOf {q : Nat} (hq : q < statics.length) :
+    parentOf (S3.init statics).P q = ((statics.map (·.1))[q]?).bind (·.1) := by
+  simp [parentOf, init_P_new hq]
+
+theorem init_get {j : Nat} {z : Authority} (h : (S3.init statics).A[j]? = some z) :
+    ∃ i, (rootIdx (statics.map (·.1)))[j]? = some i ∧
+      z = ⟨.modify, none, footprint (S3.init statics).P i,
+        shapeOwner (statics.map (·.1)) (.frame 0) i, true⟩ := by
+  simp only [S3.init, List.getElem?_map] at h
+  cases hi : (rootIdx (statics.map (·.1)))[j]? with
+  | none => rw [hi] at h; cases h
+  | some i => rw [hi] at h; cases h; exact ⟨i, rfl, rfl⟩
+
+theorem init_fp_lt {i l : Nat} (h : l ∈ footprint (S3.init statics).P i) :
+    i < statics.length ∧ l < statics.length := by
+  obtain ⟨hl, -, -, hq⟩ := mem_footprint.1 h
+  rw [init_len] at hl
+  rcases hq with rfl | hq
+  · exact ⟨hl, hl⟩
+  · exact ⟨Nat.lt_trans (chain_lt hq) hl, hl⟩
+
+/-- The static places are usable in the initial state (A5; D1): their owners lead to frame 0. -/
+theorem init_usable (hsh : ShapeOK 0 (statics.map (·.1))) :
+    ∀ n i, i < n → i < statics.length → (S3.init statics).Usable i
+  | 0, _, h, _ => absurd h (Nat.not_lt_zero _)
+  | n + 1, i, _, hi => by
+    have hpl := init_P_new hi
+    have hd : (S3.init statics).dead i = false := rfl
+    unfold shapeOwner at hpl
+    cases ho : ((statics.map (·.1))[i]?).bind (·.2.1) with
+    | none =>
+      rw [ho] at hpl
+      exact .frame hpl hd rfl (List.mem_singleton_self _)
+    | some o =>
+      rw [ho] at hpl
+      have h2 := (hsh i (List.mem_range.2 (by simpa using hi))).2
+      rw [ho] at h2; simp only [OptP] at h2
+      exact .place hpl hd rfl (init_usable hsh n o (by omega) (by omega))
+
+end Init
+
+/-- `init_wf` (MM-03.3 §2, §10; A1; D1): for every well-formed static storage, the initial state
+satisfies `WF3` and `Inv3`. -/
+theorem init_wf (statics : Statics) (hsh : ShapeOK 0 (statics.map (·.1))) :
+    WF3 (S3.init statics) ∧ Inv3 (S3.init statics) := by
+  have nodup : (rootIdx (statics.map (·.1))).Nodup :=
+    ((pairwise_lt_range _).sublist List.filter_sublist).imp Nat.ne_of_lt
+  have hlen : (statics.map (·.1)).length = statics.length := by simp
+  refine ⟨⟨?_, ?_, by simp [S3.init], by simp [S3.init], by simp [S3.init], ?_, ?_, ?_, ?_, ?_, ?_⟩,
+    ⟨?_, ?_, fun q _ x hx => by simp [S3.init] at hx, i4_always _⟩,
+    fun q _ x hx => by simp [S3.init] at hx, ?_⟩
+  · intro b y a hb ho
+    obtain ⟨i, -, rfl⟩ := init_get hb; cases ho
+  · intro a y hy l hl
+    obtain ⟨i, -, rfl⟩ := init_get hy
+    rw [init_len]; exact (init_fp_lt hl).2
+  · intro q pl f hq ho
+    obtain ⟨-, rfl⟩ := init_P_get hq
+    simp only [shapeOwner] at ho; split at ho
+    · cases ho
+    · cases ho; exact Nat.zero_lt_one
+  · intro q pl o hq ho
+    obtain ⟨hql, rfl⟩ := init_P_get hq
+    rw [init_len]
+    simp only [shapeOwner] at ho; split at ho
+    · rename_i o' ho'; cases ho
+      have h2 := (hsh q (List.mem_range.2 (by rw [hlen]; exact hql))).2
+      rw [ho'] at h2; exact Nat.lt_of_lt_of_le h2.2 (by omega)
+    · cases ho
+  · intro q pl r hq hp
+    obtain ⟨hql, rfl⟩ := init_P_get hq
+    have h1 := (hsh q (List.mem_range.2 (by rw [hlen]; exact hql))).1
+    simp only at hp; rw [hp] at h1; obtain ⟨-, hr₂, hown⟩ := h1
+    refine ⟨_, init_P_new (by omega), by omega, ?_, rfl⟩
+    simp only [shapeOwner, hown, Nat.sub_zero]
+  · intro a y hy ya
+    obtain ⟨i, hi, rfl⟩ := init_get hy
+    have hil : i < statics.length := by rw [← hlen]; exact (rootIdx_mem hi).1
+    show HolderLive _ (shapeOwner (statics.map (·.1)) (.frame 0) i)
+    unfold shapeOwner
+    cases ho : ((statics.map (·.1))[i]?).bind (·.2.1) with
+    | none => exact List.mem_singleton_self _
+    | some o =>
+      have h2 := (hsh i (List.mem_range.2 (by rw [hlen]; exact hil))).2
+      rw [ho] at h2; simp only [OptP] at h2
+      exact init_usable hsh (o + 1) o (Nat.lt_succ_self _) (by omega)
+  · intro a y l ha hl hleaf
+    obtain ⟨i, hi, rfl⟩ := init_get ha
+    obtain ⟨hil, hin⟩ := rootIdx_mem hi
+    refine ⟨a, _, i, .inl rfl, ha, rfl, ⟨?_, ?_⟩, (mem_footprint.1 hl).2.2, fun _ => Iff.rfl⟩
+    · rw [init_len, ← hlen]; exact hil
+    · rw [init_parentOf (by rw [← hlen]; exact hil)]; exact hin
+  · intro x z l r hx ho hl hrp hlr
+    obtain ⟨i, hi, rfl⟩ := init_get hx
+    obtain ⟨hil, hin⟩ := rootIdx_mem hi
+    have hil' : i < statics.length := by rw [← hlen]; exact hil
+    have hroot : RootPlace (S3.init statics).P i :=
+      ⟨by rw [init_len]; exact hil', by rw [init_parentOf hil']; exact hin⟩
+    obtain rfl := rootOf_unique hrp hroot hlr (mem_footprint.1 hl).2.2
+    exact ⟨_, init_P_new hil', rfl⟩
+  · intro a b x y p hab ha hb _ _ xp yp _ _
+    obtain ⟨i, hi, rfl⟩ := init_get ha
+    obtain ⟨i', hi', rfl⟩ := init_get hb
+    have hii : i ≠ i' := fun e => hab ((nodup.getElem?_inj (lt_of_getElem? hi)).1 (by
+      rw [hi, hi', e]))
+    exact (shape_roots_disjoint (P := []) (hd := .frame 0) hii (rootIdx_mem hi).2
+      (rootIdx_mem hi').2 (by rw [List.length_nil, Nat.zero_add]; exact xp)
+      (by rw [List.length_nil, Nat.zero_add]; exact yp)).elim
+  · intro b y a hb ho
+    obtain ⟨i, -, rfl⟩ := init_get hb; cases ho
+  · intro j y hy _ q hq l hl _
+    obtain ⟨hql, -⟩ := init_fp_lt hl
+    exact hq (init_usable hsh (q + 1) q (Nat.lt_succ_self _) hql)
+
 /-! ## Reachability (MM-03.3 §10) -/
 
-/-- States reached from the initial state (one frame, no place) by `ok` transitions of the
-kernel operations, for fixed contracts `k` (MM-03.3.8). -/
-inductive Reachable (k : K) : S3 → Prop where
-  | init : Reachable k S3.init
+/-- States reached from the initial state with the static storage `statics` (D1) by `ok`
+transitions of the kernel operations, for fixed contracts `k` (MM-03.3.8). The static storage is
+well-formed (`ShapeOK`, C6). -/
+inductive Reachable (k : K) (statics : Statics) : S3 → Prop where
+  | init : ShapeOK 0 (statics.map (·.1)) → Reachable k statics (S3.init statics)
   | derive {s s' : S3} {src q : Nat} {m : Mode} :
-      Reachable k s → DeriveStep src q m s (.ok s') → Reachable k s'
+      Reachable k statics s → DeriveStep src q m s (.ok s') → Reachable k statics s'
   | split {s s' : S3} {src : Nat} {rs : List (List Nat)} :
-      Reachable k s → SplitStep k src rs s (.ok s') → Reachable k s'
-  | release {s s' : S3} {a : Nat} : Reachable k s → ReleaseStep a s (.ok s') → Reachable k s'
+      Reachable k statics s → SplitStep k src rs s (.ok s') → Reachable k statics s'
+  | release {s s' : S3} {a : Nat} : Reachable k statics s → ReleaseStep a s (.ok s') → Reachable k statics s'
   | transfer {s s' : S3} {src dst : Nat} :
-      Reachable k s → TransferStep k src dst s (.ok s') → Reachable k s'
-  | depend {s s' : S3} {q x : Nat} : Reachable k s → DependStep q x s (.ok s') → Reachable k s'
+      Reachable k statics s → TransferStep k src dst s (.ok s') → Reachable k statics s'
+  | depend {s s' : S3} {q x : Nat} : Reachable k statics s → DependStep q x s (.ok s') → Reachable k statics s'
   | enter {s s' : S3} {ps : List Nat} {ls : List (Option Nat × Option Nat × Nat)} :
-      Reachable k s → EnterStep ps ls s (.ok s') → Reachable k s'
-  | exit {s s' : S3} : Reachable k s → ExitStep k s (.ok s') → Reachable k s'
+      Reachable k statics s → EnterStep ps ls s (.ok s') → Reachable k statics s'
+  | exit {s s' : S3} : Reachable k statics s → ExitStep k s (.ok s') → Reachable k statics s'
   | read {s s' : S3} {a : Nat} {ls : List Nat} :
-      Reachable k s → Read3Step a ls s (.ok s') → Reachable k s'
+      Reachable k statics s → Read3Step a ls s (.ok s') → Reachable k statics s'
   | write {s s' : S3} {a : Nat} {ls : List Nat} :
-      Reachable k s → Write3Step a ls s (.ok s') → Reachable k s'
+      Reachable k statics s → Write3Step a ls s (.ok s') → Reachable k statics s'
   | writeShared {s s' : S3} {a : Nat} {ls : List Nat} :
-      Reachable k s → WriteSharedStep k a ls s (.ok s') → Reachable k s'
-  | pin {s s' : S3} {p : Nat} : Reachable k s → PinStep p s (.ok s') → Reachable k s'
-  | unpin {s s' : S3} {p : Nat} : Reachable k s → UnpinStep k p s (.ok s') → Reachable k s'
-  | endUse {s s' : S3} {p : Nat} : Reachable k s → EndUseStep k p s (.ok s') → Reachable k s'
+      Reachable k statics s → WriteSharedStep k a ls s (.ok s') → Reachable k statics s'
+  | pin {s s' : S3} {p : Nat} : Reachable k statics s → PinStep p s (.ok s') → Reachable k statics s'
+  | unpin {s s' : S3} {p : Nat} : Reachable k statics s → UnpinStep k p s (.ok s') → Reachable k statics s'
+  | endUse {s s' : S3} {p : Nat} : Reachable k statics s → EndUseStep k p s (.ok s') → Reachable k statics s'
   | free {s s' : S3} {p auth : Nat} :
-      Reachable k s → FreeStep k p auth s (.ok s') → Reachable k s'
+      Reachable k statics s → FreeStep k p auth s (.ok s') → Reachable k statics s'
   | alloc {s s' : S3} {pr ow : Nat} {ls : List (Option Nat × Option Nat × Nat)} :
-      Reachable k s → AllocStep k pr ow ls s (.ok s') → Reachable k s'
-
-theorem init_wf : WF3 S3.init ∧ Inv3base S3.init := by
-  refine ⟨⟨fun _ _ _ h => by simp [S3.init] at h, fun _ _ h => by simp [S3.init] at h,
-    by simp [S3.init], by simp [S3.init], by simp [S3.init], fun _ _ _ h => by simp [S3.init] at h,
-    fun _ _ _ h => by simp [S3.init] at h, fun _ _ _ h => by simp [S3.init] at h,
-    fun _ _ h => by simp [S3.init] at h,
-    fun _ _ _ h => by simp [S3.init] at h, fun _ _ _ _ h => by simp [S3.init] at h⟩,
-    fun _ _ _ _ _ _ h => by simp [S3.init] at h, fun _ _ _ h => by simp [S3.init] at h,
-    fun _ _ _ h => by simp [S3.init] at h, i4_always _⟩
+      Reachable k statics s → AllocStep k pr ow ls s (.ok s') → Reachable k statics s'
 
 /-! ## Closure of the exit (MM-03.3 §4, O7; A4; B1) -/
 
@@ -5502,13 +5647,12 @@ theorem free_preserves_noDangling {k : K} {s s' : S3} {p auth : Nat} (hwf : WF3 
 /-- `reachable_access_invariant` (MM-03.3 §10; B8, C1, C2): every reached state satisfies `WF3` and
 `Inv3`. Conditional on the obligation `DDSound k` of `DeclaredDisjoint` (MM-03.3.8), used by
 `split`. -/
-theorem reachable_access_invariant_underDD {k : K} (hdd : DDSound k) {s : S3}
-    (h : Reachable k s) : WF3 s ∧ Inv3 s := by
+theorem reachable_access_invariant_underDD {k : K} (hdd : DDSound k) {statics : Statics} {s : S3}
+    (h : Reachable k statics s) : WF3 s ∧ Inv3 s := by
   have mk : ∀ {s : S3}, WF3 s ∧ Inv3base s → AnchorOrder s → NoDangling s → WF3 s ∧ Inv3 s :=
     fun h a d => ⟨h.1, h.2, a, d⟩
   induction h with
-  | init =>
-    exact mk init_wf (fun _ _ _ hx => by simp [S3.init] at hx) fun _ _ h => by simp [S3.init] at h
+  | init hsh => exact init_wf statics hsh
   | derive _ hs ih =>
     exact mk (derive_preserves ih.1 ih.2.base hs) (derive_preserves_anchorOrder ih.2.ao hs)
       (derive_preserves_noDangling ih.2.nd hs)
@@ -5559,14 +5703,15 @@ theorem reachable_access_invariant_underDD {k : K} (hdd : DDSound k) {s : S3}
 
 /-- `reachable_no_dangling` (C2; MM-03.3 §10): in every reached state, no active authority covers a
 leaf of a place that is not usable. Under `DDSound k` (MM-03.3.8). -/
-theorem reachable_no_dangling {k : K} (hdd : DDSound k) {s : S3} (h : Reachable k s) :
+theorem reachable_no_dangling {k : K} (hdd : DDSound k) {statics : Statics} {s : S3}
+    (h : Reachable k statics s) :
     NoDangling s :=
   (reachable_access_invariant_underDD hdd h).2.nd
 
 /-- `exitFrame_no_dangling` on reached states (MM-03.3 §4, O7; §10), under `DDSound k`
 (MM-03.3.8). -/
-theorem exitFrame_no_dangling_reachable {k : K} (hdd : DDSound k) {s s' : S3} {f : Nat}
-    {F₀ : Frames} (hs : Reachable k s) (hF : s.F = f :: F₀) (h : ExitStep k s (.ok s')) :
+theorem exitFrame_no_dangling_reachable {k : K} (hdd : DDSound k) {statics : Statics} {s s' : S3} {f : Nat}
+    {F₀ : Frames} (hs : Reachable k statics s) (hF : s.F = f :: F₀) (h : ExitStep k s (.ok s')) :
     ∀ q, OwnedByFrame s.P f q → ∀ (j : Nat) (y : Authority), s'.A[j]? = some y →
       y.active = true → ∀ l ∈ footprint s.P q, l ∉ y.footprint :=
   exitFrame_no_dangling (reachable_access_invariant_underDD hdd hs).1 hF h
@@ -6549,7 +6694,7 @@ theorem KT_dd (sh pinned done dealloc : List Nat) (compat : List (Nat × Nat)) :
     DDSound (KT sh pinned done dealloc compat) := fun _ _ h => h.elim
 
 /-- Entering frame 1 from the initial frame with locals `ls`. -/
-def enter1 (ls : List (Option Nat × Option Nat × Nat)) : S3 := enterEff S3.init [] ls
+def enter1 (ls : List (Option Nat × Option Nat × Nat)) : S3 := enterEff (S3.init []) [] ls
 
 /-! ### Case 1: two observations of a leaf (expected: allowed) -/
 
@@ -6613,7 +6758,7 @@ example : ArenaInv c6a ar6 :=
     ⟨_, _, rfl, rfl, rfl, rfl, rfl⟩,
     fun _ => by rw [show c6a.afp ar6.internal = footprint c6a.P ar6.storage by decide]⟩
 example : WF3 c6a ∧ Inv3 c6a :=
-  reachable_access_invariant_underDD (KT_dd [] [] [] [] []) (.enter .init (.ok (by decide)))
+  reachable_access_invariant_underDD (KT_dd [] [] [] [] []) (.enter (.init (by decide)) (.ok (by decide)))
 
 /-! ### Case 7: `arena.reset()` with a usable dependent (expected: reject) -/
 
@@ -6717,8 +6862,8 @@ the reached state `c16b`, the arena invariant, and the preservation by `issue` a
 example : ∀ q, OwnedByFrame (transferEff c16c.1 5 4).P 2 q → ∀ (j : Nat) (y : Authority),
     c16d.A[j]? = some y → y.active = true →
     ∀ l ∈ footprint (transferEff c16c.1 5 4).P q, l ∉ y.footprint := by
-  have r0 : Reachable KA c16a := .enter .init (.ok (by decide))
-  have r1 : Reachable KA c16b :=
+  have r0 : Reachable KA [] c16a := .enter (.init (by decide)) (.ok (by decide))
+  have r1 : Reachable KA [] c16b :=
     .enter (.derive (.derive r0 (.ok (by decide))) (.ok (by decide))) (.ok (by decide))
   obtain ⟨hw, hi, -⟩ := reachable_access_invariant_underDD (KT_dd [0] [] [] [] []) r1
   have hai : ArenaInv c16b ar16 :=
@@ -7026,7 +7171,7 @@ theorem addAuth_needs_live_holder :
       ¬ WF3 (s.addAuth ⟨.observe, some 0, [0], .frame 7, true⟩) := by
   intro s
   have h : WF3 s ∧ Inv3 s :=
-    reachable_access_invariant_underDD (KT_dd [] [] [] [] []) (.enter .init (.ok (by decide)))
+    reachable_access_invariant_underDD (KT_dd [] [] [] [] []) (.enter (.init (by decide)) (.ok (by decide)))
   refine ⟨h.1, h.2.base, by decide, fun h' => ?_⟩
   exact absurd (h'.poss 1 ⟨.observe, some 0, [0], .frame 7, true⟩ (by decide) rfl) (by decide)
 
@@ -7131,9 +7276,9 @@ so under I1, the caller's root has effective `Modify` and valid dependencies on 
 example : ¬ (∀ {s : S3}, I1 s → ∀ {a : Nat} {ls : List Nat},
     canWrite3 s a ls ↔ ∀ p ∈ ls, effective s a p = some .modify ∧ DepsValid s p) := by
   intro h
-  have hr : Reachable K0 (enterEff c13a [] [(none, none, 0)]) :=
+  have hr : Reachable K0 [] (enterEff c13a [] [(none, none, 0)]) :=
     .enter (ps := []) (ls := [(none, none, 0)]) (.write (a := 0) (ls := [0])
-      (.enter (ps := []) (ls := [(none, none, 0), (none, none, 0)]) .init (.ok (by decide)))
+      (.enter (ps := []) (ls := [(none, none, 0), (none, none, 0)]) (.init (by decide)) (.ok (by decide)))
       (.ok (by decide))) (.ok (by decide))
   have hi := (reachable_access_invariant_underDD (KT_dd [] [] [] [] []) hr).2.base.1
   exact absurd ((h hi (a := 0) (ls := [0])).2 (by decide)) (by decide)
@@ -7251,24 +7396,24 @@ place 0. The state `ao2` it built satisfies `WF3` and `Inv3base` but violates `A
 neither it nor its exit is reached any more; from it, the exit of frame 3 still replaces 5 by 2 and
 the exit of frame 2 is still rejected. -/
 theorem ao2_rejected_at_depend :
-    Reachable K0 (deriveEff ao1 3 1 .observe) ∧
+    Reachable K0 [] (deriveEff ao1 3 1 .observe) ∧
       (deriveEff ao1 3 1 .observe).effAnchor 5 = 2 ∧
       DependStep 0 5 (deriveEff ao1 3 1 .observe) .reject ∧ ¬ AnchorOrder ao2 ∧
-      WF3 ao2 ∧ Inv3base ao2 ∧ ¬ Reachable K0 ao2 ∧
+      WF3 ao2 ∧ Inv3base ao2 ∧ ¬ Reachable K0 [] ao2 ∧
       ExitStep K0 ao2 (.ok (exitEff ao2)) ∧ ¬ AnchorOrder (exitEff ao2) ∧
-      ¬ Reachable K0 (exitEff ao2) ∧
+      ¬ Reachable K0 [] (exitEff ao2) ∧
       (exitEff ao2).D 0 = [2] ∧ ExitStep K0 (exitEff ao2) .reject := by
-  have r0 : Reachable K0 (enter1 [(none, none, 0)]) := .enter .init (.ok (by decide))
-  have r1 : Reachable K0 ao0 :=
+  have r0 : Reachable K0 [] (enter1 [(none, none, 0)]) := .enter (.init (by decide)) (.ok (by decide))
+  have r1 : Reachable K0 [] ao0 :=
     .enter (.derive r0 (.ok (by decide))) (.ok (by decide))
-  have r2 : Reachable K0 ao1 :=
+  have r2 : Reachable K0 [] ao1 :=
     .enter (.derive (.derive r1 (.ok (by decide))) (.ok (by decide))) (.ok (by decide))
-  have r3 : Reachable K0 (deriveEff ao1 3 1 .observe) := .derive r2 (.ok (by decide))
+  have r3 : Reachable K0 [] (deriveEff ao1 3 1 .observe) := .derive r2 (.ok (by decide))
   obtain ⟨hw, hi⟩ := reachable_access_invariant_underDD (KT_dd [] [] [] [] []) r3
   have hao : ¬ AnchorOrder ao2 := fun h => absurd (h 0 (by decide) 5 (by decide)) (by decide)
   have hao' : ¬ AnchorOrder (exitEff ao2) :=
     fun h => absurd (h 0 (by decide) 2 (by decide)) (by decide)
-  have unr : ∀ {t : S3}, ¬ AnchorOrder t → ¬ Reachable K0 t := fun h hr =>
+  have unr : ∀ {t : S3}, ¬ AnchorOrder t → ¬ Reachable K0 [] t := fun h hr =>
     h (reachable_access_invariant_underDD (KT_dd [] [] [] [] []) hr).2.ao
   have h3 : ∀ q ∈ List.range ao2.P.length, ao2.Usable q → ∀ x ∈ ao2.D q, ao2.Active x := by
     decide
@@ -7514,14 +7659,27 @@ example : Read3Step 0 [0] (write3Eff (endUseEff c13a 0) [0])
 
 /-! ## Witnesses of the questions of pass 4 -/
 
-/-- On every reached state, the base frame is 0, `nF` is positive, and no place is owned by frame
-0: the initial state has one frame and no place (MM-03.3.1; pass-1 brief), `enterFrame` gives its
-locals the new frame or a place as owner (A5), `alloc` and `transfer` only give places, and the
-exit never pops the last frame (O7). -/
-theorem reachable_base_owns_nothing {k : K} {s : S3} (h : Reachable k s) :
-    s.F.getLast? = some 0 ∧ 0 < s.nF ∧ ∀ pl ∈ s.P, pl.owner ≠ .frame 0 := by
+/-- On every reached state (MM-03.3.1; D1), the base frame is 0 and stays at the bottom of the
+stack, `nF` is positive, the static places keep their indices, and frame 0 owns directly exactly
+the static elements without owning element: `enterFrame` gives its locals the new frame or a place
+as owner (A5), `alloc` and `transfer` only give places, and the exit never pops the last frame
+(O7). The places frame 0 owns transitively (`OwnedByFrame`) are those and the storage they own. -/
+theorem reachable_base_owns_statics {k : K} {statics : Statics} {s : S3}
+    (h : Reachable k statics s) :
+    s.F.getLast? = some 0 ∧ 0 < s.nF ∧ statics.length ≤ s.P.length ∧
+      ∀ (q : Nat) (pl : Place), s.P[q]? = some pl →
+        (pl.owner = .frame 0 ↔
+          q < statics.length ∧ ((statics.map (·.1))[q]?).bind (·.2.1) = none) := by
   induction h with
-  | init => exact ⟨rfl, by decide, by simp [S3.init]⟩
+  | init hsh =>
+    refine ⟨rfl, Nat.zero_lt_one, Nat.le_of_eq (init_len statics).symm, fun q pl hq => ?_⟩
+    obtain ⟨hql, rfl⟩ := init_P_get hq
+    simp only [shapeOwner]
+    split
+    · rename_i o ho
+      exact ⟨fun e => (by cases e), fun ⟨_, h⟩ => (by rw [ho] at h; cases h)⟩
+    · rename_i ho
+      exact ⟨fun _ => ⟨hql, ho⟩, fun _ => rfl⟩
   | derive _ h ih =>
     obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h; exact ih
   | split _ h ih =>
@@ -7531,26 +7689,33 @@ theorem reachable_base_owns_nothing {k : K} {s : S3} (h : Reachable k s) :
     unfold releaseEff; split <;> exact ih
   | @transfer s s' src dst _ h ih =>
     obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
-    refine ⟨ih.1, ih.2.1, fun pl hpl => ?_⟩
-    simp only [transferEff, List.mem_map] at hpl
-    obtain ⟨pl₀, h₀, rfl⟩ := hpl
+    refine ⟨ih.1, ih.2.1, by rw [transfer_len]; exact ih.2.2.1, fun q pl hq => ?_⟩
+    rw [transfer_P_get] at hq
+    obtain ⟨pl₀, h₀, rfl⟩ := Option.map_eq_some_iff.1 hq
+    have e := ih.2.2.2 q pl₀ h₀
     split
-    · simp
-    · exact ih.2.2 pl₀ h₀
+    · rename_i hh
+      have hp : pl₀.owner ≠ .frame 0 := fun e' => by rw [e'] at hh; exact hh
+      simp only [reduceCtorEq, false_iff]
+      exact fun h' => hp (e.2 h')
+    · exact e
   | depend _ h ih =>
     obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h; exact ih
   | @enter s s' ps ls _ h ih =>
     obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
-    obtain ⟨h1, h2, h3⟩ := ih
-    refine ⟨?_, by simp [enterEff], fun pl hpl => ?_⟩
+    obtain ⟨h1, h2, h3, h4⟩ := ih
+    refine ⟨?_, by simp [enterEff], ?_, fun q pl hq => ?_⟩
     · show (s.nF :: s.F).getLast? = some 0
       cases hF : s.F with
       | nil => rw [hF] at h1; cases h1
       | cons a l => rw [hF] at h1; rw [List.getLast?_cons_cons]; exact h1
-    · simp only [enterEff, enterP, List.mem_append, List.mem_map] at hpl
-      rcases hpl with hpl | ⟨i, -, rfl⟩
-      · exact h3 pl hpl
-      · simp only [localOwner]; split
+    · show statics.length ≤ (enterP s ls).length
+      rw [enterP_len]; omega
+    · rcases enterP_get (show (enterP s ls)[q]? = some pl from hq) with ⟨-, hq'⟩ | ⟨hge, i, -, -, rfl⟩
+      · exact h4 q pl hq'
+      · have : ¬ q < statics.length := by omega
+        simp only [this, false_and, iff_false]
+        simp only [localOwner]; split
         · simp
         · intro e; injection e with e; omega
   | @exit s s' _ h ih =>
@@ -7584,26 +7749,41 @@ theorem reachable_base_owns_nothing {k : K} {s : S3} (h : Reachable k s) :
   | @alloc s s' pr ow ls _ h ih =>
     cases h with
     | ok _ _ =>
-      refine ⟨ih.1, ih.2.1, fun pl hpl => ?_⟩
-      simp only [allocEff, allocP, shapeP, List.mem_append, List.mem_map] at hpl
-      rcases hpl with hpl | ⟨i, -, rfl⟩
-      · exact ih.2.2 pl hpl
-      · simp only [shapeOwner]; split <;> simp
+      obtain ⟨h1, h2, h3, h4⟩ := ih
+      refine ⟨h1, h2, ?_, fun q pl hq => ?_⟩
+      · show statics.length ≤ (allocP s ow ls).length
+        rw [allocP_len]; omega
+      · rcases shapeP_get (show (shapeP s.P (.place ow) ls)[q]? = some pl from hq) with
+          ⟨-, hq'⟩ | ⟨hge, i, -, -, rfl⟩
+        · exact h4 q pl hq'
+        · have : ¬ q < statics.length := by omega
+          simp only [this, false_and, iff_false]
+          simp only [shapeOwner]; split <;> simp
 
-/-- On reached states, `StaticPinnedBottom` (C5) holds only for an empty static pinning: the base
-frame, 0, owns no place (`reachable_base_owns_nothing`). `static_pinned_never_exits` then has no
-content on reached states. -/
-theorem staticPinnedBottom_forces_empty {k : K} {s : S3} (hr : Reachable k s)
-    (hsp : StaticPinnedBottom k s) : ∀ l, ¬ k.Pinned l := by
-  obtain ⟨hF, -, hP⟩ := reachable_base_owns_nothing hr
-  intro l hl
-  obtain ⟨q, -, hob⟩ := hsp l hl
-  have hb : s.F.getLastD 0 = 0 := by
-    rw [List.getLastD_eq_getLast?, hF]; rfl
-  rw [hb] at hob
-  induction hob with
-  | frame hpl ho => exact hP _ (List.mem_of_getElem? hpl) ho
-  | place _ _ _ ih => exact ih
+/-- A static leaf pinned by `K.Pinned` (C5; D1), as a memory-mapped register would be: the
+contract `KPS` pins the leaf 0 of the static storage `stPin`, one global with an initialiser. -/
+abbrev KPS : K := KT [] [0] [] [] []
+def stPin : Statics := [((none, none, 0), true)]
+def sp1 : S3 := enterEff (S3.init stPin) [] [(none, none, 0)]
+
+/-- `static_pinned_never_exits` has content on a reached state (C5; D1): `K.Pinned` is not empty,
+`StaticPinnedBottom` holds since frame 0 owns the pinned global, and the exit of frame 1 kills its
+local, which covers no pinned leaf. -/
+theorem staticPinned_reached :
+    Reachable KPS stPin sp1 ∧ KPS.Pinned 0 ∧ StaticPinnedBottom KPS sp1 ∧
+      ExitStep KPS sp1 (.ok (exitEff sp1)) ∧
+      ∀ q, sp1.Usable q → ¬ ({ sp1 with F := [0] } : S3).Usable q →
+        ∀ l ∈ footprint sp1.P q, ¬ KPS.Pinned l := by
+  have hr : Reachable KPS stPin sp1 := .enter (.init (by decide)) (.ok (by decide))
+  have hsp : StaticPinnedBottom KPS sp1 := by
+    intro l hl
+    have : l = 0 := List.mem_singleton.1 hl
+    subst this
+    exact ⟨0, by decide, show OwnedByFrame sp1.P 0 0 from .frame (pl := ⟨none, .frame 0, 0⟩)
+      (by decide) rfl⟩
+  exact ⟨hr, List.mem_singleton_self _, hsp, .ok (by decide),
+    static_pinned_never_exits (reachable_access_invariant_underDD (KT_dd [] [0] [] [] []) hr).1 hsp
+      (show sp1.F = 1 :: [0] from rfl) (by decide)⟩
 
 /-- Reading the base frame of C5 as the first frame entered does not help: in `c13a`, the local 0
 belongs to frame 1, the first frame entered, and stops being usable when frame 1 exits. -/
