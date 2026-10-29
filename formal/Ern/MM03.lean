@@ -1334,15 +1334,13 @@ tient toujours (MM-03.3 §3, O1). -/
 theorem derive_keeps_active {s : S3} {src q x : Nat} {m : Mode} (h : s.Active x) :
     (deriveEff s src q m).Active x := active_addAuth h
 
-/-- O1.4 découle de O1.1 à O1.3 sous `WF3` et `Inv3` (MM-03.3 §3, O1). -/
-theorem derive_pre4_of {s : S3} {src q : Nat} {m : Mode} (hwf : WF3 s) (hinv : Inv3 s)
-    (h1 : s.Active src) (h2 : ∀ p ∈ footprint s.P q, p ∈ s.afp src)
-    (h3 : ∀ p ∈ footprint s.P q, Allows (effective s src p) m) :
+/-- O1.4 découle de O1.1 et O1.3 sous I1 (MM-03.3 §3, O1). -/
+theorem derive_pre4_of {s : S3} {src q : Nat} {m : Mode} (hi1 : I1 s)
+    (h1 : s.Active src) (h3 : ∀ p ∈ footprint s.P q, Allows (effective s src p) m) :
     ∀ b ∈ List.range s.A.length, ∀ p ∈ footprint s.P q,
       OptP (effective (deriveEff s src q m) b p) (fun e => Compat e m) True := by
-  obtain ⟨x, hx, xa⟩ := h1
-  have hp := addAuth_preserves (f := s.top) hwf hinv hx xa
-    (fun p hp => by simpa [S3.afp, hx] using h2 p hp) h3
+  obtain ⟨x, hx, -⟩ := h1
+  have hp := addAuth_I1 (f := s.top) hi1 hx h3
   intro b hb p hpq
   have hn : effective (deriveEff s src q m) s.A.length p = some m := by
     rw [deriveEff, effective_eq (addAuth_self _ _) rfl hpq]
@@ -1354,7 +1352,7 @@ theorem derive_pre4_of {s : S3} {src q : Nat} {m : Mode} (hwf : WF3 s) (hinv : I
     simp [this, effOf]
   cases he : effective (deriveEff s src q m) b p with
   | none => trivial
-  | some e => exact hp.2.1 b _ p e m (by have := List.mem_range.1 hb; omega) he hn
+  | some e => exact hp b _ p e m (by have := List.mem_range.1 hb; omega) he hn
 
 theorem effective_addAuth_notin {s : S3} {y₀ : Authority} {a p : Nat} (ha : a < s.A.length)
     (hp : p ∉ y₀.footprint) : effective (s.addAuth y₀) a p = effective s a p := by
