@@ -7247,22 +7247,34 @@ def ao2 : S3 := dependEff (deriveEff ao1 3 1 .observe) 0 5
 
 /-- The pass-3 counterexample to the preservation of `AnchorOrder` by `exitFrame` is excluded at
 `depend` (C1): the effective anchor of 5 is the root 2, held by frame 2, younger than frame 1 of
-place 0. The state `ao2` it built violates `AnchorOrder`; from it, the exit of frame 3 still
-replaces 5 by 2 and the exit of frame 2 is still rejected. -/
+place 0. The state `ao2` it built satisfies `WF3` and `Inv3base` but violates `AnchorOrder`, so
+neither it nor its exit is reached any more; from it, the exit of frame 3 still replaces 5 by 2 and
+the exit of frame 2 is still rejected. -/
 theorem ao2_rejected_at_depend :
     Reachable K0 (deriveEff ao1 3 1 .observe) ∧
       (deriveEff ao1 3 1 .observe).effAnchor 5 = 2 ∧
       DependStep 0 5 (deriveEff ao1 3 1 .observe) .reject ∧ ¬ AnchorOrder ao2 ∧
+      WF3 ao2 ∧ Inv3base ao2 ∧ ¬ Reachable K0 ao2 ∧
       ExitStep K0 ao2 (.ok (exitEff ao2)) ∧ ¬ AnchorOrder (exitEff ao2) ∧
+      ¬ Reachable K0 (exitEff ao2) ∧
       (exitEff ao2).D 0 = [2] ∧ ExitStep K0 (exitEff ao2) .reject := by
   have r0 : Reachable K0 (enter1 [(none, none, 0)]) := .enter .init (.ok (by decide))
   have r1 : Reachable K0 ao0 :=
     .enter (.derive r0 (.ok (by decide))) (.ok (by decide))
   have r2 : Reachable K0 ao1 :=
     .enter (.derive (.derive r1 (.ok (by decide))) (.ok (by decide))) (.ok (by decide))
-  refine ⟨.derive r2 (.ok (by decide)), by decide, .reject (by decide),
-    fun h => absurd (h 0 (by decide) 5 (by decide)) (by decide), .ok (by decide),
-    fun h => absurd (h 0 (by decide) 2 (by decide)) (by decide), by decide, .reject (by decide)⟩
+  have r3 : Reachable K0 (deriveEff ao1 3 1 .observe) := .derive r2 (.ok (by decide))
+  obtain ⟨hw, hi⟩ := reachable_access_invariant_underDD (KT_dd [] [] [] [] []) r3
+  have hao : ¬ AnchorOrder ao2 := fun h => absurd (h 0 (by decide) 5 (by decide)) (by decide)
+  have hao' : ¬ AnchorOrder (exitEff ao2) :=
+    fun h => absurd (h 0 (by decide) 2 (by decide)) (by decide)
+  have unr : ∀ {t : S3}, ¬ AnchorOrder t → ¬ Reachable K0 t := fun h hr =>
+    h (reachable_access_invariant_underDD (KT_dd [] [] [] [] []) hr).2.ao
+  have h3 : ∀ q ∈ List.range ao2.P.length, ao2.Usable q → ∀ x ∈ ao2.D q, ao2.Active x := by
+    decide
+  exact ⟨r3, by decide, .reject (by decide), hao, hw.of_eq rfl rfl rfl rfl rfl,
+    ⟨hi.base.1, hi.base.2.1, fun q hq x hx => h3 q (List.mem_range.2 hq.lt) hq x hx, i4_always _⟩,
+    unr hao, .ok (by decide), hao', unr hao', by decide, .reject (by decide)⟩
 
 /-! ## New cases of pass 3 -/
 
