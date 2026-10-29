@@ -355,14 +355,14 @@ def DistribExcl (s : S3) (src j p : Nat) : Prop :=
   OptP (s.A[j]?) (fun y => y.active = true ∧ src ∈ s.ancs j ∧ p ∈ y.footprint ∧ y.mode = .modify)
     False
 
-/-- Préconditions de `split` (MM-03.3 §3, O2), dans l'ordre : 1 autorité effective de
-modification de l'origine sur chaque feuille des régions ; 2 régions dans l'empreinte disponible,
+/-- Préconditions de `split` (MM-03.3 §3, O2), dans l'ordre : 1 l'origine est une autorité
+active qui possède une autorité effective de modification sur chaque feuille des régions ; 2 régions dans l'empreinte disponible,
 c'est-à-dire l'empreinte de l'origine où son autorité effective est présente ; 3 régions deux à
 deux disjointes, structurellement (sans feuille commune) ou par `DeclaredDisjoint` (MM-03.3.8) ;
 4 aucune région ne recouvre un droit exclusif déjà distribué. O2.5 n'est pas reprise : `split`
 ne modifie ni `D` ni l'activité des autorités. -/
 def SplitPre (k : K) (s : S3) (src : Nat) (rs : List (List Nat)) : Prop :=
-  (∀ r ∈ rs, ∀ p ∈ r, effective s src p = some .modify) ∧
+  s.Active src ∧ (∀ r ∈ rs, ∀ p ∈ r, effective s src p = some .modify) ∧
   (∀ r ∈ rs, ∀ p ∈ r, p ∈ s.afp src ∧ effective s src p ≠ none) ∧
   rs.Pairwise (fun r r' => (∀ l ∈ r, l ∉ r') ∨ k.DeclaredDisjoint r r') ∧
   (∀ r ∈ rs, ∀ p ∈ r, ∀ j ∈ List.range s.A.length, ¬ DistribExcl s src j p)
@@ -399,6 +399,24 @@ def ReleaseStep (a : Nat) (s : S3) : Outcome3 S3 → Prop :=
 
 /-! ## O4 `transfer` (MM-03.3 §3) -/
 
+/-- `mapI f i l` applique `f` à chaque élément de `l` avec son indice, compté à partir de `i`. -/
+def mapI {α β : Type} (f : Nat → α → β) : Nat → List α → List β
+  | _, [] => []
+  | i, a :: l => f i a :: mapI f (i + 1) l
+
+theorem length_mapI {α β : Type} (f : Nat → α → β) :
+    ∀ (i : Nat) (l : List α), (mapI f i l).length = l.length
+  | _, [] => rfl
+  | i, _ :: l => by simp [mapI, length_mapI f (i + 1) l]
+
+theorem getElem?_mapI {α β : Type} (f : Nat → α → β) :
+    ∀ (i : Nat) (l : List α) (j : Nat), (mapI f i l)[j]? = (l[j]?).map (f (i + j))
+  | _, [], _ => rfl
+  | i, a :: l, 0 => by simp [mapI]
+  | i, a :: l, j + 1 => by
+    simp only [mapI, List.getElem?_cons_succ, getElem?_mapI f (i + 1) l j]
+    congr 2; omega
+
 /-- Effet de `transfer(source, destination)` (MM-03.3 §3, O4). Les autorités transférées `auths`
 sont un argument : l'état ne dit pas quelles autorités une valeur contient. Effets : la
 destination devient `Init`, la source `Moved` ; les dépendances de la source (héritées comprises)
@@ -410,8 +428,8 @@ def transferEff (s : S3) (src dst : Nat) (auths : List Nat) : S3 :=
       else if l ∈ footprint s.P src then .moved else s.I l
     D := fun q => if q = dst then s.D dst ++ depsOf s src
       else if partOf s.P q src then [] else s.D q
-    A := s.A.mapIdx fun j y => if j ∈ auths then { y with frame := (placeFrame s.P dst).getD 0 }
-      else y }
+    A := mapI (fun j y => if j ∈ auths then { y with frame := (placeFrame s.P dst).getD 0 }
+      else y) 0 s.A }
 
 /-- Accès actif dérivé couvrant une feuille de `ls` (MM-03.3 §3, O4.4). -/
 def ActiveDerivedOn (s : S3) (j : Nat) (ls : List Nat) : Prop :=
@@ -465,19 +483,25 @@ def DependStep (q x : Nat) (s : S3) : Outcome3 S3 → Prop :=
 
 /-! ## O6 `enterFrame` (MM-03.3 §4) -/
 
+/-- Emplacements après `enterFrame` : les locaux `ls` (parent, kind) ajoutés dans le cadre `nF`. -/
+def enterP (s : S3) (ls : List (Option Nat × Nat)) : List Place :=
+  s.P ++ ls.map fun pk => ⟨pk.1, s.nF, pk.2⟩
+
+/-- Indices, relatifs à `ls`, des emplacements locaux racines (sans parent). -/
+def rootIdx (ls : List (Option Nat × Nat)) : List Nat :=
+  (List.range ls.length).filter fun i => ((ls[i]?).bind (·.1)).isNone
+
 /-- Effet de `enterFrame` (MM-03.3 §4, O6) avec les emplacements locaux `ls` (parent, kind) :
 nouveau cadre `nF` empilé ; emplacements ajoutés dans ce cadre, non initialisés, sans
 dépendance ; une autorité racine `Modify` active par emplacement racine (arbitrage 2), sur son
 empreinte. Les paramètres `let`/`inout` sont des `derive` exécutés dans le nouveau cadre, les
 paramètres `sink` des `transfer` (arbitrage 1). -/
 def enterEff (s : S3) (ls : List (Option Nat × Nat)) : S3 :=
-  let n := s.P.length
-  let P' := s.P ++ ls.map fun pk => ⟨pk.1, s.nF, pk.2⟩
-  { F := s.nF :: s.F, nF := s.nF + 1, P := P'
-    I := fun l => if n ≤ l then .uninit else s.I l
-    A := s.A ++ ((List.range ls.length).filter fun i => ((ls[i]?).bind (·.1)).isNone).map
-      fun i => ⟨.modify, none, footprint P' (n + i), s.nF, true⟩
-    D := fun q => if n ≤ q then [] else s.D q }
+  { F := s.nF :: s.F, nF := s.nF + 1, P := enterP s ls
+    I := fun l => if s.P.length ≤ l then .uninit else s.I l
+    A := s.A ++ (rootIdx ls).map
+      fun i => ⟨.modify, none, footprint (enterP s ls) (s.P.length + i), s.nF, true⟩
+    D := fun q => if s.P.length ≤ q then [] else s.D q }
 
 /-- Préconditions de `enterFrame` (MM-03.3 §4, O6) : le cadre appelant est actif (la pile n'est
 pas vide) ; le parent d'un emplacement local est un emplacement local qui le précède. -/
@@ -531,6 +555,14 @@ instance (s : S3) (F₀ : Frames) (q : Nat) : Decidable (UsableIn s F₀ q) := b
 instance (s : S3) : Decidable (ExitPre s) := by
   unfold ExitPre; split <;> infer_instance
 
+/-- Autorité après la sortie du cadre `f` (MM-03.3 §4, O7, arbitrage 1) : restituée si détenue
+par `f` ; rattachée à l'origine de son origine si elle est active, survivante et d'origine
+détenue par `f`. -/
+def exitG (s : S3) (f : Nat) (y : Authority) : Authority :=
+  if y.frame = f then { y with active := false }
+  else if y.active = true ∧ y.origin.bind s.frameOf = some f then
+    { y with origin := y.origin.bind s.org } else y
+
 /-- Effet de `exitFrame` (MM-03.3 §4, O7, arbitrage 1) : retour à l'appelant ; ancres détenues
 par `f` remplacées par leur origine ; autorités détenues par `f` restituées (inactives) ;
 autorités actives survivantes d'origine détenue par `f` rattachées à l'origine de celle-ci. -/
@@ -540,9 +572,7 @@ def exitEff (s : S3) : S3 :=
     { s with
       F := F₀
       D := fun q => (s.D q).map (reanchor s f)
-      A := s.A.map fun y => if y.frame = f then { y with active := false }
-        else if y.active = true ∧ y.origin.bind s.frameOf = some f then
-          { y with origin := y.origin.bind s.org } else y }
+      A := s.A.map (exitG s f) }
   | [] => s
 
 /-- `exitFrame` comme relation (MM-03.3 §4, O7). -/
@@ -650,5 +680,1160 @@ theorem write3_det {a : Nat} {ls : List Nat} {s : S3} {o₁ o₂ : Outcome3 S3}
 /-- Issue `ok` de `write3` (MM-03.3, §5). -/
 theorem write3_ok_iff {a : Nat} {ls : List Nat} {s s' : S3} :
     Write3Step a ls s (.ok s') ↔ canWrite3 s a ls ∧ s' = write3Eff s ls := Guarded.ok_iff
+
+/-! ## Lemmes de chaînes -/
+
+theorem chainF_none {org : Nat → Option Nat} {i : Nat} (h : org i = none) :
+    ∀ k, chainF org k i = []
+  | 0 => rfl
+  | _ + 1 => by simp [chainF, h]
+
+theorem chainF_fuel (org : Nat → Option Nat) :
+    ∀ k₁ k₂ i, i ≤ k₁ → i ≤ k₂ → chainF org k₁ i = chainF org k₂ i
+  | 0, 0, _, _, _ => rfl
+  | 0, _ + 1, i, h, _ => by
+    obtain rfl : i = 0 := by omega
+    simp only [chainF]; split <;> simp
+  | _ + 1, 0, i, _, h => by
+    obtain rfl : i = 0 := by omega
+    simp only [chainF]; split <;> simp
+  | k₁ + 1, k₂ + 1, i, h₁, h₂ => by
+    simp only [chainF]; split
+    · split
+      · rw [chainF_fuel org k₁ k₂ _ (by omega) (by omega)]
+      · rfl
+    · rfl
+
+theorem chain_none {org : Nat → Option Nat} {i : Nat} (h : org i = none) : chain org i = [] :=
+  chainF_none h i
+
+theorem chain_cons {org : Nat → Option Nat} {i o : Nat} (h : org i = some o) (hlt : o < i) :
+    chain org i = o :: chain org o := by
+  obtain ⟨k, rfl⟩ : ∃ k, i = k + 1 := ⟨i - 1, by omega⟩
+  simp only [chain, chainF, h, hlt, ↓reduceIte]
+  rw [chainF_fuel org k o o (by omega) (Nat.le_refl o)]
+
+theorem chainF_lt {org : Nat → Option Nat} : ∀ k i j, j ∈ chainF org k i → j < i
+  | 0, _, _, h => by simp [chainF] at h
+  | k + 1, i, j, h => by
+    simp only [chainF] at h; split at h
+    · split at h
+      · rcases List.mem_cons.1 h with rfl | h
+        · assumption
+        · exact Nat.lt_trans (chainF_lt k _ j h) ‹_›
+      · simp at h
+    · simp at h
+
+theorem chain_lt {org : Nat → Option Nat} {i j : Nat} (h : j ∈ chain org i) : j < i :=
+  chainF_lt i i j h
+
+theorem chainF_congr {org org' : Nat → Option Nat} :
+    ∀ k i, (∀ j ≤ i, org j = org' j) → chainF org k i = chainF org' k i
+  | 0, _, _ => rfl
+  | k + 1, i, h => by
+    simp only [chainF]; rw [h i (Nat.le_refl i)]; split
+    · split
+      · rw [chainF_congr k _ fun j hj => h j (by omega)]
+      · rfl
+    · rfl
+
+theorem chain_congr {org org' : Nat → Option Nat} {i : Nat} (h : ∀ j ≤ i, org j = org' j) :
+    chain org i = chain org' i := chainF_congr i i h
+
+/-- Deux racines (sans lien) d'une même chaîne sont égales. -/
+theorem chainF_root {org : Nat → Option Nat} : ∀ k i r r', r ∈ chainF org k i → org r = none →
+    r' ∈ chainF org k i → org r' = none → r = r'
+  | 0, _, _, _, h, _, _, _ => by simp [chainF] at h
+  | k + 1, i, r, r', h, hr, h', hr' => by
+    simp only [chainF] at h h'; split at h
+    · rename_i o ho; simp only [ho] at h'
+      split at h
+      · rename_i hlt; simp only [hlt, ↓reduceIte] at h'
+        rcases List.mem_cons.1 h with rfl | h <;> rcases List.mem_cons.1 h' with rfl | h'
+        · rfl
+        · rw [chainF_none hr] at h'; simp at h'
+        · rw [chainF_none hr'] at h; simp at h
+        · exact chainF_root k _ r r' h hr h' hr'
+      · simp at h
+    · simp at h
+
+/-! ## Lemmes sur l'autorité effective (MM-03.3.5) -/
+
+theorem effOf_cases {m m' : Mode} {ds : List Mode} (h : effOf m ds = some m') :
+    (ds = [] ∧ m' = m) ∨ (ds ≠ [] ∧ Mode.modify ∉ ds ∧ m' = .observe) := by
+  unfold effOf at h
+  by_cases h0 : ds = []
+  · simp [h0] at h; exact .inl ⟨h0, h.symm⟩
+  · by_cases h1 : Mode.modify ∈ ds
+    · simp [h0, h1] at h
+    · simp [h0, h1] at h; exact .inr ⟨h0, h1, h.symm⟩
+
+theorem mode_eq_observe {m : Mode} (h : m ≠ .modify) : m = .observe := by cases m <;> simp_all
+
+theorem mem_descModes {s : S3} {a p : Nat} {m : Mode} :
+    m ∈ descModes s a p ↔ ∃ j y, s.A[j]? = some y ∧ y.active = true ∧ p ∈ y.footprint ∧
+      a ∈ s.ancs j ∧ y.mode = m := by
+  simp only [descModes, List.mem_filterMap, List.mem_range]
+  constructor
+  · rintro ⟨j, -, h⟩
+    split at h
+    · rename_i y hy
+      split at h
+      · rename_i hc; cases h; exact ⟨j, y, hy, hc.1, hc.2.1, hc.2.2, rfl⟩
+      · cases h
+    · cases h
+  · rintro ⟨j, y, hy, h1, h2, h3, rfl⟩
+    refine ⟨j, (List.getElem?_eq_some_iff.1 hy).1, ?_⟩
+    simp [hy, h1, h2, h3]
+
+theorem effective_some {s : S3} {a p : Nat} {m : Mode} (h : effective s a p = some m) :
+    ∃ x, s.A[a]? = some x ∧ x.active = true ∧ p ∈ x.footprint ∧
+      effOf x.mode (descModes s a p) = some m := by
+  unfold effective at h
+  split at h
+  · rename_i x hx; split at h
+    · rename_i hc; exact ⟨x, hx, hc.1, hc.2, h⟩
+    · cases h
+  · cases h
+
+theorem effective_eq {s : S3} {a p : Nat} {x : Authority} (hx : s.A[a]? = some x)
+    (ha : x.active = true) (hp : p ∈ x.footprint) :
+    effective s a p = effOf x.mode (descModes s a p) := by
+  simp [effective, hx, ha, hp]
+
+/-- Le mode effectif n'excède pas le mode de l'autorité (MM-03.3.5). -/
+theorem Mode.le_refl (m : Mode) : m.le m := by cases m <;> simp [Mode.le]
+
+theorem effective_le {s : S3} {a p : Nat} {m : Mode} {x : Authority} (hx : s.A[a]? = some x)
+    (h : effective s a p = some m) : m.le x.mode := by
+  obtain ⟨x', hx', -, -, he⟩ := effective_some h
+  rw [hx] at hx'; cases hx'
+  rcases effOf_cases he with ⟨-, rfl⟩ | ⟨-, -, rfl⟩
+  · exact Mode.le_refl _
+  · simp [Mode.le]
+
+/-! ## Invariant structurel `WF3`
+
+I1 seul n'est pas préservé par `release` (`inv3_not_inductive`). La préservation est établie
+sous l'invariant structurel `WF3`, atteint par toute exécution (`reachable_access_invariant`).
+Sa clause centrale `Tree` dit que deux autorités actives non apparentées couvrant une même
+feuille sont en observation. -/
+
+/-- Deux autorités actives distinctes, non apparentées par `origin`, couvrant une même feuille,
+sont toutes deux en mode `Observe`. -/
+def Tree (s : S3) : Prop :=
+  ∀ (a b : Nat) (x y : Authority) (p : Nat), a ≠ b → s.A[a]? = some x → s.A[b]? = some y → x.active = true →
+    y.active = true → p ∈ x.footprint → p ∈ y.footprint → a ∉ s.ancs b → b ∉ s.ancs a →
+    x.mode = .observe ∧ y.mode = .observe
+
+/-- Invariant structurel : origines antérieures, `Tree`, empreintes faites d'emplacements
+existants, pile sans doublon et identités de cadres inférieures à `nF`. -/
+def WF3 (s : S3) : Prop :=
+  (∀ (b : Nat) (y : Authority) (a : Nat), s.A[b]? = some y → y.origin = some a → a < b) ∧
+  Tree s ∧
+  (∀ (a : Nat) (x : Authority), s.A[a]? = some x → ∀ l ∈ x.footprint, l < s.P.length) ∧
+  s.F.Nodup ∧ (∀ f ∈ s.F, f < s.nF) ∧ (∀ (q : Nat) (pl : Place), s.P[q]? = some pl → pl.frame < s.nF)
+
+/-- `Tree` implique I1 (MM-03.3 §2, I1) : c'est par cette voie que les opérations préservent
+l'exclusivité effective. -/
+theorem i1_of_tree {s : S3} (h : Tree s) : I1 s := by
+  intro a b p m₁ m₂ hab ha hb
+  obtain ⟨x, hx, xa, xp, ex⟩ := effective_some ha
+  obtain ⟨y, hy, ya, yp, ey⟩ := effective_some hb
+  have obs₁ : x.mode = .observe → m₁ = .observe := fun hm => by
+    rcases effOf_cases ex with ⟨-, rfl⟩ | ⟨-, -, rfl⟩ <;> simp [hm]
+  have obs₂ : y.mode = .observe → m₂ = .observe := fun hm => by
+    rcases effOf_cases ey with ⟨-, rfl⟩ | ⟨-, -, rfl⟩ <;> simp [hm]
+  by_cases hba : b ∈ s.ancs a
+  · have hm : x.mode ∈ descModes s b p := mem_descModes.2 ⟨a, x, hx, xa, xp, hba, rfl⟩
+    rcases effOf_cases ey with ⟨h0, -⟩ | ⟨-, hn, rfl⟩
+    · simp [h0] at hm
+    · have : x.mode = .observe := mode_eq_observe fun e => hn (e ▸ hm)
+      exact ⟨obs₁ this, rfl⟩
+  by_cases hab' : a ∈ s.ancs b
+  · have hm : y.mode ∈ descModes s a p := mem_descModes.2 ⟨b, y, hy, ya, yp, hab', rfl⟩
+    rcases effOf_cases ex with ⟨h0, -⟩ | ⟨-, hn, rfl⟩
+    · simp [h0] at hm
+    · have : y.mode = .observe := mode_eq_observe fun e => hn (e ▸ hm)
+      exact ⟨rfl, obs₂ this⟩
+  obtain ⟨h₁, h₂⟩ := h a b x y p hab hx hy xa ya xp yp hab' hba
+  exact ⟨obs₁ h₁, obs₂ h₂⟩
+
+/-- `effective_exclusive` (MM-03.3 §10) : sous I1, une autorité de mode effectif `Modify` sur
+une feuille est la seule à y avoir un mode effectif présent. -/
+theorem effective_exclusive {s : S3} (h : I1 s) {a b p : Nat} (hab : a ≠ b)
+    (ha : effective s a p = some .modify) : effective s b p = none := by
+  cases hb : effective s b p with
+  | none => rfl
+  | some m => exact absurd (h a b p _ _ hab ha hb).1 (by simp)
+
+/-- Théorème central (MM-03.3 §5) : dans un état satisfaisant `Inv3`, une écriture ordinaire
+autorisée ne coexiste avec aucune autre autorité de mode effectif présent sur les feuilles
+écrites. La preuve n'utilise de `canWrite3` que le mode effectif `Modify` de l'écrivain. -/
+theorem write3_exclusive {s s' : S3} {a : Nat} {ls : List Nat} (hinv : Inv3 s)
+    (h : Write3Step a ls s (.ok s')) : ∀ p ∈ ls, ∀ b, b ≠ a → effective s b p = none := by
+  intro p hp b hb
+  exact effective_exclusive hinv.1 (Ne.symm hb) ((write3_ok_iff.1 h).1 p hp).1
+
+/-- Sous I1, la seconde clause de `canWrite3` découle de la première (MM-03.3 §5). -/
+theorem canWrite3_iff {s : S3} (h : I1 s) {a : Nat} {ls : List Nat} :
+    canWrite3 s a ls ↔ ∀ p ∈ ls, effective s a p = some .modify ∧ DepsValid s p := by
+  constructor
+  · intro hw p hp; exact ⟨(hw p hp).1, (hw p hp).2.2⟩
+  · intro hw p hp
+    exact ⟨(hw p hp).1, fun b _ hb => effective_exclusive h (Ne.symm hb) (hw p hp).1, (hw p hp).2⟩
+
+/-! ## Vérifications bornées de I1 et I2 -/
+
+theorem nil_of_forall_not_mem {α : Type} : ∀ {l : List α}, (∀ a, a ∉ l) → l = []
+  | [], _ => rfl
+  | a :: _, h => absurd (List.mem_cons_self ..) (h a)
+
+theorem pairwise_lt_range : ∀ n, (List.range n).Pairwise (· < ·)
+  | 0 => by simp
+  | n + 1 => by
+    rw [List.range_succ, List.pairwise_append]
+    exact ⟨pairwise_lt_range n, by simp, fun a ha b hb => by
+      simp at hb; subst hb; exact List.mem_range.1 ha⟩
+
+theorem Mode.le_trans {a b c : Mode} (h₁ : a.le b) (h₂ : b.le c) : a.le c := by
+  cases a <;> cases b <;> cases c <;> simp_all [Mode.le]
+
+theorem Mode.le_observe {m : Mode} (h : m.le .observe) : m = .observe := by
+  cases m <;> simp_all [Mode.le]
+
+theorem lt_of_getElem? {α : Type} {l : List α} {i : Nat} {x : α} (h : l[i]? = some x) :
+    i < l.length := (List.getElem?_eq_some_iff.1 h).1
+
+/-- Forme bornée de I1, décidable. -/
+def I1b (s : S3) : Prop :=
+  ∀ a ∈ List.range s.A.length, ∀ b ∈ List.range s.A.length, a ≠ b → ∀ p ∈ s.afp a,
+    OptP (effective s a p) (fun m₁ => OptP (effective s b p) (fun m₂ => Compat m₁ m₂) True) True
+
+instance (s : S3) : Decidable (I1b s) := by unfold I1b Compat; infer_instance
+
+theorem i1_of_i1b {s : S3} (h : I1b s) : I1 s := by
+  intro a b p m₁ m₂ hab ha hb
+  obtain ⟨x, hx, -, hp, -⟩ := effective_some ha
+  obtain ⟨y, hy, -, -, -⟩ := effective_some hb
+  have := h a (List.mem_range.2 (lt_of_getElem? hx)) b (List.mem_range.2 (lt_of_getElem? hy))
+    hab p (by simp [S3.afp, hx, hp])
+  simpa [OptP, ha, hb] using this
+
+/-- Forme bornée de I2, décidable. -/
+def I2b (s : S3) : Prop :=
+  ∀ b ∈ List.range s.A.length, OptP (s.A[b]?) (fun y => OptP y.origin (fun a =>
+    OptP (s.A[a]?) (fun x => ∀ p ∈ y.footprint, p ∈ x.footprint ∧ y.mode.le x.mode) False) True) True
+
+instance (s : S3) : Decidable (I2b s) := by unfold I2b; infer_instance
+
+theorem i2_of_i2b {s : S3} (h : I2b s) : I2 s := by
+  intro b y a hy ha
+  have := h b (List.mem_range.2 (lt_of_getElem? hy))
+  simp only [OptP, hy, ha] at this
+  split at this
+  · exact ⟨_, ‹_›, this⟩
+  · exact this.elim
+
+/-! ## I1 seul n'est pas inductif -/
+
+/-- État admissible pour `Inv3` où deux autorités racines `Modify` couvrent la même feuille,
+chacune suspendue en observation par un descendant `Observe`. -/
+def badS : S3 :=
+  ⟨[0], 1, [⟨none, 0, 0⟩], fun _ => .uninit,
+    [⟨.modify, none, [0], 0, true⟩, ⟨.modify, none, [0], 0, true⟩,
+     ⟨.observe, some 0, [0], 0, true⟩, ⟨.observe, some 1, [0], 0, true⟩], fun _ => []⟩
+
+/-- `Inv3` (MM-03.3 §2) n'est pas préservé par `release` (MM-03.3 §3, O3) : dans `badS`, qui
+satisfait `Inv3`, la restitution du descendant de la première racine rend à celle-ci le mode
+effectif `Modify` alors que la seconde garde `Observe`. -/
+theorem inv3_not_inductive :
+    Inv3 badS ∧ ReleaseStep 2 badS (.ok (releaseEff badS 2)) ∧ ¬ I1 (releaseEff badS 2) := by
+  refine ⟨⟨i1_of_i1b (by decide), i2_of_i2b (by decide), fun _ _ x hx => by simp [badS] at hx,
+    i4_always _⟩, .ok (by decide), fun h => ?_⟩
+  have := h 0 1 0 .modify .observe (by decide) (by decide) (by decide)
+  simp [Compat] at this
+
+/-! ## Ajout d'une autorité -/
+
+theorem filterMap_congr' {α β : Type} {f g : α → Option β} :
+    ∀ {l : List α}, (∀ a ∈ l, f a = g a) → l.filterMap f = l.filterMap g
+  | [], _ => rfl
+  | a :: l, h => by
+    simp only [List.filterMap_cons, h a (List.mem_cons_self ..),
+      filterMap_congr' fun b hb => h b (List.mem_cons_of_mem a hb)]
+
+theorem addAuth_get {s : S3} {y₀ z : Authority} {j : Nat} (h : (s.addAuth y₀).A[j]? = some z) :
+    (j < s.A.length ∧ s.A[j]? = some z) ∨ (j = s.A.length ∧ z = y₀) := by
+  simp only [S3.addAuth] at h
+  by_cases hj : j < s.A.length
+  · exact .inl ⟨hj, by rwa [List.getElem?_append_left hj] at h⟩
+  · rw [List.getElem?_append_right (by omega)] at h
+    have : j - s.A.length = 0 := by
+      have := lt_of_getElem? h; simp at this; omega
+    rw [this] at h; simp at h
+    exact .inr ⟨by have := lt_of_getElem? (l := s.A ++ [y₀]) (i := j) (x := z) (by
+      rw [List.getElem?_append_right (by omega), this]; simp [h]); simp at this; omega, h.symm⟩
+
+theorem addAuth_lt {s : S3} {y₀ : Authority} {j : Nat} (h : j < s.A.length) :
+    (s.addAuth y₀).A[j]? = s.A[j]? := List.getElem?_append_left h
+
+theorem addAuth_self (s : S3) (y₀ : Authority) : (s.addAuth y₀).A[s.A.length]? = some y₀ := by
+  simp [S3.addAuth]
+
+theorem ancs_addAuth_lt {s : S3} {y₀ : Authority} {j : Nat} (h : j < s.A.length) :
+    (s.addAuth y₀).ancs j = s.ancs j :=
+  chain_congr fun i hi => by simp only [S3.org, addAuth_lt (Nat.lt_of_le_of_lt hi h)]
+
+theorem ancs_addAuth_self {s : S3} {y₀ : Authority} {src : Nat} (ho : y₀.origin = some src)
+    (hs : src < s.A.length) : (s.addAuth y₀).ancs s.A.length = src :: s.ancs src := by
+  unfold S3.ancs
+  rw [chain_cons (by simp [S3.org, addAuth_self, ho]) hs]
+  exact congrArg _ (ancs_addAuth_lt hs)
+
+theorem active_addAuth {s : S3} {y₀ : Authority} {x : Nat} (h : s.Active x) :
+    (s.addAuth y₀).Active x := by
+  obtain ⟨y, hy, ha⟩ := h; exact ⟨y, by rw [addAuth_lt (lt_of_getElem? hy)]; exact hy, ha⟩
+
+theorem descModes_addAuth (s : S3) (y₀ : Authority) (a p : Nat) :
+    descModes (s.addAuth y₀) a p = descModes s a p ++
+      (if y₀.active = true ∧ p ∈ y₀.footprint ∧ a ∈ (s.addAuth y₀).ancs s.A.length
+        then [y₀.mode] else []) := by
+  have hl : (s.addAuth y₀).A.length = s.A.length + 1 := by simp [S3.addAuth]
+  unfold descModes
+  rw [hl, List.range_succ, List.filterMap_append]
+  congr 1
+  · refine filterMap_congr' fun j hj => ?_
+    have hj' := List.mem_range.1 hj
+    rw [addAuth_lt hj', ancs_addAuth_lt hj']
+  · simp only [List.filterMap_cons, List.filterMap_nil, addAuth_self]
+    split <;> simp_all
+
+/-- Le mode permis par un mode effectif présent n'excède pas celui-ci. -/
+theorem allows_effOf {m m' : Mode} {ds : List Mode} (h : Allows (effOf m ds) m') :
+    (ds = [] ∧ m'.le m) ∨ (Mode.modify ∉ ds ∧ m' = .observe) := by
+  unfold Allows OptP at h
+  split at h
+  · rename_i e he
+    rcases effOf_cases he with ⟨h0, rfl⟩ | ⟨-, hn, rfl⟩
+    · exact .inl ⟨h0, h⟩
+    · exact .inr ⟨hn, Mode.le_observe h⟩
+  · exact h.elim
+
+/-- Une autorité dérivée de `src` avec un mode permis sur `p` et une autorité active couvrant
+`p`, non apparentée à la nouvelle, sont en observation. -/
+theorem new_vs_old {s : S3} (ht : Tree s) {src b p : Nat} {x y : Authority} {m : Mode}
+    (hx : s.A[src]? = some x) (xa : x.active = true) (xp : p ∈ x.footprint)
+    (hal : Allows (effective s src p) m) (hy : s.A[b]? = some y) (ya : y.active = true)
+    (yp : p ∈ y.footprint) (hbs : b ≠ src) (hbn : b ∉ s.ancs src) :
+    m = .observe ∧ y.mode = .observe := by
+  rw [effective_eq hx xa xp] at hal
+  by_cases hsb : src ∈ s.ancs b
+  · have hm : y.mode ∈ descModes s src p := mem_descModes.2 ⟨b, y, hy, ya, yp, hsb, rfl⟩
+    rcases allows_effOf hal with ⟨h0, -⟩ | ⟨hn, rfl⟩
+    · simp [h0] at hm
+    · exact ⟨rfl, mode_eq_observe fun e => hn (e ▸ hm)⟩
+  · obtain ⟨h₁, h₂⟩ := ht src b x y p (Ne.symm hbs) hx hy xa ya xp yp hsb hbn
+    rcases allows_effOf hal with ⟨-, hl⟩ | ⟨-, rfl⟩
+    · exact ⟨Mode.le_observe (h₁ ▸ hl), h₂⟩
+    · exact ⟨rfl, h₂⟩
+
+/-- Ajout d'une autorité dérivée de `src`, active, d'empreinte incluse dans celle de `src`, de
+mode permis sur chaque feuille : `WF3` et `Inv3` sont préservés. Lemme commun à `derive`,
+`split` et `arena.issue`. -/
+theorem addAuth_preserves {s : S3} (hwf : WF3 s) (hinv : Inv3 s) {src : Nat} {x : Authority}
+    {m : Mode} {fp : List Nat} {f : Nat} (hx : s.A[src]? = some x) (xa : x.active = true)
+    (hfp : ∀ p ∈ fp, p ∈ x.footprint) (hal : ∀ p ∈ fp, Allows (effective s src p) m) :
+    WF3 (s.addAuth ⟨m, some src, fp, f, true⟩) ∧ Inv3 (s.addAuth ⟨m, some src, fp, f, true⟩) := by
+  obtain ⟨w0, ht, w2, wn, wl, wp⟩ := hwf
+  obtain ⟨-, i2, i3, -⟩ := hinv
+  have hs := lt_of_getElem? hx
+  have tree : Tree (s.addAuth ⟨m, some src, fp, f, true⟩) := by
+    intro a b x' y' p hab ha hb xa' ya' xp yp hnab hnba
+    rcases addAuth_get ha with ⟨ha', ha''⟩ | ⟨rfl, rfl⟩ <;>
+      rcases addAuth_get hb with ⟨hb', hb''⟩ | ⟨rfl, rfl⟩
+    · rw [ancs_addAuth_lt hb'] at hnab; rw [ancs_addAuth_lt ha'] at hnba
+      exact ht a b x' y' p hab ha'' hb'' xa' ya' xp yp hnab hnba
+    · rw [ancs_addAuth_self rfl hs] at hnab
+      exact (new_vs_old ht hx xa (hfp p yp) (hal p yp) ha'' xa' xp
+        (fun e => hnab (e ▸ List.mem_cons_self ..)) fun e => hnab (List.mem_cons_of_mem _ e)).symm
+    · rw [ancs_addAuth_self rfl hs] at hnba
+      exact new_vs_old ht hx xa (hfp p xp) (hal p xp) hb'' ya' yp
+        (fun e => hnba (e ▸ List.mem_cons_self ..)) fun e => hnba (List.mem_cons_of_mem _ e)
+    · exact absurd rfl hab
+  refine ⟨⟨?_, tree, ?_, wn, wl, wp⟩, i1_of_tree tree, ?_, ?_, i4_always _⟩
+  · intro b y a hb ho
+    rcases addAuth_get hb with ⟨hb', hb''⟩ | ⟨rfl, rfl⟩
+    · exact w0 b y a hb'' ho
+    · cases ho; exact hs
+  · intro a y hy l hl
+    rcases addAuth_get hy with ⟨-, hy'⟩ | ⟨-, rfl⟩
+    · exact w2 a y hy' l hl
+    · exact w2 src x hx l (hfp l hl)
+  · intro b y a hb ho
+    rcases addAuth_get hb with ⟨-, hb''⟩ | ⟨rfl, rfl⟩
+    · obtain ⟨x₁, hx₁, h⟩ := i2 b y a hb'' ho
+      exact ⟨x₁, by rw [addAuth_lt (lt_of_getElem? hx₁)]; exact hx₁, h⟩
+    · cases ho
+      refine ⟨x, by rw [addAuth_lt hs]; exact hx, fun p hp => ⟨hfp p hp, ?_⟩⟩
+      obtain ⟨e, he⟩ : ∃ e, effective s src p = some e := by
+        have := hal p hp; unfold Allows OptP at this; split at this
+        · exact ⟨_, ‹_›⟩
+        · exact this.elim
+      have := hal p hp; rw [he] at this
+      exact Mode.le_trans this (effective_le hx he)
+  · intro q hq y hy; exact active_addAuth (i3 q hq y hy)
+
+/-! ## États de même squelette d'autorités -/
+
+/-- Squelette d'une autorité : tout sauf le cadre détenteur. -/
+def skel (z : Authority) : Mode × Option Nat × List Nat × Bool := (z.mode, z.origin, z.footprint, z.active)
+
+/-- `s'` a les mêmes autorités que `s` au cadre détenteur près. -/
+def SameSkel (s s' : S3) : Prop :=
+  s'.A.length = s.A.length ∧ ∀ j : Nat, (s'.A[j]?).map skel = (s.A[j]?).map skel
+
+theorem SameSkel.get {s s' : S3} (h : SameSkel s s') {j : Nat} {y' : Authority}
+    (hj : s'.A[j]? = some y') : ∃ y, s.A[j]? = some y ∧ skel y' = skel y := by
+  have := h.2 j; rw [hj] at this
+  cases hy : s.A[j]? with
+  | none => rw [hy] at this; cases this
+  | some y => rw [hy] at this; exact ⟨y, rfl, Option.some.inj this⟩
+
+theorem SameSkel.get' {s s' : S3} (h : SameSkel s s') {j : Nat} {y : Authority}
+    (hj : s.A[j]? = some y) : ∃ y', s'.A[j]? = some y' ∧ skel y' = skel y := by
+  have := h.2 j; rw [hj] at this
+  cases hy : s'.A[j]? with
+  | none => rw [hy] at this; cases this
+  | some y' => rw [hy] at this; exact ⟨y', rfl, Option.some.inj this⟩
+
+theorem SameSkel.org {s s' : S3} (h : SameSkel s s') : s'.org = s.org := by
+  funext j
+  cases hy : s.A[j]? with
+  | none =>
+    cases hy' : s'.A[j]? with
+    | none => simp [S3.org, hy, hy']
+    | some y' => obtain ⟨y, h1, -⟩ := h.get hy'; rw [hy] at h1; cases h1
+  | some y => obtain ⟨y', hy', e⟩ := h.get' hy; simp [skel] at e; simp [S3.org, hy, hy', e.2.1]
+
+theorem SameSkel.ancs {s s' : S3} (h : SameSkel s s') : s'.ancs = s.ancs := by
+  funext j; simp [S3.ancs, h.org]
+
+theorem SameSkel.active {s s' : S3} (h : SameSkel s s') {x : Nat} : s'.Active x ↔ s.Active x := by
+  constructor
+  · rintro ⟨y', hy', ha⟩; obtain ⟨y, hy, he⟩ := h.get hy'
+    exact ⟨y, hy, by simp [skel] at he; rw [← he.2.2.2]; exact ha⟩
+  · rintro ⟨y, hy, ha⟩; obtain ⟨y', hy', he⟩ := h.get' hy
+    exact ⟨y', hy', by simp [skel] at he; rw [he.2.2.2]; exact ha⟩
+
+theorem SameSkel.descModes {s s' : S3} (h : SameSkel s s') (a p : Nat) :
+    descModes s' a p = descModes s a p := by
+  unfold MM03.descModes; rw [h.1, h.ancs]
+  refine filterMap_congr' fun j _ => ?_
+  cases hy : s.A[j]? with
+  | none => have := h.2 j; rw [hy] at this; cases hy' : s'.A[j]? <;> simp_all
+  | some y =>
+    obtain ⟨y', hy', he⟩ := h.get' hy
+    simp [skel] at he; simp [hy', he]
+
+theorem SameSkel.effective {s s' : S3} (h : SameSkel s s') (a p : Nat) :
+    effective s' a p = effective s a p := by
+  unfold MM03.effective; rw [h.descModes]
+  cases hy : s.A[a]? with
+  | none => have := h.2 a; rw [hy] at this; cases hy' : s'.A[a]? <;> simp_all
+  | some y =>
+    obtain ⟨y', hy', he⟩ := h.get' hy
+    simp [skel] at he; simp [hy', he]
+
+/-- `WF3` et `Inv3` passent à un état de même squelette, mêmes emplacements, même pile, mêmes
+dépendances pour les emplacements encore utilisables. -/
+theorem SameSkel.preserves {s s' : S3} (h : SameSkel s s') (hP : s'.P = s.P) (hF : s'.F = s.F)
+    (hn : s'.nF = s.nF) (hwf : WF3 s) (hinv : Inv3 s)
+    (hD : ∀ q, s.Usable q → ∀ x ∈ s'.D q, s.Active x) : WF3 s' ∧ Inv3 s' := by
+  obtain ⟨w0, ht, w2, wn, wl, wp⟩ := hwf
+  obtain ⟨-, i2, -, -⟩ := hinv
+  have tree : Tree s' := by
+    intro a b x' y' p hab ha hb xa ya xp yp hnab hnba
+    obtain ⟨x, hx, ex⟩ := h.get ha; obtain ⟨y, hy, ey⟩ := h.get hb
+    simp [skel] at ex ey; rw [h.ancs] at hnab hnba
+    rw [ex.1, ey.1]
+    exact ht a b x y p hab hx hy (ex.2.2.2 ▸ xa) (ey.2.2.2 ▸ ya) (ex.2.2.1 ▸ xp) (ey.2.2.1 ▸ yp)
+      hnab hnba
+  have us : ∀ q, s'.Usable q ↔ s.Usable q := fun q => by simp [S3.Usable, hP, hF]
+  refine ⟨⟨fun b y a hb ho => ?_, tree, fun a x hx l hl => ?_, hF ▸ wn, hF ▸ hn ▸ wl,
+    hP ▸ hn ▸ wp⟩, i1_of_tree tree, fun b y a hb ho => ?_,
+    fun q hq x hx => h.active.2 (hD q ((us q).1 hq) x hx), i4_always _⟩
+  · obtain ⟨y₀, hy₀, e⟩ := h.get hb; simp [skel] at e
+    exact w0 b y₀ a hy₀ (e.2.1 ▸ ho)
+  · obtain ⟨x₀, hx₀, e⟩ := h.get hx; simp [skel] at e
+    rw [hP]; exact w2 a x₀ hx₀ l (e.2.2.1 ▸ hl)
+  · obtain ⟨y₀, hy₀, e⟩ := h.get hb; simp [skel] at e
+    obtain ⟨x₀, hx₀, hh⟩ := i2 b y₀ a hy₀ (e.2.1 ▸ ho)
+    obtain ⟨x', hx', e'⟩ := h.get' hx₀; simp [skel] at e'
+    exact ⟨x', hx', fun p hp => by
+      rw [e.1, e'.1, e'.2.2.1]; exact hh p (e.2.2.1 ▸ hp)⟩
+
+theorem SameSkel.refl (s : S3) : SameSkel s s := ⟨rfl, fun _ => rfl⟩
+
+/-! ## Préservation par opération (MM-03.3 §10) -/
+
+/-- `derive` préserve `WF3` et `Inv3` (MM-03.3 §3, O1 ; §10). La preuve n'utilise pas O1.4. -/
+theorem derive_preserves {s s' : S3} {src q : Nat} {m : Mode} (hwf : WF3 s) (hinv : Inv3 s)
+    (h : DeriveStep src q m s (.ok s')) : WF3 s' ∧ Inv3 s' := by
+  obtain ⟨⟨⟨x, hx, xa⟩, -, hfp, hal, -⟩, rfl⟩ := derive_ok_iff.1 h
+  exact addAuth_preserves hwf hinv hx xa (fun p hp => by simpa [S3.afp, hx] using hfp p hp) hal
+
+/-- `derive_preserves_exclusivity` (MM-03.3 §10). -/
+theorem derive_preserves_exclusivity {s s' : S3} {src q : Nat} {m : Mode} (hwf : WF3 s)
+    (hinv : Inv3 s) (h : DeriveStep src q m s (.ok s')) : I1 s' :=
+  (derive_preserves hwf hinv h).2.1
+
+/-- O1.4 découle de O1.1 à O1.3 sous `WF3` et `Inv3` (MM-03.3 §3, O1). -/
+theorem derive_pre4_of {s : S3} {src q : Nat} {m : Mode} (hwf : WF3 s) (hinv : Inv3 s)
+    (h1 : s.Active src) (h2 : ∀ p ∈ footprint s.P q, p ∈ s.afp src)
+    (h3 : ∀ p ∈ footprint s.P q, Allows (effective s src p) m) :
+    ∀ b ∈ List.range s.A.length, ∀ p ∈ footprint s.P q,
+      OptP (effective (deriveEff s src q m) b p) (fun e => Compat e m) True := by
+  obtain ⟨x, hx, xa⟩ := h1
+  have hp := addAuth_preserves (f := s.top) hwf hinv hx xa
+    (fun p hp => by simpa [S3.afp, hx] using h2 p hp) h3
+  intro b hb p hpq
+  have hn : effective (deriveEff s src q m) s.A.length p = some m := by
+    rw [deriveEff, effective_eq (addAuth_self _ _) rfl hpq]
+    have : descModes (s.addAuth ⟨m, some src, footprint s.P q, s.top, true⟩) s.A.length p = [] := by
+      apply nil_of_forall_not_mem; intro e he
+      obtain ⟨j, y, hy, -, -, hj, -⟩ := mem_descModes.1 he
+      have h1 := chain_lt hj
+      have h2 := lt_of_getElem? hy; simp [S3.addAuth] at h2; omega
+    simp [this, effOf]
+  cases he : effective (deriveEff s src q m) b p with
+  | none => trivial
+  | some e => exact hp.2.1 b _ p e m (by have := List.mem_range.1 hb; omega) he hn
+
+theorem effective_addAuth_notin {s : S3} {y₀ : Authority} {a p : Nat} (ha : a < s.A.length)
+    (hp : p ∉ y₀.footprint) : effective (s.addAuth y₀) a p = effective s a p := by
+  unfold effective; rw [addAuth_lt ha, descModes_addAuth]; simp [hp]
+
+theorem splitEff_cons (s : S3) (src : Nat) (r : List Nat) (rs : List (List Nat)) :
+    splitEff s src (r :: rs) = splitEff (s.addAuth ⟨.modify, some src, r, s.top, true⟩) src rs := by
+  simp [splitEff, S3.addAuth, S3.top]
+
+theorem split_aux {src : Nat} {x : Authority} : ∀ (rs : List (List Nat)) (s : S3), WF3 s → Inv3 s →
+    s.A[src]? = some x → x.active = true →
+    (∀ r ∈ rs, ∀ p ∈ r, effective s src p = some .modify ∧ p ∈ x.footprint) →
+    rs.Pairwise (fun r r' => ∀ l ∈ r, l ∉ r') →
+    WF3 (splitEff s src rs) ∧ Inv3 (splitEff s src rs)
+  | [], s, hwf, hinv, _, _, _, _ => by
+    have : splitEff s src [] = s := by simp [splitEff]
+    rw [this]; exact ⟨hwf, hinv⟩
+  | r :: rs, s, hwf, hinv, hx, xa, hr, hpw => by
+    rw [splitEff_cons]
+    have hs := lt_of_getElem? hx
+    obtain ⟨hwf₁, hinv₁⟩ := addAuth_preserves (f := s.top) hwf hinv hx xa
+      (fun p hp => (hr r (List.mem_cons_self ..) p hp).2)
+      (fun p hp => by rw [(hr r (List.mem_cons_self ..) p hp).1]; simp [Allows, OptP, Mode.le])
+    obtain ⟨hpr, hpw⟩ := List.pairwise_cons.1 hpw
+    refine split_aux rs _ hwf₁ hinv₁ (by rw [addAuth_lt hs]; exact hx) xa (fun r' hr' p hp => ?_) hpw
+    rw [effective_addAuth_notin hs fun h => hpr r' hr' p h hp]
+    exact hr r' (List.mem_cons_of_mem _ hr') p hp
+
+/-- `split` préserve `WF3` et `Inv3` (MM-03.3 §3, O2 ; §10), conditionné à l'obligation
+`DDSound k` de `DeclaredDisjoint` (MM-03.3.8). -/
+theorem split_preserves_underDD {k : K} (hdd : DDSound k) {s s' : S3} {src : Nat}
+    {rs : List (List Nat)} (hwf : WF3 s) (hinv : Inv3 s) (h : SplitStep k src rs s (.ok s')) :
+    WF3 s' ∧ Inv3 s' := by
+  obtain ⟨⟨⟨x, hx, xa⟩, h1, h2, h3, -⟩, rfl⟩ := split_ok_iff.1 h
+  refine split_aux rs s hwf hinv hx xa (fun r hr p hp => ⟨h1 r hr p hp, ?_⟩)
+    (h3.imp fun {r r'} h => h.elim id fun hd => hdd r r' hd)
+  simpa [S3.afp, hx] using (h2 r hr p hp).1
+
+/-- `split_preserves_exclusivity` (MM-03.3 §10), conditionné à `DDSound k` (MM-03.3.8). -/
+theorem split_preserves_exclusivity_underDD {k : K} (hdd : DDSound k) {s s' : S3} {src : Nat}
+    {rs : List (List Nat)} (hwf : WF3 s) (hinv : Inv3 s) (h : SplitStep k src rs s (.ok s')) :
+    I1 s' := (split_preserves_underDD hdd hwf hinv h).2.1
+
+theorem set_get {l : List Authority} {a j : Nat} {x' : Authority} (ha : a < l.length) :
+    (l.set a x')[j]? = if a = j then some x' else l[j]? := by
+  rw [List.getElem?_set]; split <;> simp_all
+
+theorem releaseEff_eq {s : S3} {a : Nat} {x : Authority} (hx : s.A[a]? = some x) :
+    releaseEff s a = { s with A := s.A.set a { x with active := false } } := by
+  simp [releaseEff, hx]
+
+theorem release_org {s : S3} {a : Nat} {x : Authority} (hx : s.A[a]? = some x) :
+    (releaseEff s a).org = s.org := by
+  funext j; rw [releaseEff_eq hx]
+  simp only [S3.org, set_get (lt_of_getElem? hx)]
+  split
+  · subst_vars; simp [hx]
+  · rfl
+
+theorem release_ancs {s : S3} {a : Nat} {x : Authority} (hx : s.A[a]? = some x) :
+    (releaseEff s a).ancs = s.ancs := by
+  funext j; simp only [S3.ancs, release_org hx]
+
+/-- `release` préserve `WF3` et `Inv3` (MM-03.3 §3, O3 ; §10). -/
+theorem release_preserves {s s' : S3} {a : Nat} (hwf : WF3 s) (hinv : Inv3 s)
+    (h : ReleaseStep a s (.ok s')) : WF3 s' ∧ Inv3 s' := by
+  obtain ⟨⟨⟨x, hx, xa⟩, -, h3⟩, rfl⟩ := release_ok_iff.1 h
+  obtain ⟨w0, ht, w2, wn, wl, wp⟩ := hwf
+  obtain ⟨-, i2, i3, -⟩ := hinv
+  have ha := lt_of_getElem? hx
+  have get : ∀ j, (releaseEff s a).A[j]? = if a = j then some { x with active := false }
+      else s.A[j]? := fun j => by rw [releaseEff_eq hx]; exact set_get ha
+  have back : ∀ j z, (releaseEff s a).A[j]? = some z → ∃ z₀, s.A[j]? = some z₀ ∧
+      z.mode = z₀.mode ∧ z.origin = z₀.origin ∧ z.footprint = z₀.footprint ∧
+      (z.active = true → z₀.active = true ∧ j ≠ a) := fun j z hz => by
+    rw [get] at hz; split at hz
+    · subst_vars; cases hz; exact ⟨x, hx, rfl, rfl, rfl, by simp⟩
+    · exact ⟨z, hz, rfl, rfl, rfl, fun hz' => ⟨hz', Ne.symm ‹_›⟩⟩
+  have tree : Tree (releaseEff s a) := by
+    intro a' b' x' y' p hab ha' hb' xa' ya' xp yp hnab hnba
+    obtain ⟨x₀, hx₀, m₁, -, f₁, ac₁⟩ := back a' x' ha'
+    obtain ⟨y₀, hy₀, m₂, -, f₂, ac₂⟩ := back b' y' hb'
+    rw [release_ancs hx] at hnab hnba; rw [m₁, m₂]
+    exact ht a' b' x₀ y₀ p hab hx₀ hy₀ (ac₁ xa').1 (ac₂ ya').1 (f₁ ▸ xp) (f₂ ▸ yp) hnab hnba
+  have act : ∀ y, s.Active y → y ≠ a → (releaseEff s a).Active y := fun y ⟨z, hz, za⟩ hya =>
+    ⟨z, by rw [get]; simp only [Ne.symm hya, ↓reduceIte]; exact hz, za⟩
+  have e := releaseEff_eq hx
+  refine ⟨⟨fun b y o hb ho => ?_, tree, fun b y hb l hl => ?_, by rw [e]; exact wn,
+    by rw [e]; exact wl, by rw [e]; exact wp⟩,
+    i1_of_tree tree, fun b y o hb ho => ?_, fun q hq y hy => ?_, i4_always _⟩
+  · obtain ⟨y₀, hy₀, -, e, -⟩ := back b y hb; exact w0 b y₀ o hy₀ (e ▸ ho)
+  · obtain ⟨y₀, hy₀, -, -, e', -⟩ := back b y hb; rw [e]; exact w2 b y₀ hy₀ l (e' ▸ hl)
+  · obtain ⟨y₀, hy₀, m₀, e, f₀, -⟩ := back b y hb
+    obtain ⟨x₁, hx₁, hh⟩ := i2 b y₀ o hy₀ (e ▸ ho)
+    refine ⟨if a = o then { x with active := false } else x₁, by rw [get]; split <;> simp_all,
+      fun p hp => ?_⟩
+    have := hh p (f₀ ▸ hp); rw [m₀]
+    split
+    · subst_vars; rw [hx] at hx₁; cases hx₁; exact this
+    · exact this
+  · have hy' := hy; rw [e] at hq hy'
+    have hq' : q ∈ List.range s.P.length := by
+      obtain ⟨f, hf, -⟩ := hq; simp [placeFrame] at hf
+      obtain ⟨pl, hpl, -⟩ := hf; exact List.mem_range.2 (lt_of_getElem? hpl)
+    exact act y (i3 q hq y hy') fun e => h3 q hq' hq (e ▸ hy')
+
+/-- `release_restores_authority` (MM-03.3 §3, O3 ; §10) : si `b`, dérivée de `a`, est le seul
+descendant actif de `a` couvrant `p`, alors après `release b` l'autorité effective de `a` sur `p`
+est son mode ; avant, si `b` est en `Modify` sur `p`, elle était absente. -/
+theorem release_restores_authority {s s' : S3} {b a p : Nat} {y x : Authority} (hwf : WF3 s)
+    (h : ReleaseStep b s (.ok s')) (hy : s.A[b]? = some y) (ho : y.origin = some a)
+    (hx : s.A[a]? = some x) (xa : x.active = true) (xp : p ∈ x.footprint)
+    (honly : ∀ j z, s.A[j]? = some z → z.active = true → p ∈ z.footprint → a ∈ s.ancs j → j = b) :
+    (y.mode = .modify → p ∈ y.footprint → effective s a p = none) ∧
+    effective s' a p = some x.mode := by
+  obtain ⟨⟨⟨y', hy', ya⟩, -, -⟩, rfl⟩ := release_ok_iff.1 h
+  rw [hy] at hy'; cases hy'
+  have hab : a < b := hwf.1 b y a hy ho
+  have hanc : a ∈ s.ancs b := by
+    unfold S3.ancs; rw [chain_cons (by simp [S3.org, hy, ho]) hab]; exact List.mem_cons_self ..
+  refine ⟨fun hm hp => ?_, ?_⟩
+  · rw [effective_eq hx xa xp]
+    have : Mode.modify ∈ descModes s a p := mem_descModes.2 ⟨b, y, hy, ya, hp, hanc, hm⟩
+    unfold effOf; simp only [List.ne_nil_of_mem this, this, ↓reduceIte]
+  · have hb := lt_of_getElem? hy
+    have hx' : (releaseEff s b).A[a]? = some x := by
+      rw [releaseEff_eq hy, set_get hb]; simp only [show ¬ b = a by omega, ↓reduceIte]; exact hx
+    rw [effective_eq hx' xa xp]
+    have : descModes (releaseEff s b) a p = [] := by
+      apply nil_of_forall_not_mem; intro e he
+      obtain ⟨j, z, hz, za, zp, hj, -⟩ := mem_descModes.1 he
+      rw [release_ancs hy] at hj
+      rw [releaseEff_eq hy, set_get hb] at hz
+      split at hz
+      · cases hz; simp at za
+      · exact ‹¬b = j› (honly j z hz za zp hj).symm
+    simp [this, effOf]
+
+/-- `transfer` ne change que le cadre détenteur des autorités. -/
+theorem transfer_skel (s : S3) (src dst : Nat) (auths : List Nat) :
+    SameSkel s (transferEff s src dst auths) := by
+  refine ⟨by simp [transferEff, length_mapI], fun j => ?_⟩
+  simp only [transferEff, getElem?_mapI, Option.map_map]
+  cases s.A[j]? with
+  | none => rfl
+  | some y => simp only [Option.map_some, Function.comp]; split <;> rfl
+
+/-- `transfer` préserve `WF3` et `Inv3` (MM-03.3 §3, O4 ; §10). -/
+theorem transfer_preserves {k : K} {s s' : S3} {src dst : Nat} {auths : List Nat} (hwf : WF3 s)
+    (hinv : Inv3 s) (h : TransferStep k src dst auths s (.ok s')) : WF3 s' ∧ Inv3 s' := by
+  obtain ⟨⟨-, -, -, -, -, -, -, h5, -, -⟩, rfl⟩ := transfer_ok_iff.1 h
+  refine (transfer_skel s src dst auths).preserves rfl rfl rfl hwf hinv fun q hq x hx => ?_
+  simp only [transferEff] at hx
+  split at hx
+  · rename_i hqd; subst hqd; rcases List.mem_append.1 hx with hx | hx
+    · exact hinv.2.2.1 _ hq x hx
+    · exact h5 x hx
+  · split at hx
+    · simp at hx
+    · exact hinv.2.2.1 q hq x hx
+
+/-- `transfer_no_duplicate_authority` (MM-03.3 §3, O4.3 ; §2, I4 ; §10) : aucune autorité n'est
+créée ni dupliquée ; chaque autorité garde mode, origine, empreinte et activité ; les autorités
+transférées passent au cadre de la destination. -/
+theorem transfer_no_duplicate_authority {k : K} {s s' : S3} {src dst : Nat} {auths : List Nat}
+    (h : TransferStep k src dst auths s (.ok s')) :
+    SameSkel s s' ∧ ∀ b ∈ auths, s'.frameOf b = some ((placeFrame s.P dst).getD 0) := by
+  obtain ⟨⟨-, -, -, -, -, hauth, -⟩, rfl⟩ := transfer_ok_iff.1 h
+  refine ⟨transfer_skel s src dst auths, fun b hb => ?_⟩
+  obtain ⟨⟨y, hy, -⟩, -⟩ := hauth b hb
+  simp [S3.frameOf, transferEff, getElem?_mapI, hy, hb]
+
+/-- `transfer_invalidates_source` (MM-03.3 §3, O4 ; §2, I4) : après un transfert, chaque feuille
+de la source est `Moved` et n'est lisible par aucune autorité. -/
+theorem transfer_invalidates_source {k : K} {s s' : S3} {src dst : Nat} {auths : List Nat}
+    (h : TransferStep k src dst auths s (.ok s')) :
+    ∀ l ∈ footprint s.P src, s'.I l = .moved ∧ ∀ a, ¬ CanReadLeaf s' a l := by
+  obtain ⟨⟨-, -, -, -, hov, -⟩, rfl⟩ := transfer_ok_iff.1 h
+  intro l hl
+  have hm : (transferEff s src dst auths).I l = .moved := by
+    simp only [transferEff, show l ∉ footprint s.P dst from fun h' => hov ⟨l, hl, h'⟩, hl,
+      ↓reduceIte]
+  exact ⟨hm, fun a => i4_always _ a l hm⟩
+
+/-- Dépendances transférées (MM-03.3.6 ; MM-03.3 §3, O4) : celles de la source accompagnent la
+destination et quittent la source et ses parties. -/
+theorem transfer_moves_deps {k : K} {s s' : S3} {src dst : Nat} {auths : List Nat}
+    (h : TransferStep k src dst auths s (.ok s')) :
+    (∀ x ∈ depsOf s src, x ∈ s'.D dst) ∧ ∀ r, r ≠ dst → partOf s.P r src → s'.D r = [] := by
+  obtain ⟨-, rfl⟩ := transfer_ok_iff.1 h
+  exact ⟨fun x hx => by simp [transferEff, hx], fun r hr hp => by simp [transferEff, hr, hp]⟩
+
+/-- `depend` préserve `WF3` et `Inv3` (MM-03.3 §3, O5 ; §10). -/
+theorem depend_preserves {s s' : S3} {q x : Nat} (hwf : WF3 s) (hinv : Inv3 s)
+    (h : DependStep q x s (.ok s')) : WF3 s' ∧ Inv3 s' := by
+  obtain ⟨⟨-, hx, -⟩, rfl⟩ := depend_ok_iff.1 h
+  refine (show SameSkel s (dependEff s q x) from ⟨rfl, fun _ => rfl⟩).preserves rfl rfl rfl
+    hwf hinv fun r hr y hy => ?_
+  simp only [dependEff] at hy
+  split at hy
+  · subst_vars; rcases List.mem_append.1 hy with hy | hy
+    · exact hinv.2.2.1 _ hr y hy
+    · simp at hy; exact hy ▸ hx
+  · exact hinv.2.2.1 r hr y hy
+
+/-- `depend_preserves_anchor_validity` (MM-03.3 §3, O5 ; §2, I3 ; §10) : I3 est préservé et la
+validité de toute ancre est inchangée, `depend` n'allongeant celle d'aucune origine. -/
+theorem depend_preserves_anchor_validity {s s' : S3} {q x : Nat} (hi3 : I3 s)
+    (h : DependStep q x s (.ok s')) : I3 s' ∧ ∀ y, s'.Active y ↔ s.Active y := by
+  obtain ⟨⟨-, hx, -⟩, rfl⟩ := depend_ok_iff.1 h
+  refine ⟨fun r hr y hy => ?_, fun _ => Iff.rfl⟩
+  simp only [dependEff] at hy
+  split at hy
+  · subst_vars; rcases List.mem_append.1 hy with hy | hy
+    · exact hi3 _ hr y hy
+    · simp at hy; exact hy ▸ hx
+  · exact hi3 r hr y hy
+
+/-- `read3` préserve l'état (MM-03.3 §5 : la lecture ne modifie pas l'état des autorités). -/
+theorem read3_preserves {s s' : S3} {a : Nat} {ls : List Nat} (h : Read3Step a ls s (.ok s')) :
+    s' = s := (read3_ok_iff.1 h).2
+
+/-- `write3` préserve `WF3` et `Inv3` (MM-03.3 §5 ; §10). -/
+theorem write3_preserves {s s' : S3} {a : Nat} {ls : List Nat} (hwf : WF3 s) (hinv : Inv3 s)
+    (h : Write3Step a ls s (.ok s')) : WF3 s' ∧ Inv3 s' := by
+  obtain ⟨-, rfl⟩ := write3_ok_iff.1 h
+  exact (show SameSkel s (write3Eff s ls) from ⟨rfl, fun _ => rfl⟩).preserves rfl rfl rfl
+    hwf hinv fun q hq y hy => hinv.2.2.1 q hq y hy
+
+/-! ## `enterFrame` -/
+
+theorem mem_footprint {P : List Place} {q l : Nat} :
+    l ∈ footprint P q ↔ l < P.length ∧ isLeaf P l ∧ partOf P l q := by
+  simp [footprint, List.mem_filter, List.mem_range]
+
+theorem enter_get {s : S3} {ls : List (Option Nat × Nat)} {j : Nat} {z : Authority}
+    (h : (enterEff s ls).A[j]? = some z) :
+    (j < s.A.length ∧ s.A[j]? = some z) ∨
+    (s.A.length ≤ j ∧ ∃ i, (rootIdx ls)[j - s.A.length]? = some i ∧
+      z = ⟨.modify, none, footprint (enterP s ls) (s.P.length + i), s.nF, true⟩) := by
+  simp only [enterEff] at h
+  by_cases hj : j < s.A.length
+  · exact .inl ⟨hj, by rwa [List.getElem?_append_left hj] at h⟩
+  · rw [List.getElem?_append_right (by omega), List.getElem?_map] at h
+    cases hi : (rootIdx ls)[j - s.A.length]? with
+    | none => rw [hi] at h; cases h
+    | some i => rw [hi] at h; cases h; exact .inr ⟨by omega, i, rfl, rfl⟩
+
+theorem enter_lt {s : S3} {ls : List (Option Nat × Nat)} {j : Nat} (h : j < s.A.length) :
+    (enterEff s ls).A[j]? = s.A[j]? := List.getElem?_append_left h
+
+theorem enter_ancs_lt {s : S3} {ls : List (Option Nat × Nat)} {j : Nat} (h : j < s.A.length) :
+    (enterEff s ls).ancs j = s.ancs j :=
+  chain_congr fun i hi => by simp only [S3.org, enter_lt (Nat.lt_of_le_of_lt hi h)]
+
+theorem rootIdx_mem {ls : List (Option Nat × Nat)} {k i : Nat} (h : (rootIdx ls)[k]? = some i) :
+    i < ls.length ∧ (ls[i]?).bind (·.1) = none := by
+  have := List.mem_of_getElem? h
+  simp only [rootIdx, List.mem_filter, List.mem_range, Option.isNone_iff_eq_none] at this
+  exact this
+
+theorem enter_root_parent {s : S3} {ls : List (Option Nat × Nat)} {i : Nat}
+    (h : (ls[i]?).bind (·.1) = none) : parentOf (enterP s ls) (s.P.length + i) = none := by
+  simp only [parentOf, enterP, List.getElem?_append_right (Nat.le_add_right _ _),
+    Nat.add_sub_cancel_left, List.getElem?_map]
+  cases hl : ls[i]? with
+  | none => rfl
+  | some pk => rw [hl] at h; simpa using h
+
+theorem enter_root_fp_ge {s : S3} {ls : List (Option Nat × Nat)} {i l : Nat}
+    (h : l ∈ footprint (enterP s ls) (s.P.length + i)) : s.P.length ≤ l := by
+  obtain ⟨-, -, -, h | h⟩ := mem_footprint.1 h
+  · omega
+  · have := chain_lt h; omega
+
+theorem enter_roots_disjoint {s : S3} {ls : List (Option Nat × Nat)} {i i' l : Nat} (hii : i ≠ i')
+    (hi : (ls[i]?).bind (·.1) = none) (hi' : (ls[i']?).bind (·.1) = none)
+    (h : l ∈ footprint (enterP s ls) (s.P.length + i))
+    (h' : l ∈ footprint (enterP s ls) (s.P.length + i')) : False := by
+  obtain ⟨-, -, -, h | h⟩ := mem_footprint.1 h <;> obtain ⟨-, -, -, h' | h'⟩ := mem_footprint.1 h'
+  · omega
+  · subst h; rw [chain_none (enter_root_parent hi)] at h'; simp at h'
+  · subst h'; rw [chain_none (enter_root_parent hi')] at h; simp at h
+  · exact hii (by have := chainF_root _ _ _ _ h (enter_root_parent hi) h' (enter_root_parent hi')
+                  omega)
+
+/-- `enterFrame` préserve `WF3` et `Inv3` (MM-03.3 §4, O6 ; §10). -/
+theorem enter_preserves {s s' : S3} {ls : List (Option Nat × Nat)} (hwf : WF3 s) (hinv : Inv3 s)
+    (h : EnterStep ls s (.ok s')) : WF3 s' ∧ Inv3 s' := by
+  obtain ⟨-, rfl⟩ := enter_ok_iff.1 h
+  obtain ⟨w0, ht, w2, wn, wl, wp⟩ := hwf
+  obtain ⟨-, i2, i3, -⟩ := hinv
+  have nodup : (rootIdx ls).Nodup :=
+    ((pairwise_lt_range _).sublist List.filter_sublist).imp Nat.ne_of_lt
+  have tree : Tree (enterEff s ls) := by
+    intro a b x y p hab ha hb xa ya xp yp hnab hnba
+    rcases enter_get ha with ⟨ha', ha''⟩ | ⟨ha', i, hi, rfl⟩ <;>
+      rcases enter_get hb with ⟨hb', hb''⟩ | ⟨hb', i', hi', rfl⟩
+    · rw [enter_ancs_lt hb'] at hnab; rw [enter_ancs_lt ha'] at hnba
+      exact ht a b x y p hab ha'' hb'' xa ya xp yp hnab hnba
+    · have := w2 a x ha'' p xp; have := enter_root_fp_ge yp; omega
+    · have := w2 b y hb'' p yp; have := enter_root_fp_ge xp; omega
+    · have hk : a - s.A.length ≠ b - s.A.length := by omega
+      have hii : i ≠ i' := fun e => hk ((nodup.getElem?_inj (lt_of_getElem? hi)).1 (by
+        rw [hi, hi', e]))
+      exact (enter_roots_disjoint hii (rootIdx_mem hi).2 (rootIdx_mem hi').2 xp yp).elim
+  have act : ∀ x, s.Active x → (enterEff s ls).Active x := fun x ⟨y, hy, ya⟩ =>
+    ⟨y, by rw [enter_lt (lt_of_getElem? hy)]; exact hy, ya⟩
+  have hP : ∀ q pl, (enterEff s ls).P[q]? = some pl →
+      (q < s.P.length ∧ s.P[q]? = some pl) ∨ (s.P.length ≤ q ∧ pl.frame = s.nF) := by
+    intro q pl hq
+    simp only [enterEff, enterP] at hq
+    by_cases hlt : q < s.P.length
+    · exact .inl ⟨hlt, by rwa [List.getElem?_append_left hlt] at hq⟩
+    · rw [List.getElem?_append_right (by omega), List.getElem?_map] at hq
+      cases hl : ls[q - s.P.length]? with
+      | none => rw [hl] at hq; cases hq
+      | some pk => rw [hl] at hq; cases hq; exact .inr ⟨by omega, rfl⟩
+  refine ⟨⟨fun b y a hb ho => ?_, tree, fun a x hx l hl => ?_, ?_, ?_, ?_⟩, i1_of_tree tree,
+    fun b y a hb ho => ?_, fun q hq x hx => ?_, i4_always _⟩
+  · rcases enter_get hb with ⟨-, hb''⟩ | ⟨-, _, -, hz⟩
+    · exact w0 b y a hb'' ho
+    · rw [hz] at ho; cases ho
+  · have hlen : (enterEff s ls).P.length = s.P.length + ls.length := by
+      simp [enterEff, enterP]
+    rw [hlen]
+    rcases enter_get hx with ⟨-, hx''⟩ | ⟨-, i, -, rfl⟩
+    · have := w2 a x hx'' l hl; omega
+    · have := (mem_footprint.1 hl).1; simpa [enterP] using this
+  · exact List.nodup_cons.2 ⟨fun hm => Nat.lt_irrefl _ (wl _ hm), wn⟩
+  · intro f hf; rcases List.mem_cons.1 hf with rfl | hf
+    · exact Nat.lt_succ_self _
+    · exact Nat.lt_succ_of_lt (wl f hf)
+  · intro q pl hq; rcases hP q pl hq with ⟨-, hq'⟩ | ⟨-, e⟩
+    · exact Nat.lt_succ_of_lt (wp q pl hq')
+    · rw [e]; exact Nat.lt_succ_self _
+  · rcases enter_get hb with ⟨-, hb''⟩ | ⟨-, _, -, hz⟩
+    · obtain ⟨x₁, hx₁, hh⟩ := i2 b y a hb'' ho
+      exact ⟨x₁, by rw [enter_lt (lt_of_getElem? hx₁)]; exact hx₁, hh⟩
+    · rw [hz] at ho; cases ho
+  · obtain ⟨g, hg, hgF⟩ := hq
+    simp only [placeFrame, Option.map_eq_some_iff] at hg
+    obtain ⟨pl, hpl, rfl⟩ := hg
+    rcases hP q pl hpl with ⟨hlt, hpl'⟩ | ⟨hge, -⟩
+    · have hne : pl.frame ≠ s.nF := Nat.ne_of_lt (wp q pl hpl')
+      have hF : pl.frame ∈ s.F := by
+        rcases List.mem_cons.1 hgF with e | e
+        · exact absurd e hne
+        · exact e
+      have hx' : x ∈ s.D q := by simpa [enterEff, show ¬ s.P.length ≤ q by omega] using hx
+      exact act x (i3 q ⟨pl.frame, by simp [placeFrame, hpl'], hF⟩ x hx')
+    · simp [enterEff, hge] at hx
+
+/-! ## `exitFrame` -/
+
+/-- Retirer d'une chaîne des liens dont la cible vérifie `Fr` en les remplaçant par l'origine de
+celle-ci ne fait qu'ôter à chaque chaîne des éléments vérifiant `Fr`. -/
+theorem chain_reattach {org org' : Nat → Option Nat} {Fr : Nat → Prop}
+    (w : ∀ b a, org b = some a → a < b)
+    (hre : ∀ b, org' b = org b ∨ ∃ x, org b = some x ∧ Fr x ∧ org' b = org x) :
+    ∀ n i, i < n → (∀ j ∈ chain org' i, j ∈ chain org i) ∧
+      (∀ j ∈ chain org i, ¬ Fr j → j ∈ chain org' i)
+  | 0, _, h => absurd h (Nat.not_lt_zero _)
+  | n + 1, i, hi => by
+    rcases hre i with e | ⟨x, hx, fx, e⟩
+    · cases ho : org i with
+      | none =>
+        rw [chain_none ho, chain_none (e.trans ho)]
+        exact ⟨fun _ hj => (nomatch hj), fun _ hj => (nomatch hj)⟩
+      | some o =>
+        have hlt := w i o ho
+        have ih := chain_reattach w hre n o (by omega)
+        rw [chain_cons ho hlt, chain_cons (e.trans ho) hlt]
+        refine ⟨fun j hj => ?_, fun j hj hf => ?_⟩
+        · rcases List.mem_cons.1 hj with rfl | hj
+          · exact List.mem_cons_self ..
+          · exact List.mem_cons_of_mem _ (ih.1 j hj)
+        · rcases List.mem_cons.1 hj with rfl | hj
+          · exact List.mem_cons_self ..
+          · exact List.mem_cons_of_mem _ (ih.2 j hj hf)
+    · have hxi := w i x hx
+      rw [chain_cons hx hxi]
+      cases ho : org x with
+      | none =>
+        rw [chain_none (e.trans ho), chain_none ho]
+        refine ⟨fun j hj => by simp at hj, fun j hj hf => ?_⟩
+        simp at hj; exact absurd (hj ▸ fx) hf
+      | some o =>
+        have hlt := w x o ho
+        have ih := chain_reattach w hre n o (by omega)
+        rw [chain_cons ho hlt, chain_cons (e.trans ho) (by omega)]
+        refine ⟨fun j hj => ?_, fun j hj hf => ?_⟩
+        · rcases List.mem_cons.1 hj with rfl | hj
+          · exact List.mem_cons_of_mem _ (List.mem_cons_self ..)
+          · exact List.mem_cons_of_mem _ (List.mem_cons_of_mem _ (ih.1 j hj))
+        · rcases List.mem_cons.1 hj with rfl | hj
+          · exact absurd fx hf
+          · rcases List.mem_cons.1 hj with rfl | hj
+            · exact List.mem_cons_self ..
+            · exact List.mem_cons_of_mem _ (ih.2 j hj hf)
+
+theorem exitEff_eq {s : S3} {f : Nat} {F₀ : Frames} (hF : s.F = f :: F₀) :
+    exitEff s =
+      { s with
+        F := F₀
+        D := fun q => (s.D q).map (reanchor s f)
+        A := s.A.map (exitG s f) } := by
+  simp [exitEff, hF]
+
+theorem exitG_fields (s : S3) (f : Nat) (y : Authority) :
+    (exitG s f y).mode = y.mode ∧ (exitG s f y).footprint = y.footprint ∧
+    (exitG s f y).frame = y.frame ∧
+    ((exitG s f y).active = true ↔ y.active = true ∧ y.frame ≠ f) := by
+  unfold exitG; split
+  · simp_all
+  · split <;> simp_all
+
+theorem exitG_origin (s : S3) (f : Nat) (y : Authority) :
+    (exitG s f y).origin = y.origin ∨
+    ∃ x, y.origin = some x ∧ s.frameOf x = some f ∧ (exitG s f y).origin = s.org x := by
+  unfold exitG; split
+  · exact .inl rfl
+  · split
+    · rename_i h; right
+      cases ho : y.origin with
+      | none => simp [ho] at h
+      | some x => simp [ho] at h; exact ⟨x, rfl, h.2, by simp⟩
+    · exact .inl rfl
+
+/-- `exitFrame` préserve `WF3` et `Inv3` (MM-03.3 §4, O7 ; §10 ; arbitrage 1). -/
+theorem exit_preserves {s s' : S3} (hwf : WF3 s) (hinv : Inv3 s) (h : ExitStep s (.ok s')) :
+    WF3 s' ∧ Inv3 s' := by
+  obtain ⟨hpre, rfl⟩ := exit_ok_iff.1 h
+  unfold ExitPre at hpre
+  split at hpre
+  · rename_i f F₀ hF
+    obtain ⟨-, hR1, -⟩ := hpre
+    obtain ⟨w0, ht, w2, wn, wl, wp⟩ := hwf
+    obtain ⟨-, i2, i3, -⟩ := hinv
+    have e := exitEff_eq hF
+    have get : ∀ j, (exitEff s).A[j]? = (s.A[j]?).map (exitG s f) := fun j => by
+      rw [e]; exact List.getElem?_map
+    have get' : ∀ {j z}, (exitEff s).A[j]? = some z → ∃ z₀, s.A[j]? = some z₀ ∧ z = exitG s f z₀ :=
+      fun {j z} hz => by
+        rw [get] at hz
+        cases h₀ : s.A[j]? with
+        | none => rw [h₀] at hz; cases hz
+        | some z₀ => rw [h₀] at hz; cases hz; exact ⟨z₀, h₀, rfl⟩
+    have worg : ∀ b a, s.org b = some a → a < b := fun b a h => by
+      simp only [S3.org] at h
+      cases hb : s.A[b]? with
+      | none => rw [hb] at h; cases h
+      | some y => rw [hb] at h; exact w0 b y a hb h
+    have hre : ∀ b, (exitEff s).org b = s.org b ∨
+        ∃ x, s.org b = some x ∧ s.frameOf x = some f ∧ (exitEff s).org b = s.org x := fun b => by
+      simp only [S3.org, get]
+      cases hb : s.A[b]? with
+      | none => exact .inl rfl
+      | some y =>
+        rcases exitG_origin s f y with e' | ⟨x, hx, fx, e'⟩
+        · exact .inl (by simp [e'])
+        · exact .inr ⟨x, by simp [hx], fx, by simp [e', S3.org]⟩
+    have cr := fun i => chain_reattach worg hre (i + 1) i (Nat.lt_succ_self i)
+    have tree : Tree (exitEff s) := by
+      intro a b x y p hab ha hb xa ya xp yp hnab hnba
+      obtain ⟨x₀, hx₀, rfl⟩ := get' ha; obtain ⟨y₀, hy₀, rfl⟩ := get' hb
+      obtain ⟨xm, xf, -, xact⟩ := exitG_fields s f x₀
+      obtain ⟨ym, yf, -, yact⟩ := exitG_fields s f y₀
+      have ⟨xa₀, xnf⟩ := xact.1 xa; have ⟨ya₀, ynf⟩ := yact.1 ya
+      rw [xm, ym]
+      refine ht a b x₀ y₀ p hab hx₀ hy₀ xa₀ ya₀ (xf ▸ xp) (yf ▸ yp) (fun hm => hnab ?_)
+        (fun hm => hnba ?_)
+      · exact (cr b).2 a hm (by simp [S3.frameOf, hx₀, xnf])
+      · exact (cr a).2 b hm (by simp [S3.frameOf, hy₀, ynf])
+    have hnd := List.nodup_cons.1 (hF ▸ wn)
+    refine ⟨⟨fun b y a hb ho => ?_, tree, fun a x hx l hl => ?_, by rw [e]; exact hnd.2,
+      fun g hg => by rw [e] at hg ⊢; exact wl g (hF ▸ List.mem_cons_of_mem _ hg),
+      by rw [e]; exact wp⟩, i1_of_tree tree, fun b y a hb ho => ?_, fun q hq x hx => ?_,
+      i4_always _⟩
+    · have : (exitEff s).org b = some a := by simp [S3.org, hb, ho]
+      rcases hre b with e' | ⟨x, hx, -, e'⟩
+      · exact worg b a (e' ▸ this)
+      · have := worg x a (e' ▸ this); have := worg b x hx; omega
+    · obtain ⟨x₀, hx₀, rfl⟩ := get' hx
+      rw [e]; exact w2 a x₀ hx₀ l ((exitG_fields s f x₀).2.1 ▸ hl)
+    · obtain ⟨y₀, hy₀, rfl⟩ := get' hb
+      obtain ⟨ym, yf, -, -⟩ := exitG_fields s f y₀
+      have lift : ∀ {a x₁}, s.A[a]? = some x₁ → (exitEff s).A[a]? = some (exitG s f x₁) :=
+        fun h => by rw [get, h]; rfl
+      rcases exitG_origin s f y₀ with e' | ⟨x, hx, -, e'⟩
+      · obtain ⟨x₁, hx₁, hh⟩ := i2 b y₀ a hy₀ (e' ▸ ho)
+        obtain ⟨xm, xf, -, -⟩ := exitG_fields s f x₁
+        exact ⟨_, lift hx₁, fun p hp => by rw [ym, xm, xf]; exact hh p (yf ▸ hp)⟩
+      · obtain ⟨x₁, hx₁, hh₁⟩ := i2 b y₀ x hy₀ hx
+        have hox : x₁.origin = some a := by
+          have := e'.symm.trans ho; simpa [S3.org, hx₁] using this
+        obtain ⟨x₂, hx₂, hh₂⟩ := i2 x x₁ a hx₁ hox
+        obtain ⟨xm, xf, -, -⟩ := exitG_fields s f x₂
+        refine ⟨_, lift hx₂, fun p hp => ?_⟩
+        rw [ym, xm, xf]
+        obtain ⟨p₁, m₁⟩ := hh₁ p (yf ▸ hp); obtain ⟨p₂, m₂⟩ := hh₂ p p₁
+        exact ⟨p₂, Mode.le_trans m₁ m₂⟩
+    · have hq0 : s.Usable q := by
+        obtain ⟨g, hg, hgF⟩ := hq; rw [e] at hg hgF
+        exact ⟨g, hg, hF ▸ List.mem_cons_of_mem _ hgF⟩
+      have hqin : UsableIn s F₀ q := by
+        obtain ⟨g, hg, hgF⟩ := hq; rw [e] at hg hgF; simp [UsableIn, OptP, hg, hgF]
+      rw [e] at hx; simp only [List.mem_map] at hx
+      obtain ⟨x₀, hx₀, rfl⟩ := hx
+      have hq' : q ∈ List.range s.P.length := by
+        obtain ⟨g, hg, -⟩ := hq0; simp [placeFrame] at hg
+        obtain ⟨pl, hpl, -⟩ := hg; exact List.mem_range.2 (lt_of_getElem? hpl)
+      have keep : ∀ z, s.Active z → s.frameOf z ≠ some f → (exitEff s).Active z :=
+        fun z ⟨y, hy, ya⟩ hzf => ⟨exitG s f y, by rw [get, hy]; rfl,
+          (exitG_fields s f y).2.2.2.2 ⟨ya, fun hf => hzf (by simp [S3.frameOf, hy, hf])⟩⟩
+      unfold reanchor; split
+      · rename_i hfx
+        have hR := hR1 q hq' hqin x₀ hx₀ hfx
+        unfold Reanch OptP at hR; split at hR
+        · rename_i o ho
+          obtain ⟨hoa, hof⟩ := hR
+          simp only [ho, Option.getD_some]
+          refine keep o hoa fun hf => ?_
+          rw [hf] at hof; exact hnd.1 hof
+        · exact hR.elim
+      · rename_i hfx; exact keep x₀ (i3 q hq0 x₀ hx₀) hfx
+  · exact hpre.elim
+
+/-- `exitFrame_releases_all` (MM-03.3 §4, O7 ; §10) : après la sortie du cadre `f`, aucune
+autorité détenue par `f` n'est active. -/
+theorem exitFrame_releases_all {s s' : S3} {f : Nat} {F₀ : Frames} (hF : s.F = f :: F₀)
+    (h : ExitStep s (.ok s')) :
+    ∀ (j : Nat) (y : Authority), s'.A[j]? = some y → y.frame = f → y.active = false := by
+  intro j y hy hf
+  rw [(exit_ok_iff.1 h).2, exitEff_eq hF, List.getElem?_map] at hy
+  cases h₀ : s.A[j]? with
+  | none => rw [h₀] at hy; cases hy
+  | some y₀ =>
+    rw [h₀] at hy; cases hy
+    obtain ⟨-, -, fr, act⟩ := exitG_fields s f y₀
+    cases ha : (exitG s f y₀).active
+    · rfl
+    · exact absurd (fr ▸ hf) (act.1 ha).2
+
+/-- `exitFrame_reanchors_to_origin` (MM-03.3.7 ; MM-03.3 §4, O7 ; arbitrage 1) : toute ancre
+détenue par le cadre sortant d'une valeur d'un cadre survivant est remplacée par son origine,
+qui est une ancre valide après le retour. -/
+theorem exitFrame_reanchors_to_origin {s s' : S3} {f : Nat} {F₀ : Frames} (hwf : WF3 s)
+    (hinv : Inv3 s) (hF : s.F = f :: F₀) (h : ExitStep s (.ok s')) :
+    ∀ q, UsableIn s F₀ q → ∀ x ∈ s.D q, s.frameOf x = some f →
+      ∃ o, s.org x = some o ∧ o ∈ s'.D q ∧ s'.Active o := by
+  have hpres := exit_preserves hwf hinv h
+  obtain ⟨hpre, rfl⟩ := exit_ok_iff.1 h
+  unfold ExitPre at hpre; rw [hF] at hpre
+  obtain ⟨-, hR1, -⟩ := hpre
+  intro q hq x hx hfx
+  have hq' : q ∈ List.range s.P.length := by
+    simp only [UsableIn, OptP] at hq; split at hq
+    · rename_i g hg; simp [placeFrame] at hg
+      obtain ⟨pl, hpl, -⟩ := hg; exact List.mem_range.2 (lt_of_getElem? hpl)
+    · exact hq.elim
+  have hR := hR1 q hq' hq x hx hfx
+  unfold Reanch OptP at hR; split at hR
+  · rename_i o ho
+    have hmem : o ∈ (exitEff s).D q := by
+      rw [exitEff_eq hF]; exact List.mem_map.2 ⟨x, hx, by simp [reanchor, hfx, ho]⟩
+    refine ⟨o, ho, hmem, hpres.2.2.2.1 q ?_ o hmem⟩
+    simp only [UsableIn, OptP] at hq; split at hq
+    · rename_i g hg; exact ⟨g, by rw [exitEff_eq hF]; exact hg, by rw [exitEff_eq hF]; exact hq⟩
+    · exact hq.elim
+  · exact hR.elim
+
+/-- `dependent_cannot_escape_frame` (MM-03.3.6 ; MM-03.3 §4, O7.3 ; §10) : après la sortie du
+cadre `f`, aucune valeur encore utilisable ne dépend d'une autorité détenue par `f`. -/
+theorem dependent_cannot_escape_frame {s s' : S3} {f : Nat} {F₀ : Frames} (hwf : WF3 s)
+    (hinv : Inv3 s) (hF : s.F = f :: F₀) (h : ExitStep s (.ok s')) :
+    ∀ q, s'.Usable q → ∀ x ∈ s'.D q, ∃ y, s'.A[x]? = some y ∧ y.active = true ∧ y.frame ≠ f := by
+  intro q hq x hx
+  obtain ⟨y, hy, ya⟩ := (exit_preserves hwf hinv h).2.2.2.1 q hq x hx
+  exact ⟨y, hy, ya, fun hf => by rw [exitFrame_releases_all hF h x y hy hf] at ya; cases ya⟩
+
+/-! ## Atteignabilité (MM-03.3 §10) -/
+
+/-- États atteints depuis l'état initial (un cadre, aucun emplacement) par des transitions
+`ok` des opérations du noyau, pour des contrats `k` fixés (arbitrage 5). -/
+inductive Reachable (k : K) : S3 → Prop where
+  | init : Reachable k S3.init
+  | derive {s s' : S3} {src q : Nat} {m : Mode} :
+      Reachable k s → DeriveStep src q m s (.ok s') → Reachable k s'
+  | split {s s' : S3} {src : Nat} {rs : List (List Nat)} :
+      Reachable k s → SplitStep k src rs s (.ok s') → Reachable k s'
+  | release {s s' : S3} {a : Nat} : Reachable k s → ReleaseStep a s (.ok s') → Reachable k s'
+  | transfer {s s' : S3} {src dst : Nat} {auths : List Nat} :
+      Reachable k s → TransferStep k src dst auths s (.ok s') → Reachable k s'
+  | depend {s s' : S3} {q x : Nat} : Reachable k s → DependStep q x s (.ok s') → Reachable k s'
+  | enter {s s' : S3} {ls : List (Option Nat × Nat)} :
+      Reachable k s → EnterStep ls s (.ok s') → Reachable k s'
+  | exit {s s' : S3} : Reachable k s → ExitStep s (.ok s') → Reachable k s'
+  | read {s s' : S3} {a : Nat} {ls : List Nat} :
+      Reachable k s → Read3Step a ls s (.ok s') → Reachable k s'
+  | write {s s' : S3} {a : Nat} {ls : List Nat} :
+      Reachable k s → Write3Step a ls s (.ok s') → Reachable k s'
+
+theorem init_wf : WF3 S3.init ∧ Inv3 S3.init := by
+  have tree : Tree S3.init := fun _ _ _ _ _ _ h => by simp [S3.init] at h
+  refine ⟨⟨fun _ _ _ h => by simp [S3.init] at h, tree, fun _ _ h => by simp [S3.init] at h,
+    by simp [S3.init], by simp [S3.init], fun _ _ h => by simp [S3.init] at h⟩,
+    i1_of_tree tree, fun _ _ _ h => by simp [S3.init] at h, fun _ _ _ h => by simp [S3.init] at h,
+    i4_always _⟩
+
+/-- `reachable_access_invariant` (MM-03.3 §10) : tout état atteint satisfait `WF3` et `Inv3`.
+Conditionné à l'obligation `DDSound k` de `DeclaredDisjoint` (MM-03.3.8), utilisée par
+`split`. -/
+theorem reachable_access_invariant_underDD {k : K} (hdd : DDSound k) {s : S3}
+    (h : Reachable k s) : WF3 s ∧ Inv3 s := by
+  induction h with
+  | init => exact init_wf
+  | derive _ hs ih => exact derive_preserves ih.1 ih.2 hs
+  | split _ hs ih => exact split_preserves_underDD hdd ih.1 ih.2 hs
+  | release _ hs ih => exact release_preserves ih.1 ih.2 hs
+  | transfer _ hs ih => exact transfer_preserves ih.1 ih.2 hs
+  | depend _ hs ih => exact depend_preserves ih.1 ih.2 hs
+  | enter _ hs ih => exact enter_preserves ih.1 ih.2 hs
+  | exit _ hs ih => exact exit_preserves ih.1 ih.2 hs
+  | read _ hs ih => rw [read3_preserves hs]; exact ih
+  | write _ hs ih => exact write3_preserves ih.1 ih.2 hs
 
 end Ern.MM03
