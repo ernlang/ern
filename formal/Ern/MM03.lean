@@ -1586,10 +1586,6 @@ theorem split_preserves_underDD {k : K} (hdd : DDSound k) {s s' : S3} {src : Nat
     (h3.imp fun {r r'} h => h.elim id fun hd => hdd r r' hd)
   simpa [S3.afp, hx] using (h2 r hr p hp).1
 
-/-- `split_preserves_exclusivity` (MM-03.3 §10), under `DDSound k` (MM-03.3.8). -/
-theorem split_preserves_exclusivity_underDD {k : K} (hdd : DDSound k) {s s' : S3} {src : Nat}
-    {rs : List (List Nat)} (hwf : WF3 s) (hinv : Inv3 s) (h : SplitStep k src rs s (.ok s')) :
-    I1 s' := (split_preserves_underDD hdd hwf hinv h).2.1
 
 /-- `release` preserves `WF3` and `Inv3` (MM-03.3 §3, O3; §10). Under the strengthened I1 (A1),
 releasing an authority only shrinks the set of active authorities. -/
@@ -3327,21 +3323,27 @@ theorem arena_reset_rejects_live_access {k : K} {s : S3} {ar : Arena} {via j : N
     obtain ⟨y, hy, ya⟩ := ha
     exact h.2.1 j (List.mem_range.2 (lt_of_getElem? hy)) hj ⟨y, hy, ya⟩
 
-/-- `reset` preserves `WF3`, `Inv3` and the arena invariant, and modifies `available` and
-`issued` (MM-03.3 §6; A10). -/
-theorem arena_reset_preserves {k : K} {s s' : S3} {ar ar' : Arena} {via : Nat} (hwf : WF3 s)
-    (hinv : Inv3 s) (hai : ArenaInv s ar) (h : ResetStep k ar via s (.ok (s', ar'))) :
-    WF3 s' ∧ Inv3 s' ∧ ArenaInv s' ar' ∧ ar'.available = s.afp ar.internal ∧ ar'.issued = [] := by
+/-- `reset` preserves the arena invariant, and modifies `available` and `issued`
+(MM-03.3 §6; A10). -/
+theorem arena_reset_preserves {k : K} {s s' : S3} {ar ar' : Arena} {via : Nat}
+    (hai : ArenaInv s ar) (h : ResetStep k ar via s (.ok (s', ar'))) :
+    ArenaInv s' ar' ∧ ar'.available = s.afp ar.internal ∧ ar'.issued = [] := by
   obtain ⟨-, e⟩ := Guarded.ok_iff.1 h
   have e1 := congrArg Prod.fst e; have e2 := congrArg Prod.snd e
   simp only [resetEff] at e1 e2; subst e1 e2
   obtain ⟨-, -, -, -, -, c5, c6, c7⟩ := hai
+  exact ⟨⟨fun l hl => hl, fun _ he => (by cases he), List.Pairwise.nil, fun _ he => (by cases he),
+      fun _ he => (by cases he), c5, c6, c7⟩, rfl, rfl⟩
+
+/-- `reset` preserves `WF3` and `Inv3` (MM-03.3 §6; A10): it only writes the metadata. -/
+theorem arena_reset_preserves_wf {k : K} {s s' : S3} {ar ar' : Arena} {via : Nat} (hwf : WF3 s)
+    (hinv : Inv3 s) (h : ResetStep k ar via s (.ok (s', ar'))) : WF3 s' ∧ Inv3 s' := by
+  obtain ⟨-, e⟩ := Guarded.ok_iff.1 h
+  have e1 := congrArg Prod.fst e; simp only [resetEff] at e1; subst e1
   exact ⟨hwf.of_eq rfl rfl rfl rfl rfl, ⟨hinv.1, hinv.2.1, fun q hq y hy =>
     hinv.2.2.1 q ((S3.Usable.congr (s := s)
       (s' := { s with I := fun l => if l ∈ metaLeaves s ar then .init else s.I l })
-      rfl rfl rfl).1 hq) y hy, i4_always _⟩,
-    ⟨fun l hl => hl, fun _ he => (by cases he), List.Pairwise.nil, fun _ he => (by cases he),
-      fun _ he => (by cases he), c5, c6, c7⟩, rfl, rfl⟩
+      rfl rfl rfl).1 hq) y hy, i4_always _⟩⟩
 
 /-- `arena_reuse_safe` (MM-03.3 §6; A10): after `reset`, issuing again, a region already issued
 included, preserves `WF3`, `Inv3` and the arena invariant, and leaves every past emission
@@ -3351,7 +3353,8 @@ theorem arena_reuse_safe {k : K} {s s₁ s₂ : S3} {ar ar₁ ar₂ : Arena} {vi
     (hr : ResetStep k ar via s (.ok (s₁, ar₁)))
     (hi : IssueStep k ar₁ via' region dst s₁ (.ok s₂ ar₂)) :
     WF3 s₂ ∧ Inv3 s₂ ∧ ArenaInv s₂ ar₂ ∧ ∀ e ∈ ar.issued, ¬ s₂.Active e.2 := by
-  obtain ⟨hwf₁, hinv₁, hai₁, -, -⟩ := arena_reset_preserves hwf hinv hai hr
+  obtain ⟨hwf₁, hinv₁⟩ := arena_reset_preserves_wf hwf hinv hr
+  obtain ⟨hai₁, -, -⟩ := arena_reset_preserves hai hr
   obtain ⟨hwf₂, hinv₂, hai₂⟩ := arena_issue_preserves_disjointness hwf₁ hinv₁ hai₁ hi
   refine ⟨hwf₂, hinv₂, hai₂, fun e he ha => ?_⟩
   obtain ⟨⟨-, hno, -⟩, e'⟩ := Guarded.ok_iff.1 hr
@@ -3777,6 +3780,12 @@ theorem split_preserves_inv3_underDD {k : K} (hdd : DDSound k) {s s' : S3} {src 
   refine split_aux_inv3 rs s hinv hx xa (fun r hr p hp => ⟨h1 r hr p hp, ?_⟩)
     (h3.imp fun {r r'} h => h.elim id fun hd => hdd r r' hd)
   simpa [S3.afp, hx] using (h2 r hr p hp).1
+
+/-- `split_preserves_exclusivity` (MM-03.3 §10): `split` preserves I1 under `Inv3` alone,
+conditional on `DDSound k` (MM-03.3.8). -/
+theorem split_preserves_exclusivity_underDD {k : K} (hdd : DDSound k) {s s' : S3} {src : Nat}
+    {rs : List (List Nat)} (hinv : Inv3 s) (h : SplitStep k src rs s (.ok s')) : I1 s' :=
+  (split_preserves_inv3_underDD hdd hinv h).1
 
 /-- `release` preserves `Inv3` without `WF3` (MM-03.3 §3, O3; A1): the strengthened I1 only
 constrains active authorities, which `release` removes. -/
