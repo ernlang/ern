@@ -5707,7 +5707,7 @@ theorem enter_not_inv3_preserving :
     exact absurd this.1 (by decide)
   · exact absurd (h 0 1 0 .modify .modify (by decide) (by decide) (by decide)).1 (by decide)
 
-/-! ## Test cases (MM-03.3 §11 and the task of pass 2)
+/-! ## Test cases (MM-03.3 §11 and the tasks of passes 2 and 3)
 
 Each verdict is obtained by `decide` on the precondition of the operation concerned. States are
 built from `S3.init` by the effects of operations. Classification of each case (kernel,
@@ -5950,20 +5950,25 @@ example : EndUseStep K0 0 (dependEff c13a 1 0) .reject := .reject (by decide)
 
 /-- `alloc`, `process`, `free` at the end of the frame (`defer`), then `endUse` (expected:
 `ok`); `free` during an active access, without a compatible deallocation authority, or of an
-arena block (expected: reject). Frame 1: 0 box value, 1 owned storage. -/
-abbrev KF : K := KT [] [] [] [1] [(1, 7)]
-def n6a : S3 := write3Eff (enter1 [(none, none, 0), (none, some 0, 0)]) [1]
-example : Write3Step 1 [1] (enter1 [(none, none, 0), (none, some 0, 0)]) (.ok n6a) := .ok (by decide)
-example : FreeStep KF 1 7 n6a (.ok (freeEff n6a 1)) := .ok (by decide)
-example : EndUseStep KF 0 (freeEff n6a 1) (.ok (endUseEff (freeEff n6a 1) 0)) := .ok (by decide)
-example : FreeStep KF 1 7 (deriveEff n6a 1 1 .observe) .reject := .reject (by decide)
-example : FreeStep KF 1 8 n6a .reject := .reject (by decide)
+arena block (expected: reject). Frame 1: 0 box value, 1 allocator value; in the middle of the
+frame, `alloc` with provider 1 and owner 0 creates the storage 2, owned by 0, with root 2 (B5). -/
+abbrev KF : K := KT [] [] [] [2] [(2, 7)]
+def n6e : S3 := enter1 [(none, none, 0), (none, none, 0)]
+def n6a : S3 := write3Eff (allocEff (write3Eff n6e [1]) 0) [2]
+example : Write3Step 1 [1] n6e (.ok (write3Eff n6e [1])) := .ok (by decide)
+example : AllocStep KF 1 0 8 (write3Eff n6e [1]) (.ok (allocEff (write3Eff n6e [1]) 0)) :=
+  .ok (by decide) (by decide)
+example : Write3Step 2 [2] (allocEff (write3Eff n6e [1]) 0) (.ok n6a) := .ok (by decide)
+example : FreeStep KF 2 7 n6a (.ok (freeEff n6a 2)) := .ok (by decide)
+example : EndUseStep KF 0 (freeEff n6a 2) (.ok (endUseEff (freeEff n6a 2) 0)) := .ok (by decide)
+example : FreeStep KF 2 7 (deriveEff n6a 2 2 .observe) .reject := .reject (by decide)
+example : FreeStep KF 2 8 n6a .reject := .reject (by decide)
 example : FreeStep (KT [0] [] [] [1] [(2, 7)]) 2 7 c6b.1 .reject := .reject (by decide)
 
 /-- `endUse` of a value whose owned storage was not freed (expected: `ok`, reported as a leak):
 the storage is logically dead and not freed. -/
 example : EndUseStep KF 0 n6a (.ok (endUseEff n6a 0)) := .ok (by decide)
-example : (endUseEff n6a 0).dead 1 = true ∧ (endUseEff n6a 0).freed 1 = false := by decide
+example : (endUseEff n6a 0).dead 2 = true ∧ (endUseEff n6a 0).freed 2 = false := by decide
 
 /-- Two incompatible ordinary `Modify` authorities on a `SharedMutable` leaf (expected: reject);
 two observations and a `writeShared` within the contract (expected: `ok`). -/
@@ -6038,12 +6043,12 @@ example : ReleaseStep 2 (deriveEff c13a 0 0 .observe)
 
 /-- Reading the owned storage of a value shared in `Observe` (B2): the root of the storage, a
 `Modify` authority held by the value, is exercisable at `Observe`, the mode the read requests
-(pass 2: rejected). Writing it is rejected while the value is shared. Frame 1: 0 value, 1 owned
+(pass 2: rejected). Writing it is rejected while the value is shared. Frame 1: 0 value, 2 owned
 storage. -/
-example : Read3Step 1 [1] n6a (.ok n6a) := .ok (by decide)
-example : Read3Step 1 [1] (deriveEff n6a 0 0 .observe) (.ok (deriveEff n6a 0 0 .observe)) :=
+example : Read3Step 2 [2] n6a (.ok n6a) := .ok (by decide)
+example : Read3Step 2 [2] (deriveEff n6a 0 0 .observe) (.ok (deriveEff n6a 0 0 .observe)) :=
   .ok (by decide)
-example : Write3Step 1 [1] (deriveEff n6a 0 0 .observe) .reject := .reject (by decide)
+example : Write3Step 2 [2] (deriveEff n6a 0 0 .observe) .reject := .reject (by decide)
 
 /-- Witness state of `transfer_not_inv3_preserving`: place 1 is a part of place 0 with another
 owner, a frame not on the stack; place 2 is owned by place 1 and anchored on 5, which does not
@@ -6140,15 +6145,15 @@ theorem addAuth_needs_live_holder :
   refine ⟨h.1, h.2, by decide, fun h' => ?_⟩
   exact absurd (h'.poss 1 ⟨.observe, some 0, [0], .frame 7, true⟩ (by decide) rfl) (by decide)
 
-/-- A frame exit leaves owned storage unreleased (A6, leak): the owned storage 1 of the box value
+/-- A frame exit leaves owned storage unreleased (A6, leak): the owned storage 2 of the box value
 0 stops being usable at `exitFrame` (MM-03.3 §4, O7) without `free`; nothing requires its
 release. -/
 example : ExitStep K0 n6a (.ok (exitEff n6a)) := .ok (by decide)
-example : ¬ (exitEff n6a).Usable 1 ∧ (exitEff n6a).freed 1 = false := by decide
+example : ¬ (exitEff n6a).Usable 2 ∧ (exitEff n6a).freed 2 = false := by decide
 
 /-- `free` after the end of the owner value is rejected (A6): the owned storage is dead. A
 forgotten `free` cannot follow `endUse`. -/
-example : FreeStep KF 1 7 (endUseEff n6a 0) .reject := .reject (by decide)
+example : FreeStep KF 2 7 (endUseEff n6a 0) .reject := .reject (by decide)
 
 /-- An arena value cannot end while an issued block is live (A6, A10); once its blocks have ended,
 it ends, and its storage is dead and not freed (leak). -/
@@ -6363,5 +6368,61 @@ theorem exit_not_anchorOrder_preserving :
   refine ⟨r3, hw.1, ⟨hw.2, anchorOrder_iff.2 (by decide)⟩, hx, .exit r3 hx, fun h => ?_, by decide,
     .reject (by decide)⟩
   exact absurd (h 0 (by decide) 2 (by decide)) (by decide)
+
+/-! ## New cases of pass 3 -/
+
+/-- A local pinned at the exit (expected: reject, B4); unpinned under `ExternalDone`, the exit is
+accepted. -/
+abbrev KD0 : K := KT [] [] [0] [] []
+example : ExitStep KD0 (pinEff c13a 0 true) .reject := .reject (by decide)
+example : UnpinStep KD0 0 (pinEff c13a 0 true) (.ok (pinEff (pinEff c13a 0 true) 0 false)) :=
+  .ok (by decide)
+example : ExitStep KD0 (pinEff (pinEff c13a 0 true) 0 false)
+    (.ok (exitEff (pinEff (pinEff c13a 0 true) 0 false))) := .ok (by decide)
+
+/-- `release` by the callee of a root of the caller (expected: reject, B3). -/
+example : ReleaseStep 0 (enterEff c13a [] [(none, none, 0)]) .reject := .reject (by decide)
+
+/-- `depend` on a place of the caller without right (expected: reject, B3): in the callee of case 8,
+place 0 of the caller is only observed through parameter 2. With the `Modify` parameter 3 on
+place 1, `depend` is accepted. -/
+example : DependStep 0 2 c8c .reject := .reject (by decide)
+example : DependStep 1 3 c8c (.ok (dependEff c8c 1 3)) := .ok (by decide)
+
+/-- A value anchored on the root of its own storage, returned to the caller (expected: `ok`, B7):
+the anchor moves with the value; after the exit, the caller's place 0 is anchored on the root 3,
+held by place 0. -/
+example : TransferStep K0 1 0 (dependEff ne0 1 3) (.ok (transferEff (dependEff ne0 1 3) 1 0)) :=
+  .ok (by decide)
+example : ExitStep K0 (transferEff (dependEff ne0 1 3) 1 0)
+    (.ok (exitEff (transferEff (dependEff ne0 1 3) 1 0))) := .ok (by decide)
+example : (exitEff (transferEff (dependEff ne0 1 3) 1 0)).D 0 = [3] ∧
+    ((exitEff (transferEff (dependEff ne0 1 3) 1 0)).A[3]?).map (·.holder) = some (.place 0) := by
+  decide
+
+/-- A `transfer` that takes an anchor to a frame younger than a dependent (expected: reject at the
+`transfer`, B8). -/
+example : TransferStep K0 1 4 ma1 .reject := .reject (by decide)
+
+/-- `alloc` in the middle of a frame, provider distinct from the owner, then `free` (expected:
+`ok`, B5): case n6 above. `alloc` not satisfiable (expected: `fail`, state unchanged); `alloc` by a
+callee without right on the provider of the caller (expected: reject). -/
+def KNS : K := { KT [] [] [] [] [] with Satisfiable := fun _ _ => False }
+instance : DecidablePred KNS.SharedMutable := fun l => inferInstanceAs (Decidable (l ∈ ([] : List Nat)))
+instance : ∀ p e, Decidable (KNS.Satisfiable p e) := fun _ _ => instDecidableFalse
+example : AllocStep KNS 1 0 8 (write3Eff n6e [1]) (.fail (write3Eff n6e [1])) :=
+  .fail (by decide) (by decide)
+example : AllocStep KF 1 2 8 (enterEff (write3Eff n6e [1]) [] [(none, none, 0)]) .reject :=
+  .reject (by decide)
+
+/-- `free` of a pinned leaf (expected: reject, B6); `unpin` under `ExternalDone`, then `free`
+(expected: `ok`). -/
+abbrev KFP : K := KT [] [] [2] [2] [(2, 7)]
+example : PinStep 2 n6a (.ok (pinEff n6a 2 true)) := .ok (by decide)
+example : FreeStep KFP 2 7 (pinEff n6a 2 true) .reject := .reject (by decide)
+example : UnpinStep KFP 2 (pinEff n6a 2 true) (.ok (pinEff (pinEff n6a 2 true) 2 false)) :=
+  .ok (by decide)
+example : FreeStep KFP 2 7 (pinEff (pinEff n6a 2 true) 2 false)
+    (.ok (freeEff (pinEff (pinEff n6a 2 true) 2 false) 2)) := .ok (by decide)
 
 end Ern.MM03
