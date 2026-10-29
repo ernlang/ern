@@ -4545,19 +4545,19 @@ theorem release_releases (s : S3) (a : Nat) : OnlyReleases s (releaseEff s a) :=
     · exact ⟨z, hz, rfl, rfl, rfl, rfl, id⟩
   · exact ⟨rfl, fun j z hz => ⟨z, hz, rfl, rfl, rfl, rfl, id⟩⟩
 
-/-- `derive` preserves `AnchorOrder` (B8, C1; MM-03.3 §3, O1), under `Inv3` alone. -/
-theorem derive_preserves_anchorOrder {s s' : S3} {src q : Nat} {m : Mode} (hinv : Inv3 s)
+/-- `derive` preserves `AnchorOrder` (B8, C1; MM-03.3 §3, O1), under `AnchorOrder` alone. -/
+theorem derive_preserves_anchorOrder {s s' : S3} {src q : Nat} {m : Mode} (hao : AnchorOrder s)
     (h : DeriveStep src q m s (.ok s')) : AnchorOrder s' := by
   obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
-  exact hinv.ao.of rfl rfl (fun _ hq => hq.of_eqs rfl rfl rfl) (fun _ _ _ hx => hx)
+  exact hao.of rfl rfl (fun _ hq => hq.of_eqs rfl rfl rfl) (fun _ _ _ hx => hx)
     (fun _ ha => ancs_addAuth_lt ha)
     (fun x y hy => ⟨y, by rw [deriveEff, addAuth_lt (lt_of_getElem? hy)]; exact hy, rfl, rfl⟩)
 
-/-- `split` preserves `AnchorOrder` (B8, C1; MM-03.3 §3, O2), under `Inv3` alone. -/
+/-- `split` preserves `AnchorOrder` (B8, C1; MM-03.3 §3, O2), under `AnchorOrder` alone. -/
 theorem split_preserves_anchorOrder {k : K} {s s' : S3} {src : Nat} {rs : List (List Nat)}
-    (hinv : Inv3 s) (h : SplitStep k src rs s (.ok s')) : AnchorOrder s' := by
+    (hao : AnchorOrder s) (h : SplitStep k src rs s (.ok s')) : AnchorOrder s' := by
   obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
-  exact hinv.ao.of rfl rfl (fun _ hq => hq.of_eqs rfl rfl rfl) (fun _ _ _ hx => hx)
+  exact hao.of rfl rfl (fun _ hq => hq.of_eqs rfl rfl rfl) (fun _ _ _ hx => hx)
     (fun a ha => chain_congr fun j hj => by
       simp only [S3.org]; show ((s.A ++ _)[j]?).bind _ = _
       rw [List.getElem?_append_left (by omega)])
@@ -4565,8 +4565,8 @@ theorem split_preserves_anchorOrder {k : K} {s s' : S3} {src : Nat} {rs : List (
       show (s.A ++ _)[x]? = _; rw [List.getElem?_append_left (lt_of_getElem? hy)]; exact hy,
       rfl, rfl⟩)
 
-/-- `release` preserves `AnchorOrder` (B8, C1; MM-03.3 §3, O3), under `Inv3` alone. -/
-theorem release_preserves_anchorOrder {s s' : S3} {a : Nat} (hinv : Inv3 s)
+/-- `release` preserves `AnchorOrder` (B8, C1; MM-03.3 §3, O3), under `AnchorOrder` alone. -/
+theorem release_preserves_anchorOrder {s s' : S3} {a : Nat} (hao : AnchorOrder s)
     (h : ReleaseStep a s (.ok s')) : AnchorOrder s' := by
   obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
   have hr := release_releases s a
@@ -4574,13 +4574,13 @@ theorem release_preserves_anchorOrder {s s' : S3} {a : Nat} (hinv : Inv3 s)
   have hF : (releaseEff s a).F = s.F := by unfold releaseEff; split <;> rfl
   have hd : (releaseEff s a).dead = s.dead := by unfold releaseEff; split <;> rfl
   have hD : (releaseEff s a).D = s.D := by unfold releaseEff; split <;> rfl
-  exact hinv.ao.of hP hF (fun q hq => (S3.Usable.congr hP hF hd).1 hq)
+  exact hao.of hP hF (fun q hq => (S3.Usable.congr hP hF hd).1 hq)
     (fun _ _ x hx => by rw [hD] at hx; exact hx) (fun _ _ => by unfold S3.ancs; rw [hr.org])
     (fun x y hy => hr.fwd hy)
 
-/-- `depend` preserves `AnchorOrder` (B8, C1; MM-03.3 §3, O5), under `Inv3` alone: the new anchor
+/-- `depend` preserves `AnchorOrder` (B8, C1; MM-03.3 §3, O5), under `AnchorOrder` alone: the new anchor
 satisfies the precondition on its effective anchor. -/
-theorem depend_preserves_anchorOrder {s s' : S3} {q x : Nat} (hinv : Inv3 s)
+theorem depend_preserves_anchorOrder {s s' : S3} {q x : Nat} (hao : AnchorOrder s)
     (h : DependStep q x s (.ok s')) : AnchorOrder s' := by
   obtain ⟨⟨-, -, -, -, hok⟩, rfl⟩ := Guarded.ok_iff.1 h
   intro r hr y hy
@@ -4591,28 +4591,29 @@ theorem depend_preserves_anchorOrder {s s' : S3} {q x : Nat} (hinv : Inv3 s)
   split at hy
   · rename_i hrq; subst hrq
     rcases List.mem_append.1 hy with hy | hy
-    · exact hinv.ao _ hr' y hy
+    · exact hao _ hr' y hy
     · simp at hy; subst hy; exact hok
-  · exact hinv.ao r hr' y hy
+  · exact hao r hr' y hy
 
 /-- `write3`, `writeShared`, `pin` and `unpin` preserve `AnchorOrder` (B8, C1): they change neither
 places, stack, anchors nor authorities. -/
-theorem write3_preserves_anchorOrder {s : S3} (ls : List Nat) (hinv : Inv3 s) :
+theorem write3_preserves_anchorOrder {s : S3} (ls : List Nat) (hao : AnchorOrder s) :
     AnchorOrder (write3Eff s ls) :=
-  hinv.ao.of rfl rfl (fun _ hq => hq.of_eqs rfl rfl rfl) (fun _ _ _ hx => hx) (fun _ _ => rfl)
+  hao.of rfl rfl (fun _ hq => hq.of_eqs rfl rfl rfl) (fun _ _ _ hx => hx) (fun _ _ => rfl)
     (fun _ y hy => ⟨y, hy, rfl, rfl⟩)
 
-theorem pinEff_preserves_anchorOrder {s : S3} (p : Nat) (b : Bool) (hinv : Inv3 s) :
+/-- `pin` and `unpin` preserve `AnchorOrder` (B8, C1; A8): they only set the pin state. -/
+theorem pinEff_preserves_anchorOrder {s : S3} (p : Nat) (b : Bool) (hao : AnchorOrder s) :
     AnchorOrder (pinEff s p b) :=
-  hinv.ao.of rfl rfl (fun _ hq => hq.of_eqs rfl rfl rfl) (fun _ _ _ hx => hx) (fun _ _ => rfl)
+  hao.of rfl rfl (fun _ hq => hq.of_eqs rfl rfl rfl) (fun _ _ _ hx => hx) (fun _ _ => rfl)
     (fun _ y hy => ⟨y, hy, rfl, rfl⟩)
 
-/-- `endUse` preserves `AnchorOrder` (B8, C1; A6), under `Inv3` alone. -/
-theorem endUse_preserves_anchorOrder {k : K} {s s' : S3} {p : Nat} (hinv : Inv3 s)
+/-- `endUse` preserves `AnchorOrder` (B8, C1; A6), under `AnchorOrder` alone. -/
+theorem endUse_preserves_anchorOrder {k : K} {s s' : S3} {p : Nat} (hao : AnchorOrder s)
     (h : EndUseStep k p s (.ok s')) : AnchorOrder s' := by
   obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
   have hr := (endUseS_releases s p).trans cleanup_releases
-  refine hinv.ao.of rfl rfl (fun q hq => ?_) (fun q _ x hx => ?_)
+  refine hao.of rfl rfl (fun q hq => ?_) (fun q _ x hx => ?_)
     (fun a _ => congrArg (chain · a) hr.org) (fun x y hy => hr.fwd hy)
   · exact S3.Usable.mono (s := s) (s' := endUseEff s p) rfl (fun _ h => h)
       (fun q h => by simp only [endUseEff, cleanup, endUseS, Bool.or_eq_false_iff] at h; exact h.1) hq
@@ -4620,12 +4621,12 @@ theorem endUse_preserves_anchorOrder {k : K} {s s' : S3} {p : Nat} (hinv : Inv3 
     · simp at hx
     · exact hx
 
-/-- `free` preserves `AnchorOrder` (B8, C1; A6), under `Inv3` alone. -/
-theorem free_preserves_anchorOrder {k : K} {s s' : S3} {p auth : Nat} (hinv : Inv3 s)
+/-- `free` preserves `AnchorOrder` (B8, C1; A6), under `AnchorOrder` alone. -/
+theorem free_preserves_anchorOrder {k : K} {s s' : S3} {p auth : Nat} (hao : AnchorOrder s)
     (h : FreeStep k p auth s (.ok s')) : AnchorOrder s' := by
   obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
   have hr := (freeS_releases s p).trans cleanup_releases
-  refine hinv.ao.of rfl rfl (fun q hq => ?_) (fun q _ x hx => ?_)
+  refine hao.of rfl rfl (fun q hq => ?_) (fun q _ x hx => ?_)
     (fun a _ => congrArg (chain · a) hr.org) (fun x y hy => hr.fwd hy)
   · exact S3.Usable.mono (s := s) (s' := freeEff s p) rfl (fun _ h => h)
       (fun q h => by simp only [freeEff, cleanup, freeS, Bool.or_eq_false_iff] at h; exact h.1) hq
@@ -4666,14 +4667,14 @@ theorem enter_pframe_old {s : S3} {ps : List Nat} {ls : List (Option Nat × Opti
 places do not change, the new frame is younger than all the others, and an effective anchor,
 without origin, is never a parameter (A3). -/
 theorem enter_preserves_anchorOrder {s s' : S3} {ps : List Nat}
-    {ls : List (Option Nat × Option Nat × Nat)} (hwf : WF3 s) (hinv : Inv3 s)
+    {ls : List (Option Nat × Option Nat × Nat)} (hwf : WF3 s) (hao : AnchorOrder s)
     (h : EnterStep ps ls s (.ok s')) : AnchorOrder s' := by
   obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
   intro q hq x hx
   by_cases hlt : q < s.P.length
   · have hq0 := enter_usable_back hwf hq hlt
     have hx0 : x ∈ s.D q := by simpa [enterEff, show ¬ s.P.length ≤ q by omega] using hx
-    have hok := hinv.ao q hq0 x hx0
+    have hok := hao q hq0 x hx0
     obtain ⟨z, hz⟩ := hok.get
     obtain ⟨g, hg⟩ := hok.frame hz
     have hxl := hok.lt
@@ -4732,14 +4733,14 @@ theorem alloc_pframe_old {s : S3} {pr o : Nat} {ls : List (Option Nat × Option 
 change and the new places have no anchor. -/
 theorem alloc_preserves_anchorOrder {k : K} {pr ow : Nat}
     {ls : List (Option Nat × Option Nat × Nat)} {s s' : S3} (hwf : WF3 s)
-    (hinv : Inv3 s) (h : AllocStep k pr ow ls s (.ok s')) : AnchorOrder s' := by
+    (hao : AnchorOrder s) (h : AllocStep k pr ow ls s (.ok s')) : AnchorOrder s' := by
   cases h with
   | ok _ _ =>
   intro q hq x hx
   by_cases hql : q < s.P.length
   · have hq0 := alloc_usable_back hwf hq hql
     have hx0 : x ∈ s.D q := by simpa [allocEff, show ¬ s.P.length ≤ q by omega] using hx
-    have hok := hinv.ao q hq0 x hx0
+    have hok := hao q hq0 x hx0
     obtain ⟨z, hz⟩ := hok.get
     obtain ⟨g, hg⟩ := hok.frame hz
     have hxl := hok.lt
@@ -4880,7 +4881,7 @@ theorem transfer_effAnchorOK_unmoved {s : S3} {src dst x : Nat} {z : Authority}
 /-- `transfer` preserves `AnchorOrder` (B8, C1; MM-03.3 §3, O4; MM-03.3.6), under `WF3`: when the
 effective anchor or the dependent moves, by the clause B8; otherwise both frames are unchanged. -/
 theorem transfer_preserves_anchorOrder {k : K} {s s' : S3} {src dst : Nat} (hwf : WF3 s)
-    (hinv : Inv3 s) (h : TransferStep k src dst s (.ok s')) : AnchorOrder s' := by
+    (hao : AnchorOrder s) (h : TransferStep k src dst s (.ok s')) : AnchorOrder s' := by
   obtain ⟨⟨hsrc, -, -, -, -, -, -, -, -, -, -, -, h8⟩, rfl⟩ := Guarded.ok_iff.1 h
   intro q hq x hx
   by_cases hm : AnchorMoves s src (s.effAnchor x) ∨ q = dst ∨ OwnedWithin s src q
@@ -4892,7 +4893,7 @@ theorem transfer_preserves_anchorOrder {k : K} {s s' : S3} {src dst : Nat} (hwf 
   rw [transfer_D] at hx; simp only [hm2, ↓reduceIte] at hx
   split at hx
   · simp at hx
-  · have hok := hinv.ao q hq0 x hx
+  · have hok := hao q hq0 x hx
     obtain ⟨z, hz⟩ := hok.get
     rw [transfer_pframe_unmoved hown]
     exact (transfer_effAnchorOK_unmoved hz hm1 _).2 hok
@@ -4900,7 +4901,7 @@ theorem transfer_preserves_anchorOrder {k : K} {s s' : S3} {src dst : Nat} (hwf 
 /-- `exitFrame` preserves `AnchorOrder` (B8, C1; MM-03.3 §4, O7; A7), under `WF3`: re-anchoring
 replaces an anchor by an authority of its chain, which has the same effective anchor, and the
 frame of a usable place stays below the popped frame. -/
-theorem exit_preserves_anchorOrder {k : K} {s s' : S3} (hwf : WF3 s) (hinv : Inv3 s)
+theorem exit_preserves_anchorOrder {k : K} {s s' : S3} (hwf : WF3 s) (hao : AnchorOrder s)
     (h : ExitStep k s (.ok s')) : AnchorOrder s' := by
   obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
   unfold ExitPre at hpre
@@ -4920,7 +4921,7 @@ theorem exit_preserves_anchorOrder {k : K} {s s' : S3} (hwf : WF3 s) (hinv : Inv
     obtain ⟨x, hx, rfl⟩ := hx'
     obtain ⟨z, hz⟩ := Option.ne_none_iff_exists'.1 (hR1 q (List.mem_range.2 hq₀.lt) hq₁ x hx)
     rw [hz]; simp only [Option.getD_some]
-    have hok := hinv.ao q hq₀ x hx
+    have hok := hao q hq₀ x hx
     obtain ⟨r, hr, hro⟩ := reanchor_reaches_root hwf.origin (x + 1) x (Nat.lt_succ_self x)
     have hex : s.effAnchor x = r := effAnchor_eq (x + 1) x (Nat.lt_succ_self x) r hr hro
     have hzx : z = x ∨ z ∈ s.ancs x := List.mem_cons.1 (firstSurv_some hz).1
@@ -5189,10 +5190,10 @@ theorem NoDangling.of {s s' : S3} (hnd : NoDangling s)
 
 /-- `derive` preserves `NoDangling` (C2; MM-03.3 §3, O1): the derived footprint is within the
 footprint of the active origin. -/
-theorem derive_preserves_noDangling {s s' : S3} {src q : Nat} {m : Mode} (hinv : Inv3 s)
+theorem derive_preserves_noDangling {s s' : S3} {src q : Nat} {m : Mode} (hnd : NoDangling s)
     (h : DeriveStep src q m s (.ok s')) : NoDangling s' := by
   obtain ⟨⟨⟨x, hx, xa⟩, -, -, hsub, -⟩, rfl⟩ := Guarded.ok_iff.1 h
-  refine hinv.nd.of (fun _ _ h => h) (fun _ h => h.of_eqs rfl rfl rfl) fun j z hz za => ?_
+  refine hnd.of (fun _ _ h => h) (fun _ h => h.of_eqs rfl rfl rfl) fun j z hz za => ?_
   rcases addAuth_get hz with ⟨-, hy⟩ | ⟨-, rfl⟩
   · exact fun l hl => ⟨j, z, hy, za, hl⟩
   · exact fun l hl => ⟨src, x, hx, xa, by have := hsub l hl; simp only [S3.afp, hx] at this; exact this⟩
@@ -5200,9 +5201,9 @@ theorem derive_preserves_noDangling {s s' : S3} {src q : Nat} {m : Mode} (hinv :
 /-- `split` preserves `NoDangling` (C2; MM-03.3 §3, O2): each region is within the footprint of
 the active origin. -/
 theorem split_preserves_noDangling {k : K} {s s' : S3} {src : Nat} {rs : List (List Nat)}
-    (hinv : Inv3 s) (h : SplitStep k src rs s (.ok s')) : NoDangling s' := by
+    (hnd : NoDangling s) (h : SplitStep k src rs s (.ok s')) : NoDangling s' := by
   obtain ⟨⟨⟨x, hx, xa⟩, -, -, hreg, -⟩, rfl⟩ := Guarded.ok_iff.1 h
-  refine hinv.nd.of (fun _ _ h => h) (fun _ h => h.of_eqs rfl rfl rfl) fun j z hz za => ?_
+  refine hnd.of (fun _ _ h => h) (fun _ h => h.of_eqs rfl rfl rfl) fun j z hz za => ?_
   simp only [splitEff] at hz
   by_cases hj : j < s.A.length
   · rw [List.getElem?_append_left hj] at hz; exact fun l hl => ⟨j, z, hz, za, hl⟩
@@ -5213,42 +5214,43 @@ theorem split_preserves_noDangling {k : K} {s s' : S3} {src : Nat} {rs : List (L
     exact ⟨src, x, hx, xa, this⟩
 
 /-- `release` preserves `NoDangling` (C2; MM-03.3 §3, O3): it activates nothing. -/
-theorem release_preserves_noDangling {s s' : S3} {a : Nat} (hinv : Inv3 s)
+theorem release_preserves_noDangling {s s' : S3} {a : Nat} (hnd : NoDangling s)
     (h : ReleaseStep a s (.ok s')) : NoDangling s' := by
   obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
   have hP : (releaseEff s a).P = s.P := by unfold releaseEff; split <;> rfl
   have hF : (releaseEff s a).F = s.F := by unfold releaseEff; split <;> rfl
   have hd : (releaseEff s a).dead = s.dead := by unfold releaseEff; split <;> rfl
-  refine hinv.nd.of (fun _ _ h => by rw [hP] at h; exact h)
+  refine hnd.of (fun _ _ h => by rw [hP] at h; exact h)
     (fun _ h => (S3.Usable.congr hP hF hd).2 h) fun j z hz za => ?_
   obtain ⟨y, hy, -, -, e, -, ea⟩ := (release_releases s a).2 j z hz
   exact fun l hl => ⟨j, y, hy, ea za, e ▸ hl⟩
 
 /-- `depend` preserves `NoDangling` (C2; MM-03.3 §3, O5): it changes no authority. -/
-theorem depend_preserves_noDangling {s s' : S3} {q x : Nat} (hinv : Inv3 s)
+theorem depend_preserves_noDangling {s s' : S3} {q x : Nat} (hnd : NoDangling s)
     (h : DependStep q x s (.ok s')) : NoDangling s' := by
   obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
-  exact hinv.nd.of (fun _ _ h => h) (fun _ h => h.of_eqs rfl rfl rfl)
+  exact hnd.of (fun _ _ h => h) (fun _ h => h.of_eqs rfl rfl rfl)
     fun j z hz za _ hl => ⟨j, z, hz, za, hl⟩
 
 /-- `write3`, `writeShared`, `pin` and `unpin` preserve `NoDangling` (C2): they change neither
 places, stack, `dead` flags nor authorities. -/
-theorem write3_preserves_noDangling {s : S3} (ls : List Nat) (hinv : Inv3 s) :
+theorem write3_preserves_noDangling {s : S3} (ls : List Nat) (hnd : NoDangling s) :
     NoDangling (write3Eff s ls) :=
-  hinv.nd.of (fun _ _ h => h) (fun _ h => h.of_eqs rfl rfl rfl)
+  hnd.of (fun _ _ h => h) (fun _ h => h.of_eqs rfl rfl rfl)
     fun j z hz za _ hl => ⟨j, z, hz, za, hl⟩
 
-theorem pinEff_preserves_noDangling {s : S3} (p : Nat) (b : Bool) (hinv : Inv3 s) :
+/-- `pin` and `unpin` preserve `NoDangling` (C2; A8): they only set the pin state. -/
+theorem pinEff_preserves_noDangling {s : S3} (p : Nat) (b : Bool) (hnd : NoDangling s) :
     NoDangling (pinEff s p b) :=
-  hinv.nd.of (fun _ _ h => h) (fun _ h => h.of_eqs rfl rfl rfl)
+  hnd.of (fun _ _ h => h) (fun _ h => h.of_eqs rfl rfl rfl)
     fun j z hz za _ hl => ⟨j, z, hz, za, hl⟩
 
 /-- `transfer` preserves `NoDangling` (C2; MM-03.3 §3, O4): footprints are unchanged, every usable
 place stays usable, and authorities only change holder. -/
-theorem transfer_preserves_noDangling {k : K} {s s' : S3} {src dst : Nat} (hinv : Inv3 s)
+theorem transfer_preserves_noDangling {k : K} {s s' : S3} {src dst : Nat} (hnd : NoDangling s)
     (h : TransferStep k src dst s (.ok s')) : NoDangling s' := by
   obtain ⟨⟨-, -, -, -, -, -, -, hd', -, -, -, -, -⟩, rfl⟩ := Guarded.ok_iff.1 h
-  refine hinv.nd.of (fun q l h => by rw [transfer_footprint] at h; exact h)
+  refine hnd.of (fun q l h => by rw [transfer_footprint] at h; exact h)
     (fun _ h => transfer_usable_fwd hd' h) fun j z hz za => ?_
   rw [transfer_A_get] at hz
   obtain ⟨y, hy, rfl⟩ := Option.map_eq_some_iff.1 hz
@@ -5257,7 +5259,7 @@ theorem transfer_preserves_noDangling {k : K} {s s' : S3} {src dst : Nat} (hinv 
 /-- `enterFrame` preserves `NoDangling` (C2; MM-03.3 §4, O6), under `WF3`: old places keep their
 footprints and their usability; a new root authority covers only new locals, which are usable. -/
 theorem enter_preserves_noDangling {s s' : S3} {ps : List Nat}
-    {ls : List (Option Nat × Option Nat × Nat)} (hwf : WF3 s) (hinv : Inv3 s)
+    {ls : List (Option Nat × Option Nat × Nat)} (hwf : WF3 s) (hnd : NoDangling s)
     (h : EnterStep ps ls s (.ok s')) : NoDangling s' := by
   obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
   intro j z hz za q hq l hl hlz
@@ -5270,7 +5272,7 @@ theorem enter_preserves_noDangling {s s' : S3} {ps : List Nat}
   · have hly : l ∈ y.footprint := by split at hlz <;> exact hlz
     have ya : y.active = true := by split at za <;> exact za
     have hqo : q < s.P.length := Nat.lt_of_le_of_lt hql (hwf.fp j y hy l hly)
-    exact hinv.nd j y hy ya q (fun hu => hq (enter_usable_old hu)) l
+    exact hnd j y hy ya q (fun hu => hq (enter_usable_old hu)) l
       ((enter_footprint_old hpre hqo l).1 hl) hly
   · have hge : s.P.length ≤ l := enter_root_fp_ge hlz
     by_cases hqo : q < s.P.length
@@ -5286,7 +5288,7 @@ theorem enter_preserves_noDangling {s s' : S3} {ps : List Nat}
 their usability; a new root authority covers only new elements, which are usable. -/
 theorem alloc_preserves_noDangling {k : K} {pr ow : Nat}
     {ls : List (Option Nat × Option Nat × Nat)} {s s' : S3} (hwf : WF3 s)
-    (hinv : Inv3 s) (h : AllocStep k pr ow ls s (.ok s')) : NoDangling s' := by
+    (hnd : NoDangling s) (h : AllocStep k pr ow ls s (.ok s')) : NoDangling s' := by
   cases h with
   | ok hst _ =>
   intro j z hz za q hq l hl hlz
@@ -5297,7 +5299,7 @@ theorem alloc_preserves_noDangling {k : K} {pr ow : Nat}
     · exact Nat.le_of_lt (chain_lt hc)
   rcases alloc_get hz with ⟨-, hy⟩ | ⟨-, i, -, rfl⟩
   · have hqo : q < s.P.length := Nat.lt_of_le_of_lt hql (hwf.fp j z hy l hlz)
-    exact hinv.nd j z hy za q (fun hu => hq (alloc_usable_old hu)) l
+    exact hnd j z hy za q (fun hu => hq (alloc_usable_old hu)) l
       ((shape_footprint_old hst.2.2.2.2.2 hqo l).1 hl) hlz
   · have hge : s.P.length ≤ l := shape_root_fp_ge hlz
     by_cases hqo : q < s.P.length
@@ -5324,7 +5326,7 @@ theorem exit_owned_of_usable {s : S3} {f : Nat} {F₀ : Frames} (hF : s.F = f ::
 
 /-- `exitFrame` preserves `NoDangling` (C2; MM-03.3 §4, O7), under `WF3`: a place that stops being
 usable belongs to the exited frame, and `exitFrame_no_dangling` applies to it. -/
-theorem exit_preserves_noDangling {k : K} {s s' : S3} (hwf : WF3 s) (hinv : Inv3 s)
+theorem exit_preserves_noDangling {k : K} {s s' : S3} (hwf : WF3 s) (hnd : NoDangling s)
     (h : ExitStep k s (.ok s')) : NoDangling s' := by
   obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
   cases hF : s.F with
@@ -5342,7 +5344,7 @@ theorem exit_preserves_noDangling {k : K} {s s' : S3} (hwf : WF3 s) (hinv : Inv3
         (by rw [e])).2 hu)
     exact exitFrame_no_dangling hwf hF h q (exit_owned_of_usable hF hq₀ hq₁) j _ hz za l hl hlz
   · rw [(exitG_same s F₀ j y₀).2.1] at hlz
-    exact hinv.nd j y₀ hy₀ (exitG_active' hy₀ za) q hq₀ l hl hlz
+    exact hnd j y₀ hy₀ (exitG_active' hy₀ za) q hq₀ l hl hlz
 
 /-- `StaticPinnedBottom k s` (C5), obligation on the static pinning `K.Pinned`: every leaf covered
 by `K.Pinned` belongs to a place owned, transitively, by the base frame, the last of the stack.
@@ -5407,15 +5409,15 @@ theorem endUse_active {s : S3} {p j : Nat} {z : Authority}
 that stops being usable is derived, and released by `EndUseAccessOK`, or a root, held by the owner
 of its root place (`RootChain`, `RootHeld`), which stops being usable too. -/
 theorem endUse_preserves_noDangling {k : K} {s s' : S3} {p : Nat} (hwf : WF3 s)
-    (hinv : Inv3 s) (h : EndUseStep k p s (.ok s')) : NoDangling s' := by
-  have hw' := (endUse_preserves hwf hinv.base h).1
+    (hinv : Inv3base s) (hnd : NoDangling s) (h : EndUseStep k p s (.ok s')) : NoDangling s' := by
+  have hw' := (endUse_preserves hwf hinv h).1
   obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
   have hU : ∀ r, (endUseEff s p).Usable r ↔ (endUseS s p).Usable r :=
     fun r => S3.Usable.congr (s := endUseS s p) (s' := endUseEff s p) rfl rfl rfl
   intro j z hz za q hq l hl hlz
   obtain ⟨hz₀, hnh, hlive⟩ := endUse_active hz za
   by_cases hq₀ : ¬ s.Usable q
-  · exact hinv.nd j z hz₀ za q hq₀ l hl hlz
+  · exact hnd j z hz₀ za q hq₀ l hl hlz
   replace hq₀ := Decidable.of_not_not hq₀
   obtain ⟨-, hleaf, hlq⟩ := mem_footprint.1 hl
   have hl₀ : s.Usable l := usable_of_partOf hwf (l + 1) l q (Nat.lt_succ_self l) hlq hq₀
@@ -5460,9 +5462,9 @@ authority (`free_no_dangling`); on a leaf of another place that stops being usab
 authority is derived, and released by `FreeAccessOK`, or a root, held by the owner of its root
 place (`RootChain`, `RootHeld`), which stops being usable too. -/
 theorem free_preserves_noDangling {k : K} {s s' : S3} {p auth : Nat} (hwf : WF3 s)
-    (hinv : Inv3 s) (h : FreeStep k p auth s (.ok s')) : NoDangling s' := by
-  have hw' := (free_preserves hwf hinv.base h).1
-  have hfd := free_no_dangling hwf hinv.base h
+    (hinv : Inv3base s) (hnd : NoDangling s) (h : FreeStep k p auth s (.ok s')) : NoDangling s' := by
+  have hw' := (free_preserves hwf hinv h).1
+  have hfd := free_no_dangling hwf hinv h
   obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
   have hU : ∀ r, (freeEff s p).Usable r ↔ (freeS s p).Usable r :=
     fun r => S3.Usable.congr (s := freeS s p) (s' := freeEff s p) rfl rfl rfl
@@ -5471,7 +5473,7 @@ theorem free_preserves_noDangling {k : K} {s s' : S3} {p auth : Nat} (hwf : WF3 
   · exact (hfd j z hz za).1 l hlz hlp
   obtain ⟨hz₀, hnc, hlive⟩ := free_active hz za
   by_cases hq₀ : ¬ s.Usable q
-  · exact hinv.nd j z hz₀ za q hq₀ l hl hlz
+  · exact hnd j z hz₀ za q hq₀ l hl hlz
   replace hq₀ := Decidable.of_not_not hq₀
   obtain ⟨-, hleaf, hlq⟩ := mem_footprint.1 hl
   have hl₀ : s.Usable l := usable_of_partOf hwf (l + 1) l q (Nat.lt_succ_self l) hlq hq₀
@@ -5508,52 +5510,52 @@ theorem reachable_access_invariant_underDD {k : K} (hdd : DDSound k) {s : S3}
   | init =>
     exact mk init_wf (fun _ _ _ hx => by simp [S3.init] at hx) fun _ _ h => by simp [S3.init] at h
   | derive _ hs ih =>
-    exact mk (derive_preserves ih.1 ih.2.base hs) (derive_preserves_anchorOrder ih.2 hs)
-      (derive_preserves_noDangling ih.2 hs)
+    exact mk (derive_preserves ih.1 ih.2.base hs) (derive_preserves_anchorOrder ih.2.ao hs)
+      (derive_preserves_noDangling ih.2.nd hs)
   | split _ hs ih =>
-    exact mk (split_preserves_underDD hdd ih.1 ih.2.base hs) (split_preserves_anchorOrder ih.2 hs)
-      (split_preserves_noDangling ih.2 hs)
+    exact mk (split_preserves_underDD hdd ih.1 ih.2.base hs) (split_preserves_anchorOrder ih.2.ao hs)
+      (split_preserves_noDangling ih.2.nd hs)
   | release _ hs ih =>
-    exact mk (release_preserves ih.1 ih.2.base hs) (release_preserves_anchorOrder ih.2 hs)
-      (release_preserves_noDangling ih.2 hs)
+    exact mk (release_preserves ih.1 ih.2.base hs) (release_preserves_anchorOrder ih.2.ao hs)
+      (release_preserves_noDangling ih.2.nd hs)
   | transfer _ hs ih =>
-    exact mk (transfer_preserves ih.1 ih.2.base hs) (transfer_preserves_anchorOrder ih.1 ih.2 hs)
-      (transfer_preserves_noDangling ih.2 hs)
+    exact mk (transfer_preserves ih.1 ih.2.base hs) (transfer_preserves_anchorOrder ih.1 ih.2.ao hs)
+      (transfer_preserves_noDangling ih.2.nd hs)
   | depend _ hs ih =>
-    exact mk (depend_preserves ih.1 ih.2.base hs) (depend_preserves_anchorOrder ih.2 hs)
-      (depend_preserves_noDangling ih.2 hs)
+    exact mk (depend_preserves ih.1 ih.2.base hs) (depend_preserves_anchorOrder ih.2.ao hs)
+      (depend_preserves_noDangling ih.2.nd hs)
   | enter _ hs ih =>
-    exact mk (enter_preserves ih.1 ih.2.base hs) (enter_preserves_anchorOrder ih.1 ih.2 hs)
-      (enter_preserves_noDangling ih.1 ih.2 hs)
+    exact mk (enter_preserves ih.1 ih.2.base hs) (enter_preserves_anchorOrder ih.1 ih.2.ao hs)
+      (enter_preserves_noDangling ih.1 ih.2.nd hs)
   | exit _ hs ih =>
-    exact mk (exit_preserves ih.1 ih.2.base hs) (exit_preserves_anchorOrder ih.1 ih.2 hs)
-      (exit_preserves_noDangling ih.1 ih.2 hs)
+    exact mk (exit_preserves ih.1 ih.2.base hs) (exit_preserves_anchorOrder ih.1 ih.2.ao hs)
+      (exit_preserves_noDangling ih.1 ih.2.nd hs)
   | read _ hs ih => rw [read3_preserves hs]; exact ih
   | write _ hs ih =>
     exact mk (write3_preserves ih.1 ih.2.base hs)
-      (by rw [(Guarded.ok_iff.1 hs).2]; exact write3_preserves_anchorOrder _ ih.2)
-      (by rw [(Guarded.ok_iff.1 hs).2]; exact write3_preserves_noDangling _ ih.2)
+      (by rw [(Guarded.ok_iff.1 hs).2]; exact write3_preserves_anchorOrder _ ih.2.ao)
+      (by rw [(Guarded.ok_iff.1 hs).2]; exact write3_preserves_noDangling _ ih.2.nd)
   | writeShared _ hs ih =>
     exact mk (writeShared_preserves ih.1 ih.2.base hs)
-      (by rw [(Guarded.ok_iff.1 hs).2]; exact write3_preserves_anchorOrder _ ih.2)
-      (by rw [(Guarded.ok_iff.1 hs).2]; exact write3_preserves_noDangling _ ih.2)
+      (by rw [(Guarded.ok_iff.1 hs).2]; exact write3_preserves_anchorOrder _ ih.2.ao)
+      (by rw [(Guarded.ok_iff.1 hs).2]; exact write3_preserves_noDangling _ ih.2.nd)
   | pin _ hs ih =>
     rw [(Guarded.ok_iff.1 hs).2]
-    exact mk (pinEff_preserves ih.1 ih.2.base) (pinEff_preserves_anchorOrder _ _ ih.2)
-      (pinEff_preserves_noDangling _ _ ih.2)
+    exact mk (pinEff_preserves ih.1 ih.2.base) (pinEff_preserves_anchorOrder _ _ ih.2.ao)
+      (pinEff_preserves_noDangling _ _ ih.2.nd)
   | unpin _ hs ih =>
     rw [(Guarded.ok_iff.1 hs).2]
-    exact mk (pinEff_preserves ih.1 ih.2.base) (pinEff_preserves_anchorOrder _ _ ih.2)
-      (pinEff_preserves_noDangling _ _ ih.2)
+    exact mk (pinEff_preserves ih.1 ih.2.base) (pinEff_preserves_anchorOrder _ _ ih.2.ao)
+      (pinEff_preserves_noDangling _ _ ih.2.nd)
   | endUse _ hs ih =>
-    exact mk (endUse_preserves ih.1 ih.2.base hs) (endUse_preserves_anchorOrder ih.2 hs)
-      (endUse_preserves_noDangling ih.1 ih.2 hs)
+    exact mk (endUse_preserves ih.1 ih.2.base hs) (endUse_preserves_anchorOrder ih.2.ao hs)
+      (endUse_preserves_noDangling ih.1 ih.2.base ih.2.nd hs)
   | free _ hs ih =>
-    exact mk (free_preserves ih.1 ih.2.base hs) (free_preserves_anchorOrder ih.2 hs)
-      (free_preserves_noDangling ih.1 ih.2 hs)
+    exact mk (free_preserves ih.1 ih.2.base hs) (free_preserves_anchorOrder ih.2.ao hs)
+      (free_preserves_noDangling ih.1 ih.2.base ih.2.nd hs)
   | alloc _ hs ih =>
-    exact mk (alloc_preserves ih.1 ih.2.base hs) (alloc_preserves_anchorOrder ih.1 ih.2 hs)
-      (alloc_preserves_noDangling ih.1 ih.2 hs)
+    exact mk (alloc_preserves ih.1 ih.2.base hs) (alloc_preserves_anchorOrder ih.1 ih.2.ao hs)
+      (alloc_preserves_noDangling ih.1 ih.2.nd hs)
 
 /-- `reachable_no_dangling` (C2; MM-03.3 §10): in every reached state, no active authority covers a
 leaf of a place that is not usable. Under `DDSound k` (MM-03.3.8). -/
@@ -6410,13 +6412,13 @@ theorem issue_preserves_inv3 {k : K} {s s' : S3} {ar ar' : Arena} {via dst : Nat
     ((S3.Usable.congr (s := s.addAuth ⟨.modify, some ar.internal, region, .place dst, true⟩)
       (s' := (issueEff s ar region dst).1) rfl rfl rfl).1 hq) y hy, i4_always _⟩
 
-/-- `issue` preserves `AnchorOrder` (B8, C1; MM-03.3 §6; A10), under `Inv3` alone. -/
+/-- `issue` preserves `AnchorOrder` (B8, C1; MM-03.3 §6; A10), under `AnchorOrder` alone. -/
 theorem issue_preserves_anchorOrder {k : K} {s s' : S3} {ar ar' : Arena} {via dst : Nat}
-    {region : List Nat} (hinv : Inv3 s) (h : IssueStep k ar via region dst s (.ok s' ar')) :
+    {region : List Nat} (hao : AnchorOrder s) (h : IssueStep k ar via region dst s (.ok s' ar')) :
     AnchorOrder s' := by
   cases h with
   | ok _ _ _ =>
-  exact hinv.ao.of rfl rfl (fun _ hq => hq.of_eqs rfl rfl rfl) (fun _ _ _ hx => hx)
+  exact hao.of rfl rfl (fun _ hq => hq.of_eqs rfl rfl rfl) (fun _ _ _ hx => hx)
     (fun _ ha => ancs_addAuth_lt ha)
     (fun x y hy => ⟨y, by
       show (s.addAuth _).A[x]? = _; rw [addAuth_lt (lt_of_getElem? hy)]; exact hy, rfl, rfl⟩)
@@ -6424,11 +6426,11 @@ theorem issue_preserves_anchorOrder {k : K} {s s' : S3} {ar ar' : Arena} {via ds
 /-- `issue` preserves `NoDangling` (C2; MM-03.3 §6; A10): the block is within the footprint of the
 active `internal` (`IssueRight`). -/
 theorem issue_preserves_noDangling {k : K} {s s' : S3} {ar ar' : Arena} {via dst : Nat}
-    {region : List Nat} (hinv : Inv3 s) (h : IssueStep k ar via region dst s (.ok s' ar')) :
+    {region : List Nat} (hnd : NoDangling s) (h : IssueStep k ar via region dst s (.ok s' ar')) :
     NoDangling s' := by
   cases h with
   | ok _ _ hright =>
-  refine hinv.nd.of (s' := (issueEff s ar region dst).1) (fun _ _ h => h)
+  refine hnd.of (s' := (issueEff s ar region dst).1) (fun _ _ h => h)
     (fun _ h => h.of_eqs rfl rfl rfl) fun j z hz za => ?_
   rcases addAuth_get (s := s) hz with ⟨-, hy⟩ | ⟨-, rfl⟩
   · exact fun l hl => ⟨j, z, hy, za, hl⟩
@@ -6438,18 +6440,18 @@ theorem issue_preserves_noDangling {k : K} {s s' : S3} {ar ar' : Arena} {via dst
 
 /-- `reset` preserves `NoDangling` (C2; MM-03.3 §6; A10): it only writes the metadata. -/
 theorem reset_preserves_noDangling {k : K} {s s' : S3} {ar ar' : Arena} {via : Nat}
-    (hinv : Inv3 s) (h : ResetStep k ar via s (.ok (s', ar'))) : NoDangling s' := by
+    (hnd : NoDangling s) (h : ResetStep k ar via s (.ok (s', ar'))) : NoDangling s' := by
   obtain ⟨-, e⟩ := Guarded.ok_iff.1 h
   have e1 := congrArg Prod.fst e; simp only [resetEff] at e1; subst e1
-  exact hinv.nd.of (fun _ _ h => h) (fun _ h => h.of_eqs rfl rfl rfl)
+  exact hnd.of (fun _ _ h => h) (fun _ h => h.of_eqs rfl rfl rfl)
     fun j z hz za _ hl => ⟨j, z, hz, za, hl⟩
 
 /-- `reset` preserves `AnchorOrder` (B8, C1; MM-03.3 §6; A10): it only writes the metadata. -/
 theorem reset_preserves_anchorOrder {k : K} {s s' : S3} {ar ar' : Arena} {via : Nat}
-    (hinv : Inv3 s) (h : ResetStep k ar via s (.ok (s', ar'))) : AnchorOrder s' := by
+    (hao : AnchorOrder s) (h : ResetStep k ar via s (.ok (s', ar'))) : AnchorOrder s' := by
   obtain ⟨-, e⟩ := Guarded.ok_iff.1 h
   have e1 := congrArg Prod.fst e; simp only [resetEff] at e1; subst e1
-  exact hinv.ao.of rfl rfl (fun _ hq => hq.of_eqs rfl rfl rfl) (fun _ _ _ hx => hx)
+  exact hao.of rfl rfl (fun _ hq => hq.of_eqs rfl rfl rfl) (fun _ _ _ hx => hx)
     (fun _ _ => rfl) (fun _ y hy => ⟨y, hy, rfl, rfl⟩)
 
 /-- `release_restores_authority` (MM-03.3 §3, O3; §10): if `b`, derived from `a`, is the only
@@ -6645,7 +6647,10 @@ example : DependStep 1 2 c9a (.ok (dependEff c9a 1 2)) := .ok (by decide)
 example : ReleaseStep 2 (dependEff c9a 1 2) .reject := .reject (by decide)
 
 /-! ### Case 10: capture of a local access in an escaping value (expected: reject). Caller: 0
-result, parameter 1. Callee: 1 local, 2 value capturing access 4 derived from the local. -/
+result, parameter 1. Callee: 1 local, 2 value capturing access 4 derived from the local. C1 rejects
+the `transfer`: the effective anchor of 4 is the root 2 of the local, held by frame 2, and the
+dependent moves to the caller (B8 on the effective anchor). Pass 3 accepted the `transfer` and
+rejected the exit; the `ExitStep` fact describes the state pass 3 reached. -/
 
 def c10a : S3 := enterEff (deriveEff (enter1 [(none, none, 0)]) 0 0 .modify) [1]
   [(none, none, 0), (none, none, 0)]
@@ -6810,7 +6815,8 @@ example : ExitStep K0 n9b (.ok (exitEff n9b)) := .ok (by decide)
 example : (exitEff n9b).D 1 = [0] := by decide
 
 /-- Return of a value anchored on a local of the callee through two derivations (expected:
-reject). Callee of case 10: 4 derived from the root of the local, 5 derived from 4. -/
+reject). Callee of case 10: 4 derived from the root of the local, 5 derived from 4. C1 rejects the
+`transfer`, as in case 10; the `ExitStep` fact describes the state pass 3 reached. -/
 def n9c : S3 := deriveEff (deriveEff c10a 2 1 .observe) 4 1 .observe
 def n9d : S3 := transferEff (dependEff (write3Eff n9c [2]) 2 5) 2 0
 example : TransferStep K0 2 0 (dependEff (write3Eff n9c [2]) 2 5) .reject := .reject (by decide)
@@ -6874,36 +6880,32 @@ example : Read3Step 2 [2] (deriveEff n6a 0 0 .observe) (.ok (deriveEff n6a 0 0 .
   .ok (by decide)
 example : Write3Step 2 [2] (deriveEff n6a 0 0 .observe) .reject := .reject (by decide)
 
-/-- Witness state of `transfer_not_inv3_preserving`: place 1 is a part of place 0 with another
-owner, a frame not on the stack; place 2 is owned by place 1 and anchored on the released root 2
-of frame 1; place 3 is the destination. -/
-def xferCex : S3 := ⟨[1, 0], 6, [⟨none, .frame 1, 0⟩, ⟨some 0, .frame 5, 0⟩, ⟨none, .place 1, 0⟩,
-  ⟨none, .frame 1, 0⟩], fun l => if l = 1 then .init else .uninit,
-  [⟨.modify, none, [1], .frame 1, true⟩, ⟨.modify, none, [3], .frame 1, true⟩,
-    ⟨.modify, none, [], .frame 1, false⟩],
-  fun q => if q = 2 then [2] else [], fun _ => false, fun _ => false, fun _ => false⟩
+/-- Witness state of `transfer_not_inv3_preserving` (A1; C2): place 0, the source, has a parent
+link to the later place 1, which `chain` ignores, so neither 0 nor 1 is a leaf and the source
+covers no leaf; place 1 is a part of place 0 with another owner, a frame not on the stack; place 2
+is owned by place 1 and anchored on the released root 1 of frame 1; place 3 is the destination. -/
+def xferCex : S3 := ⟨[1, 0], 6, [⟨some 1, .frame 1, 0⟩, ⟨some 0, .frame 5, 0⟩, ⟨none, .place 1, 0⟩,
+  ⟨none, .frame 1, 0⟩], fun _ => .uninit,
+  [⟨.modify, none, [3], .frame 1, true⟩, ⟨.modify, none, [], .frame 1, false⟩],
+  fun q => if q = 2 then [1] else [], fun _ => false, fun _ => false, fun _ => false⟩
 
-/-- `transfer` (MM-03.3 §3, O4; A5) does not preserve `Inv3base ∧ AnchorOrder`, the `Inv3` of
-pass 3, alone (A1): a part with another owner than its parent (excluded by `WF3`) is not usable
-while its parent is; a place owned by that part is not usable either and keeps an invalid anchor.
-The transfer gives that place to the destination: it becomes usable with an invalid anchor. The
-state breaks `NoDangling` (C2): the authority on the source covers the leaf of the part. -/
+/-- `transfer` (MM-03.3 §3, O4; A5) does not preserve `Inv3` without `WF3` (A1; C2): a part with
+another owner than its parent (excluded by `WF3`) is not usable while its parent is; a place owned
+by that part is not usable either and keeps an invalid anchor. The transfer gives that place to
+the destination: it becomes usable with an invalid anchor. -/
 theorem transfer_not_inv3_preserving :
-    (Inv3base xferCex ∧ AnchorOrder xferCex) ∧ ¬ NoDangling xferCex ∧
-      TransferStep K0 0 3 xferCex (.ok (transferEff xferCex 0 3)) ∧
+    Inv3 xferCex ∧ TransferStep K0 0 3 xferCex (.ok (transferEff xferCex 0 3)) ∧
       ¬ I3 (transferEff xferCex 0 3) := by
   refine ⟨⟨⟨fun a b x y p hab ha hb _ _ xp yp _ _ => ?_, fun b y a hb ho => ?_,
-    fun q hq z hz => ?_, i4_always _⟩, fun q hq z hz => ?_⟩,
-    fun h => absurd (h 0 _ rfl rfl 1 (by decide) 1 (by decide)) (by decide), .ok (by decide),
-    fun h => ?_⟩
+    fun q hq z hz => ?_, i4_always _⟩, fun q hq z hz => ?_, noDangling_iff.2 (by decide)⟩,
+    .ok (by decide), fun h => ?_⟩
   · have h1 := lt_of_getElem? ha; have h2 := lt_of_getElem? hb
     simp [xferCex] at h1 h2
-    obtain rfl | rfl | rfl : a = 0 ∨ a = 1 ∨ a = 2 := by omega
-    all_goals obtain rfl | rfl | rfl : b = 0 ∨ b = 1 ∨ b = 2 := by omega
-    all_goals first | exact absurd rfl hab |
-      (simp [xferCex] at ha hb; subst ha hb; simp at xp yp <;> omega)
+    obtain rfl | rfl : a = 0 ∨ a = 1 := by omega
+    all_goals obtain rfl | rfl : b = 0 ∨ b = 1 := by omega
+    all_goals first | exact absurd rfl hab | (simp [xferCex] at ha hb; subst ha hb; simp at xp yp)
   · have := lt_of_getElem? hb; simp [xferCex] at this
-    obtain rfl | rfl | rfl : b = 0 ∨ b = 1 ∨ b = 2 := by omega
+    obtain rfl | rfl : b = 0 ∨ b = 1 := by omega
     all_goals simp [xferCex] at hb; subst hb; cases ho
   · cases Nat.decEq q 2 with
     | isTrue e => subst e; exact absurd hq (by decide)
@@ -6911,7 +6913,7 @@ theorem transfer_not_inv3_preserving :
   · cases Nat.decEq q 2 with
     | isTrue e => subst e; exact absurd hq (by decide)
     | isFalse e => simp [xferCex, e] at hz
-  · exact absurd (h 2 (by decide) 2 (by decide)) (by decide)
+  · exact absurd (h 2 (by decide) 1 (by decide)) (by decide)
 
 /-- The witness of `transfer_not_inv3_preserving` breaks the parts clause of `WF3` and satisfies
 all its other clauses, those of B1 and A4 included: the parts clause is the one needed. -/
@@ -6933,11 +6935,11 @@ example : (∀ (b : Nat) (y : Authority) (a : Nat), xferCex.A[b]? = some y → y
   refine ⟨?_, ?_, by decide, by decide, by decide, ?_, ?_, ?_, rootsDisjoint_always _, ?_, ?_, ?_⟩
   · intro b y a hb ho
     have := lt_of_getElem? hb; simp [xferCex] at this
-    obtain rfl | rfl | rfl : b = 0 ∨ b = 1 ∨ b = 2 := by omega
+    obtain rfl | rfl : b = 0 ∨ b = 1 := by omega
     all_goals simp [xferCex] at hb; subst hb; cases ho
   · intro a x ha l hl
     have := lt_of_getElem? ha; simp [xferCex] at this
-    obtain rfl | rfl | rfl : a = 0 ∨ a = 1 ∨ a = 2 := by omega
+    obtain rfl | rfl : a = 0 ∨ a = 1 := by omega
     all_goals simp [xferCex] at ha; subst ha; simp at hl <;> (subst hl; decide)
   · intro q pl f hq ho
     have := lt_of_getElem? hq; simp [xferCex] at this
@@ -6949,30 +6951,63 @@ example : (∀ (b : Nat) (y : Authority) (a : Nat), xferCex.A[b]? = some y → y
     all_goals (simp [xferCex] at hq; subst hq; cases ho; try decide)
   · intro a y ha hy
     have := lt_of_getElem? ha; simp [xferCex] at this
-    obtain rfl | rfl | rfl : a = 0 ∨ a = 1 ∨ a = 2 := by omega
-    all_goals simp [xferCex] at ha; subst ha; decide
+    obtain rfl | rfl : a = 0 ∨ a = 1 := by omega
+    all_goals simp [xferCex] at ha; subst ha; first | decide | simp at hy
   · intro a y l ha hl _
     have := lt_of_getElem? ha; simp [xferCex] at this
-    obtain rfl | rfl | rfl : a = 0 ∨ a = 1 ∨ a = 2 := by omega
+    obtain rfl | rfl : a = 0 ∨ a = 1 := by omega
     · simp [xferCex] at ha; subst ha; simp at hl; subst hl
-      exact ⟨0, _, 0, .inl rfl, rfl, rfl, by decide, by decide, fun l' => by
-        rw [show footprint xferCex.P 0 = [1] by decide]⟩
-    · simp [xferCex] at ha; subst ha; simp at hl; subst hl
-      exact ⟨1, _, 3, .inl rfl, rfl, rfl, by decide, by decide, fun l' => by
+      exact ⟨0, _, 3, .inl rfl, rfl, rfl, by decide, by decide, fun l' => by
         rw [show footprint xferCex.P 3 = [3] by decide]⟩
     · simp [xferCex] at ha; subst ha; simp at hl
   · intro x z l r hx _ hl hr hlr
     have := lt_of_getElem? hx; simp [xferCex] at this
-    obtain rfl | rfl | rfl : x = 0 ∨ x = 1 ∨ x = 2 := by omega
-    · simp [xferCex] at hx; subst hx; simp at hl; subst hl
-      obtain rfl := rootOf_unique hr (show RootPlace xferCex.P 0 by decide) hlr (by decide)
-      exact ⟨_, rfl, rfl⟩
+    obtain rfl | rfl : x = 0 ∨ x = 1 := by omega
     · simp [xferCex] at hx; subst hx; simp at hl; subst hl
       obtain rfl := rootOf_unique hr (show RootPlace xferCex.P 3 by decide) hlr (by decide)
       exact ⟨_, rfl, rfl⟩
     · simp [xferCex] at hx; subst hx; simp at hl
   · intro h; obtain ⟨pr, hpr, -, ho, -⟩ := h 1 ⟨some 0, .frame 5, 0⟩ 0 rfl rfl
     simp [xferCex] at hpr; subst hpr; simp at ho
+
+/-- The witness of `transfer_not_inv3_preserving` in passes 2 and 3: place 1 is a part of place 0
+with another owner, a frame not on the stack; place 2 is owned by place 1 and anchored on the
+released root 2 of frame 1 (anchored on a missing authority 5 before C1); place 3 is the
+destination. -/
+def xferNd : S3 := ⟨[1, 0], 6, [⟨none, .frame 1, 0⟩, ⟨some 0, .frame 5, 0⟩, ⟨none, .place 1, 0⟩,
+  ⟨none, .frame 1, 0⟩], fun l => if l = 1 then .init else .uninit,
+  [⟨.modify, none, [1], .frame 1, true⟩, ⟨.modify, none, [3], .frame 1, true⟩,
+    ⟨.modify, none, [], .frame 1, false⟩],
+  fun q => if q = 2 then [2] else [], fun _ => false, fun _ => false, fun _ => false⟩
+
+/-- `transfer` (MM-03.3 §3, O4; A5) does not preserve `Inv3base ∧ AnchorOrder`, the `Inv3` of
+pass 3, without `WF3` (A1): the transfer gives place 2 to the destination, where it becomes usable
+with an invalid anchor. The state breaks `NoDangling` (C2): the authority on the source covers the
+leaf of the part 1, which is not usable. -/
+example :
+    (Inv3base xferNd ∧ AnchorOrder xferNd) ∧ ¬ NoDangling xferNd ∧
+      TransferStep K0 0 3 xferNd (.ok (transferEff xferNd 0 3)) ∧
+      ¬ I3 (transferEff xferNd 0 3) := by
+  refine ⟨⟨⟨fun a b x y p hab ha hb _ _ xp yp _ _ => ?_, fun b y a hb ho => ?_,
+    fun q hq z hz => ?_, i4_always _⟩, fun q hq z hz => ?_⟩,
+    fun h => absurd (h 0 _ rfl rfl 1 (by decide) 1 (by decide)) (by decide), .ok (by decide),
+    fun h => ?_⟩
+  · have h1 := lt_of_getElem? ha; have h2 := lt_of_getElem? hb
+    simp [xferNd] at h1 h2
+    obtain rfl | rfl | rfl : a = 0 ∨ a = 1 ∨ a = 2 := by omega
+    all_goals obtain rfl | rfl | rfl : b = 0 ∨ b = 1 ∨ b = 2 := by omega
+    all_goals first | exact absurd rfl hab |
+      (simp [xferNd] at ha hb; subst ha hb; simp at xp yp <;> omega)
+  · have := lt_of_getElem? hb; simp [xferNd] at this
+    obtain rfl | rfl | rfl : b = 0 ∨ b = 1 ∨ b = 2 := by omega
+    all_goals simp [xferNd] at hb; subst hb; cases ho
+  · cases Nat.decEq q 2 with
+    | isTrue e => subst e; exact absurd hq (by decide)
+    | isFalse e => simp [xferNd, e] at hz
+  · cases Nat.decEq q 2 with
+    | isTrue e => subst e; exact absurd hq (by decide)
+    | isFalse e => simp [xferNd, e] at hz
+  · exact absurd (h 2 (by decide) 2 (by decide)) (by decide)
 
 /-- With a duplicated frame on the stack (excluded by `WF3`), `exitFrame` (MM-03.3 §4, O7; A4)
 keeps active an authority held by the exited frame: the hypothesis `s.F.Nodup` of
@@ -7410,8 +7445,11 @@ example : Write3Step 4 [4] (write3Eff (splitEff al2 2 [[3], [4]]) [3])
 0 arena value, 1 allocator value, 2 and 3 block destinations. The storage 4, with leaves 5 and 6,
 is allocated and owned by 0; its root authority 4 is `internal`. The metadata right is
 exercisable `Modify` on the arena value 0 (`MetaRight`, C6), without `SharedMutable`. -/
-def aa0 : S3 := allocEff (write3Eff (enter1 [(none, none, 0), (none, none, 0), (none, none, 0),
-  (none, none, 0)]) [1]) 1 0 [(none, none, 0), (some 4, none, 0), (some 4, none, 0)]
+def aaE : S3 := enter1 [(none, none, 0), (none, none, 0), (none, none, 0), (none, none, 0)]
+def aa0 : S3 := allocEff (write3Eff aaE [1]) 1 0 [(none, none, 0), (some 4, none, 0), (some 4, none, 0)]
+example : Write3Step 1 [1] aaE (.ok (write3Eff aaE [1])) := .ok (by decide)
+example : AllocStep K0 1 0 [(none, none, 0), (some 4, none, 0), (some 4, none, 0)]
+    (write3Eff aaE [1]) (.ok aa0) := .ok (by decide) trivial
 def aar : Arena := ⟨4, 4, [5, 6], []⟩
 def aa1 : S3 × Arena := issueEff aa0 aar [5] 2
 def aa2 : S3 × Arena := issueEff aa1.1 aa1.2 [6] 3
@@ -7461,5 +7499,106 @@ example : Write3Step 0 [0] (endUseEff c13a 0) (.ok (write3Eff (endUseEff c13a 0)
   .ok (by decide)
 example : Read3Step 0 [0] (write3Eff (endUseEff c13a 0) [0])
     (.ok (write3Eff (endUseEff c13a 0) [0])) := .ok (by decide)
+
+/-! ## Witnesses of the questions of pass 4 -/
+
+/-- On every reached state, the base frame is 0, `nF` is positive, and no place is owned by frame
+0: the initial state has one frame and no place (MM-03.3.1; pass-1 brief), `enterFrame` gives its
+locals the new frame or a place as owner (A5), `alloc` and `transfer` only give places, and the
+exit never pops the last frame (O7). -/
+theorem reachable_base_owns_nothing {k : K} {s : S3} (h : Reachable k s) :
+    s.F.getLast? = some 0 ∧ 0 < s.nF ∧ ∀ pl ∈ s.P, pl.owner ≠ .frame 0 := by
+  induction h with
+  | init => exact ⟨rfl, by decide, by simp [S3.init]⟩
+  | derive _ h ih =>
+    obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h; exact ih
+  | split _ h ih =>
+    obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h; exact ih
+  | @release s s' a _ h ih =>
+    obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
+    unfold releaseEff; split <;> exact ih
+  | @transfer s s' src dst _ h ih =>
+    obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
+    refine ⟨ih.1, ih.2.1, fun pl hpl => ?_⟩
+    simp only [transferEff, List.mem_map] at hpl
+    obtain ⟨pl₀, h₀, rfl⟩ := hpl
+    split
+    · simp
+    · exact ih.2.2 pl₀ h₀
+  | depend _ h ih =>
+    obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h; exact ih
+  | @enter s s' ps ls _ h ih =>
+    obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
+    obtain ⟨h1, h2, h3⟩ := ih
+    refine ⟨?_, by simp [enterEff], fun pl hpl => ?_⟩
+    · show (s.nF :: s.F).getLast? = some 0
+      cases hF : s.F with
+      | nil => rw [hF] at h1; cases h1
+      | cons a l => rw [hF] at h1; rw [List.getLast?_cons_cons]; exact h1
+    · simp only [enterEff, enterP, List.mem_append, List.mem_map] at hpl
+      rcases hpl with hpl | ⟨i, -, rfl⟩
+      · exact h3 pl hpl
+      · simp only [localOwner]; split
+        · simp
+        · intro e; injection e with e; omega
+  | @exit s s' _ h ih =>
+    obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
+    unfold exitEff
+    unfold ExitPre at hpre
+    split
+    · rename_i f F₀ hF
+      rw [hF] at hpre
+      obtain ⟨hne, -⟩ := hpre
+      refine ⟨?_, ih.2.1, ih.2.2⟩
+      have := ih.1; rw [hF] at this
+      cases F₀ with
+      | nil => exact absurd rfl hne
+      | cons g F₁ => rw [List.getLast?_cons_cons] at this; exact this
+    · exact ih
+  | read _ h ih =>
+    obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h; exact ih
+  | write _ h ih =>
+    obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h; exact ih
+  | writeShared _ h ih =>
+    obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h; exact ih
+  | pin _ h ih =>
+    obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h; exact ih
+  | unpin _ h ih =>
+    obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h; exact ih
+  | endUse _ h ih =>
+    obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h; exact ih
+  | free _ h ih =>
+    obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h; exact ih
+  | @alloc s s' pr ow ls _ h ih =>
+    cases h with
+    | ok _ _ =>
+      refine ⟨ih.1, ih.2.1, fun pl hpl => ?_⟩
+      simp only [allocEff, allocP, shapeP, List.mem_append, List.mem_map] at hpl
+      rcases hpl with hpl | ⟨i, -, rfl⟩
+      · exact ih.2.2 pl hpl
+      · simp only [shapeOwner]; split <;> simp
+
+/-- On reached states, `StaticPinnedBottom` (C5) holds only for an empty static pinning: the base
+frame, 0, owns no place (`reachable_base_owns_nothing`). `static_pinned_never_exits` then has no
+content on reached states. -/
+theorem staticPinnedBottom_forces_empty {k : K} {s : S3} (hr : Reachable k s)
+    (hsp : StaticPinnedBottom k s) : ∀ l, ¬ k.Pinned l := by
+  obtain ⟨hF, -, hP⟩ := reachable_base_owns_nothing hr
+  intro l hl
+  obtain ⟨q, -, hob⟩ := hsp l hl
+  have hb : s.F.getLastD 0 = 0 := by
+    rw [List.getLastD_eq_getLast?, hF]; rfl
+  rw [hb] at hob
+  induction hob with
+  | frame hpl ho => exact hP _ (List.mem_of_getElem? hpl) ho
+  | place _ _ _ ih => exact ih
+
+/-- `alloc` of the empty shape (C6): the encoding of the locals of `enterFrame` admits it, no
+precondition excludes it, and the outcome is `ok` with no new place and no new authority, while
+B5 describes `ok` as a new root. -/
+example : AllocStep K0 1 0 [] (write3Eff n6e [1]) (.ok (allocEff (write3Eff n6e [1]) 1 0 [])) :=
+  .ok (by decide) trivial
+example : (allocEff (write3Eff n6e [1]) 1 0 []).P = (write3Eff n6e [1]).P ∧
+    (allocEff (write3Eff n6e [1]) 1 0 []).A = (write3Eff n6e [1]).A := by decide
 
 end Ern.MM03
