@@ -2195,10 +2195,20 @@ theorem ancs_cons {s : S3} (hw : ∀ (b : Nat) (y : Authority) (a : Nat), s.A[b]
     y.origin = some a → a < b) {x o : Nat} (h : s.org x = some o) :
     s.ancs x = o :: s.ancs o := chain_cons h (org_lt hw h)
 
+/-- One step of a chain of origins: the chain from `x` starts with the origin of `x`, which is
+smaller, or it is empty. -/
+theorem ancs_step {s : S3} {x o : Nat} (h : s.org x = some o) :
+    (o < x ∧ s.ancs x = o :: s.ancs o) ∨ s.ancs x = [] := by
+  by_cases hlt : o < x
+  · exact .inl ⟨hlt, chain_cons h hlt⟩
+  · right; unfold S3.ancs chain
+    cases x with
+    | zero => rfl
+    | succ k => simp [chainF, h, hlt]
+
 /-- The first surviving strict ancestor along `origin` (A7): it is an ancestor, it survives, and
 every surviving ancestor is it or one of its own ancestors. -/
-theorem firstSurv_ancs {s : S3} {F₀ : Frames} (hw : ∀ (b : Nat) (y : Authority) (a : Nat),
-    s.A[b]? = some y → y.origin = some a → a < b) :
+theorem firstSurv_ancs {s : S3} {F₀ : Frames} :
     ∀ n x, x < n → ∀ z, firstSurv s F₀ (s.ancs x) = some z →
       z ∈ s.ancs x ∧ Survives s F₀ z ∧
         ∀ w ∈ s.ancs x, Survives s F₀ w → w = z ∨ w ∈ s.ancs z
@@ -2207,8 +2217,11 @@ theorem firstSurv_ancs {s : S3} {F₀ : Frames} (hw : ∀ (b : Nat) (y : Authori
     cases ho : s.org x with
     | none => rw [S3.ancs, chain_none ho] at hz; simp [firstSurv] at hz
     | some o =>
-      have hlt := org_lt hw ho
-      rw [ancs_cons hw ho] at hz ⊢
+      obtain ⟨hlt, he⟩ : o < x ∧ s.ancs x = o :: s.ancs o := by
+        rcases ancs_step ho with h | he
+        · exact h
+        · rw [he] at hz; simp [firstSurv] at hz
+      rw [he] at hz ⊢
       by_cases hs : Survives s F₀ o
       · simp only [firstSurv, List.find?_cons_of_pos (p := fun z => decide (Survives s F₀ z))
           (by simpa using hs), Option.some.injEq] at hz
@@ -2219,7 +2232,7 @@ theorem firstSurv_ancs {s : S3} {F₀ : Frames} (hw : ∀ (b : Nat) (y : Authori
         · exact .inr hw'
       · simp only [firstSurv, List.find?_cons_of_neg (p := fun z => decide (Survives s F₀ z))
           (by simpa using hs)] at hz
-        obtain ⟨h1, h2, h3⟩ := firstSurv_ancs hw n o (by omega) z hz
+        obtain ⟨h1, h2, h3⟩ := firstSurv_ancs n o (by omega) z hz
         refine ⟨List.mem_cons_of_mem _ h1, h2, fun w hw' hws => ?_⟩
         rcases List.mem_cons.1 hw' with rfl | hw'
         · exact absurd hws hs
@@ -2237,8 +2250,7 @@ theorem firstSurv_some {s : S3} {F₀ : Frames} {l : List Nat} {z : Nat}
 
 /-- Conservation along a chain of origins (MM-03.3 §2, I2): a derived authority is within every
 ancestor's footprint, with a mode not exceeding it. -/
-theorem i2_chain {s : S3} (h2 : I2 s) (hw : ∀ (b : Nat) (y : Authority) (a : Nat),
-    s.A[b]? = some y → y.origin = some a → a < b) :
+theorem i2_chain {s : S3} (h2 : I2 s) :
     ∀ n b, b < n → ∀ (y : Authority) z, s.A[b]? = some y → z ∈ s.ancs b →
       ∃ x : Authority, s.A[z]? = some x ∧ ∀ p ∈ y.footprint, p ∈ x.footprint ∧ y.mode.le x.mode
   | 0, _, h, _, _, _, _ => absurd h (Nat.not_lt_zero _)
@@ -2249,11 +2261,15 @@ theorem i2_chain {s : S3} (h2 : I2 s) (hw : ∀ (b : Nat) (y : Authority) (a : N
       rw [S3.ancs, chain_none this] at hz; simp at hz
     | some o =>
       have hob : s.org b = some o := by simp [S3.org, hy, ho]
-      rw [ancs_cons hw hob] at hz
+      obtain ⟨hlt, he⟩ : o < b ∧ s.ancs b = o :: s.ancs o := by
+        rcases ancs_step hob with h | he
+        · exact h
+        · rw [he] at hz; simp at hz
+      rw [he] at hz
       obtain ⟨x, hx, hh⟩ := h2 b y o hy ho
       rcases List.mem_cons.1 hz with rfl | hz
       · exact ⟨x, hx, hh⟩
-      · obtain ⟨x', hx', hh'⟩ := i2_chain h2 hw n o (by have := org_lt hw hob; omega) x z hx hz
+      · obtain ⟨x', hx', hh'⟩ := i2_chain h2 n o (by omega) x z hx hz
         exact ⟨x', hx', fun p hp => ⟨(hh' p (hh p hp).1).1,
           Mode.le_trans (hh p hp).2 (hh' p (hh p hp).1).2⟩⟩
 
@@ -2301,8 +2317,7 @@ theorem exitG_origin {s : S3} {F₀ : Frames} {a : Nat} {y : Authority} :
   · exact .inl rfl
 
 /-- After the exit, the surviving ancestors of any authority are still its ancestors (A7). -/
-theorem exit_ancs_keep {s : S3} {f : Nat} {F₀ : Frames} (hF : s.F = f :: F₀)
-    (hw : ∀ (b : Nat) (y : Authority) (a : Nat), s.A[b]? = some y → y.origin = some a → a < b) :
+theorem exit_ancs_keep {s : S3} {f : Nat} {F₀ : Frames} (hF : s.F = f :: F₀) :
     ∀ n x, x < n → ∀ w ∈ s.ancs x, Survives s F₀ w → w ∈ (exitEff s).ancs x
   | 0, _, h, _, _, _ => absurd h (Nat.not_lt_zero _)
   | n + 1, x, hx, w, hw', hws => by
@@ -2317,37 +2332,39 @@ theorem exit_ancs_keep {s : S3} {f : Nat} {F₀ : Frames} (hF : s.F = f :: F₀)
         rw [S3.ancs, chain_none this] at hw'; simp at hw'
       | some o =>
         have hob : s.org x = some o := by simp [S3.org, hy, ho]
-        have hlt := org_lt hw hob
+        obtain ⟨hlt, hax⟩ : o < x ∧ s.ancs x = o :: s.ancs o := by
+          rcases ancs_step hob with h | hax
+          · exact h
+          · rw [hax] at hw'; simp at hw'
         have e' : (exitEff s).org x = (exitG s F₀ x y).origin := by
           simp [S3.org, exit_A_get hF, hy]
         rcases exitG_origin (s := s) (F₀ := F₀) (a := x) (y := y) with e | ⟨-, -, e⟩
         · rw [e, ho] at e'
           rw [show (exitEff s).ancs x = o :: (exitEff s).ancs o from chain_cons e' hlt]
-          rw [ancs_cons hw hob] at hw'
+          rw [hax] at hw'
           rcases List.mem_cons.1 hw' with rfl | hw'
           · exact List.mem_cons_self ..
-          · exact List.mem_cons_of_mem _ (exit_ancs_keep hF hw n o (by omega) w hw' hws)
+          · exact List.mem_cons_of_mem _ (exit_ancs_keep hF n o (by omega) w hw' hws)
         · rw [e] at e'
           cases hz : firstSurv s F₀ (s.ancs x) with
           | none => exact absurd hws (firstSurv_none hz w hw')
           | some z =>
             rw [hz] at e'
-            obtain ⟨hz1, -, hz3⟩ := firstSurv_ancs hw (x + 1) x (Nat.lt_succ_self x) z hz
+            obtain ⟨hz1, -, hz3⟩ := firstSurv_ancs (x + 1) x (Nat.lt_succ_self x) z hz
             have hzx := chain_lt hz1
             rw [show (exitEff s).ancs x = z :: (exitEff s).ancs z from chain_cons e' hzx]
             rcases hz3 w hw' hws with rfl | hw''
             · exact List.mem_cons_self ..
-            · exact List.mem_cons_of_mem _ (exit_ancs_keep hF hw n z (by omega) w hw'' hws)
+            · exact List.mem_cons_of_mem _ (exit_ancs_keep hF n z (by omega) w hw'' hws)
 
-/-- `exitFrame` preserves `WF3` and `Inv3` (MM-03.3 §4, O7; §10; A4; A5; A7). -/
-theorem exit_preserves {s s' : S3} (hwf : WF3 s) (hinv : Inv3 s) (h : ExitStep s (.ok s')) :
-    WF3 s' ∧ Inv3 s' := by
+/-- `exitFrame` preserves `Inv3` without `WF3` (MM-03.3 §4, O7; A1; A7). -/
+theorem exit_preserves_inv3 {s s' : S3} (hinv : Inv3 s) (h : ExitStep s (.ok s')) : Inv3 s' := by
   obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
   unfold ExitPre at hpre
   split at hpre
   · rename_i f F₀ hF
-    obtain ⟨hne, hR1, -⟩ := hpre
-    obtain ⟨i1, i2, i3, -⟩ := hinv
+    obtain ⟨-, hR1, -⟩ := hpre
+    obtain ⟨i1, i2, -, -⟩ := hinv
     have e := exitEff_eq hF
     have get := exit_A_get hF
     have get' : ∀ {j z}, (exitEff s).A[j]? = some z → ∃ z₀, s.A[j]? = some z₀ ∧
@@ -2358,27 +2375,10 @@ theorem exit_preserves {s s' : S3} (hwf : WF3 s) (hinv : Inv3 s) (h : ExitStep s
       | some z₀ => rw [h₀] at hz; cases hz; exact ⟨z₀, rfl, rfl⟩
     have hP : (exitEff s).P = s.P := by rw [e]
     have hd : (exitEff s).dead = s.dead := by rw [e]
-    have hn : (exitEff s).nF = s.nF := by rw [e]
     have hFe : (exitEff s).F = F₀ := by rw [e]
-    have live₁ : ∀ hh, HolderLive (exitEff s) hh ↔ HolderLive ({ s with F := F₀ } : S3) hh :=
-      HolderLive.congr hP hFe hd
-    have hnd := List.nodup_cons.1 (hF ▸ hwf.nodup)
-    have keep := exit_ancs_keep hF hwf.origin
-    refine ⟨⟨fun b y a hb ho => ?_, fun a x hx l hl => ?_, hFe ▸ hne, hFe ▸ hnd.2,
-      fun g hg => ?_, hP ▸ hn ▸ hwf.ownerFrame, hP ▸ hwf.ownerPlace, hP ▸ hd ▸ hwf.parts,
-      fun a y hy ya => ?_⟩, fun a b x y p hab ha hb xa ya xp yp hnab hnba => ?_,
+    have keep := exit_ancs_keep hF
+    refine ⟨fun a b x y p hab ha hb xa ya xp yp hnab hnba => ?_,
       fun b y a hb ho => ?_, fun q hq x hx => ?_, i4_always _⟩
-    · obtain ⟨y₀, hy₀, rfl⟩ := get' hb
-      rcases exitG_origin (s := s) (F₀ := F₀) (a := b) (y := y₀) with e' | ⟨-, -, e'⟩
-      · exact hwf.origin b y₀ a hy₀ (e' ▸ ho)
-      · rw [e'] at ho; exact chain_lt (firstSurv_some ho).1
-    · obtain ⟨x₀, hx₀, rfl⟩ := get' hx
-      rw [hP]; exact hwf.fp a x₀ hx₀ l ((exitG_same s F₀ a x₀).2.1 ▸ hl)
-    · rw [hFe] at hg; rw [hn]; exact hwf.frames g (hF ▸ List.mem_cons_of_mem _ hg)
-    · obtain ⟨y₀, hy₀, rfl⟩ := get' hy
-      have hs := exitG_active ya
-      rw [(exitG_same s F₀ a y₀).2.2, live₁]
-      unfold Survives at hs; rw [hy₀] at hs; exact hs.2
     · obtain ⟨x₀, hx₀, rfl⟩ := get' ha; obtain ⟨y₀, hy₀, rfl⟩ := get' hb
       have sa := exitG_active xa; have sb := exitG_active ya
       have xa₀ : x₀.active = true := by unfold Survives at sa; rw [hx₀] at sa; exact sa.1
@@ -2397,7 +2397,7 @@ theorem exit_preserves {s s' : S3} (hwf : WF3 s) (hinv : Inv3 s) (h : ExitStep s
         obtain ⟨xm, xf, -⟩ := exitG_same s F₀ a x₁
         exact ⟨_, lift hx₁, fun p hp => by rw [ym, xm, xf]; exact hh p (yf ▸ hp)⟩
       · rw [e'] at ho
-        obtain ⟨x₁, hx₁, hh⟩ := i2_chain i2 hwf.origin (b + 1) b (Nat.lt_succ_self b) y₀ a hy₀
+        obtain ⟨x₁, hx₁, hh⟩ := i2_chain i2 (b + 1) b (Nat.lt_succ_self b) y₀ a hy₀
           (firstSurv_some ho).1
         obtain ⟨xm, xf, -⟩ := exitG_same s F₀ a x₁
         exact ⟨_, lift hx₁, fun p hp => by rw [ym, xm, xf]; exact hh p (yf ▸ hp)⟩
@@ -2421,6 +2421,46 @@ theorem exit_preserves {s s' : S3} (hwf : WF3 s) (hinv : Inv3 s) (h : ExitStep s
           | some y => exact ⟨y, rfl⟩
         obtain ⟨y, hy⟩ := hzA
         exact ⟨_, by rw [get, hy]; rfl, exitG_surv hy hzs⟩
+  · exact hpre.elim
+
+/-- `exitFrame` preserves `WF3` and `Inv3` (MM-03.3 §4, O7; §10; A4; A5; A7). -/
+theorem exit_preserves {s s' : S3} (hwf : WF3 s) (hinv : Inv3 s) (h : ExitStep s (.ok s')) :
+    WF3 s' ∧ Inv3 s' := by
+  have hinv' := exit_preserves_inv3 hinv h
+  obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
+  unfold ExitPre at hpre
+  split at hpre
+  · rename_i f F₀ hF
+    obtain ⟨hne, -, -⟩ := hpre
+    have e := exitEff_eq hF
+    have get := exit_A_get hF
+    have get' : ∀ {j z}, (exitEff s).A[j]? = some z → ∃ z₀, s.A[j]? = some z₀ ∧
+        z = exitG s F₀ j z₀ := fun {j z} hz => by
+      rw [get] at hz
+      cases h₀ : s.A[j]? with
+      | none => rw [h₀] at hz; cases hz
+      | some z₀ => rw [h₀] at hz; cases hz; exact ⟨z₀, rfl, rfl⟩
+    have hP : (exitEff s).P = s.P := by rw [e]
+    have hd : (exitEff s).dead = s.dead := by rw [e]
+    have hn : (exitEff s).nF = s.nF := by rw [e]
+    have hFe : (exitEff s).F = F₀ := by rw [e]
+    have live₁ : ∀ hh, HolderLive (exitEff s) hh ↔ HolderLive ({ s with F := F₀ } : S3) hh :=
+      HolderLive.congr hP hFe hd
+    have hnd := List.nodup_cons.1 (hF ▸ hwf.nodup)
+    refine ⟨⟨fun b y a hb ho => ?_, fun a x hx l hl => ?_, hFe ▸ hne, hFe ▸ hnd.2,
+      fun g hg => ?_, hP ▸ hn ▸ hwf.ownerFrame, hP ▸ hwf.ownerPlace, hP ▸ hd ▸ hwf.parts,
+      fun a y hy ya => ?_⟩, hinv'⟩
+    · obtain ⟨y₀, hy₀, rfl⟩ := get' hb
+      rcases exitG_origin (s := s) (F₀ := F₀) (a := b) (y := y₀) with e' | ⟨-, -, e'⟩
+      · exact hwf.origin b y₀ a hy₀ (e' ▸ ho)
+      · rw [e'] at ho; exact chain_lt (firstSurv_some ho).1
+    · obtain ⟨x₀, hx₀, rfl⟩ := get' hx
+      rw [hP]; exact hwf.fp a x₀ hx₀ l ((exitG_same s F₀ a x₀).2.1 ▸ hl)
+    · rw [hFe] at hg; rw [hn]; exact hwf.frames g (hF ▸ List.mem_cons_of_mem _ hg)
+    · obtain ⟨y₀, hy₀, rfl⟩ := get' hy
+      have hs := exitG_active ya
+      rw [(exitG_same s F₀ a y₀).2.2, live₁]
+      unfold Survives at hs; rw [hy₀] at hs; exact hs.2
   · exact hpre.elim
 
 /-- `exitFrame_releases_all` (MM-03.3 §4, O7; §10): after the exit, every active authority has
@@ -2545,6 +2585,30 @@ theorem OnlyReleases.trans {s s₁ s₂ : S3} (h₁ : OnlyReleases s s₁) (h₂
   obtain ⟨y, hy, m, o, f, hh, a⟩ := h₁.2 j y₁ hy₁
   exact ⟨y, hy, m₁.trans m, o₁.trans o, f₁.trans f, h₁'.trans hh, fun h => a (a₁ h)⟩
 
+/-- `Inv3` part of `releases_preserve`, without `WF3` (A1): releasing authorities and then those
+whose holder died preserves `Inv3`, provided no usable place keeps an anchor that is
+released. -/
+theorem releases_preserve_inv3 {s s₁ : S3} (hinv : Inv3 s) (hr : OnlyReleases s s₁)
+    (hI3 : ∀ q, s₁.Usable q → ∀ x ∈ s₁.D q, (cleanup s₁).Active x) : Inv3 (cleanup s₁) := by
+  have hc := hr.trans cleanup_releases
+  obtain ⟨i1, i2, -, -⟩ := hinv
+  have hancs : (cleanup s₁).ancs = s.ancs := by funext j; simp only [S3.ancs, hc.org]
+  refine ⟨fun a b x y p hab ha hb xa ya xp yp hnab hnba => ?_, fun b y a hb ho => ?_,
+    fun q hq x hx => hI3 q ((S3.Usable.congr (s := s₁) (s' := cleanup s₁) rfl rfl rfl).1 hq) x hx,
+    i4_always _⟩
+  · obtain ⟨x₀, hx₀, m₁, -, f₁, -, a₁⟩ := hc.2 a x ha
+    obtain ⟨y₀, hy₀, m₂, -, f₂, -, a₂⟩ := hc.2 b y hb
+    rw [hancs] at hnab hnba; rw [m₁, m₂]
+    exact i1 a b x₀ y₀ p hab hx₀ hy₀ (a₁ xa) (a₂ ya) (f₁ ▸ xp) (f₂ ▸ yp) hnab hnba
+  · obtain ⟨y₀, hy₀, m₀, e, f₀, -⟩ := hc.2 b y hb
+    obtain ⟨x₁, hx₁, hh⟩ := i2 b y₀ a hy₀ (e ▸ ho)
+    have hlen : a < (cleanup s₁).A.length := by rw [hc.1]; exact lt_of_getElem? hx₁
+    obtain ⟨x', hx'⟩ : ∃ x', (cleanup s₁).A[a]? = some x' :=
+      ⟨_, (List.getElem?_eq_some_iff.2 ⟨hlen, rfl⟩)⟩
+    obtain ⟨x₂, hx₂, mx, -, fx, -⟩ := hc.2 a x' hx'
+    rw [hx₁] at hx₂; cases hx₂
+    exact ⟨x', hx', fun p hp => by rw [m₀, mx, fx]; exact hh p (f₀ ▸ hp)⟩
+
 /-- Releasing authorities, marking places dead, and then releasing those whose holder died
 preserves `WF3` and `Inv3`, provided the dead marks respect parts and no usable place keeps an
 anchor that is released. Shared by `endUse` and `free` (A6). -/
@@ -2555,9 +2619,6 @@ theorem releases_preserve {s s₁ : S3} (hwf : WF3 s) (hinv : Inv3 s) (hr : Only
     (hI3 : ∀ q, s₁.Usable q → ∀ x ∈ s₁.D q, (cleanup s₁).Active x) :
     WF3 (cleanup s₁) ∧ Inv3 (cleanup s₁) := by
   have hc := hr.trans cleanup_releases
-  obtain ⟨i1, i2, -, -⟩ := hinv
-  have horg := hc.org
-  have hancs : (cleanup s₁).ancs = s.ancs := by funext j; simp only [S3.ancs, horg]
   have cP : (cleanup s₁).P = s.P := hP
   have cF : (cleanup s₁).F = s.F := hF
   have live₁ : ∀ hh, HolderLive (cleanup s₁) hh ↔ HolderLive s₁ hh := HolderLive.congr rfl rfl rfl
@@ -2565,9 +2626,7 @@ theorem releases_preserve {s s₁ : S3} (hwf : WF3 s) (hinv : Inv3 s) (hr : Only
     by rw [cF, show (cleanup s₁).nF = s.nF from hn]; exact hwf.frames,
     by rw [cP, show (cleanup s₁).nF = s.nF from hn]; exact hwf.ownerFrame,
     by rw [cP]; exact hwf.ownerPlace, fun q pl r hq hp => ?_, fun a y hy ya => ?_⟩,
-    fun a b x y p hab ha hb xa ya xp yp hnab hnba => ?_, fun b y a hb ho => ?_,
-    fun q hq x hx => hI3 q ((S3.Usable.congr (s := s₁) (s' := cleanup s₁) rfl rfl rfl).1 hq) x hx,
-    i4_always _⟩
+    releases_preserve_inv3 hinv hr hI3⟩
   · obtain ⟨y₀, hy₀, -, e, -⟩ := hc.2 b y hb; exact hwf.origin b y₀ a hy₀ (e ▸ ho)
   · obtain ⟨x₀, hx₀, -, -, e, -⟩ := hc.2 a x hx; rw [cP]; exact hwf.fp a x₀ hx₀ l (e ▸ hl)
   · rw [cP] at hq
@@ -2581,18 +2640,6 @@ theorem releases_preserve {s s₁ : S3} (hwf : WF3 s) (hinv : Inv3 s) (hr : Only
       split at hy
       · subst hy; exact (live₁ _).2 ‹_›
       · subst hy; simp at ya
-  · obtain ⟨x₀, hx₀, m₁, -, f₁, -, a₁⟩ := hc.2 a x ha
-    obtain ⟨y₀, hy₀, m₂, -, f₂, -, a₂⟩ := hc.2 b y hb
-    rw [hancs] at hnab hnba; rw [m₁, m₂]
-    exact i1 a b x₀ y₀ p hab hx₀ hy₀ (a₁ xa) (a₂ ya) (f₁ ▸ xp) (f₂ ▸ yp) hnab hnba
-  · obtain ⟨y₀, hy₀, m₀, e, f₀, -⟩ := hc.2 b y hb
-    obtain ⟨x₁, hx₁, hh⟩ := i2 b y₀ a hy₀ (e ▸ ho)
-    have hlen : a < (cleanup s₁).A.length := by rw [hc.1]; exact lt_of_getElem? hx₁
-    obtain ⟨x', hx'⟩ : ∃ x', (cleanup s₁).A[a]? = some x' :=
-      ⟨_, (List.getElem?_eq_some_iff.2 ⟨hlen, rfl⟩)⟩
-    obtain ⟨x₂, hx₂, mx, -, fx, -⟩ := hc.2 a x' hx'
-    rw [hx₁] at hx₂; cases hx₂
-    exact ⟨x', hx', fun p hp => by rw [m₀, mx, fx]; exact hh p (f₀ ▸ hp)⟩
 
 /-! ## `writeShared` (A9) -/
 
@@ -2756,29 +2803,40 @@ theorem endUseS_get (s : S3) (p j : Nat) : (endUseS s p).A[j]? =
     (s.A[j]?).map fun y => if heldIn s.P p y.holder then { y with active := false } else y := by
   simp [endUseS]
 
+/-- Under `EndUsePre` (A6), every anchor of a place usable after the end stays active. -/
+theorem endUse_anchors {k : K} {s : S3} {p : Nat} (hinv : Inv3 s) (hpre : EndUsePre k s p) :
+    ∀ q, (endUseS s p).Usable q → ∀ x ∈ (endUseS s p).D q, (cleanup (endUseS s p)).Active x := by
+  obtain ⟨-, -, -, hanc, -⟩ := hpre
+  intro q hq x hx
+  have hq₀ : s.Usable q := S3.Usable.mono (s := s) (s' := endUseS s p) rfl (fun _ h => h)
+    (fun q h => by simp only [endUseS, Bool.or_eq_false_iff] at h; exact h.1) hq
+  have hx₀ : x ∈ s.D q := by
+    simp only [endUseS] at hx; split at hx
+    · simp at hx
+    · exact hx
+  obtain ⟨y, hy, ya⟩ := hinv.2.2.1 q hq₀ x hx₀
+  have hc := hanc q (List.mem_range.2 hq₀.lt) hq x hx
+  unfold EndUseAnchorOK OptP at hc
+  rw [hy] at hc; obtain ⟨hnh, -, hl⟩ := hc
+  refine ⟨_, by rw [cleanup_get, endUseS_get, hy]; rfl, ?_⟩
+  simp only [hnh, ↓reduceIte]
+  have : HolderLive (endUseS s p) y.holder := hl
+  simp only [this, ↓reduceIte, ya]
+
 /-- `endUse` preserves `WF3` and `Inv3` (A6). -/
 theorem endUse_preserves {k : K} {s s' : S3} {p : Nat} (hwf : WF3 s) (hinv : Inv3 s)
     (h : EndUseStep k p s (.ok s')) : WF3 s' ∧ Inv3 s' := by
-  obtain ⟨⟨-, -, -, hanc, -⟩, rfl⟩ := Guarded.ok_iff.1 h
-  refine releases_preserve hwf hinv (endUseS_releases s p) rfl rfl rfl ?_ ?_
-  · intro q pl r hq hp
-    obtain ⟨pr, hpr, -, ho, hd⟩ := hwf.parts q pl r hq hp
-    simp only [endUseS, hq, hpr, ho, hd]
-  · intro q hq x hx
-    have hq₀ : s.Usable q := S3.Usable.mono (s := s) (s' := endUseS s p) rfl (fun _ h => h)
-      (fun q h => by simp only [endUseS, Bool.or_eq_false_iff] at h; exact h.1) hq
-    have hx₀ : x ∈ s.D q := by
-      simp only [endUseS] at hx; split at hx
-      · simp at hx
-      · exact hx
-    obtain ⟨y, hy, ya⟩ := hinv.2.2.1 q hq₀ x hx₀
-    have hc := hanc q (List.mem_range.2 hq₀.lt) hq x hx
-    unfold EndUseAnchorOK OptP at hc
-    rw [hy] at hc; obtain ⟨hnh, -, hl⟩ := hc
-    refine ⟨_, by rw [cleanup_get, endUseS_get, hy]; rfl, ?_⟩
-    simp only [hnh, ↓reduceIte]
-    have : HolderLive (endUseS s p) y.holder := hl
-    simp only [this, ↓reduceIte, ya]
+  obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
+  refine releases_preserve hwf hinv (endUseS_releases s p) rfl rfl rfl ?_ (endUse_anchors hinv hpre)
+  intro q pl r hq hp
+  obtain ⟨pr, hpr, -, ho, hd⟩ := hwf.parts q pl r hq hp
+  simp only [endUseS, hq, hpr, ho, hd]
+
+/-- `endUse` preserves `Inv3` without `WF3` (A1; A6). -/
+theorem endUse_preserves_inv3 {k : K} {s s' : S3} {p : Nat} (hinv : Inv3 s)
+    (h : EndUseStep k p s (.ok s')) : Inv3 s' := by
+  obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
+  exact releases_preserve_inv3 hinv (endUseS_releases s p) (endUse_anchors hinv hpre)
 
 /-- `endUse_no_dealloc_event` (A6): `endUse` releases no storage and kills no owned place
 physically: `freed` is unchanged. -/
@@ -2919,36 +2977,48 @@ theorem partOf_parent {P : List Place} {q r p : Nat} (hp : parentOf P q = some r
     · exact .inr (List.mem_cons_self ..)
     · exact .inr (List.mem_cons_of_mem _ h)
 
+/-- Under `FreePre` (A6), every anchor of a place usable after the release stays active. -/
+theorem free_anchors {k : K} {s : S3} {p auth : Nat} (hinv : Inv3 s) (hpre : FreePre k s p auth) :
+    ∀ q, (freeS s p).Usable q → ∀ x ∈ (freeS s p).D q, (cleanup (freeS s p)).Active x := by
+  obtain ⟨-, -, -, -, -, -, hanc, -⟩ := hpre
+  intro q hq x hx
+  have hq₀ : s.Usable q := S3.Usable.mono (s := s) (s' := freeS s p) rfl (fun _ h => h)
+    (fun q h => by simp only [freeS, Bool.or_eq_false_iff] at h; exact h.1) hq
+  have hx₀ : x ∈ s.D q := by
+    simp only [freeS] at hx; split at hx
+    · simp at hx
+    · exact hx
+  obtain ⟨y, hy, ya⟩ := hinv.2.2.1 q hq₀ x hx₀
+  have hc := hanc q (List.mem_range.2 hq₀.lt) hq x hx
+  unfold FreeAnchorOK OptP at hc
+  rw [hy] at hc; obtain ⟨hcov, hnh, hl⟩ := hc
+  refine ⟨_, by rw [cleanup_get, freeS_get, hy]; rfl, ?_⟩
+  have hn : ¬ ((∃ l ∈ y.footprint, l ∈ footprint s.P p) ∨ heldIn s.P p y.holder) :=
+    fun h => h.elim hcov hnh
+  simp only [hn, ↓reduceIte]
+  have : HolderLive (freeS s p) y.holder := hl
+  simp only [this, ↓reduceIte, ya]
+
 /-- `free` preserves `WF3` and `Inv3` (A6). -/
 theorem free_preserves {k : K} {s s' : S3} {p auth : Nat} (hwf : WF3 s) (hinv : Inv3 s)
     (h : FreeStep k p auth s (.ok s')) : WF3 s' ∧ Inv3 s' := by
-  obtain ⟨⟨-, -, -, hroot, -, -, hanc, -⟩, rfl⟩ := Guarded.ok_iff.1 h
+  obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
+  have hroot := hpre.2.2.2.1
   have hpr : parentOf s.P p = none := by
     unfold OwnedRoot OptP at hroot; split at hroot
     · rename_i pl hpl; simp [parentOf, hpl, hroot.1]
     · exact hroot.elim
-  refine releases_preserve hwf hinv (freeS_releases s p) rfl rfl rfl ?_ ?_
-  · intro q pl r hq hp
-    obtain ⟨pr, hpr', hlt, -, hd⟩ := hwf.parts q pl r hq hp
-    have hpo : parentOf s.P q = some r := by simp [parentOf, hq, hp]
-    simp only [freeS, hd, partOf_parent hpo hlt (lt_of_getElem? hpr') hpr]
-  · intro q hq x hx
-    have hq₀ : s.Usable q := S3.Usable.mono (s := s) (s' := freeS s p) rfl (fun _ h => h)
-      (fun q h => by simp only [freeS, Bool.or_eq_false_iff] at h; exact h.1) hq
-    have hx₀ : x ∈ s.D q := by
-      simp only [freeS] at hx; split at hx
-      · simp at hx
-      · exact hx
-    obtain ⟨y, hy, ya⟩ := hinv.2.2.1 q hq₀ x hx₀
-    have hc := hanc q (List.mem_range.2 hq₀.lt) hq x hx
-    unfold FreeAnchorOK OptP at hc
-    rw [hy] at hc; obtain ⟨hcov, hnh, hl⟩ := hc
-    refine ⟨_, by rw [cleanup_get, freeS_get, hy]; rfl, ?_⟩
-    have hn : ¬ ((∃ l ∈ y.footprint, l ∈ footprint s.P p) ∨ heldIn s.P p y.holder) :=
-      fun h => h.elim hcov hnh
-    simp only [hn, ↓reduceIte]
-    have : HolderLive (freeS s p) y.holder := hl
-    simp only [this, ↓reduceIte, ya]
+  refine releases_preserve hwf hinv (freeS_releases s p) rfl rfl rfl ?_ (free_anchors hinv hpre)
+  intro q pl r hq hp
+  obtain ⟨pr, hpr', hlt, -, hd⟩ := hwf.parts q pl r hq hp
+  have hpo : parentOf s.P q = some r := by simp [parentOf, hq, hp]
+  simp only [freeS, hd, partOf_parent hpo hlt (lt_of_getElem? hpr') hpr]
+
+/-- `free` preserves `Inv3` without `WF3` (A1; A6). -/
+theorem free_preserves_inv3 {k : K} {s s' : S3} {p auth : Nat} (hinv : Inv3 s)
+    (h : FreeStep k p auth s (.ok s')) : Inv3 s' := by
+  obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
+  exact releases_preserve_inv3 hinv (freeS_releases s p) (free_anchors hinv hpre)
 
 /-- `free_no_dangling` (A6): after `free p`, no active authority covers a leaf of `p`, and every
 active authority has a live holder: no usable access reaches the released storage. -/
@@ -3887,6 +3957,22 @@ theorem write3_preserves_inv3 {s s' : S3} {a : Nat} {ls : List Nat} (hinv : Inv3
   exact ⟨hinv.1, hinv.2.1, fun q hq x hx =>
     hinv.2.2.1 q ((S3.Usable.congr (s := s) (s' := write3Eff s ls) rfl rfl rfl).1 hq) x hx,
     i4_always _⟩
+
+/-- `issue` preserves `Inv3` without `WF3` (MM-03.3 §6; A1; A10). -/
+theorem issue_preserves_inv3 {k : K} {s s' : S3} {ar ar' : Arena} {via dst : Nat}
+    {region : List Nat} (hinv : Inv3 s) (h : IssueStep k ar via region dst s (.ok s' ar')) :
+    Inv3 s' := by
+  cases h with
+  | ok hp _ hright =>
+  obtain ⟨-, ⟨x, hx, -⟩, -, -, -, -⟩ := hp
+  have h₁ := addAuth_inv3 (m := .modify) (hd := .place dst) hinv hx
+    (fun l hl => by
+      obtain ⟨x', hx', -, hl', -⟩ := effective_some (hright l hl)
+      rw [hx] at hx'; cases hx'; exact hl')
+    (fun l hl => by rw [hright l hl]; simp [Allows, OptP, Mode.le])
+  exact ⟨h₁.1, h₁.2.1, fun q hq y hy => h₁.2.2.1 q
+    ((S3.Usable.congr (s := s.addAuth ⟨.modify, some ar.internal, region, .place dst, true⟩)
+      (s' := (issueEff s ar region dst).1) rfl rfl rfl).1 hq) y hy, i4_always _⟩
 
 /-- `release_restores_authority` (MM-03.3 §3, O3; §10): if `b`, derived from `a`, is the only
 active descendant of `a` covering `p`, then after `release b` the effective authority of `a` on
