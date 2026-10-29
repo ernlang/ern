@@ -6640,7 +6640,8 @@ def arenaSet (s : S3) (i : Nat) (ar : Arena) : S3 := { s with arenas := s.arenas
 /-- Authority `j` can administer the storage `storage` (D3): active, `Modify`, held by the owner
 of `storage`, covering exactly its footprint, and of the kind D3 names: « sa racine si `storage`
 est une racine allouée, l'autorité de bloc si `storage` est un bloc émis par une autre arène »,
-that is, without origin when `storage` is a root place, derived when it is a part. -/
+read by the module as: without origin when `storage` is a root place, derived when it is a part.
+D3 says nothing of a part that is not an issued block (pass-5 report, (c) 10 and (e) 6). -/
 def IsInternalFor (s : S3) (storage j : Nat) : Prop :=
   OptP (s.A[j]?) (fun y => y.active = true ∧ y.mode = .modify ∧
     OptP (s.P[storage]?) (fun pl => y.holder = pl.owner) False ∧
@@ -8481,6 +8482,15 @@ theorem nested_reachable : Reachable K0 [] (resetAtEff (releaseEff nA5 3) 0) := 
     .release r5 (show ReleaseStep 3 nA5 (.ok _) from .ok (by decide))
   exact .reset r6 (show ResetAtStep K0 0 0 (releaseEff nA5 3) (.ok _) from .ok (by decide))
 
+/-- Why the task's form is not realised (pass-5 report, (d) 2): parent and child have the same
+arena value 0 (`nested_same_value`), so the `endUse` of the child's value releases both
+`internal` (`arena_dies_with_internal`), and the `reset` of the parent is then rejected. -/
+example : nA5.arenas.map (arenaValue nA5) = [some 0, some 0] ∧
+    EndUseStep K0 0 nA5 (.ok (endUseEff nA5 0)) ∧
+    ¬ (endUseEff nA5 0).Active 2 ∧ ¬ (endUseEff nA5 0).Active 3 ∧
+    ResetAtStep K0 0 0 (endUseEff nA5 0) .reject :=
+  ⟨by decide, .ok (by decide), by decide, by decide, .reject (by decide)⟩
+
 /-! ### Dependency without access -/
 
 /-- Return of a value that only depends (`D`) on a part of a container, without access. Frame 1:
@@ -8508,9 +8518,9 @@ example : Read3Step 1 [1] dd3 .reject := .reject (by decide)
 /-! ## Witnesses of the questions of pass 5 -/
 
 /-- D3 names the `internal` of a nested arena: the block. When the parent storage has a single
-part, the root of the parent and the block cover the same leaves; the kind D3 names
-(`IsInternalFor`: a root for a root place, a block for a part) makes the block the `internal` of
-the child. Frame 1: 0 arena value, 1 allocator value, 2 block destination; storage 3 with a
+part, the root of the parent and the block cover the same leaves; the kind of `IsInternalFor`
+(an authority without origin for a root place, a derived one for a part) makes the block the
+`internal` of the child. Frame 1: 0 arena value, 1 allocator value, 2 block destination; storage 3 with a
 single part 4; the parent issues the block 4 on `[4]` to 0. -/
 def x0 : S3 := enter1 [(none, none, 0), (none, none, 0), (none, none, 0)]
 def x2 : S3 := allocEff (write3Eff x0 [1]) 1 0 [(none, none, 0), (some 3, none, 0)]
@@ -8531,6 +8541,23 @@ example : IssueAt K0 1 0 [4] 2 x5
   .ok (by decide) (.ok (by decide) (by decide) (by decide))
 example : ResetAtStep K0 0 0 x5 .reject := .reject (by decide)
 
+/-- The kind of `IsInternalFor` changes a verdict D3 does not settle (pass-5 report, (c) 10 and
+(e) 6): in `x2`, without any arena, the storage 4 is the single part of the root 3, which is
+active, `Modify`, without origin, held by the owner of 4 and covers exactly `[4]`. D3's three
+preconditions and `OwnedStorage` hold, but 4 is a part and no derived authority administers it:
+`newArena 4` is rejected. -/
+example : Reachable K0 [] x2 ∧ HasRight x2 .modify 4 ∧ x2.Usable 4 ∧ OwnedStorage x2 4 ∧
+    x2.arenas = [] ∧
+    (x2.A[3]?).map (fun y => (y.origin, y.holder, y.footprint, y.mode, y.active)) =
+      some (none, .place 0, [4], .modify, true) ∧
+    (x2.P[4]?).map (·.owner) = some (.place 0) ∧ footprint x2.P 4 = [4] ∧
+    ¬ IsInternalFor x2 4 3 ∧ arenaInternal x2 4 = none ∧ NewArenaStep 4 x2 .reject :=
+  ⟨.alloc (.write (.enter (.init (by decide)) (.ok (by decide)))
+      (show Write3Step 1 [1] x0 (.ok _) from .ok (by decide)))
+    (show AllocStep K0 1 0 [(none, none, 0), (some 3, none, 0)] _ (.ok x2) from .ok (by decide) trivial),
+   by decide, by decide, by decide, by decide, by decide, by decide, by decide, by decide, by decide,
+   .reject (by decide)⟩
+
 /-- Two places that share a leaf have the same owner (A5, `WF3`). -/
 theorem shared_leaf_same_owner {s : S3} (hw : WF3 s) {q₁ q₂ l : Nat}
     (h₁ : l ∈ footprint s.P q₁) (h₂ : l ∈ footprint s.P q₂) :
@@ -8540,7 +8567,7 @@ theorem shared_leaf_same_owner {s : S3} (hw : WF3 s) {q₁ q₂ l : Nat}
   rw [hl] at hl'; cases hl'
   rw [hr, hr']; simp [← he, he']
 
-/-- A nested arena has the arena value of its parent (D3; A5; question of the report): its storage
+/-- A nested arena has the arena value of its parent (D3; A5; pass-5 report, (e) 2): its storage
 shares a leaf with the parent storage, and places that share a leaf have the same owner. The end
 of the child's value is then the end of the parent's. -/
 theorem nested_same_value {s : S3} (hw : WF3 s) {par child : Arena} {l : Nat}
@@ -8551,7 +8578,7 @@ theorem nested_same_value {s : S3} (hw : WF3 s) {par child : Arena} {l : Nat}
   cases hp : s.P[par.storage]? <;> cases hc : s.P[child.storage]? <;> rw [hp, hc] at this <;>
     simp at this <;> simp [this]
 
-/-- A static owned by another static (decision (1) of the report): a callee holding a derived
+/-- A static owned by another static (pass-5 report, (c) 2 and (e) 1): a callee holding a derived
 `Modify` parameter on static 0 exercises the root of static 1, held by 0 (A2), and transfers 1 to
 its local 3; after the exit, static 2, owned by 1, belongs to frame 1, which has exited: frame 0
 no longer owns it and it is not usable. With statics without owning element, the callee could
@@ -8568,7 +8595,7 @@ theorem static_not_owned_by_frame0 :
       (.frame (pl := ⟨none, .frame 1, 0⟩) (by decide) rfl)
   exact absurd (h.unique h1) (by decide)
 
-/-- `StaticPinnedBottom` is an obligation on a state, not an invariant (C5; decision (1)): it holds
+/-- `StaticPinnedBottom` is an obligation on a state, not an invariant (C5; pass-5 report, (c) 2): it holds
 initially for a pinned static owned by another static, and fails on the reached state `o3`,
 whose exit is then rejected by the pin. -/
 abbrev KP2 : K := KT [] [2] [] [] []
@@ -8596,7 +8623,7 @@ theorem staticPinnedBottom_not_invariant :
         (.frame (pl := ⟨none, .frame 1, 0⟩) (by decide) rfl)
     exact absurd (hob.unique h1) (by decide)
 
-/-- Why `newArena` asks the storage owned by a place (A10; decision (4) of the report). The part 1
+/-- Why `newArena` asks the storage owned by a place (A10; pass-5 report, (c) 9 and (e) 4). The part 1
 of a local of frame 1 is administered by the authority 1, derived by frame 1 on it; without the
 owner condition, `newArena 1` would take it as `internal`. `enterFrame` may then pass it as a
 parameter (A3): it becomes held by frame 2 while the storage stays owned by frame 1, and
