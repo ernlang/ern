@@ -239,6 +239,7 @@ structure Arena where
   internal : Nat
   available : List Nat
   issued : List (List Nat × Nat)
+deriving DecidableEq
 
 /-- State `S3 = (F, P, I, A, D)` (MM-03.3 §1), without component `M` (pass-1 arbitrage 1).
 `nF` is the next frame identity, so that an exited frame is never reused. `D q` lists the
@@ -8273,5 +8274,222 @@ no new authority, the state `allocEff (write3Eff n6e [1]) 1 0 []` below. D2 reje
 example : AllocStep K0 1 0 [] (write3Eff n6e [1]) .reject := .reject (by decide)
 example : (allocEff (write3Eff n6e [1]) 1 0 []).P = (write3Eff n6e [1]).P ∧
     (allocEff (write3Eff n6e [1]) 1 0 []).A = (write3Eff n6e [1]).A := by decide
+
+/-! ## New cases of pass 5 -/
+
+/-! ### Static storage (D1) -/
+
+/-- Two globals: 0 with an initialiser (`Init`), 1 without (`Uninit`), owned by frame 0, each with
+a root held by frame 0 (D1). -/
+def stG : Statics := [((none, none, 0), true), ((none, none, 0), false)]
+def g0 : S3 := S3.init stG
+
+/-- A global `Init` read by frame 0 (expected: `ok`); a global `Uninit` read (expected: reject),
+written then read (expected: `ok`, `ok`). -/
+example : Read3Step 0 [0] g0 (.ok g0) := .ok (by decide)
+example : Read3Step 1 [1] g0 .reject := .reject (by decide)
+example : Write3Step 1 [1] g0 (.ok (write3Eff g0 [1])) := .ok (by decide)
+example : Read3Step 1 [1] (write3Eff g0 [1]) (.ok (write3Eff g0 [1])) := .ok (by decide)
+
+/-- A global written by a callee without parameter (expected: reject): the root of the global is
+held by frame 0, which the callee does not exercise (A2). With a `Modify` parameter derived by the
+caller (A3), the write is accepted. -/
+example : EnterStep [] [] g0 (.ok (enterEff g0 [] [])) := .ok (by decide)
+example : Write3Step 0 [0] (enterEff g0 [] []) .reject := .reject (by decide)
+def g3 : S3 := enterEff (deriveEff g0 0 0 .modify) [2] []
+example : DeriveStep 0 0 .modify g0 (.ok (deriveEff g0 0 0 .modify)) := .ok (by decide)
+example : EnterStep [2] [] (deriveEff g0 0 0 .modify) (.ok g3) := .ok (by decide)
+example : Write3Step 2 [0] g3 (.ok (write3Eff g3 [0])) := .ok (by decide)
+example : Reachable K0 stG g3 :=
+  .enter (.derive (.init (by decide)) (.ok (by decide))) (.ok (by decide))
+
+/-- A memory-mapped register as a pinned static (D1): the global 0 is pinned by `K.Pinned`
+(`KPS`). The test checks the access discipline only: `transfer` and `endUse` are rejected, reads
+and writes allowed by the discipline are accepted. The semantics of a hardware access, read side
+effects and external modifications, is outside the kernel and not represented. -/
+def mm0 : S3 := S3.init stG
+example : TransferStep KPS 0 1 mm0 .reject := .reject (by decide)
+example : EndUseStep KPS 0 mm0 .reject := .reject (by decide)
+example : Read3Step 0 [0] mm0 (.ok mm0) := .ok (by decide)
+example : Write3Step 0 [0] mm0 (.ok (write3Eff mm0 [0])) := .ok (by decide)
+example : StaticPinnedBottom KPS mm0 := fun l hl => by
+  have : l = 0 := List.mem_singleton.1 hl
+  subst this
+  exact ⟨0, by decide, show OwnedByFrame mm0.P 0 0 from .frame (pl := ⟨none, .frame 0, 0⟩)
+    (by decide) rfl⟩
+
+/-! ### `alloc` of the empty shape (D2) -/
+
+/-- `alloc []` (expected: reject); `alloc` of a shape of one leaf (expected: `ok`), D2. -/
+example : AllocStep K0 1 0 [] (write3Eff n6e [1]) .reject := .reject (by decide)
+example : AllocStep K0 1 0 [(none, none, 0)] (write3Eff n6e [1])
+    (.ok (allocEff (write3Eff n6e [1]) 1 0 [(none, none, 0)])) := .ok (by decide) trivial
+
+/-! ### Cases 16 and n4 as executions of `Reachable` (D3) -/
+
+/-- Case 16 and n4 from the initial state, the arena introduced by `alloc` and `newArena`.
+Frame 1: 0 arena value, 1 allocator value, 2 buffer destination. `alloc` gives the storage 3, with
+parts 4 and 5, owned by 0, of root authority 3; `newArena 3` registers the arena (entry 0,
+`internal` 3). The call passes 4, which observes the arena value, and 5, which modifies the
+buffer; the callee local 6 receives the block 7 on the region `[4]`, then is returned to 2. -/
+def a0 : S3 := enter1 [(none, none, 0), (none, none, 0), (none, none, 0)]
+def a1 : S3 := write3Eff a0 [1]
+def a2 : S3 := allocEff a1 1 0 [(none, none, 0), (some 3, none, 0), (some 3, none, 0)]
+def a3 : S3 := newArenaEff a2 3
+def a6 : S3 := enterEff (deriveEff (deriveEff a3 0 0 .observe) 2 2 .modify) [4, 5] [(none, none, 0)]
+def ar7 : Arena := ⟨3, 3, [4, 5], []⟩
+def a7 : S3 := arenaSet (issueEff a6 ar7 [4] 6).1 0 (issueEff a6 ar7 [4] 6).2
+def a8 : S3 := transferEff a7 6 2
+def a9 : S3 := exitEff a8
+def a10 : S3 := endUseEff a9 2
+def a11 : S3 := resetAtEff a10 0
+
+example : Write3Step 1 [1] a0 (.ok a1) := .ok (by decide)
+example : AllocStep KA 1 0 [(none, none, 0), (some 3, none, 0), (some 3, none, 0)] a1 (.ok a2) :=
+  .ok (by decide) trivial
+example : NewArenaStep 3 a2 (.ok a3) := .ok (by decide)
+example : a3.arenas = [ar7] := by decide
+example : DeriveStep 0 0 .observe a3 (.ok (deriveEff a3 0 0 .observe)) := .ok (by decide)
+example : DeriveStep 2 2 .modify (deriveEff a3 0 0 .observe)
+    (.ok (deriveEff (deriveEff a3 0 0 .observe) 2 2 .modify)) := .ok (by decide)
+example : EnterStep [4, 5] [(none, none, 0)] (deriveEff (deriveEff a3 0 0 .observe) 2 2 .modify)
+    (.ok a6) := .ok (by decide)
+example : IssueAt KA 0 4 [4] 6 a6 (.ok a7) := .ok (ar := ar7) (by decide) (.ok (by decide) (by decide) (by decide))
+example : TransferStep KA 6 2 a7 (.ok a8) := .ok (by decide)
+example : ExitStep KA a8 (.ok a9) := .ok (by decide)
+example : ResetAtStep KA 0 0 a9 .reject := .reject (by decide)
+example : EndUseStep KA 2 a9 (.ok a10) := .ok (by decide)
+example : ResetAtStep KA 0 0 a10 (.ok a11) := .ok (by decide)
+
+/-- The run of case 16 and n4 is an execution of `Reachable` from `S3.init []`, and the list of
+arenas is not empty from `newArena` on. -/
+theorem case16_reachable :
+    Reachable KA [] a11 ∧ a3.arenas ≠ [] ∧ a6.arenas ≠ [] ∧ a7.arenas ≠ [] ∧ a8.arenas ≠ [] ∧
+      a9.arenas ≠ [] ∧ a10.arenas ≠ [] ∧ a11.arenas ≠ [] := by
+  have r0 : Reachable KA [] a0 := .enter (.init (by decide)) (.ok (by decide))
+  have r1 : Reachable KA [] a1 := .write r0 (show Write3Step 1 [1] a0 (.ok a1) from .ok (by decide))
+  have r2 : Reachable KA [] a2 := .alloc r1
+    (show AllocStep KA 1 0 [(none, none, 0), (some 3, none, 0), (some 3, none, 0)] a1 (.ok a2) from
+      .ok (by decide) trivial)
+  have r3 : Reachable KA [] a3 := .newArena r2 (show NewArenaStep 3 a2 (.ok a3) from .ok (by decide))
+  have r4 : Reachable KA [] (deriveEff a3 0 0 .observe) :=
+    .derive r3 (show DeriveStep 0 0 .observe a3 (.ok _) from .ok (by decide))
+  have r5 : Reachable KA [] (deriveEff (deriveEff a3 0 0 .observe) 2 2 .modify) :=
+    .derive r4 (show DeriveStep 2 2 .modify (deriveEff a3 0 0 .observe) (.ok _) from .ok (by decide))
+  have r6 : Reachable KA [] a6 := .enter r5
+    (show EnterStep [4, 5] [(none, none, 0)] _ (.ok a6) from .ok (by decide))
+  have r7 : Reachable KA [] a7 := .issue r6
+    (show IssueAt KA 0 4 [4] 6 a6 (.ok a7) from
+      .ok (ar := ar7) (by decide) (.ok (by decide) (by decide) (by decide)))
+  have r8 : Reachable KA [] a8 := .transfer r7 (show TransferStep KA 6 2 a7 (.ok a8) from .ok (by decide))
+  have r9 : Reachable KA [] a9 := .exit r8 (show ExitStep KA a8 (.ok a9) from .ok (by decide))
+  have r10 : Reachable KA [] a10 := .endUse r9 (show EndUseStep KA 2 a9 (.ok a10) from .ok (by decide))
+  exact ⟨.reset r10 (show ResetAtStep KA 0 0 a10 (.ok a11) from .ok (by decide)), by decide,
+    by decide, by decide, by decide, by decide, by decide, by decide⟩
+
+/-- Return of a value holding a derived `Modify` access to a part of a container of the caller:
+the buffer 2 of case 16 holds the block 7, derived from `internal` on the part 4 of the storage 3.
+After the return, a write of the caller on the whole container (expected: reject), on the other
+part 5 (expected: `ok`). In the model, a value holds a derived access only as a block issued to
+it: `derive` and `split` give the current frame as holder. -/
+example : (a9.A[7]?).map (fun y => (y.origin, y.holder, y.footprint, y.mode, y.active)) =
+    some (some 3, .place 2, [4], .modify, true) := by decide
+example : Write3Step 3 [4, 5] a9 .reject := .reject (by decide)
+example : Write3Step 3 [5] a9 (.ok (write3Eff a9 [5])) := .ok (by decide)
+
+/-! ### The arena value transferred or ended (D3) -/
+
+/-- Frame 1: 0 arena value, 1 allocator value, 2 new owner, 3 block destination; `alloc` gives
+the storage 4, with parts 5 and 6, owned by 0. After the transfer of the arena value to 2, the new
+owner issues a block (expected: `ok`), with `Modify` on the arena value as metadata right (C6).
+After `endUse` of the arena value, `issue` is rejected: its `internal` is released. -/
+def b0 : S3 := enter1 [(none, none, 0), (none, none, 0), (none, none, 0), (none, none, 0)]
+def b1 : S3 := write3Eff (write3Eff b0 [1]) [0]
+def b2 : S3 := allocEff b1 1 0 [(none, none, 0), (some 4, none, 0), (some 4, none, 0)]
+def b3 : S3 := newArenaEff b2 4
+def b4 : S3 := transferEff b3 0 2
+def arB : Arena := ⟨4, 4, [5, 6], []⟩
+example : Write3Step 1 [1] b0 (.ok (write3Eff b0 [1])) := .ok (by decide)
+example : Write3Step 0 [0] (write3Eff b0 [1]) (.ok b1) := .ok (by decide)
+example : AllocStep K0 1 0 [(none, none, 0), (some 4, none, 0), (some 4, none, 0)] b1 (.ok b2) :=
+  .ok (by decide) trivial
+example : NewArenaStep 4 b2 (.ok b3) := .ok (by decide)
+example : b3.arenas = [arB] ∧ arenaValue b3 arB = some 0 := by decide
+example : TransferStep K0 0 2 b3 (.ok b4) := .ok (by decide)
+example : b4.arenas = [arB] ∧ arenaValue b4 arB = some 2 ∧ b4.Active 4 := by decide
+example : IssueAt K0 0 2 [5] 3 b4
+    (.ok (arenaSet (issueEff b4 arB [5] 3).1 0 (issueEff b4 arB [5] 3).2)) :=
+  .ok (by decide) (.ok (by decide) (by decide) (by decide))
+example : EndUseStep K0 2 b4 (.ok (endUseEff b4 2)) := .ok (by decide)
+example : ¬ (endUseEff b4 2).Active 4 := by decide
+example : IssueAt K0 0 2 [5] 3 (endUseEff b4 2) .reject :=
+  .reject (ar := arB) (by decide) (.reject (by decide))
+
+/-! ### Nested arena (D3) -/
+
+/-- An arena nested in a block of another arena, the only form that the model realises: the
+`internal` of the child must be held by the owner of its storage (D3), and a block region is
+always storage owned by the parent arena value, so the block must be issued to the parent arena
+value itself. Frame 1: 0 arena value, 1 allocator value; storage 2 with parts 3 and 4, of root
+authority 2; the parent issues the block 3 on `[3]` to 0; `newArena 3` registers the child, of
+`internal` 3, derived from
+the parent's `internal` 2. The `reset` of the parent is rejected while the child lives; after the
+release of the child's `internal`, the child is dead and the `reset` of the parent is accepted. -/
+def nA0 : S3 := enter1 [(none, none, 0), (none, none, 0)]
+def nA2 : S3 := allocEff (write3Eff nA0 [1]) 1 0 [(none, none, 0), (some 2, none, 0), (some 2, none, 0)]
+def nA3 : S3 := newArenaEff nA2 2
+def arP : Arena := ⟨2, 2, [3, 4], []⟩
+def nA4 : S3 := arenaSet (issueEff nA3 arP [3] 0).1 0 (issueEff nA3 arP [3] 0).2
+def nA5 : S3 := newArenaEff nA4 3
+example : NewArenaStep 2 nA2 (.ok nA3) := .ok (by decide)
+example : nA3.arenas = [arP] := by decide
+example : IssueAt K0 0 0 [3] 0 nA3 (.ok nA4) :=
+  .ok (ar := arP) (by decide) (.ok (by decide) (by decide) (by decide))
+example : NewArenaStep 3 nA4 (.ok nA5) := .ok (by decide)
+example : nA5.arenas.map (fun ar => (ar.storage, ar.internal)) = [(2, 2), (3, 3)] ∧
+    (nA5.A[3]?).map (·.origin) = some (some 2) := by decide
+example : ResetAtStep K0 0 0 nA5 .reject := .reject (by decide)
+example : ReleaseStep 3 nA5 (.ok (releaseEff nA5 3)) := .ok (by decide)
+example : IssueAt K0 1 0 [3] 1 (releaseEff nA5 3) .reject :=
+  .reject (ar := ⟨3, 3, [3], []⟩) (by decide) (.reject (by decide))
+example : ResetAtStep K0 0 0 (releaseEff nA5 3) (.ok (resetAtEff (releaseEff nA5 3) 0)) :=
+  .ok (by decide)
+theorem nested_reachable : Reachable K0 [] (resetAtEff (releaseEff nA5 3) 0) := by
+  have r0 : Reachable K0 [] nA0 := .enter (.init (by decide)) (.ok (by decide))
+  have r1 : Reachable K0 [] (write3Eff nA0 [1]) :=
+    .write r0 (show Write3Step 1 [1] nA0 (.ok _) from .ok (by decide))
+  have r2 : Reachable K0 [] nA2 := .alloc r1
+    (show AllocStep K0 1 0 [(none, none, 0), (some 2, none, 0), (some 2, none, 0)] _ (.ok nA2) from
+      .ok (by decide) trivial)
+  have r3 : Reachable K0 [] nA3 := .newArena r2 (show NewArenaStep 2 nA2 (.ok nA3) from .ok (by decide))
+  have r4 : Reachable K0 [] nA4 := .issue r3 (show IssueAt K0 0 0 [3] 0 nA3 (.ok nA4) from
+    .ok (ar := arP) (by decide) (.ok (by decide) (by decide) (by decide)))
+  have r5 : Reachable K0 [] nA5 := .newArena r4 (show NewArenaStep 3 nA4 (.ok nA5) from .ok (by decide))
+  have r6 : Reachable K0 [] (releaseEff nA5 3) :=
+    .release r5 (show ReleaseStep 3 nA5 (.ok _) from .ok (by decide))
+  exact .reset r6 (show ResetAtStep K0 0 0 (releaseEff nA5 3) (.ok _) from .ok (by decide))
+
+/-! ### Dependency without access -/
+
+/-- Return of a value that only depends (`D`) on a part of a container, without access. Frame 1:
+container 0 with parts 1 and 2, result 3; the call passes 4, which observes the part 1, and 5,
+which modifies the result; the callee value 6 depends on 4 and is returned to 3. After the return,
+3 is anchored on the root 0 of the container (A7) and holds no authority: a read of the part 1
+by the value, through its own root 1, is rejected (no authority). -/
+def dd0 : S3 := write3Eff (enter1 [(none, none, 0), (some 0, none, 0), (some 0, none, 0),
+  (none, none, 0)]) [1, 2]
+def dd1 : S3 := enterEff (deriveEff (deriveEff dd0 0 1 .observe) 1 3 .modify) [2, 3]
+  [(none, none, 0)]
+def dd2 : S3 := dependEff (write3Eff dd1 [4]) 4 2
+def dd3 : S3 := exitEff (transferEff dd2 4 3)
+example : EnterStep [2, 3] [(none, none, 0)] (deriveEff (deriveEff dd0 0 1 .observe) 1 3 .modify)
+    (.ok dd1) := .ok (by decide)
+example : DependStep 4 2 (write3Eff dd1 [4]) (.ok dd2) := .ok (by decide)
+example : TransferStep K0 4 3 dd2 (.ok (transferEff dd2 4 3)) := .ok (by decide)
+example : ExitStep K0 (transferEff dd2 4 3) (.ok dd3) := .ok (by decide)
+example : dd3.D 3 = [0] ∧ ∀ j ∈ List.range dd3.A.length, dd3.Active j → 1 ∈ dd3.afp j →
+    OptP (dd3.A[j]?) (fun y => y.holder ≠ .place 3) True := by decide
+example : Read3Step 1 [1] dd3 .reject := .reject (by decide)
+
 
 end Ern.MM03
