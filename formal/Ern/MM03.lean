@@ -7367,4 +7367,99 @@ example : (endUseEff (pinEff n6a 2 true) 0).pin 2 = true ∧
 example : ExitStep KE (endUseEff (pinEff n6a 2 true) 0)
     (.ok (exitEff (endUseEff (pinEff n6a 2 true) 0))) := .ok (by decide)
 
+/-! ## New cases of pass 4 -/
+
+/-- `release` of a root (expected: reject, C4): the local 0 of frame 1 is held by the current
+frame, which pass 3 accepted (B3); C4 rejects every authority without origin. -/
+example : ReleaseStep 0 c13a .reject := .reject (by decide)
+
+/-- `release` by the current frame of a derived authority held by one of its places, with
+exercisable `Modify` on that place (expected: `ok`, C4): the block 4 of case 6, derived from
+`internal` and held by place 4, on which frame 1 holds the root 2. -/
+example : (c6b.1.A[4]?).map (fun y => (y.origin, y.holder)) = some (some 1, .place 4) ∧
+    HasRight c6b.1 .modify 4 := by decide
+example : ReleaseStep 4 c6b.1 (.ok (releaseEff c6b.1 4)) := .ok (by decide)
+
+/-- `endUse` of a pinned storage under `ExternalDone` without `unpin` (expected: reject, C5); after
+`unpin`, `endUse` is accepted. The storage 2 of `n6a`, allocated and owned by 0, is pinned. -/
+example : EndUseStep KE 2 (pinEff n6a 2 true) .reject := .reject (by decide)
+example : UnpinStep KE 2 (pinEff n6a 2 true) (.ok (pinEff (pinEff n6a 2 true) 2 false)) :=
+  .ok (by decide)
+example : EndUseStep KE 2 (pinEff (pinEff n6a 2 true) 2 false)
+    (.ok (endUseEff (pinEff (pinEff n6a 2 true) 2 false) 2)) := .ok (by decide)
+
+/-- `alloc` with a provider `Moved` or `Uninit` (expected: reject, C6): `mv1` and `mv0` above. -/
+example : AllocStep K0 1 0 [(none, none, 0)] mv1 .reject ∧
+    AllocStep K0 1 0 [(none, none, 0)] mv0 .reject := ⟨.reject (by decide), .reject (by decide)⟩
+
+/-- `alloc` of a shape with two fields, then `split` of the two fields and two writes (expected:
+`ok`, C6). Frame 1: 0 owner, 1 allocator value. The shape: a root 2 with parts 3 and 4; its root
+authority 2, held by place 0, covers both. -/
+def sh2 : List (Option Nat × Option Nat × Nat) :=
+  [(none, none, 0), (some 2, none, 0), (some 2, none, 0)]
+def al2 : S3 := allocEff (write3Eff n6e [1]) 1 0 sh2
+example : AllocStep K0 1 0 sh2 (write3Eff n6e [1]) (.ok al2) := .ok (by decide) trivial
+example : (al2.A[2]?).map (fun y => (y.footprint, y.holder)) = some ([3, 4], .place 0) := by decide
+example : SplitStep K0 2 [[3], [4]] al2 (.ok (splitEff al2 2 [[3], [4]])) := .ok (by decide)
+example : Write3Step 3 [3] (splitEff al2 2 [[3], [4]])
+    (.ok (write3Eff (splitEff al2 2 [[3], [4]]) [3])) := .ok (by decide)
+example : Write3Step 4 [4] (write3Eff (splitEff al2 2 [[3], [4]]) [3])
+    (.ok (write3Eff (write3Eff (splitEff al2 2 [[3], [4]]) [3]) [4])) := .ok (by decide)
+
+/-- An arena whose storage comes from `alloc`, two emissions (expected: `ok`, `ok`; C6). Frame 1:
+0 arena value, 1 allocator value, 2 and 3 block destinations. The storage 4, with leaves 5 and 6,
+is allocated and owned by 0; its root authority 4 is `internal`. The metadata right is
+exercisable `Modify` on the arena value 0 (`MetaRight`, C6), without `SharedMutable`. -/
+def aa0 : S3 := allocEff (write3Eff (enter1 [(none, none, 0), (none, none, 0), (none, none, 0),
+  (none, none, 0)]) [1]) 1 0 [(none, none, 0), (some 4, none, 0), (some 4, none, 0)]
+def aar : Arena := ⟨4, 4, [5, 6], []⟩
+def aa1 : S3 × Arena := issueEff aa0 aar [5] 2
+def aa2 : S3 × Arena := issueEff aa1.1 aa1.2 [6] 3
+example : IssueStep K0 aar 0 [5] 2 aa0 (.ok aa1.1 aa1.2) := .ok (by decide) (by decide) (by decide)
+example : IssueStep K0 aa1.2 0 [6] 3 aa1.1 (.ok aa2.1 aa2.2) :=
+  .ok (by decide) (by decide) (by decide)
+
+/-- The same `alloc` twice, `Satisfiable` true then false depending on the state (expected: `ok`
+then `fail`; C9). The allocator contract has a capacity of three places. -/
+def KCap : K :=
+  { KT [] [] [] [] [] with Satisfiable := fun _ ls s => s.P.length + ls.length ≤ 3 }
+instance : DecidablePred KCap.SharedMutable :=
+  fun l => inferInstanceAs (Decidable (l ∈ ([] : List Nat)))
+instance : ∀ p ls s, Decidable (KCap.Satisfiable p ls s) := fun _ _ _ => Nat.decLe _ _
+example : AllocStep KCap 1 0 [(none, none, 0)] (write3Eff n6e [1])
+    (.ok (allocEff (write3Eff n6e [1]) 1 0 [(none, none, 0)])) := .ok (by decide) (by decide)
+example : AllocStep KCap 1 0 [(none, none, 0)]
+    (allocEff (write3Eff n6e [1]) 1 0 [(none, none, 0)])
+    (.fail (allocEff (write3Eff n6e [1]) 1 0 [(none, none, 0)])) := .fail (by decide) (by decide)
+
+/-- `alloc`, then a read of an `Uninit` leaf (expected: reject), a write (`ok`) and a read
+(`ok`): the storage 2 of `n6a` before its write. -/
+example : Read3Step 2 [2] (allocEff (write3Eff n6e [1]) 1 0 [(none, none, 0)]) .reject :=
+  .reject (by decide)
+example : Write3Step 2 [2] (allocEff (write3Eff n6e [1]) 1 0 [(none, none, 0)]) (.ok n6a) :=
+  .ok (by decide)
+example : Read3Step 2 [2] n6a (.ok n6a) := .ok (by decide)
+
+/-- `transfer` of a local, source `Moved`, then a write into the source (`ok`) and a read
+(`ok`): `mv1` above, where the value of local 1 went to 2. -/
+example : Write3Step 1 [1] mv1 (.ok (write3Eff mv1 [1])) := .ok (by decide)
+example : Read3Step 1 [1] (write3Eff mv1 [1]) (.ok (write3Eff mv1 [1])) := .ok (by decide)
+
+/-- `transfer` of a part, the parent partly `Moved`, then a read of the other part (`ok`) and a
+rewrite of the moved part (`ok`): in `c11a`, the part 1 of 0 goes to 3. -/
+def tp1 : S3 := transferEff c11a 1 3
+example : TransferStep K0 1 3 c11a (.ok tp1) := .ok (by decide)
+example : tp1.I 1 = .moved ∧ tp1.I 2 = .init := by decide
+example : Read3Step 0 [2] tp1 (.ok tp1) := .ok (by decide)
+example : Write3Step 0 [1] tp1 (.ok (write3Eff tp1 [1])) := .ok (by decide)
+
+/-- `endUse` of a local, then a write and a read in that local (expected: `ok`, `ok`; C8): the
+local stays usable, its leaves `Uninit`. -/
+example : EndUseStep K0 0 c13a (.ok (endUseEff c13a 0)) := .ok (by decide)
+example : (endUseEff c13a 0).Usable 0 ∧ (endUseEff c13a 0).I 0 = .uninit := by decide
+example : Write3Step 0 [0] (endUseEff c13a 0) (.ok (write3Eff (endUseEff c13a 0) [0])) :=
+  .ok (by decide)
+example : Read3Step 0 [0] (write3Eff (endUseEff c13a 0) [0])
+    (.ok (write3Eff (endUseEff c13a 0) [0])) := .ok (by decide)
+
 end Ern.MM03
