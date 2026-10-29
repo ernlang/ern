@@ -842,12 +842,38 @@ def ActiveDerivedOutside (s : S3) (src j : Nat) : Prop :=
 instance (s : S3) (src j : Nat) : Decidable (ActiveDerivedOutside s src j) := by
   unfold ActiveDerivedOutside; infer_instance
 
+/-- Place `q` is owned by `src` or one of its parts, directly or through other owned places,
+searched within `k` steps (A5). -/
+def ownedWithinF (s : S3) (src : Nat) : Nat → Nat → Bool
+  | 0, _ => false
+  | k + 1, q =>
+    match s.P[q]? with
+    | some pl =>
+      match pl.owner with
+      | .place o => decide (partOf s.P o src) || ownedWithinF s src k o
+      | .frame _ => false
+    | none => false
+
+/-- Place `q` is owned, transitively, by the value at `src` (A5): its frame changes with the
+value when `src` is transferred. -/
+def OwnedWithin (s : S3) (src q : Nat) : Prop := ownedWithinF s src (s.P.length + 1) q = true
+
+instance (s : S3) (src q : Nat) : Decidable (OwnedWithin s src q) :=
+  inferInstanceAs (Decidable (_ = true))
+
+/-- Anchors of the places whose frame changes when the value at `src` is transferred (A5;
+MM-03.3.6): `src`, its parts, and the places it owns, transitively. -/
+def movedDeps (s : S3) (src : Nat) : List Nat :=
+  ((List.range s.P.length).filter fun q => decide (partOf s.P q src ∨ OwnedWithin s src q)).flatMap
+    s.D
+
 /-- Preconditions of `transfer` (MM-03.3 §3, O4), in order: source usable (MM-03.3.1) and
 1 initialised; 2 destination usable, without an `Init` leaf, sharing no leaf with the source,
 and still usable once it owns the source's storage (no ownership cycle); exercisable `Modify`
 on the source and on the destination (A2); 4 no active derived
 access on the source other than those it holds; 5 anchors of the value valid; 6 non-escape
-(MM-03.3.6) towards the destination's frame; 7 no leaf of the source pinned, statically
+(MM-03.3.6) towards the destination's frame, for the anchors of the value and of the places it
+owns, whose frame changes with it (A5); 7 no leaf of the source pinned, statically
 (`Pinned`, MM-03.3.8) or dynamically (A8). O4.3 holds by construction. -/
 def TransferPre (k : K) (s : S3) (src dst : Nat) : Prop :=
   s.Usable src ∧ (∀ l ∈ footprint s.P src, s.I l = .init) ∧
@@ -856,7 +882,7 @@ def TransferPre (k : K) (s : S3) (src dst : Nat) : Prop :=
   (transferEff s src dst).Usable dst ∧
   (∀ j ∈ List.range s.A.length, ¬ ActiveDerivedOutside s src j) ∧
   (∀ x ∈ depsOf s src, s.Active x) ∧
-  (∀ x ∈ depsOf s src, NoEscape s x (s.pframe dst)) ∧
+  (∀ x ∈ movedDeps s src, NoEscape s x (s.pframe dst)) ∧
   (∀ l ∈ footprint s.P src, ¬ k.Pinned l ∧ s.pin l = false)
 
 instance (k : K) [DecidablePred k.Pinned] (s : S3) (src dst : Nat) :
@@ -2195,6 +2221,25 @@ theorem ancs_cons {s : S3} (hw : ∀ (b : Nat) (y : Authority) (a : Nat), s.A[b]
     y.origin = some a → a < b) {x o : Nat} (h : s.org x = some o) :
     s.ancs x = o :: s.ancs o := chain_cons h (org_lt hw h)
 
+/-- Under the order of origins of `WF3`, the walk along origins from `x` (A7) reaches a root:
+some authority among `x` and its ancestors has no origin. Without that order, `chain` stops at
+the first link that does not decrease. -/
+theorem reanchor_reaches_root {s : S3} (hw : ∀ (b : Nat) (y : Authority) (a : Nat),
+    s.A[b]? = some y → y.origin = some a → a < b) :
+    ∀ n x, x < n → ∃ r, (r = x ∨ r ∈ s.ancs x) ∧ s.org r = none
+  | 0, _, h => absurd h (Nat.not_lt_zero _)
+  | n + 1, x, hx => by
+    cases ho : s.org x with
+    | none => exact ⟨x, .inl rfl, ho⟩
+    | some o =>
+      have hlt := org_lt hw ho
+      obtain ⟨r, hr, hro⟩ := reanchor_reaches_root hw n o (by omega)
+      refine ⟨r, .inr ?_, hro⟩
+      rw [ancs_cons hw ho]
+      rcases hr with rfl | hr
+      · exact List.mem_cons_self ..
+      · exact List.mem_cons_of_mem _ hr
+
 /-- One step of a chain of origins: the chain from `x` starts with the origin of `x`, which is
 smaller, or it is empty. -/
 theorem ancs_step {s : S3} {x o : Nat} (h : s.org x = some o) :
@@ -2509,6 +2554,30 @@ theorem exitFrame_kills_locals {s s' : S3} {f : Nat} {F₀ : Frames} (hwf : WF3 
       have : (exitEff s).P = s.P := by rw [e]
       rw [this, hq] at hpl; cases hpl; rw [ho] at ho'; cases ho'
 
+/-- Place `q` belongs to frame `f` through ownership (A5): it is owned by `f`, or by a place that
+belongs to `f`. -/
+inductive OwnedByFrame (P : List Place) (f : Nat) : Nat → Prop where
+  | frame {q : Nat} {pl : Place} : P[q]? = some pl → pl.owner = .frame f → OwnedByFrame P f q
+  | place {q o : Nat} {pl : Place} : P[q]? = some pl → pl.owner = .place o → OwnedByFrame P f o →
+      OwnedByFrame P f q
+
+/-- After the exit, no place that belongs to the exited frame through ownership is usable
+(MM-03.3.1; MM-03.3 §4, O7; A5): the locals of the frame and their owned storage, transitively. -/
+theorem exitFrame_kills_owned {s s' : S3} {f : Nat} {F₀ : Frames} (hwf : WF3 s) (hinv : Inv3 s)
+    (hF : s.F = f :: F₀) (h : ExitStep s (.ok s')) :
+    ∀ q, OwnedByFrame s.P f q → ¬ s'.Usable q := by
+  have hk := (exitFrame_kills_locals hwf hinv hF h).2.1
+  have hP : s'.P = s.P := by obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h; rw [exitEff_eq hF]
+  intro q hq
+  induction hq with
+  | @frame q pl hpl ho => exact hk q pl hpl ho
+  | @place q o pl hpl ho _ ih =>
+    intro hu
+    cases hu with
+    | frame hpl' _ ho' _ => rw [hP, hpl] at hpl'; cases hpl'; rw [ho] at ho'; cases ho'
+    | place hpl' _ ho' hU =>
+      rw [hP, hpl] at hpl'; cases hpl'; rw [ho] at ho'; cases ho'; exact ih hU
+
 /-- `exitFrame_reanchors_to_origin` (MM-03.3.7; A7): every anchor of a place usable after the
 exit is replaced by the first surviving authority among itself and its ancestors along `origin`,
 which is valid after the exit. -/
@@ -2741,18 +2810,21 @@ def IsRootOf (s : S3) (p : Nat) (y : Authority) : Prop :=
 instance (s : S3) (p : Nat) (y : Authority) : Decidable (IsRootOf s p y) := by
   unfold IsRootOf; infer_instance
 
-/-- Authority `a` is held within the value at `p` (A4): by `p` or one of its parts. -/
-def HeldWithin (s : S3) (p a : Nat) : Prop := OptP (s.A[a]?) (fun z => heldIn s.P p z.holder) False
+/-- Authority `a` is released by the end of the value at `p` (A4, A6): it is active, and held
+within `p` (released by `endUseS`) or by a holder that dies with `p` (released by `cleanup`). -/
+def EndUseReleased (s : S3) (p a : Nat) : Prop :=
+  OptP (s.A[a]?) (fun z => z.active = true ∧
+    (heldIn s.P p z.holder ∨ ¬ HolderLive (endUseS s p) z.holder)) False
 
-instance (s : S3) (p a : Nat) : Decidable (HeldWithin s p a) := by
-  unfold HeldWithin; infer_instance
+instance (s : S3) (p a : Nat) : Decidable (EndUseReleased s p a) := by
+  unfold EndUseReleased; infer_instance
 
 /-- Authority `j` does not block the end of the value at `p` (A6): if it is an active derived
-authority on an ending leaf, or descending from an authority held within `p` (which the end
-releases, MM-03.3 §3, O3.2), it is held within `p` or its holder dies. -/
+authority on an ending leaf, or descending from an authority that the end releases
+(MM-03.3 §3, O3.2), it is held within `p` or its holder dies. -/
 def EndUseAccessOK (s : S3) (p j : Nat) : Prop :=
   OptP (s.A[j]?) (fun y => y.active = true → y.origin ≠ none →
-    ((∃ l ∈ y.footprint, EndingLeaf s p l) ∨ ∃ a ∈ s.ancs j, HeldWithin s p a) →
+    ((∃ l ∈ y.footprint, EndingLeaf s p l) ∨ ∃ a ∈ s.ancs j, EndUseReleased s p a) →
       heldIn s.P p y.holder ∨ ¬ HolderLive (endUseS s p) y.holder) True
 
 instance (s : S3) (p j : Nat) : Decidable (EndUseAccessOK s p j) := by
@@ -2891,17 +2963,19 @@ def FreedLeaf (s : S3) (p l : Nat) : Prop :=
 instance (s : S3) (p l : Nat) : Decidable (FreedLeaf s p l) := by
   unfold FreedLeaf; infer_instance
 
-/-- Authority `a` is deactivated by the release of `p` (A6): it covers a leaf of `p` or is held
-within `p`. -/
+/-- Authority `a` is released by the release of `p` (A4, A6): it is active, and covers a leaf of
+`p` or is held within `p` (released by `freeS`), or its holder dies with `p` (released by
+`cleanup`). -/
 def FreeDeact (s : S3) (p a : Nat) : Prop :=
-  OptP (s.A[a]?) (fun z => (∃ l ∈ z.footprint, l ∈ footprint s.P p) ∨ heldIn s.P p z.holder) False
+  OptP (s.A[a]?) (fun z => z.active = true ∧ ((∃ l ∈ z.footprint, l ∈ footprint s.P p) ∨
+    heldIn s.P p z.holder ∨ ¬ HolderLive (freeS s p) z.holder)) False
 
 instance (s : S3) (p a : Nat) : Decidable (FreeDeact s p a) := by
   unfold FreeDeact; infer_instance
 
 /-- Authority `j` does not block the release of `p` (A6): if it is an active derived authority on
-a freed leaf, or descending from an authority the release deactivates (MM-03.3 §3, O3.2), it is
-held within `p` or its holder dies. -/
+a freed leaf, or descending from an authority that the release releases (MM-03.3 §3, O3.2), it
+is held within `p` or its holder dies. -/
 def FreeAccessOK (s : S3) (p j : Nat) : Prop :=
   OptP (s.A[j]?) (fun y => y.active = true → y.origin ≠ none →
     ((∃ l ∈ y.footprint, FreedLeaf s p l) ∨ ∃ a ∈ s.ancs j, FreeDeact s p a) →
@@ -4041,15 +4115,18 @@ theorem release_restores_authority {s s' : S3} {b a p : Nat} {y x : Authority} (
 
 /-- `enterFrame` (MM-03.3 §4, O6) does not preserve `Inv3` alone (A1): in a state satisfying
 `Inv3` where an authority covers a leaf that does not exist yet, the root of the new place covers
-it too in `Modify`. `WF3` (footprints made of existing places) excludes this state. -/
+it too in `Modify`. I1 fails in its structural form (A1) and in the effective form of the text of
+§2 (pass 1). `WF3` (footprints made of existing places) excludes this state. -/
 theorem enter_not_inv3_preserving :
     let s : S3 := ⟨[0], 1, [], fun _ => .uninit, [⟨.modify, none, [0], .frame 0, true⟩],
       fun _ => [], fun _ => false, fun _ => false, fun _ => false⟩
     Inv3 s ∧ EnterStep [] [(none, none, 0)] s (.ok (enterEff s [] [(none, none, 0)])) ∧
-      ¬ I1 (enterEff s [] [(none, none, 0)]) := by
+      ¬ I1 (enterEff s [] [(none, none, 0)]) ∧
+      ¬ ∀ a b p m₁ m₂, a ≠ b → effective (enterEff s [] [(none, none, 0)]) a p = some m₁ →
+        effective (enterEff s [] [(none, none, 0)]) b p = some m₂ → Compat m₁ m₂ := by
   intro s
   refine ⟨⟨fun a b x y p hab ha hb _ _ _ _ _ _ => ?_, fun b y a hb ho => ?_,
-    fun q hq => ?_, i4_always _⟩, .ok (by decide), fun h => ?_⟩
+    fun q hq => ?_, i4_always _⟩, .ok (by decide), fun h => ?_, fun h => ?_⟩
   · have h1 := lt_of_getElem? ha; have h2 := lt_of_getElem? hb
     simp [s] at h1 h2; omega
   · have := lt_of_getElem? hb; simp [s] at this; subst this; simp [s] at hb; subst hb; cases ho
@@ -4057,6 +4134,7 @@ theorem enter_not_inv3_preserving :
   · have := h 0 1 ⟨.modify, none, [0], .frame 0, true⟩ ⟨.modify, none, [0], .frame 1, true⟩ 0
       (by decide) (by decide) (by decide) rfl rfl (by decide) (by decide) (by decide) (by decide)
     exact absurd this.1 (by decide)
+  · exact absurd (h 0 1 0 .modify .modify (by decide) (by decide) (by decide)).1 (by decide)
 
 /-! ## Test cases (MM-03.3 §11 and the task of pass 2)
 
@@ -4361,14 +4439,18 @@ def KDD : K := ⟨fun _ _ => True, fun _ => False, fun _ => False, fun _ _ _ => 
 instance : ∀ r r', Decidable (KDD.DeclaredDisjoint r r') := fun _ _ => instDecidableTrue
 
 /-- Without the obligation `DDSound` (MM-03.3.8), `split` (MM-03.3 §3, O2) accepts two overlapping
-regions and breaks I1: the hypothesis of `split_preserves_underDD` is needed. -/
+regions and breaks I1, both in its structural form (A1) and in the effective form of the text
+of §2 (pass 1): the hypothesis of `split_preserves_underDD` is needed. -/
 theorem split_unsound_without_DD :
     SplitStep KDD 0 [[1], [1]] c3a (.ok (splitEff c3a 0 [[1], [1]])) ∧
-    ¬ I1 (splitEff c3a 0 [[1], [1]]) := by
-  refine ⟨.ok (by decide), fun h => ?_⟩
-  have := h 1 2 ⟨.modify, some 0, [1], .frame 1, true⟩ ⟨.modify, some 0, [1], .frame 1, true⟩ 1
-    (by decide) (by decide) (by decide) rfl rfl (by decide) (by decide) (by decide) (by decide)
-  exact absurd this.1 (by decide)
+    ¬ I1 (splitEff c3a 0 [[1], [1]]) ∧
+    ¬ ∀ a b p m₁ m₂, a ≠ b → effective (splitEff c3a 0 [[1], [1]]) a p = some m₁ →
+      effective (splitEff c3a 0 [[1], [1]]) b p = some m₂ → Compat m₁ m₂ := by
+  refine ⟨.ok (by decide), fun h => ?_, fun h => ?_⟩
+  · have := h 1 2 ⟨.modify, some 0, [1], .frame 1, true⟩ ⟨.modify, some 0, [1], .frame 1, true⟩ 1
+      (by decide) (by decide) (by decide) rfl rfl (by decide) (by decide) (by decide) (by decide)
+    exact absurd this.1 (by decide)
+  · exact absurd (h 1 2 1 .modify .modify (by decide) (by decide) (by decide)).1 (by decide)
 
 /-- `exitFrame` (MM-03.3 §4, O7) accepts the exit of a frame whose local is pinned without
 `ExternalDone`, while `endUse` and `transfer` of that local are rejected (A8 lists `transfer`,
@@ -4387,31 +4469,76 @@ cannot be exercised, even to read. Frame 1: 0 value, 1 owned storage. -/
 example : Read3Step 1 [1] n6a (.ok n6a) := .ok (by decide)
 example : Read3Step 1 [1] (deriveEff n6a 0 0 .observe) .reject := .reject (by decide)
 
+/-- Witness state of `transfer_not_inv3_preserving`: place 1 is a part of place 0 with another
+owner, a frame not on the stack; place 2 is owned by place 1 and anchored on 5, which does not
+exist; place 3 is the destination. -/
+def xferCex : S3 := ⟨[1, 0], 6, [⟨none, .frame 1, 0⟩, ⟨some 0, .frame 5, 0⟩, ⟨none, .place 1, 0⟩,
+  ⟨none, .frame 1, 0⟩], fun l => if l = 1 then .init else .uninit,
+  [⟨.modify, none, [1], .frame 1, true⟩, ⟨.modify, none, [3], .frame 1, true⟩],
+  fun q => if q = 2 then [5] else [], fun _ => false, fun _ => false, fun _ => false⟩
+
 /-- `transfer` (MM-03.3 §3, O4; A5) does not preserve `Inv3` alone (A1): a part with another
 owner than its parent (excluded by `WF3`) is not usable while its parent is; a place owned by
-that part is not usable either and keeps an invalid anchor (5, which does not exist). The
-transfer gives that place to the destination: it becomes usable with an invalid anchor. -/
+that part is not usable either and keeps an invalid anchor. The transfer gives that place to the
+destination: it becomes usable with an invalid anchor. -/
 theorem transfer_not_inv3_preserving :
-    let s : S3 := ⟨[1, 0], 2, [⟨none, .frame 1, 0⟩, ⟨some 0, .frame 5, 0⟩, ⟨none, .place 1, 0⟩,
-      ⟨none, .frame 1, 0⟩], fun l => if l = 1 then .init else .uninit,
-      [⟨.modify, none, [1], .frame 1, true⟩, ⟨.modify, none, [3], .frame 1, true⟩],
-      fun q => if q = 2 then [5] else [], fun _ => false, fun _ => false, fun _ => false⟩
-    Inv3 s ∧ TransferStep K0 0 3 s (.ok (transferEff s 0 3)) ∧ ¬ I3 (transferEff s 0 3) := by
-  intro s
+    Inv3 xferCex ∧ TransferStep K0 0 3 xferCex (.ok (transferEff xferCex 0 3)) ∧
+      ¬ I3 (transferEff xferCex 0 3) := by
   refine ⟨⟨fun a b x y p hab ha hb _ _ xp yp _ _ => ?_, fun b y a hb ho => ?_,
     fun q hq z hz => ?_, i4_always _⟩, .ok (by decide), fun h => ?_⟩
   · have h1 := lt_of_getElem? ha; have h2 := lt_of_getElem? hb
-    simp [s] at h1 h2
+    simp [xferCex] at h1 h2
     obtain rfl | rfl : a = 0 ∨ a = 1 := by omega
     all_goals obtain rfl | rfl : b = 0 ∨ b = 1 := by omega
-    all_goals first | exact absurd rfl hab | (simp [s] at ha hb; subst ha hb; simp at xp yp; omega)
-  · have := lt_of_getElem? hb; simp [s] at this
+    all_goals first | exact absurd rfl hab |
+      (simp [xferCex] at ha hb; subst ha hb; simp at xp yp; omega)
+  · have := lt_of_getElem? hb; simp [xferCex] at this
     obtain rfl | rfl : b = 0 ∨ b = 1 := by omega
-    all_goals simp [s] at hb; subst hb; cases ho
+    all_goals simp [xferCex] at hb; subst hb; cases ho
   · cases Nat.decEq q 2 with
     | isTrue e => subst e; exact absurd hq (by decide)
-    | isFalse e => simp [s, e] at hz
+    | isFalse e => simp [xferCex, e] at hz
   · exact absurd (h 2 (by decide) 5 (by decide)) (by decide)
+
+/-- The witness of `transfer_not_inv3_preserving` breaks the parts clause of `WF3` and satisfies
+all its other clauses: the parts clause is the one needed. -/
+example : (∀ (b : Nat) (y : Authority) (a : Nat), xferCex.A[b]? = some y → y.origin = some a →
+      a < b) ∧
+    (∀ (a : Nat) (x : Authority), xferCex.A[a]? = some x → ∀ l ∈ x.footprint,
+      l < xferCex.P.length) ∧
+    xferCex.F ≠ [] ∧ xferCex.F.Nodup ∧ (∀ f ∈ xferCex.F, f < xferCex.nF) ∧
+    (∀ (q : Nat) (pl : Place) (f : Nat), xferCex.P[q]? = some pl → pl.owner = .frame f →
+      f < xferCex.nF) ∧
+    (∀ (q : Nat) (pl : Place) (o : Nat), xferCex.P[q]? = some pl → pl.owner = .place o →
+      o < xferCex.P.length) ∧
+    (∀ (a : Nat) (y : Authority), xferCex.A[a]? = some y → y.active = true →
+      HolderLive xferCex y.holder) ∧
+    ¬ (∀ (q : Nat) (pl : Place) (r : Nat), xferCex.P[q]? = some pl → pl.parent = some r →
+      ∃ pr : Place, xferCex.P[r]? = some pr ∧ r < q ∧ pr.owner = pl.owner ∧
+        xferCex.dead r = xferCex.dead q) := by
+  refine ⟨?_, ?_, by decide, by decide, by decide, ?_, ?_, ?_, ?_⟩
+  · intro b y a hb ho
+    have := lt_of_getElem? hb; simp [xferCex] at this
+    obtain rfl | rfl : b = 0 ∨ b = 1 := by omega
+    all_goals simp [xferCex] at hb; subst hb; cases ho
+  · intro a x ha l hl
+    have := lt_of_getElem? ha; simp [xferCex] at this
+    obtain rfl | rfl : a = 0 ∨ a = 1 := by omega
+    all_goals simp [xferCex] at ha; subst ha; simp at hl; subst hl; decide
+  · intro q pl f hq ho
+    have := lt_of_getElem? hq; simp [xferCex] at this
+    obtain rfl | rfl | rfl | rfl : q = 0 ∨ q = 1 ∨ q = 2 ∨ q = 3 := by omega
+    all_goals (simp [xferCex] at hq; subst hq; cases ho; try decide)
+  · intro q pl o hq ho
+    have := lt_of_getElem? hq; simp [xferCex] at this
+    obtain rfl | rfl | rfl | rfl : q = 0 ∨ q = 1 ∨ q = 2 ∨ q = 3 := by omega
+    all_goals (simp [xferCex] at hq; subst hq; cases ho; try decide)
+  · intro a y ha hy
+    have := lt_of_getElem? ha; simp [xferCex] at this
+    obtain rfl | rfl : a = 0 ∨ a = 1 := by omega
+    all_goals simp [xferCex] at ha; subst ha; decide
+  · intro h; obtain ⟨pr, hpr, -, ho, -⟩ := h 1 ⟨some 0, .frame 5, 0⟩ 0 rfl rfl
+    simp [xferCex] at hpr; subst hpr; simp at ho
 
 /-- With a duplicated frame on the stack (excluded by `WF3`), `exitFrame` (MM-03.3 §4, O7; A4)
 keeps active an authority held by the exited frame: the hypothesis `s.F.Nodup` of
@@ -4449,5 +4576,117 @@ it ends, and its storage is dead and not freed (leak). -/
 example : EndUseStep KA 0 c6b.1 .reject := .reject (by decide)
 example : EndUseStep KA 0 n10a (.ok (endUseEff n10a 0)) := .ok (by decide)
 example : (endUseEff n10a 0).dead 1 = true ∧ (endUseEff n10a 0).freed 1 = false := by decide
+
+/-! ### Witnesses of the final review -/
+
+/-- `endUse` and `free` (A6) reject an active access derived from an authority that `cleanup`
+releases with its dead holder (MM-03.3 §3, O3.2). Frame 1: 0 value `p`, 1 storage owned by 0 (block
+destination), 2 arena value, 3 arena storage owned by 2 with parts 4, 5; the block 4 is held by
+place 1, and access 5, held by the frame, is derived from it. -/
+abbrev KCG : K := KT [2] [] [] [] []
+def cg0 : S3 := enter1 [(none, none, 0), (none, some 0, 0), (none, none, 0), (none, some 2, 0),
+  (some 3, some 2, 0), (some 3, some 2, 0)]
+def arCG : Arena := ⟨3, 3, [4, 5], []⟩
+def cg1 : S3 := deriveEff (issueEff cg0 arCG [4] 1).1 4 4 .observe
+example : IssueStep KCG arCG 2 [4] 1 cg0 (.ok (issueEff cg0 arCG [4] 1).1 (issueEff cg0 arCG [4] 1).2) :=
+  .ok (by decide) (by decide) (by decide)
+example : DeriveStep 4 4 .observe (issueEff cg0 arCG [4] 1).1 (.ok cg1) := .ok (by decide)
+example : EndUseStep KCG 0 cg1 .reject := .reject (by decide)
+
+/-- Same shape for `free`: 0 value, 1 owned root (freed), 2 storage owned by 1 (block
+destination), 3 arena value, 4 arena storage with parts 5, 6. -/
+abbrev KCF : K := KT [3] [] [] [1] [(1, 7)]
+def cf0 : S3 := enter1 [(none, none, 0), (none, some 0, 0), (none, some 1, 0), (none, none, 0),
+  (none, some 3, 0), (some 4, some 3, 0), (some 4, some 3, 0)]
+def arCF : Arena := ⟨4, 4, [5, 6], []⟩
+def cf1 : S3 := deriveEff (issueEff cf0 arCF [5] 2).1 5 5 .observe
+example : IssueStep KCF arCF 3 [5] 2 cf0 (.ok (issueEff cf0 arCF [5] 2).1 (issueEff cf0 arCF [5] 2).2) :=
+  .ok (by decide) (by decide) (by decide)
+example : DeriveStep 5 5 .observe (issueEff cf0 arCF [5] 2).1 (.ok cf1) := .ok (by decide)
+example : FreeStep KCF 1 7 cf1 .reject := .reject (by decide)
+
+/-- `transfer` (MM-03.3 §3, O4.6; MM-03.3.6; A5) checks non-escape for the anchors of the owned
+storage, whose frame changes with the value. Caller frame 1: 0 result, parameter 1. Callee
+frame 2: 1 value, 2 storage owned by 1 and anchored on the root 4 of the callee local 3. -/
+def od0 : S3 := enterEff (deriveEff (enter1 [(none, none, 0)]) 0 0 .modify) [1]
+  [(none, none, 0), (none, some 1, 0), (none, none, 0)]
+def od1 : S3 := dependEff (write3Eff od0 [1]) 2 4
+example : DependStep 2 4 (write3Eff od0 [1]) (.ok od1) := .ok (by decide)
+example : TransferStep K0 1 0 od1 .reject := .reject (by decide)
+
+/-- Non-escape is read before the transfer (MM-03.3 §3, O4.6): a value anchored on the root 3 of
+its own owned storage, held by the value, is not returned, while the same value anchored on an
+access 5 derived from that root is, and after the exit its anchor is the root 3, held by the
+caller's place 0. Callee frame 2: 1 value, 2 storage owned by 1, 3 local. -/
+def ne0 : S3 := write3Eff (write3Eff od0 [1]) [2]
+example : TransferStep K0 1 0 (dependEff ne0 1 3) .reject := .reject (by decide)
+def ne1 : S3 := dependEff (deriveEff ne0 3 2 .observe) 1 5
+example : TransferStep K0 1 0 ne1 (.ok (transferEff ne1 1 0)) := .ok (by decide)
+example : ExitStep (transferEff ne1 1 0) (.ok (exitEff (transferEff ne1 1 0))) := .ok (by decide)
+example : (exitEff (transferEff ne1 1 0)).D 0 = [3] ∧
+    ((exitEff (transferEff ne1 1 0)).A[3]?).map (·.holder) = some (.place 0) := by decide
+
+/-- The anchors of a containing value stay with it when a part is transferred (MM-03.3 §3, O4;
+MM-03.3.6). Frame 1: 0 value with parts 1 and 2, 3 local, 4 destination; access 3 observes the
+local; the value at 0 depends on it. After the part 1 is moved to 4 and the value at 0 ends, the
+access is released while the moved value is still readable. -/
+def pt0 : S3 := enter1 [(none, none, 0), (some 0, none, 0), (some 0, none, 0), (none, none, 0),
+  (none, none, 0)]
+def pt1 : S3 := dependEff (deriveEff (write3Eff (write3Eff pt0 [1, 2]) [3]) 1 3 .observe) 0 3
+def pt2 : S3 := transferEff pt1 1 4
+example : TransferStep K0 1 4 pt1 (.ok pt2) := .ok (by decide)
+example : pt2.D 4 = [] ∧ pt2.D 0 = [3] := by decide
+example : ReleaseStep 3 pt2 .reject := .reject (by decide)
+example : EndUseStep K0 0 pt2 (.ok (endUseEff pt2 0)) := .ok (by decide)
+example : ReleaseStep 3 (endUseEff pt2 0) (.ok (releaseEff (endUseEff pt2 0) 3)) := .ok (by decide)
+example : Read3Step 2 [4] (releaseEff (endUseEff pt2 0) 3) (.ok (releaseEff (endUseEff pt2 0) 3)) :=
+  .ok (by decide)
+
+/-- `free` of an owned root that owns storage itself leaves that storage dead and not freed (A6,
+leak), and it can no longer be freed. Frame 1: 0 value, 1 storage owned by 0, 2 storage owned by
+1. Freeing 2 first, then 1, leaves no leak. -/
+abbrev KFL : K := KT [] [] [] [1, 2] [(1, 7), (2, 7)]
+def fl0 : S3 := write3Eff (write3Eff (enter1 [(none, none, 0), (none, some 0, 0), (none, some 1, 0)])
+  [1]) [2]
+example : FreeStep KFL 1 7 fl0 (.ok (freeEff fl0 1)) := .ok (by decide)
+example : ¬ (freeEff fl0 1).Usable 2 ∧ (freeEff fl0 1).freed 2 = false ∧ OwnedRoot (freeEff fl0 1) 2 :=
+  by decide
+example : FreeStep KFL 2 7 (freeEff fl0 1) .reject := .reject (by decide)
+example : FreeStep KFL 2 7 fl0 (.ok (freeEff fl0 2)) := .ok (by decide)
+example : FreeStep KFL 1 7 (freeEff fl0 2) (.ok (freeEff (freeEff fl0 2) 1)) := .ok (by decide)
+
+/-- The pass-1 statement `canWrite3_iff` is false on the pass-2 definitions: in a reached state,
+so under I1, the caller's root has effective `Modify` and valid dependencies on leaf 0, yet
+`canWrite3` fails because the root is not exercisable from the callee (A2). -/
+example : ¬ (∀ {s : S3}, I1 s → ∀ {a : Nat} {ls : List Nat},
+    canWrite3 s a ls ↔ ∀ p ∈ ls, effective s a p = some .modify ∧ DepsValid s p) := by
+  intro h
+  have hr : Reachable K0 (enterEff c13a [] [(none, none, 0)]) :=
+    .enter (ps := []) (ls := [(none, none, 0)]) (.write (a := 0) (ls := [0])
+      (.enter (ps := []) (ls := [(none, none, 0), (none, none, 0)]) .init (.ok (by decide)))
+      (.ok (by decide))) (.ok (by decide))
+  have hi := (reachable_access_invariant_underDD (KT_dd [] [] [] [] []) hr).2.1
+  exact absurd ((h hi (a := 0) (ls := [0])).2 (by decide)) (by decide)
+
+/-- The pass-1 statement `SameSkel.inv3` is false on the pass-2 model: without equal `dead` flags
+(A6), a place dead in `sk0` is usable in `sk1` with an anchor that does not exist. -/
+def sk0 : S3 := ⟨[0], 1, [⟨none, .frame 0, 0⟩], fun _ => .uninit, [],
+  fun q => if q = 0 then [5] else [], fun _ => true, fun _ => false, fun _ => false⟩
+def sk1 : S3 := { sk0 with dead := fun _ => false }
+example : SameSkel sk0 sk1 ∧ sk1.P = sk0.P ∧ sk1.F = sk0.F ∧ Inv3 sk0 ∧
+    (∀ q, sk0.Usable q → ∀ x ∈ sk1.D q, sk0.Active x) ∧ ¬ Inv3 sk1 := by
+  refine ⟨⟨rfl, fun _ => rfl⟩, rfl, rfl, ⟨?_, ?_, ?_, i4_always _⟩, ?_, ?_⟩
+  · intro a b x y p _ hx; simp [sk0] at hx
+  · intro b y a hy; simp [sk0] at hy
+  · intro q hq; cases hq <;> simp_all [sk0]
+  · intro q hq; cases hq <;> simp_all [sk0]
+  · intro ⟨_, _, h3, _⟩
+    exact absurd (h3 0 (by decide) 5 (by simp [sk1, sk0])) (by decide)
+
+/-- Without the arena invariant, a live entry of `issued` does not block `reset` (A10): here the
+entry names the root 0 of the arena value, which does not derive from `internal`. -/
+def arBad : Arena := ⟨1, 1, [2, 3], [([2], 0)]⟩
+example : ([2], 0) ∈ arBad.issued ∧ c6a.Active 0 ∧
+    ResetStep KA arBad 0 c6a (.ok (resetEff c6a arBad)) := ⟨by decide, by decide, .ok (by decide)⟩
 
 end Ern.MM03
