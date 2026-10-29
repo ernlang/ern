@@ -9,7 +9,7 @@ imports `Ern.MM02` without using or changing it. Covered fragment: sequential ex
 kernel operations (MM-03.3 §3–5) and of the arena (§6); no concurrency, no persistent handles.
 
 Pass 2 follows arbitrages A1–A11 of the task: authorities are held by a frame or a place (A4),
-places are owned by a frame or a place (A5), rights are exercised through `Exercisable` (A2),
+places are owned by a frame or a place (A5), rights are exercised through `ExercisableAt` (A2, B2),
 values end by `endUse` and owned storage is released by `free` (A6). Pass 3 adds arbitrages
 B1–B10: two clauses of `WF3` (B1) and the clause `AnchorOrder` of `Inv3` (B8).
 -/
@@ -303,7 +303,7 @@ theorem lt_of_getElem? {α : Type} {l : List α} {i : Nat} {x : α} (h : l[i]? =
 
 /-! ## Least fixed points on a bounded universe
 
-`Usable` (A5) and `Exercisable` (A2) are inductive predicates. Each is the least fixed point of
+`Usable` (A5) and `ExercisableAt` (B2) are inductive predicates. Each is the least fixed point of
 a monotone rule over identities below a bound `n`; its Kleene iteration is stable after `n + 1`
 steps, which makes it decidable. -/
 
@@ -728,27 +728,27 @@ theorem getElem?_mapI {α β : Type} (f : Nat → α → β) :
     simp only [mapI, List.getElem?_cons_succ, getElem?_mapI f (i + 1) l j]
     congr 2; omega
 
-/-! ## Exercisable authorities (A2) -/
+/-! ## Exercisable authorities (A2, B2) -/
 
-/-- `s.Exercisable a` (A2): base case, an active authority held by the current frame; inductive
-case, an active authority held by a usable place `p` for which the current frame already has an
-exercisable authority whose effective mode permits the mode of `a` on the whole footprint of
-`p`. Inductive, so no cycle justifies a right. A2 says "mode effectif ≥" without naming the
-comparand; comparing with the mode of `a` is an interpretation (see the report). -/
-inductive S3.Exercisable (s : S3) : Nat → Prop where
-  | base {a : Nat} {y : Authority} : s.A[a]? = some y → y.active = true →
-      y.holder = .frame s.top → S3.Exercisable s a
-  | held {a p b : Nat} {y : Authority} : s.A[a]? = some y → y.active = true →
-      y.holder = .place p → s.Usable p → S3.Exercisable s b →
-      (∀ l ∈ footprint s.P p, Allows (effective s b l) y.mode) → S3.Exercisable s a
+/-- `s.ExercisableAt a m` (B2): authority `a` is exercisable at mode `m` when `m` does not exceed its
+mode and it is held by the current frame, or held by a place `p` such that an authority
+exercisable at mode `m` has an effective mode permitting `m` on the whole footprint of `p`. The
+authority is active: the rights of a released authority cannot be exercised (MM-03.3 §3, O3).
+Inductive, so no cycle justifies a right. -/
+inductive S3.ExercisableAt (s : S3) : Nat → Mode → Prop where
+  | base {a : Nat} {m : Mode} {y : Authority} : s.A[a]? = some y → y.active = true → m.le y.mode →
+      y.holder = .frame s.top → S3.ExercisableAt s a m
+  | held {a p b : Nat} {m : Mode} {y : Authority} : s.A[a]? = some y → y.active = true →
+      m.le y.mode → y.holder = .place p → S3.ExercisableAt s b m →
+      (∀ l ∈ footprint s.P p, Allows (effective s b l) m) → S3.ExercisableAt s a m
 
-/-- One step of `Exercisable`, read on a Boolean premise. -/
-def exR (s : S3) (E : Nat → Bool) (a : Nat) : Bool :=
+/-- One step of `ExercisableAt · m`, read on a Boolean premise. -/
+def exR (s : S3) (m : Mode) (E : Nat → Bool) (a : Nat) : Bool :=
   match s.A[a]? with
-  | some y => y.active && match y.holder with
+  | some y => y.active && decide (m.le y.mode) && match y.holder with
     | .frame f => decide (f = s.top)
-    | .place p => decide (s.Usable p) && (List.range s.A.length).any fun b =>
-        decide (∀ l ∈ footprint s.P p, Allows (effective s b l) y.mode) && E b
+    | .place p => (List.range s.A.length).any fun b =>
+        decide (∀ l ∈ footprint s.P p, Allows (effective s b l) m) && E b
   | none => false
 
 theorem any_congr' {α : Type} {f g : α → Bool} : ∀ {l : List α}, (∀ b ∈ l, f b = g b) →
@@ -758,15 +758,15 @@ theorem any_congr' {α : Type} {f g : α → Bool} : ∀ {l : List α}, (∀ b �
     simp only [List.any_cons, h a (List.mem_cons_self ..),
       any_congr' fun b hb => h b (List.mem_cons_of_mem a hb)]
 
-theorem exR_rule (s : S3) : KRule s.A.length (exR s) where
+theorem exR_rule (s : S3) (m : Mode) : KRule s.A.length (exR s m) where
   mono p q hpq a h := by
     unfold exR at h ⊢; split at h
     · simp only [Bool.and_eq_true] at h ⊢
       refine ⟨h.1, ?_⟩; split at h
       · simpa using h.2
       · simp only [Bool.and_eq_true, List.any_eq_true] at h ⊢
-        obtain ⟨hu, b, hb, hc, he⟩ := h.2
-        exact ⟨hu, b, hb, hc, hpq b he⟩
+        obtain ⟨b, hb, hc, he⟩ := h.2
+        exact ⟨b, hb, hc, hpq b he⟩
     · exact h
   bound p a h := by
     unfold exR at h; split at h
@@ -776,55 +776,57 @@ theorem exR_rule (s : S3) : KRule s.A.length (exR s) where
     unfold exR; split
     · congr 1; split
       · rfl
-      · congr 1
-        exact any_congr' fun b hb => by rw [hpq b (List.mem_range.1 hb)]
+      · exact any_congr' fun b hb => by rw [hpq b (List.mem_range.1 hb)]
     · rfl
 
-theorem exercisable_of_kiter (s : S3) : ∀ k a, kiter (exR s) k a = true → s.Exercisable a
+theorem exercisableAt_of_kiter (s : S3) (m : Mode) :
+    ∀ k a, kiter (exR s m) k a = true → s.ExercisableAt a m
   | 0, _, h => by simp [kiter] at h
   | k + 1, a, h => by
     simp only [kiter, exR] at h
     split at h
     · rename_i y hy
-      simp only [Bool.and_eq_true] at h
-      obtain ⟨ha, h⟩ := h
+      simp only [Bool.and_eq_true, decide_eq_true_eq] at h
+      obtain ⟨⟨ha, hm⟩, h⟩ := h
       split at h
-      · rename_i f hf; exact .base hy ha (by simp at h; rw [hf, h])
+      · rename_i f hf; exact .base hy ha hm (by simp at h; rw [hf, h])
       · rename_i p hp
-        simp only [Bool.and_eq_true, List.any_eq_true, decide_eq_true_eq] at h
-        obtain ⟨hu, b, -, hc, hb⟩ := h
-        exact .held hy ha hp hu (exercisable_of_kiter s k b hb) hc
+        simp only [List.any_eq_true, Bool.and_eq_true, decide_eq_true_eq] at h
+        obtain ⟨b, -, hc, hb⟩ := h
+        exact .held hy ha hm hp (exercisableAt_of_kiter s m k b hb) hc
     · cases h
 
-theorem exR_base {s : S3} {E : Nat → Bool} {a : Nat} {y : Authority} (hy : s.A[a]? = some y)
-    (ha : y.active = true) (hf : y.holder = .frame s.top) : exR s E a = true := by
-  unfold exR; rw [hy]; simp only [ha, hf, Bool.true_and, decide_true]
+theorem exR_base {s : S3} {m : Mode} {E : Nat → Bool} {a : Nat} {y : Authority}
+    (hy : s.A[a]? = some y) (ha : y.active = true) (hm : m.le y.mode)
+    (hf : y.holder = .frame s.top) : exR s m E a = true := by
+  unfold exR; rw [hy]; simp [ha, hm, hf]
 
-theorem exR_held {s : S3} {E : Nat → Bool} {a p b : Nat} {y : Authority} (hy : s.A[a]? = some y)
-    (ha : y.active = true) (hp : y.holder = .place p) (hu : s.Usable p) (hb : b < s.A.length)
-    (hc : ∀ l ∈ footprint s.P p, Allows (effective s b l) y.mode) (hE : E b = true) :
-    exR s E a = true := by
+theorem exR_held {s : S3} {m : Mode} {E : Nat → Bool} {a p b : Nat} {y : Authority}
+    (hy : s.A[a]? = some y) (ha : y.active = true) (hm : m.le y.mode) (hp : y.holder = .place p)
+    (hb : b < s.A.length) (hc : ∀ l ∈ footprint s.P p, Allows (effective s b l) m)
+    (hE : E b = true) : exR s m E a = true := by
   simp only [exR, hy, ha, hp, Bool.true_and, Bool.and_eq_true, decide_eq_true_eq,
     List.any_eq_true, List.mem_range]
-  exact ⟨hu, b, hb, hc, hE⟩
+  exact ⟨hm, b, hb, hc, hE⟩
 
-theorem exercisable_iff {s : S3} {a : Nat} :
-    s.Exercisable a ↔ kiter (exR s) (s.A.length + 1) a = true := by
-  refine ⟨fun h => ?_, exercisable_of_kiter s _ a⟩
+theorem exercisableAt_iff {s : S3} {a : Nat} {m : Mode} :
+    s.ExercisableAt a m ↔ kiter (exR s m) (s.A.length + 1) a = true := by
+  refine ⟨fun h => ?_, exercisableAt_of_kiter s m _ a⟩
   induction h with
-  | base hy ha hf => exact exR_base hy ha hf
-  | held hy ha hp hu hb hc ih =>
-    rw [← kiter_fix (exR_rule s)]
-    have hb' := kiter_bound (exR_rule s) _ _ ih
-    exact exR_held hy ha hp hu hb' hc ih
+  | base hy ha hm hf => exact exR_base hy ha hm hf
+  | held hy ha hm hp hb hc ih =>
+    rw [← kiter_fix (exR_rule s _)]
+    have hb' := kiter_bound (exR_rule s _) _ _ ih
+    exact exR_held hy ha hm hp hb' hc ih
 
-instance (s : S3) (a : Nat) : Decidable (s.Exercisable a) :=
-  decidable_of_iff _ exercisable_iff.symm
+instance (s : S3) (a : Nat) (m : Mode) : Decidable (s.ExercisableAt a m) :=
+  decidable_of_iff _ exercisableAt_iff.symm
 
-/-- The current frame has an exercisable authority whose effective mode permits `m` on every
-leaf of `q` (A2: exercisable `Modify` on a place). -/
+/-- The current frame has an authority exercisable at mode `m` whose effective mode permits `m` on
+every leaf of `q` (B2: an operation requires the mode it requests). -/
 def HasRight (s : S3) (m : Mode) (q : Nat) : Prop :=
-  ∃ a ∈ List.range s.A.length, s.Exercisable a ∧ ∀ l ∈ footprint s.P q, Allows (effective s a l) m
+  ∃ a ∈ List.range s.A.length, s.ExercisableAt a m ∧
+    ∀ l ∈ footprint s.P q, Allows (effective s a l) m
 
 instance (s : S3) (m : Mode) (q : Nat) : Decidable (HasRight s m q) := by
   unfold HasRight; infer_instance
@@ -869,13 +871,14 @@ def DeriveCompat (s : S3) (src q : Nat) (m : Mode) : Prop :=
   ∀ b ∈ List.range s.A.length, ∀ p ∈ footprint s.P q,
     OptP (effective (deriveEff s src q m) b p) (fun e => Compat e m) True
 
-/-- Preconditions of `derive` (MM-03.3 §3, O1), in order: 1 active origin, exercisable (A2);
+/-- Preconditions of `derive` (MM-03.3 §3, O1), in order: 1 active origin, exercisable at the
+requested mode (B2);
 place still usable (MM-03.3.1); 2 requested footprint within the origin's; 3 mode permitted by
 the effective authority of the origin on each leaf. O1.4 is removed (A11): it follows from the
 others under I1 (`derive_compat_redundant`). O1.5 is not restated: `derive` deactivates
 nothing. -/
 def DerivePre (s : S3) (src q : Nat) (m : Mode) : Prop :=
-  s.Active src ∧ s.Exercisable src ∧ s.Usable q ∧
+  s.Active src ∧ s.ExercisableAt src m ∧ s.Usable q ∧
   (∀ p ∈ footprint s.P q, p ∈ s.afp src) ∧
   (∀ p ∈ footprint s.P q, Allows (effective s src p) m)
 
@@ -902,14 +905,14 @@ def DistribExcl (s : S3) (src j p : Nat) : Prop :=
 instance (s : S3) (src j p : Nat) : Decidable (DistribExcl s src j p) := by
   unfold DistribExcl; infer_instance
 
-/-- Preconditions of `split` (MM-03.3 §3, O2), in order: 1 the origin is an active, exercisable
-(A2) authority with effective `Modify` on every leaf of the regions; 2 regions within the available footprint
+/-- Preconditions of `split` (MM-03.3 §3, O2), in order: 1 the origin is an active authority,
+exercisable at `Modify` (B2), with effective `Modify` on every leaf of the regions; 2 regions within the available footprint
 (the origin's footprint where its effective authority is present); 3 regions pairwise disjoint,
 structurally (no shared leaf) or by `DeclaredDisjoint` (MM-03.3.8); 4 no region covers an
 exclusive right already distributed. O2.5 is not restated: `split` changes neither `D` nor
 activity. -/
 def SplitPre (k : K) (s : S3) (src : Nat) (rs : List (List Nat)) : Prop :=
-  s.Active src ∧ s.Exercisable src ∧ (∀ r ∈ rs, ∀ p ∈ r, effective s src p = some .modify) ∧
+  s.Active src ∧ s.ExercisableAt src .modify ∧ (∀ r ∈ rs, ∀ p ∈ r, effective s src p = some .modify) ∧
   (∀ r ∈ rs, ∀ p ∈ r, p ∈ s.afp src ∧ effective s src p ≠ none) ∧
   rs.Pairwise (fun r r' => (∀ l ∈ r, l ∉ r') ∨ k.DeclaredDisjoint r r') ∧
   (∀ r ∈ rs, ∀ p ∈ r, ∀ j ∈ List.range s.A.length, ¬ DistribExcl s src j p)
@@ -931,12 +934,15 @@ def releaseEff (s : S3) (a : Nat) : S3 := match s.A[a]? with
   | none => s
 
 /-- Preconditions of `release` (MM-03.3 §3, O3), in order: 1 active authority; 2 no active
-descendant; 3 no usable place has `a` as anchor. O3.4 (guarantees of associated abstractions)
-is not represented in the kernel. -/
+descendant; 3 no usable place has `a` as anchor; B3: the authority is held by the current frame
+or exercisable by it, at some mode. O3.4 (guarantees of associated abstractions) is not
+represented in the kernel. -/
 def ReleasePre (s : S3) (a : Nat) : Prop :=
   s.Active a ∧
   (∀ j ∈ List.range s.A.length, a ∈ s.ancs j → ¬ s.Active j) ∧
-  (∀ q ∈ List.range s.P.length, s.Usable q → a ∉ s.D q)
+  (∀ q ∈ List.range s.P.length, s.Usable q → a ∉ s.D q) ∧
+  (OptP (s.A[a]?) (fun y => y.holder = .frame s.top) False ∨
+    s.ExercisableAt a .observe ∨ s.ExercisableAt a .modify)
 
 instance (s : S3) (a : Nat) : Decidable (ReleasePre s a) := by unfold ReleasePre; infer_instance
 
@@ -1147,11 +1153,11 @@ def dependEff (s : S3) (q x : Nat) : S3 :=
   { s with D := fun r => if r = q then s.D q ++ [x] else s.D r }
 
 /-- Preconditions of `depend` (MM-03.3 §3, O5), in order: result place usable (MM-03.3.1);
-1 valid anchor; 5 non-escape (MM-03.3.6). O5.2 (real origin of the rights or storage) is not
-representable: the state does not relate a value to the origin of its content. O5.3 and O5.4
-hold by construction. -/
+1 valid anchor; 5 non-escape (MM-03.3.6); B3: exercisable `Modify` on the result. O5.2 (real
+origin of the rights or storage) is not representable: the state does not relate a value to the
+origin of its content. O5.3 and O5.4 hold by construction. -/
 def DependPre (s : S3) (q x : Nat) : Prop :=
-  s.Usable q ∧ s.Active x ∧ NoEscape s x (s.pframe q)
+  s.Usable q ∧ s.Active x ∧ NoEscape s x (s.pframe q) ∧ HasRight s .modify q
 
 instance (s : S3) (q x : Nat) : Decidable (DependPre s q x) := by
   unfold DependPre; infer_instance
@@ -1285,10 +1291,10 @@ def CanReadLeaf (s : S3) (a p : Nat) : Prop :=
 instance (s : S3) (a p : Nat) : Decidable (CanReadLeaf s a p) :=
   inferInstanceAs (Decidable (_ ∧ _))
 
-/-- `canRead3` (MM-03.3 §5): ordinary read of leaves `ls` by authority `a`, exercisable by the
-current frame (A2). -/
+/-- `canRead3` (MM-03.3 §5): ordinary read of leaves `ls` by authority `a`, exercisable at
+`Observe` (B2). -/
 def canRead3 (s : S3) (a : Nat) (ls : List Nat) : Prop :=
-  s.Exercisable a ∧ ∀ p ∈ ls, CanReadLeaf s a p
+  s.ExercisableAt a .observe ∧ ∀ p ∈ ls, CanReadLeaf s a p
 
 instance (s : S3) (a : Nat) (ls : List Nat) : Decidable (canRead3 s a ls) := by
   unfold canRead3; infer_instance
@@ -1297,12 +1303,12 @@ instance (s : S3) (a : Nat) (ls : List Nat) : Decidable (canRead3 s a ls) := by
 def Read3Step (a : Nat) (ls : List Nat) (s : S3) : Outcome3 S3 → Prop :=
   Guarded (canRead3 s a ls) s
 
-/-- `canWrite3` (MM-03.3 §5): `a` exercisable by the current frame (A2); on each leaf, effective
+/-- `canWrite3` (MM-03.3 §5): `a` exercisable at `Modify` (B2); on each leaf, effective
 `Modify` of `a` and needed dependencies valid. The clause "no other ordinary authority with an
 incompatible effective right" is removed (A11): it follows from the first under I1
 (`canWrite3_excl_redundant`). The type and storage condition is not represented. -/
 def canWrite3 (s : S3) (a : Nat) (ls : List Nat) : Prop :=
-  s.Exercisable a ∧ ∀ p ∈ ls, effective s a p = some .modify ∧ DepsValid s p
+  s.ExercisableAt a .modify ∧ ∀ p ∈ ls, effective s a p = some .modify ∧ DepsValid s p
 
 instance (s : S3) (a : Nat) (ls : List Nat) : Decidable (canWrite3 s a ls) := by
   unfold canWrite3; infer_instance
@@ -1967,7 +1973,7 @@ theorem split_preserves_underDD {k : K} (hdd : DDSound k) {s s' : S3} {src : Nat
 releasing an authority only shrinks the set of active authorities. -/
 theorem release_preserves {s s' : S3} {a : Nat} (hwf : WF3 s) (hinv : Inv3base s)
     (h : ReleaseStep a s (.ok s')) : WF3 s' ∧ Inv3base s' := by
-  obtain ⟨⟨⟨x, hx, xa⟩, -, h3⟩, rfl⟩ := Guarded.ok_iff.1 h
+  obtain ⟨⟨⟨x, hx, xa⟩, -, h3, -⟩, rfl⟩ := Guarded.ok_iff.1 h
   obtain ⟨i1, i2, i3, -⟩ := hinv
   have ha := lt_of_getElem? hx
   have e := releaseEff_eq hx
@@ -3263,10 +3269,11 @@ theorem releases_preserve {s s₁ : S3} (hwf : WF3 s) (hinv : Inv3base s) (hr : 
 /-! ## `writeShared` (A9) -/
 
 /-- Preconditions of `writeShared` (A9), the only mutation permitted from an `Observe`
-authority: `a` exercisable (A2); on each leaf, a present effective mode of `a`, a
+authority: `a` exercisable at `Observe`, the mode it requests (B2); on each leaf, a present
+effective mode of `a`, a
 `SharedMutable` leaf (MM-03.3.8), valid dependencies. -/
 def WriteSharedPre (k : K) (s : S3) (a : Nat) (ls : List Nat) : Prop :=
-  s.Exercisable a ∧ ∀ p ∈ ls, effective s a p ≠ none ∧ k.SharedMutable p ∧ DepsValid s p
+  s.ExercisableAt a .observe ∧ ∀ p ∈ ls, effective s a p ≠ none ∧ k.SharedMutable p ∧ DepsValid s p
 
 instance (k : K) [DecidablePred k.SharedMutable] (s : S3) (a : Nat) (ls : List Nat) :
     Decidable (WriteSharedPre k s a ls) := by
@@ -3291,9 +3298,8 @@ theorem writeShared_preserves {k : K} {s s' : S3} {a : Nat} {ls : List Nat} (hwf
 
 /-! ## Dynamic pinning (A8) -/
 
-/-- Preconditions of `pin p` (A8): `p` usable, exercisable `Modify` on `p` (A2 requires an
-exercisable right for `pin` without naming its mode; `Modify` is a choice: the external use, a
-DMA, writes the storage). -/
+/-- Preconditions of `pin p` (A8): `p` usable, exercisable `Modify` on `p` (B2; `Modify` for
+`pin`, B10). -/
 def PinPre (s : S3) (p : Nat) : Prop := s.Usable p ∧ HasRight s .modify p
 
 instance (s : S3) (p : Nat) : Decidable (PinPre s p) := by unfold PinPre; infer_instance
@@ -3306,9 +3312,9 @@ def pinEff (s : S3) (p : Nat) (b : Bool) : S3 :=
 def PinStep (p : Nat) (s : S3) : Outcome3 S3 → Prop := Guarded (PinPre s p) (pinEff s p true)
 
 /-- Preconditions of `unpin p` (A8): the external use of every leaf of `p` is done
-(`ExternalDone`, MM-03.3.8). -/
+(`ExternalDone`, MM-03.3.8); B3: the right of `pin`, exercisable `Modify` on `p`. -/
 def UnpinPre (k : K) (s : S3) (p : Nat) : Prop :=
-  ∀ l ∈ footprint s.P p, k.ExternalDone l
+  (∀ l ∈ footprint s.P p, k.ExternalDone l) ∧ HasRight s .modify p
 
 instance (k : K) [DecidablePred k.ExternalDone] (s : S3) (p : Nat) :
     Decidable (UnpinPre k s p) := by
@@ -3790,7 +3796,7 @@ theorem release_preserves_anchorOrder {s s' : S3} {a : Nat} (hinv : Inv3 s)
 satisfies the non-escape precondition. -/
 theorem depend_preserves_anchorOrder {s s' : S3} {q x : Nat} (hinv : Inv3 s)
     (h : DependStep q x s (.ok s')) : AnchorOrder s' := by
-  obtain ⟨⟨-, -, hne⟩, rfl⟩ := Guarded.ok_iff.1 h
+  obtain ⟨⟨-, -, hne, -⟩, rfl⟩ := Guarded.ok_iff.1 h
   intro r hr y hy
   have hr' : s.Usable r := hr.of_eqs rfl rfl rfl
   rw [noEscape_congr (s' := dependEff s q x) (s := s) rfl rfl rfl,
@@ -4059,22 +4065,22 @@ theorem transfer_preserves_anchorOrder {k : K} {s s' : S3} {src dst : Nat} (hwf 
       · rw [transfer_pframe_unmoved hown]
         exact (transfer_noEscape_unmoved hy hm _).2 (ao q hq0 x hx)
 
-/-! ## Exercise requires holding (A2) -/
+/-! ## Exercise requires holding (A2, B2) -/
 
-/-- `exercise_requires_hold` (A2): an exercisable authority is active and held by the current
-frame, or held by a usable place on which the current frame already has an exercisable
-authority permitting its mode. -/
-theorem exercise_requires_hold {s : S3} {a : Nat} (h : s.Exercisable a) :
-    ∃ y, s.A[a]? = some y ∧ y.active = true ∧
-      (y.holder = .frame s.top ∨ ∃ p, y.holder = .place p ∧ s.Usable p ∧ HasRight s y.mode p) := by
+/-- `exercise_requires_hold` (A2), by mode (B2): an authority exercisable at mode `m` is active, its
+mode permits `m`, and it is held by the current frame, or held by a place on which the current
+frame already has an authority exercisable at `m` with an effective mode permitting `m`. -/
+theorem exercise_requires_hold {s : S3} {a : Nat} {m : Mode} (h : s.ExercisableAt a m) :
+    ∃ y, s.A[a]? = some y ∧ y.active = true ∧ m.le y.mode ∧
+      (y.holder = .frame s.top ∨ ∃ p, y.holder = .place p ∧ HasRight s m p) := by
   cases h with
-  | base hy ha hf => exact ⟨_, hy, ha, .inl hf⟩
-  | @held _ p b y hy ha hp hu hb hc =>
+  | base hy ha hm hf => exact ⟨_, hy, ha, hm, .inl hf⟩
+  | @held _ p b _ y hy ha hm hp hb hc =>
     have hlt : b < s.A.length := by
       cases hb with
-      | base hy' _ _ => exact lt_of_getElem? hy'
+      | base hy' _ _ _ => exact lt_of_getElem? hy'
       | held hy' _ _ _ _ _ => exact lt_of_getElem? hy'
-    exact ⟨y, hy, ha, .inr ⟨p, hp, hu, b, List.mem_range.2 hlt, hb, hc⟩⟩
+    exact ⟨y, hy, ha, hm, .inr ⟨p, hp, b, List.mem_range.2 hlt, hb, hc⟩⟩
 
 /-! ## Reachability (MM-03.3 §10) -/
 
@@ -4466,11 +4472,11 @@ def ArenaInv (s : S3) (ar : Arena) : Prop :=
     y.origin = none ∧ y.mode = .modify ∧ y.holder = pl.owner) ∧
   (∀ l, l ∈ s.afp ar.internal ↔ l ∈ footprint s.P ar.storage)
 
-/-- Right to update the metadata of the arena (A10): an exercisable authority `via` with a
-present effective mode on every metadata leaf, all `SharedMutable` (a `writeShared`, A9), with
-valid dependencies. -/
+/-- Right to update the metadata of the arena (A10): an authority `via` exercisable at `Observe`
+(B2) with a present effective mode on every metadata leaf, all `SharedMutable` (a `writeShared`,
+A9), with valid dependencies. -/
 def MetaRight (k : K) (s : S3) (ar : Arena) (via : Nat) : Prop :=
-  s.Exercisable via ∧ arenaValue s ar ≠ none ∧
+  s.ExercisableAt via .observe ∧ arenaValue s ar ≠ none ∧
   ∀ l ∈ metaLeaves s ar, effective s via l ≠ none ∧ k.SharedMutable l ∧ DepsValid s l
 
 instance (k : K) [DecidablePred k.SharedMutable] (s : S3) (ar : Arena) (via : Nat) :
@@ -5144,7 +5150,7 @@ theorem split_preserves_exclusivity_underDD {k : K} (hdd : DDSound k) {s s' : S3
 constrains active authorities, which `release` removes. -/
 theorem release_preserves_inv3 {s s' : S3} {a : Nat} (hinv : Inv3base s)
     (h : ReleaseStep a s (.ok s')) : Inv3base s' := by
-  obtain ⟨⟨⟨x, hx, xa⟩, -, h3⟩, rfl⟩ := Guarded.ok_iff.1 h
+  obtain ⟨⟨⟨x, hx, xa⟩, -, h3, -⟩, rfl⟩ := Guarded.ok_iff.1 h
   obtain ⟨i1, i2, i3, -⟩ := hinv
   have ha := lt_of_getElem? hx
   have e := releaseEff_eq hx
@@ -5616,16 +5622,20 @@ theorem split_unsound_without_DD :
 example : ExitStep (pinEff c13a 0 true) (.ok (exitEff (pinEff c13a 0 true))) := .ok (by decide)
 example : EndUseStep K0 0 (pinEff c13a 0 true) .reject := .reject (by decide)
 
-/-- A callee releases a root authority of its caller without holding any right on it: `release`
-is not in the list of A2, and O3 has no right condition. -/
-example : ReleaseStep 0 (enterEff c13a [] [(none, none, 0)])
-    (.ok (releaseEff (enterEff c13a [] [(none, none, 0)]) 0)) := .ok (by decide)
+/-- A callee cannot release a root authority of its caller (B3): the root is held by the caller
+and not exercisable by the callee (pass 2: accepted). The caller releases its own access. -/
+example : ReleaseStep 0 (enterEff c13a [] [(none, none, 0)]) .reject := .reject (by decide)
+example : ReleaseStep 2 (deriveEff c13a 0 0 .observe)
+    (.ok (releaseEff (deriveEff c13a 0 0 .observe) 2)) := .ok (by decide)
 
-/-- Reading of A2 ("mode effectif ≥" compared with the mode of the held authority): while a value
-is shared in `Observe`, the root of its owned storage, a `Modify` authority held by the value,
-cannot be exercised, even to read. Frame 1: 0 value, 1 owned storage. -/
+/-- Reading the owned storage of a value shared in `Observe` (B2): the root of the storage, a
+`Modify` authority held by the value, is exercisable at `Observe`, the mode the read requests
+(pass 2: rejected). Writing it is rejected while the value is shared. Frame 1: 0 value, 1 owned
+storage. -/
 example : Read3Step 1 [1] n6a (.ok n6a) := .ok (by decide)
-example : Read3Step 1 [1] (deriveEff n6a 0 0 .observe) .reject := .reject (by decide)
+example : Read3Step 1 [1] (deriveEff n6a 0 0 .observe) (.ok (deriveEff n6a 0 0 .observe)) :=
+  .ok (by decide)
+example : Write3Step 1 [1] (deriveEff n6a 0 0 .observe) .reject := .reject (by decide)
 
 /-- Witness state of `transfer_not_inv3_preserving`: place 1 is a part of place 0 with another
 owner, a frame not on the stack; place 2 is owned by place 1 and anchored on 5, which does not
