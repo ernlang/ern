@@ -862,18 +862,19 @@ instance (s : S3) (src q : Nat) : Decidable (OwnedWithin s src q) :=
   inferInstanceAs (Decidable (_ = true))
 
 /-- Anchors of the places whose frame changes when the value at `src` is transferred (A5;
-MM-03.3.6): `src`, its parts, and the places it owns, transitively. -/
+MM-03.3.6): `src`, its parts, and the usable places it owns, transitively. An anchor of a dead
+owned place is not read: no usable place depends on it (MM-03.3.6). -/
 def movedDeps (s : S3) (src : Nat) : List Nat :=
-  ((List.range s.P.length).filter fun q => decide (partOf s.P q src ∨ OwnedWithin s src q)).flatMap
-    s.D
+  ((List.range s.P.length).filter fun q =>
+    decide (partOf s.P q src ∨ (OwnedWithin s src q ∧ s.Usable q))).flatMap s.D
 
 /-- Preconditions of `transfer` (MM-03.3 §3, O4), in order: source usable (MM-03.3.1) and
 1 initialised; 2 destination usable, without an `Init` leaf, sharing no leaf with the source,
 and still usable once it owns the source's storage (no ownership cycle); exercisable `Modify`
 on the source and on the destination (A2); 4 no active derived
 access on the source other than those it holds; 5 anchors of the value valid; 6 non-escape
-(MM-03.3.6) towards the destination's frame, for the anchors of the value and of the places it
-owns, whose frame changes with it (A5); 7 no leaf of the source pinned, statically
+(MM-03.3.6) towards the destination's frame, for the anchors of the value and of the usable
+places it owns, whose frame changes with it (A5); 7 no leaf of the source pinned, statically
 (`Pinned`, MM-03.3.8) or dynamically (A8). O4.3 holds by construction. -/
 def TransferPre (k : K) (s : S3) (src dst : Nat) : Prop :=
   s.Usable src ∧ (∀ l ∈ footprint s.P src, s.I l = .init) ∧
@@ -2811,7 +2812,8 @@ instance (s : S3) (p : Nat) (y : Authority) : Decidable (IsRootOf s p y) := by
   unfold IsRootOf; infer_instance
 
 /-- Authority `a` is released by the end of the value at `p` (A4, A6): it is active, and held
-within `p` (released by `endUseS`) or by a holder that dies with `p` (released by `cleanup`). -/
+within `p` (released by `endUseS`) or by a holder that is not live after `endUseS` (released by
+`cleanup`). Under the possession clause of `WF3`, that holder dies with `p`. -/
 def EndUseReleased (s : S3) (p a : Nat) : Prop :=
   OptP (s.A[a]?) (fun z => z.active = true ∧
     (heldIn s.P p z.holder ∨ ¬ HolderLive (endUseS s p) z.holder)) False
@@ -2842,7 +2844,8 @@ instance (s : S3) (p x : Nat) : Decidable (EndUseAnchorOK s p x) := by
 /-- Preconditions of `endUse p` (A6). Usability of the anchored places is read after the end:
 a place that dies with `p` has no usable dependent afterwards. In order: `p` usable;
 exercisable `Modify` on `p` (A2);
-no active derived authority on an ending leaf held elsewhere than in `p` and staying live; no
+no active derived authority on an ending leaf, or descending from an authority that the end
+releases (MM-03.3 §3, O3.2), held elsewhere than in `p` and staying live; no
 usable place anchored on an authority held by `p`, on its root, or held by a holder that dies;
 no ending leaf pinned (dynamically, A8, or statically, `Pinned`) without `ExternalDone`. The
 ending leaves include those of the owned places, which die (A6). -/
@@ -2964,8 +2967,8 @@ instance (s : S3) (p l : Nat) : Decidable (FreedLeaf s p l) := by
   unfold FreedLeaf; infer_instance
 
 /-- Authority `a` is released by the release of `p` (A4, A6): it is active, and covers a leaf of
-`p` or is held within `p` (released by `freeS`), or its holder dies with `p` (released by
-`cleanup`). -/
+`p` or is held within `p` (released by `freeS`), or its holder is not live after `freeS`
+(released by `cleanup`). Under the possession clause of `WF3`, that holder dies with `p`. -/
 def FreeDeact (s : S3) (p a : Nat) : Prop :=
   OptP (s.A[a]?) (fun z => z.active = true ∧ ((∃ l ∈ z.footprint, l ∈ footprint s.P p) ∨
     heldIn s.P p z.holder ∨ ¬ HolderLive (freeS s p) z.holder)) False
@@ -4688,5 +4691,27 @@ entry names the root 0 of the arena value, which does not derive from `internal`
 def arBad : Arena := ⟨1, 1, [2, 3], [([2], 0)]⟩
 example : ([2], 0) ∈ arBad.issued ∧ c6a.Active 0 ∧
     ResetStep KA arBad 0 c6a (.ok (resetEff c6a arBad)) := ⟨by decide, by decide, .ok (by decide)⟩
+
+/-- An anchor of a dead owned place does not block a return (A5; MM-03.3.6): the value 1 of
+`od1` ends, its storage 2 dies with the anchor 4, the value receives a fresh content and is
+returned. -/
+example : EndUseStep K0 1 od1 (.ok (endUseEff od1 1)) := .ok (by decide)
+example : ¬ (write3Eff (endUseEff od1 1) [1]).Usable 2 ∧ (write3Eff (endUseEff od1 1) [1]).D 2 = [4] ∧
+    TransferStep K0 1 0 (write3Eff (endUseEff od1 1) [1])
+      (.ok (transferEff (write3Eff (endUseEff od1 1) [1]) 1 0)) := ⟨by decide, by decide, .ok (by decide)⟩
+
+/-- A transfer moves an anchor held within the value to a younger frame while a place that depends
+on it stays in an older frame (MM-03.3.6; MM-03.3 §3, O4.6; A4). Frame 1: 0 value, 1 storage owned
+by 0, 2 storage owned by 1, 3 local depending on the root 2 of storage 2. Frame 2 receives
+`Modify` on 0 and moves the value into its local 4. Afterwards the dependent of frame 1 is anchored
+on an authority held in frame 2, and `exitFrame` is rejected. -/
+def ma0 : S3 := dependEff (write3Eff (enter1 [(none, none, 0), (none, some 0, 0), (none, some 1, 0),
+  (none, none, 0)]) [1]) 3 2
+def ma1 : S3 := enterEff (deriveEff ma0 0 0 .modify) [4] [(none, none, 0)]
+example : NoEscape ma1 2 (ma1.pframe 3) := by decide
+example : TransferStep K0 1 4 ma1 (.ok (transferEff ma1 1 4)) := .ok (by decide)
+example : (transferEff ma1 1 4).Usable 3 ∧ 2 ∈ (transferEff ma1 1 4).D 3 ∧
+    ¬ NoEscape (transferEff ma1 1 4) 2 ((transferEff ma1 1 4).pframe 3) := by decide
+example : ExitStep (transferEff ma1 1 4) .reject := .reject (by decide)
 
 end Ern.MM03
