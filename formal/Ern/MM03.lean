@@ -947,16 +947,25 @@ def releaseEff (s : S3) (a : Nat) : S3 := match s.A[a]? with
   | some x => { s with A := s.A.set a { x with active := false } }
   | none => s
 
+/-- Right of the current frame on a holder (C4): the holder is the current frame, or a place on
+which the current frame has exercisable `Modify` (`HasRight`, B2). -/
+def HolderRight (s : S3) : Holder → Prop
+  | .frame f => f = s.top
+  | .place p => HasRight s .modify p
+
+instance (s : S3) (h : Holder) : Decidable (HolderRight s h) := by
+  cases h <;> unfold HolderRight <;> infer_instance
+
 /-- Preconditions of `release` (MM-03.3 §3, O3), in order: 1 active authority; 2 no active
-descendant; 3 no usable place has `a` as anchor; B3: the authority is held by the current frame
-or exercisable by it, at some mode. O3.4 (guarantees of associated abstractions) is not
-represented in the kernel. -/
+descendant; 3 no usable place has `a` as anchor; C4: the authority is derived, an authority
+without origin is rejected, and its holder is the current frame or a place on which the current
+frame has exercisable `Modify` (`HolderRight`). O3.4 (guarantees of associated abstractions) is
+not represented in the kernel. -/
 def ReleasePre (s : S3) (a : Nat) : Prop :=
   s.Active a ∧
   (∀ j ∈ List.range s.A.length, a ∈ s.ancs j → ¬ s.Active j) ∧
   (∀ q ∈ List.range s.P.length, s.Usable q → a ∉ s.D q) ∧
-  (OptP (s.A[a]?) (fun y => y.holder = .frame s.top) False ∨
-    s.ExercisableAt a .observe ∨ s.ExercisableAt a .modify)
+  OptP (s.A[a]?) (fun y => y.origin ≠ none ∧ HolderRight s y.holder) False
 
 instance (s : S3) (a : Nat) : Decidable (ReleasePre s a) := by unfold ReleasePre; infer_instance
 
@@ -1516,14 +1525,14 @@ def RootHeld (s : S3) : Prop :=
   ∀ (x : Nat) (z : Authority) (l r : Nat), s.A[x]? = some z → z.origin = none → l ∈ z.footprint →
     RootPlace s.P r → partOf s.P l r → ∃ pr, s.P[r]? = some pr ∧ z.holder = pr.owner
 
-/-- `WF3` (A1, A4, B1): well-formedness, the domain of admissible states, separate from the safety
-invariant `Inv3`. Origins precede their derivations; footprints are made of existing places;
-the stack is non-empty and without duplicates, below `nF`; owner frames are below `nF`; owner
-places exist; a part comes after its parent and has its owner and its `dead` flag; every active
-authority has a live holder (possession); B1: distinct root places have disjoint footprints
-(`RootsDisjoint`, a property of every list of places, `rootsDisjoint_always`); the chain of
-origins of an authority covering a leaf ends at the root authority of its root place
-(`RootChain`); A4: a root is held by the owner of its place (`RootHeld`). -/
+/-- `WF3` (A1, A4, B1, C3): well-formedness, the domain of admissible states, separate from the
+safety invariant `Inv3`. Origins precede their derivations; footprints are made of existing
+places; the stack is non-empty and without duplicates, below `nF`; owner frames are below `nF`;
+owner places exist; a part comes after its parent and has its owner and its `dead` flag; every
+active authority has a live holder (possession); B1: the chain of origins of an authority covering
+a leaf ends at the root authority of its root place (`RootChain`); A4: a root is held by the owner
+of its place (`RootHeld`). C3: the first clause of B1, `RootsDisjoint`, is not a clause: it holds
+for every list of places (`rootsDisjoint_always`). -/
 def WF3 (s : S3) : Prop :=
   (∀ (b : Nat) (y : Authority) (a : Nat), s.A[b]? = some y → y.origin = some a → a < b) ∧
   (∀ (a : Nat) (x : Authority), s.A[a]? = some x → ∀ l ∈ x.footprint, l < s.P.length) ∧
@@ -1534,7 +1543,7 @@ def WF3 (s : S3) : Prop :=
   (∀ (q : Nat) (pl : Place) (r : Nat), s.P[q]? = some pl → pl.parent = some r →
     ∃ pr : Place, s.P[r]? = some pr ∧ r < q ∧ pr.owner = pl.owner ∧ s.dead r = s.dead q) ∧
   (∀ (a : Nat) (y : Authority), s.A[a]? = some y → y.active = true → HolderLive s y.holder) ∧
-  RootsDisjoint s.P ∧ RootChain s ∧ RootHeld s
+  RootChain s ∧ RootHeld s
 
 /-- The pass-1 exclusivity on effective modes (MM-03.3 §2, I1) is a theorem under the
 strengthened I1 (A1). -/
@@ -1788,8 +1797,8 @@ theorem WF3.parts : ∀ (q : Nat) (pl : Place) (r : Nat), s.P[q]? = some pl → 
   h.2.2.2.2.2.2.2.1
 theorem WF3.poss : ∀ (a : Nat) (y : Authority), s.A[a]? = some y → y.active = true →
     HolderLive s y.holder := h.2.2.2.2.2.2.2.2.1
-theorem WF3.rootChain : RootChain s := h.2.2.2.2.2.2.2.2.2.2.1
-theorem WF3.rootHeld : RootHeld s := h.2.2.2.2.2.2.2.2.2.2.2
+theorem WF3.rootChain : RootChain s := h.2.2.2.2.2.2.2.2.2.1
+theorem WF3.rootHeld : RootHeld s := h.2.2.2.2.2.2.2.2.2.2
 
 end WF3proj
 
@@ -1974,7 +1983,7 @@ theorem addAuth_preserves {s : S3} (hwf : WF3 s) (hinv : Inv3base s) {src : Nat}
   have hs := lt_of_getElem? hx
   have live := HolderLive.congr (addAuth_P s ⟨m, some src, fp, hd, true⟩) rfl rfl
   refine ⟨⟨?_, ?_, hwf.ne, hwf.nodup, hwf.frames, hwf.ownerFrame, hwf.ownerPlace, hwf.parts, ?_,
-    rootsDisjoint_always _, rootChain_addAuth hwf.rootChain hx rfl hfp,
+    rootChain_addAuth hwf.rootChain hx rfl hfp,
     hwf.rootHeld.transport rfl fun x z' hx' ho => ?_⟩,
     addAuth_I1 i1 hx hal, ?_, fun q hq y hy => active_addAuth (i3 q ?_ y hy), i4_always _⟩
   · intro b y a hb ho
@@ -2071,7 +2080,7 @@ theorem release_preserves {s s' : S3} {a : Nat} (hwf : WF3 s) (hinv : Inv3base s
   have hnF : (releaseEff s a).nF = s.nF := by rw [e]
   refine ⟨⟨fun b y o hb ho => ?_, fun b y hb l hl => ?_, hF ▸ hwf.ne, hF ▸ hwf.nodup,
     hF ▸ hnF ▸ hwf.frames, hP ▸ hnF ▸ hwf.ownerFrame, hP ▸ hwf.ownerPlace, hP ▸ hd ▸ hwf.parts,
-    fun b y hb ya => ?_, rootsDisjoint_always _, hwf.rootChain.transport (by rw [hP]) (by rw [hP])
+    fun b y hb ya => ?_, hwf.rootChain.transport (by rw [hP]) (by rw [hP])
       (fun _ => by rw [release_ancs hx])
       (fun b y' hb => by obtain ⟨y₀, hy₀, -, -, e', -⟩ := back b y' hb; exact ⟨y₀, hy₀, e'⟩)
       (fun x' z hz hzo => by
@@ -2246,7 +2255,6 @@ theorem transfer_preserves {k : K} {s s' : S3} {src dst : Nat} (hwf : WF3 s) (hi
   have sk := transfer_skel s src dst
   obtain ⟨i1, i2, i3, -⟩ := hinv
   refine ⟨⟨sk.origin hwf.origin, ?_, hwf.ne, hwf.nodup, hwf.frames, ?_, ?_, ?_, ?_,
-    rootsDisjoint_always _,
     sk.rootChain hwf.rootChain (transfer_len s src dst) (transfer_parentOf s src dst),
     transfer_rootHeld hwf.rootHeld⟩,
     sk.i1 i1, sk.i2 i2, fun q hq x hx => ?_, i4_always _⟩
@@ -2347,10 +2355,10 @@ theorem transfer_moves_deps {k : K} {s s' : S3} {src dst : Nat}
 
 theorem WF3.of_eq {s s' : S3} (h : WF3 s) (hA : s'.A = s.A) (hP : s'.P = s.P) (hF : s'.F = s.F)
     (hn : s'.nF = s.nF) (hd : s'.dead = s.dead) : WF3 s' := by
-  obtain ⟨w0, w2, wne, wnd, wfr, wof, wop, wpa, wpo, -, wrc, wrh⟩ := h
+  obtain ⟨w0, w2, wne, wnd, wfr, wof, wop, wpa, wpo, wrc, wrh⟩ := h
   refine ⟨hA ▸ w0, by rw [hA, hP]; exact w2, hF ▸ wne, hF ▸ wnd, by rw [hF, hn]; exact wfr,
     by rw [hP, hn]; exact wof, by rw [hP]; exact wop, by rw [hP, hd]; exact wpa, ?_,
-    rootsDisjoint_always _, wrc.transport (by rw [hP]) (by rw [hP])
+    wrc.transport (by rw [hP]) (by rw [hP])
       (fun a => by unfold S3.ancs; congr 1; funext i; simp only [S3.org, hA])
       (fun a y' h => ⟨y', hA ▸ h, rfl⟩)
       (fun x z h hz => ⟨z, hA ▸ h, hz, rfl⟩),
@@ -2702,7 +2710,7 @@ theorem enter_preserves_wf {s : S3} {ps : List Nat} {ls : List (Option Nat × Op
     intro hd hl; cases hd with
     | frame f => exact List.mem_cons_of_mem _ hl
     | place p => exact enter_usable_old hl
-  refine ⟨?_, ?_, by simp [enterEff], ?_, ?_, ?_, ?_, ?_, ?_, rootsDisjoint_always _,
+  refine ⟨?_, ?_, by simp [enterEff], ?_, ?_, ?_, ?_, ?_, ?_,
     enter_rootChain hwf hpre, enter_rootHeld hwf hpre hwf.rootHeld⟩
   · intro b y a hb ho
     rcases enter_get hb with ⟨hb', y₀, hy₀, rfl⟩ | ⟨-, _, -, hz⟩
@@ -3186,7 +3194,7 @@ theorem exit_preserves {k : K} {s s' : S3} (hwf : WF3 s) (hinv : Inv3base s) (h 
     have hnd := List.nodup_cons.1 (hF ▸ hwf.nodup)
     refine ⟨⟨fun b y a hb ho => ?_, fun a x hx l hl => ?_, hFe ▸ hne, hFe ▸ hnd.2,
       fun g hg => ?_, hP ▸ hn ▸ hwf.ownerFrame, hP ▸ hwf.ownerPlace, hP ▸ hd ▸ hwf.parts,
-      fun a y hy ya => ?_, rootsDisjoint_always _, exit_rootChain hwf.rootChain hF hR2,
+      fun a y hy ya => ?_, exit_rootChain hwf.rootChain hF hR2,
       exit_rootHeld hwf.rootHeld hF hR2⟩, hinv'⟩
     · obtain ⟨y₀, hy₀, rfl⟩ := get' hb
       rcases exitG_origin (s := s) (F₀ := F₀) (a := b) (y := y₀) with e' | ⟨-, -, e'⟩
@@ -3405,7 +3413,7 @@ theorem releases_preserve {s s₁ : S3} (hwf : WF3 s) (hinv : Inv3base s) (hr : 
     by rw [cF, show (cleanup s₁).nF = s.nF from hn]; exact hwf.frames,
     by rw [cP, show (cleanup s₁).nF = s.nF from hn]; exact hwf.ownerFrame,
     by rw [cP]; exact hwf.ownerPlace, fun q pl r hq hp => ?_, fun a y hy ya => ?_,
-    rootsDisjoint_always _, hc.rootChain hwf.rootChain cP, hc.rootHeld hwf.rootHeld cP⟩,
+    hc.rootChain hwf.rootChain cP, hc.rootHeld hwf.rootHeld cP⟩,
     releases_preserve_inv3 hinv hr hI3⟩
   · obtain ⟨y₀, hy₀, -, e, -⟩ := hc.2 b y hb; exact hwf.origin b y₀ a hy₀ (e ▸ ho)
   · obtain ⟨x₀, hx₀, -, -, e, -⟩ := hc.2 a x hx; rw [cP]; exact hwf.fp a x₀ hx₀ l (e ▸ hl)
@@ -3557,17 +3565,17 @@ exercisable `Modify` on `p` (A2);
 no active derived authority on an ending leaf, or descending from an authority that the end
 releases (MM-03.3 §3, O3.2), held elsewhere than in `p` and staying live; no
 usable place anchored on an authority held by `p`, on its root, or held by a holder that dies;
-no ending leaf pinned (dynamically, A8, or statically, `Pinned`) without `ExternalDone`. The
-ending leaves include those of the owned places, which die (A6). -/
+C5: no ending leaf pinned, dynamically (A8) or statically (`Pinned`), whatever `ExternalDone`
+says: external obligations end only through `unpin`. The ending leaves include those of the
+owned places, which die (A6). C8: `p` itself stays usable, its leaves `Uninit`. -/
 def EndUsePre (k : K) (s : S3) (p : Nat) : Prop :=
   s.Usable p ∧ HasRight s .modify p ∧
   (∀ j ∈ List.range s.A.length, EndUseAccessOK s p j) ∧
   (∀ q ∈ List.range s.P.length, (endUseS s p).Usable q → ∀ x ∈ (endUseS s p).D q,
     EndUseAnchorOK s p x) ∧
-  (∀ l ∈ List.range s.P.length, EndingLeaf s p l → (s.pin l = true ∨ k.Pinned l) →
-    k.ExternalDone l)
+  (∀ l ∈ List.range s.P.length, EndingLeaf s p l → s.pin l = false ∧ ¬ k.Pinned l)
 
-instance (k : K) [DecidablePred k.Pinned] [DecidablePred k.ExternalDone] (s : S3) (p : Nat) :
+instance (k : K) [DecidablePred k.Pinned] (s : S3) (p : Nat) :
     Decidable (EndUsePre k s p) := by
   unfold EndUsePre; infer_instance
 
@@ -4101,7 +4109,7 @@ theorem alloc_preserves {k : K} {pr ow ex : Nat} {s s' : S3} (hwf : WF3 s) (hinv
     intro hd hl; cases hd with
     | frame f => exact hl
     | place p => exact alloc_usable_old hl
-  refine ⟨⟨?_, ?_, hwf.ne, hwf.nodup, hwf.frames, ?_, ?_, ?_, ?_, rootsDisjoint_always _, ?_,
+  refine ⟨⟨?_, ?_, hwf.ne, hwf.nodup, hwf.frames, ?_, ?_, ?_, ?_, ?_,
     alloc_rootHeld hwf hwf.rootHeld⟩, ?_, ?_, ?_, i4_always _⟩
   · intro b y a hb ho
     rcases alloc_A_get hb with ⟨-, hb'⟩ | ⟨-, rfl⟩
@@ -4793,7 +4801,7 @@ theorem init_wf : WF3 S3.init ∧ Inv3base S3.init := by
   refine ⟨⟨fun _ _ _ h => by simp [S3.init] at h, fun _ _ h => by simp [S3.init] at h,
     by simp [S3.init], by simp [S3.init], by simp [S3.init], fun _ _ _ h => by simp [S3.init] at h,
     fun _ _ _ h => by simp [S3.init] at h, fun _ _ _ h => by simp [S3.init] at h,
-    fun _ _ h => by simp [S3.init] at h, rootsDisjoint_always _,
+    fun _ _ h => by simp [S3.init] at h,
     fun _ _ _ h => by simp [S3.init] at h, fun _ _ _ _ h => by simp [S3.init] at h⟩,
     fun _ _ _ _ _ _ h => by simp [S3.init] at h, fun _ _ _ h => by simp [S3.init] at h,
     fun _ _ _ h => by simp [S3.init] at h, i4_always _⟩
@@ -5116,6 +5124,48 @@ theorem exit_preserves_noDangling {k : K} {s s' : S3} (hwf : WF3 s) (hinv : Inv3
     exact exitFrame_no_dangling hwf hF h q (exit_owned_of_usable hF hq₀ hq₁) j _ hz za l hl hlz
   · rw [(exitG_same s F₀ j y₀).2.1] at hlz
     exact hinv.nd j y₀ hy₀ (exitG_active' hy₀ za) q hq₀ l hl hlz
+
+/-- `StaticPinnedBottom k s` (C5), obligation on the static pinning `K.Pinned`: every leaf covered
+by `K.Pinned` belongs to a place owned, transitively, by the base frame, the last of the stack.
+Dynamic pinning (`pin`, `unpin`) is not concerned. -/
+def StaticPinnedBottom (k : K) (s : S3) : Prop :=
+  ∀ l, k.Pinned l → ∃ q, l ∈ footprint s.P q ∧ OwnedByFrame s.P (s.F.getLastD 0) q
+
+/-- A place has at most one owning frame (A5). -/
+theorem OwnedByFrame.unique {P : List Place} {f g q : Nat} (h : OwnedByFrame P f q)
+    (h' : OwnedByFrame P g q) : f = g := by
+  induction h with
+  | @frame q pl hpl ho =>
+    cases h' with
+    | frame hpl' ho' => rw [hpl] at hpl'; cases hpl'; rw [ho] at ho'; cases ho'; rfl
+    | place hpl' ho' _ => rw [hpl] at hpl'; cases hpl'; rw [ho] at ho'; cases ho'
+  | @place q o pl hpl ho _ ih =>
+    cases h' with
+    | frame hpl' ho' => rw [hpl] at hpl'; cases hpl'; rw [ho] at ho'; cases ho'
+    | place hpl' ho' h'' => rw [hpl] at hpl'; cases hpl'; rw [ho] at ho'; cases ho'; exact ih h''
+
+/-- `static_pinned_never_exits` (C5): under `StaticPinnedBottom`, no frame exit meets a statically
+pinned leaf: a place that stops being usable at the exit covers no leaf of `K.Pinned`. -/
+theorem static_pinned_never_exits {k : K} {s : S3} {f : Nat} {F₀ : Frames} (hwf : WF3 s)
+    (hsp : StaticPinnedBottom k s) (hF : s.F = f :: F₀) (hne : F₀ ≠ []) :
+    ∀ q, s.Usable q → ¬ ({ s with F := F₀ } : S3).Usable q →
+      ∀ l ∈ footprint s.P q, ¬ k.Pinned l := by
+  intro q hq hq' l hl hpin
+  have hof := exit_owned_of_usable hF hq hq'
+  obtain ⟨q', hl', hob⟩ := hsp l hpin
+  obtain ⟨-, -, hlq⟩ := mem_footprint.1 hl
+  obtain ⟨-, -, hlq'⟩ := mem_footprint.1 hl'
+  obtain ⟨pl, pq, hpl, hpq, e⟩ := hwf.ownerOf hlq
+  obtain ⟨pl', pq', hpl', hpq', e'⟩ := hwf.ownerOf hlq'
+  rw [hpl] at hpl'; cases hpl'
+  have hfb := (hof.of_owner hpq hpl e).unique (hob.of_owner hpq' hpl e')
+  obtain ⟨g, F₁, rfl⟩ : ∃ g F₁, F₀ = g :: F₁ := by
+    cases F₀ with
+    | nil => exact absurd rfl hne
+    | cons g F₁ => exact ⟨g, F₁, rfl⟩
+  rw [hF, List.getLastD_cons, List.getLastD_cons] at hfb
+  have hnd := (List.nodup_cons.1 (hF ▸ hwf.nodup)).1
+  exact hnd (by rw [hfb]; exact List.getLastD_mem_cons)
 
 /-- An active authority after `endUse p` (A6): active before, not held within `p`, with a holder
 live after `endUseS`. -/
@@ -6588,9 +6638,9 @@ local is unpinned first. -/
 example : ExitStep K0 (pinEff c13a 0 true) .reject := .reject (by decide)
 example : EndUseStep K0 0 (pinEff c13a 0 true) .reject := .reject (by decide)
 
-/-- A callee without parameter cannot release a root held by its caller's frame (B3): the root is
-not exercisable by the callee (pass 2: accepted). The caller releases its own access. For a root
-held by a place of the caller, see `rq1` and the report, (e) 8. -/
+/-- A callee without parameter cannot release a root held by its caller's frame (B3; C4: a root is
+never released) (pass 2: accepted). The caller releases its own derived access. For a root held
+by a place of the caller, see `rq1`. -/
 example : ReleaseStep 0 (enterEff c13a [] [(none, none, 0)]) .reject := .reject (by decide)
 example : ReleaseStep 2 (deriveEff c13a 0 0 .observe)
     (.ok (releaseEff (deriveEff c13a 0 0 .observe) 2)) := .ok (by decide)
@@ -6970,7 +7020,7 @@ example : UnpinStep KD0 0 (pinEff c13a 0 true) (.ok (pinEff (pinEff c13a 0 true)
 example : ExitStep KD0 (pinEff (pinEff c13a 0 true) 0 false)
     (.ok (exitEff (pinEff (pinEff c13a 0 true) 0 false))) := .ok (by decide)
 
-/-- `release` by the callee of a root of the caller (expected: reject, B3). -/
+/-- `release` by the callee of a root of the caller (expected: reject, B3; C4). -/
 example : ReleaseStep 0 (enterEff c13a [] [(none, none, 0)]) .reject := .reject (by decide)
 
 /-- `depend` on a place of the caller without right (expected: reject, B3): in the callee of case 8,
@@ -7055,15 +7105,16 @@ example : TransferStep K0 2 1 c8d (.ok c8e) ∧ c8e.Usable 1 ∧ 2 ∈ c8e.D 1 �
   ⟨.ok (by decide), by decide, by decide, by decide, by decide, by decide, by decide, by decide,
     anchorOrder_iff.2 (by decide)⟩
 
-/-- Mode requested by `release` (report, (e) 8): B3 accepts an authority exercisable by the current
-frame, at some mode. A callee that only observes the caller's value 0 releases the `Modify` root 1
-of the storage owned by 0; after the return, the caller can neither write nor free its storage.
-Frame 1: 0 value, 1 storage owned by 0. -/
+/-- Mode requested by `release` (pass-3 report, (e) 8): B3 accepted an authority exercisable by
+the current frame, at some mode. A callee that only observes the caller's value 0 released the
+`Modify` root 1 of the storage owned by 0; after the return, the caller could neither write nor
+free its storage. C4 rejects that `release`: authority 1 has no origin. The facts on
+`releaseEff rq1 1` describe the state pass 3 reached. Frame 1: 0 value, 1 storage owned by 0. -/
 abbrev KR : K := KT [] [] [] [1] [(1, 7)]
 def rq0 : S3 := write3Eff (write3Eff (enter1 [(none, none, 0), (none, some 0, 0)]) [0]) [1]
 def rq1 : S3 := enterEff (deriveEff rq0 0 0 .observe) [2] []
 example : rq1.ExercisableAt 1 .observe ∧ ¬ rq1.ExercisableAt 1 .modify ∧ ¬ HasRight rq1 .modify 0 ∧
-    ReleaseStep 1 rq1 (.ok (releaseEff rq1 1)) := ⟨by decide, by decide, by decide, .ok (by decide)⟩
+    ReleaseStep 1 rq1 .reject := ⟨by decide, by decide, by decide, .reject (by decide)⟩
 example : ExitStep K0 (releaseEff rq1 1) (.ok (exitEff (releaseEff rq1 1))) := .ok (by decide)
 example : Write3Step 1 [1] rq0 (.ok (write3Eff rq0 [1])) := .ok (by decide)
 example : FreeStep KR 1 7 rq0 (.ok (freeEff rq0 1)) := .ok (by decide)
@@ -7081,14 +7132,14 @@ example : mv1.I 1 = .moved ∧ Read3Step 1 [1] mv1 .reject := ⟨by decide, .rej
 example : AllocStep K0 1 0 8 mv1 (.ok (allocEff mv1 0)) := .ok (by decide) trivial
 example : AllocStep K0 1 0 8 mv0 (.ok (allocEff mv0 0)) := .ok (by decide) trivial
 
-/-- `endUse` and the end of external obligations (report, (e) 9): A8 lets `endUse` end a pinned
-leaf under `ExternalDone`, while B6 reserves the end of external obligations to `unpin`. The
-storage 2 of `n6a`, pinned, is rejected by `free`, but its owner ends, and the storage dies with
-its pin set; the exit then accepts it. -/
+/-- `endUse` and the end of external obligations (pass-3 report, (e) 9): A8 let `endUse` end a
+pinned leaf under `ExternalDone`, while B6 reserves the end of external obligations to `unpin`.
+The storage 2 of `n6a`, pinned, is rejected by `free`; C5 now rejects the end of its owner too.
+The facts on `endUseEff (pinEff n6a 2 true) 0` describe the state pass 3 reached: the storage
+died with its pin set, and the exit accepted it. -/
 abbrev KE : K := KT [] [] [2] [2] [(2, 7)]
 example : FreeStep KE 2 7 (pinEff n6a 2 true) .reject := .reject (by decide)
-example : EndUseStep KE 0 (pinEff n6a 2 true) (.ok (endUseEff (pinEff n6a 2 true) 0)) :=
-  .ok (by decide)
+example : EndUseStep KE 0 (pinEff n6a 2 true) .reject := .reject (by decide)
 example : (endUseEff (pinEff n6a 2 true) 0).pin 2 = true ∧
     (endUseEff (pinEff n6a 2 true) 0).dead 2 = true := by decide
 example : ExitStep KE (endUseEff (pinEff n6a 2 true) 0)
