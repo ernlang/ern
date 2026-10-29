@@ -5903,6 +5903,27 @@ example : EndUseStep KA 4 c16d (.ok (endUseEff c16d 4)) := .ok (by decide)
 example : ResetStep KA c16c.2 0 (endUseEff c16d 4) (.ok (resetEff (endUseEff c16d 4) c16c.2)) :=
   .ok (by decide)
 
+/-- `exitFrame_no_dangling` on the exit of case 16 (MM-03.3 §7): `WF3` holds before the exit, from
+the reached state `c16b`, the arena invariant, and the preservation by `issue` and `transfer`. -/
+example : ∀ q, OwnedByFrame (transferEff c16c.1 5 4).P 2 q → ∀ (j : Nat) (y : Authority),
+    c16d.A[j]? = some y → y.active = true →
+    ∀ l ∈ footprint (transferEff c16c.1 5 4).P q, l ∉ y.footprint := by
+  have r0 : Reachable KA c16a := .enter .init (.ok (by decide))
+  have r1 : Reachable KA c16b :=
+    .enter (.derive (.derive r0 (.ok (by decide))) (.ok (by decide))) (.ok (by decide))
+  obtain ⟨hw, hi⟩ := reachable_access_invariant_underDD (KT_dd [0] [] [] [] []) r1
+  have hai : ArenaInv c16b ar16 :=
+    ⟨(by decide), (by decide), (by decide), (by decide), fun _ h => (nomatch h), (by decide),
+      ⟨_, _, rfl, rfl, rfl, rfl, rfl⟩,
+      fun _ => by rw [show c16b.afp ar16.internal = footprint c16b.P ar16.storage by decide]⟩
+  obtain ⟨hw1, hi1, -⟩ := arena_issue_preserves_disjointness hw hi hai
+    (show IssueStep KA ar16 3 [2] 5 c16b (.ok c16c.1 c16c.2) from
+      .ok (by decide) (by decide) (by decide))
+  obtain ⟨hw2, -⟩ := transfer_preserves hw1 hi1
+    (show TransferStep KA 5 4 c16c.1 (.ok (transferEff c16c.1 5 4)) from .ok (by decide))
+  exact exitFrame_no_dangling hw2 (show (transferEff c16c.1 5 4).F = 2 :: [1, 0] by decide)
+    (show ExitStep KA (transferEff c16c.1 5 4) (.ok c16d) from .ok (by decide))
+
 /-! ### Case 17: return of a value anchored on a local place of the callee (expected: reject) -/
 
 def c17a : S3 := write3Eff (enterEff (deriveEff (enter1 [(none, none, 0)]) 0 0 .modify) [1]
@@ -6033,8 +6054,9 @@ local is unpinned first. -/
 example : ExitStep K0 (pinEff c13a 0 true) .reject := .reject (by decide)
 example : EndUseStep K0 0 (pinEff c13a 0 true) .reject := .reject (by decide)
 
-/-- A callee cannot release a root authority of its caller (B3): the root is held by the caller
-and not exercisable by the callee (pass 2: accepted). The caller releases its own access. -/
+/-- A callee without parameter cannot release a root held by its caller's frame (B3): the root is
+not exercisable by the callee (pass 2: accepted). The caller releases its own access. For a root
+held by a place of the caller, see `rq1` and the report, (e) 8. -/
 example : ReleaseStep 0 (enterEff c13a [] [(none, none, 0)]) .reject := .reject (by decide)
 example : ReleaseStep 2 (deriveEff c13a 0 0 .observe)
     (.ok (releaseEff (deriveEff c13a 0 0 .observe) 2)) := .ok (by decide)
