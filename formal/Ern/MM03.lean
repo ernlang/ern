@@ -2049,4 +2049,191 @@ theorem arena_reset_preserves {k : K} {s s' : S3} {ar ar' : Arena} (hai : ArenaI
   exact ⟨rfl, fun l hl => hl, fun _ he => (by cases he), List.Pairwise.nil,
     fun _ he => (by cases he), fun _ he => (by cases he)⟩
 
+/-! ## Cas d'épreuve (MM-03.3 §11)
+
+Chaque verdict est obtenu par `decide` sur la précondition de l'opération en cause. Les états
+sont construits par les effets des opérations à partir de `S3.init`. Le classement de chaque cas
+(noyau, abstraction avec `K` instancié, hors noyau) est donné dans le rapport. -/
+
+/-- Contrats vides : aucune déclaration, aucune mutation partagée, aucun épinglage, aucune
+invalidation. -/
+def K0 : K := ⟨fun _ _ => False, fun _ => False, fun _ => False, fun _ _ => False⟩
+instance : ∀ r r', Decidable (K0.DeclaredDisjoint r r') := fun _ _ => instDecidableFalse
+instance : DecidablePred K0.Pinned := fun _ => instDecidableFalse
+
+/-- Contrats de l'arène : métadonnées (feuille 0) en mutation partagée ; `reset` de l'arène
+d'ancre `r` invalide l'ancre `r`. -/
+def KA : K := ⟨fun _ _ => False, fun l => l = 0, fun _ => False, fun r x => x = r⟩
+instance : DecidablePred KA.SharedMutable := fun l => inferInstanceAs (Decidable (l = 0))
+instance : DecidablePred KA.Pinned := fun _ => instDecidableFalse
+instance : ∀ r x, Decidable (KA.Invalidates r x) := fun r x => inferInstanceAs (Decidable (x = r))
+
+/-- Contrats d'épinglage : la feuille 0 est épinglée. -/
+def KP : K := ⟨fun _ _ => False, fun _ => False, fun l => l = 0, fun _ _ => False⟩
+instance : DecidablePred KP.Pinned := fun l => inferInstanceAs (Decidable (l = 0))
+
+/-! ### Cas 1 : deux observations d'une même feuille (attendu : autorisé) -/
+
+def c1a : S3 := enterEff S3.init [(none, 0)]
+def c1b : S3 := write3Eff c1a [0]
+def c1c : S3 := deriveEff c1b 0 0 .observe
+def c1d : S3 := deriveEff c1c 0 0 .observe
+example : EnterStep [(none, 0)] S3.init (.ok c1a) := .ok (by decide)
+example : Write3Step 0 [0] c1a (.ok c1b) := .ok (by decide)
+example : DeriveStep 0 0 .observe c1b (.ok c1c) := .ok (by decide)
+example : DeriveStep 0 0 .observe c1c (.ok c1d) := .ok (by decide)
+example : Read3Step 1 [0] c1d (.ok c1d) ∧ Read3Step 2 [0] c1d (.ok c1d) :=
+  ⟨.ok (by decide), .ok (by decide)⟩
+
+/-! ### Cas 2 : observation et modification incompatibles (attendu : rejet) -/
+
+example : DeriveStep 0 0 .modify c1c .reject := .reject (by decide)
+example : Write3Step 0 [0] c1c .reject := .reject (by decide)
+
+/-! ### Cas 3 : deux champs réellement disjoints (attendu : modifications autorisées) -/
+
+def c3a : S3 := enterEff S3.init [(none, 0), (some 0, 0), (some 0, 0)]
+def c3b : S3 := deriveEff c3a 0 1 .modify
+def c3c : S3 := deriveEff c3b 0 2 .modify
+example : DeriveStep 0 1 .modify c3a (.ok c3b) := .ok (by decide)
+example : DeriveStep 0 2 .modify c3b (.ok c3c) := .ok (by decide)
+example : Write3Step 1 [1] c3c (.ok (write3Eff c3c [1])) := .ok (by decide)
+example : Write3Step 2 [2] (write3Eff c3c [1]) (.ok (write3Eff (write3Eff c3c [1]) [2])) :=
+  .ok (by decide)
+
+/-! ### Cas 4 : observation d'un élément et modification invalidante du conteneur
+(attendu : rejet). Le conteneur est l'emplacement 0, ses éléments 1 et 2 en sont des parties
+(arbitrage 3) ; la modification invalidante est une écriture de toute son empreinte. -/
+
+def c4b : S3 := deriveEff c3a 0 1 .observe
+example : DeriveStep 0 1 .observe c3a (.ok c4b) := .ok (by decide)
+example : Write3Step 0 [1, 2] c4b .reject := .reject (by decide)
+example : Write3Step 0 [1, 2] c3a (.ok (write3Eff c3a [1, 2])) := .ok (by decide)
+
+/-! ### Cas 5 : séparation d'une région en deux parties (attendu : autorités indépendantes) -/
+
+def c5b : S3 := splitEff c3a 0 [[1], [2]]
+example : SplitStep K0 0 [[1], [2]] c3a (.ok c5b) := .ok (by decide)
+example : Write3Step 1 [1] c5b (.ok (write3Eff c5b [1])) := .ok (by decide)
+example : Write3Step 2 [2] c5b (.ok (write3Eff c5b [2])) := .ok (by decide)
+example : effective c5b 0 1 = none ∧ effective c5b 0 2 = none := by decide
+example : I1b c5b := by decide
+/-- Après un `split` partiel, l'origine garde le mode effectif `Modify` sur la partie non
+distribuée (MM-03.3.5). -/
+example : effective (splitEff c3a 0 [[1]]) 0 2 = some .modify ∧
+    effective (splitEff c3a 0 [[1]]) 0 1 = none := by decide
+
+/-! ### Cas 6 : deux émissions successives depuis une arène (attendu : autorisées) -/
+
+/-- Emplacements : 0 métadonnées de l'arène, 1 stockage administré de feuilles 2 et 3, 4 et 5
+destinations des blocs. Autorités racines : 0 (ancre), 1 (`internal`), 2, 3. -/
+def c6a : S3 := enterEff S3.init [(none, 0), (none, 0), (some 1, 0), (some 1, 0), (none, 0), (none, 0)]
+def ar6 : Arena := ⟨0, [2, 3], [2, 3], [], 1⟩
+def c6b : S3 × Arena := issueEff c6a ar6 0 [2] 4
+example : IssueStep KA ar6 0 [2] 4 c6a (.ok c6b) := .ok (by decide)
+example : IssueStep KA c6b.2 0 [3] 5 c6b.1 (.ok (issueEff c6b.1 c6b.2 0 [3] 5)) := .ok (by decide)
+example : IssueStep KA c6b.2 0 [2] 5 c6b.1 .reject := .reject (by decide)
+
+/-! ### Cas 7 : `arena.reset()` avec dépendant encore utilisable (attendu : rejet) -/
+
+example : ResetStep KA c6b.2 c6b.1 .reject := .reject (by decide)
+def c7a : S3 := releaseEff c6b.1 4
+example : ReleaseStep 4 c6b.1 (.ok c7a) := .ok (by decide)
+example : ResetStep KA c6b.2 c7a .reject := .reject (by decide)
+
+/-! ### Cas 8 : retour d'un buffer dépendant d'un paramètre de l'appelant (attendu : autorisé
+sous contrat). Appelant : 0 donnée, 1 destination. Appelé : 2 valeur ; paramètre `let` dérivé
+de l'autorité 0 de l'appelant (arbitrage 1). -/
+
+def c8a : S3 := enterEff (enterEff S3.init [(none, 0), (none, 0)]) [(none, 0)]
+def c8b : S3 := deriveEff c8a 0 0 .observe
+def c8c : S3 := write3Eff c8b [2]
+def c8d : S3 := dependEff c8c 2 3
+def c8e : S3 := transferEff c8d 2 1 []
+example : EnterStep [(none, 0)] (enterEff S3.init [(none, 0), (none, 0)]) (.ok c8a) := .ok (by decide)
+example : DeriveStep 0 0 .observe c8a (.ok c8b) := .ok (by decide)
+example : Write3Step 2 [2] c8b (.ok c8c) := .ok (by decide)
+example : DependStep 2 3 c8c (.ok c8d) := .ok (by decide)
+example : TransferStep K0 2 1 [] c8d (.ok c8e) := .ok (by decide)
+example : ExitStep c8e (.ok (exitEff c8e)) := .ok (by decide)
+example : (exitEff c8e).D 1 = [0] ∧ effective (exitEff c8e) 0 0 = some .modify := by decide
+
+/-! ### Cas 9 : capture temporaire d'un accès par une valeur non échappante (attendu :
+autorisée). La valeur en 1 dépend de l'accès 2 à la donnée 0, dans le même cadre. -/
+
+def c9a : S3 := enterEff S3.init [(none, 0), (none, 0)]
+def c9b : S3 := deriveEff c9a 0 0 .observe
+def c9c : S3 := write3Eff c9b [1]
+example : DeriveStep 0 0 .observe c9a (.ok c9b) := .ok (by decide)
+example : Write3Step 1 [1] c9b (.ok c9c) := .ok (by decide)
+example : DependStep 1 2 c9c (.ok (dependEff c9c 1 2)) := .ok (by decide)
+/-- Tant que la valeur est utilisable, l'accès capturé ne peut pas être restitué (O3.3). -/
+example : ReleaseStep 2 (dependEff c9c 1 2) .reject := .reject (by decide)
+
+/-! ### Cas 10 : capture d'un accès local dans une valeur échappante (attendu : rejet).
+Appelant : 0 destination. Appelé : 1 local, 2 valeur capturant l'accès 3 dérivé du local. -/
+
+def c10a : S3 := enterEff (enterEff S3.init [(none, 0)]) [(none, 0), (none, 0)]
+def c10b : S3 := write3Eff (deriveEff c10a 1 1 .observe) [2]
+def c10c : S3 := transferEff (dependEff c10b 2 3) 2 0 []
+example : DeriveStep 1 1 .observe c10a (.ok (deriveEff c10a 1 1 .observe)) := .ok (by decide)
+example : Write3Step 2 [2] (deriveEff c10a 1 1 .observe) (.ok c10b) := .ok (by decide)
+example : DependStep 2 3 c10b (.ok (dependEff c10b 2 3)) := .ok (by decide)
+example : TransferStep K0 2 0 [] (dependEff c10b 2 3) (.ok c10c) := .ok (by decide)
+example : ExitStep c10c .reject := .reject (by decide)
+
+/-! ### Cas 11 : transfert invalidant une projection active (attendu : rejet) -/
+
+def c11a : S3 := write3Eff (enterEff S3.init [(none, 0), (some 0, 0), (some 0, 0), (none, 0)]) [1, 2]
+def c11b : S3 := deriveEff c11a 0 1 .observe
+example : DeriveStep 0 1 .observe c11a (.ok c11b) := .ok (by decide)
+example : TransferStep K0 0 3 [] c11b .reject := .reject (by decide)
+example : TransferStep K0 0 3 [] c11a (.ok (transferEff c11a 0 3 [])) := .ok (by decide)
+
+/-! ### Cas 13 : stockage épinglé (attendu : déplacement physique interdit) -/
+
+def c13a : S3 := write3Eff (enterEff S3.init [(none, 0), (none, 0)]) [0]
+example : TransferStep KP 0 1 [] c13a .reject := .reject (by decide)
+example : TransferStep K0 0 1 [] c13a (.ok (transferEff c13a 0 1 [])) := .ok (by decide)
+
+/-! ### Cas 15 : deux colonnes SoA disjointes (attendu : modifications indépendantes) -/
+
+def c15a : S3 := enterEff S3.init
+  [(none, 0), (some 0, 0), (some 0, 0), (some 1, 0), (some 1, 0), (some 2, 0), (some 2, 0)]
+def c15b : S3 := deriveEff (deriveEff c15a 0 1 .modify) 0 2 .modify
+example : DeriveStep 0 1 .modify c15a (.ok (deriveEff c15a 0 1 .modify)) := .ok (by decide)
+example : DeriveStep 0 2 .modify (deriveEff c15a 0 1 .modify) (.ok c15b) := .ok (by decide)
+example : Write3Step 1 [3, 4] c15b (.ok (write3Eff c15b [3, 4])) := .ok (by decide)
+example : Write3Step 2 [5, 6] (write3Eff c15b [3, 4])
+    (.ok (write3Eff (write3Eff c15b [3, 4]) [5, 6])) := .ok (by decide)
+
+/-! ### Cas 16 : retour d'un buffer dépendant de l'arène de l'appelant (attendu : `ok`).
+Appelant : 0 métadonnées, 1 stockage (feuilles 2, 3), 4 destination. Appelé : 5 bloc reçu ;
+paramètre `let` 4 dérivé de l'ancre 0. -/
+
+def c16a : S3 := enterEff (enterEff S3.init
+  [(none, 0), (none, 0), (some 1, 0), (some 1, 0), (none, 0)]) [(none, 0)]
+def ar16 : Arena := ⟨0, [2, 3], [2, 3], [], 1⟩
+def c16b : S3 := deriveEff c16a 0 0 .observe
+def c16c : S3 × Arena := issueEff c16b ar16 4 [2] 5
+def c16d : S3 := transferEff c16c.1 5 4 [5]
+def c16e : S3 := exitEff c16d
+example : DeriveStep 0 0 .observe c16a (.ok c16b) := .ok (by decide)
+example : IssueStep KA ar16 4 [2] 5 c16b (.ok c16c) := .ok (by decide)
+example : TransferStep KA 5 4 [5] c16c.1 (.ok c16d) := .ok (by decide)
+example : ExitStep c16d (.ok c16e) := .ok (by decide)
+example : c16e.D 4 = [0] ∧ c16e.Active 5 ∧ c16e.frameOf 5 = some 1 := by decide
+/-- Après le retour, le buffer reste utilisable dans l'appelant : `reset` est refusé, même
+après restitution de l'autorité du bloc. -/
+example : ResetStep KA c16c.2 c16e .reject := .reject (by decide)
+example : ReleaseStep 5 c16e (.ok (releaseEff c16e 5)) := .ok (by decide)
+example : ResetStep KA c16c.2 (releaseEff c16e 5) .reject := .reject (by decide)
+
+/-! ### Cas 17 : retour d'une valeur ancrée sur un emplacement local de l'appelé (attendu :
+rejet). Appelant : 0 destination. Appelé : 1 local, 2 valeur ancrée sur l'autorité racine 1. -/
+
+def c17a : S3 := write3Eff (enterEff (enterEff S3.init [(none, 0)]) [(none, 0), (none, 0)]) [2]
+example : DependStep 2 1 c17a (.ok (dependEff c17a 2 1)) := .ok (by decide)
+example : TransferStep K0 2 0 [] (dependEff c17a 2 1) .reject := .reject (by decide)
+
 end Ern.MM03
