@@ -1,0 +1,5 @@
+supprime toutes ls branch inutiles qui sont presentes sur le repo
+
+---
+
+il y a encore 2 branches inutiles
