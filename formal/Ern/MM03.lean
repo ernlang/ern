@@ -968,6 +968,31 @@ theorem inv3_not_inductive :
   have := h 0 1 0 .modify .observe (by decide) (by decide) (by decide)
   simp [Compat] at this
 
+/-- `enterFrame` (MM-03.3 §4, O6) ne préserve pas `Inv3` seul : dans un état admissible où une
+autorité couvre une feuille encore inexistante, la nouvelle racine la couvre aussi. -/
+theorem enter_not_inv3_preserving :
+    let s : S3 := ⟨[0], 1, [], fun _ => .uninit, [⟨.modify, none, [0], 0, true⟩], fun _ => []⟩
+    Inv3 s ∧ EnterStep [(none, 0)] s (.ok (enterEff s [(none, 0)])) ∧
+      ¬ I1 (enterEff s [(none, 0)]) := by
+  refine ⟨⟨i1_of_i1b (by decide), i2_of_i2b (by decide), fun q hq => ?_, i4_always _⟩,
+    .ok (by decide), fun h => ?_⟩
+  · obtain ⟨f, hf, -⟩ := hq; simp [placeFrame] at hf
+  · have := h 0 1 0 .modify .modify (by decide) (by decide) (by decide)
+    simp [Compat] at this
+
+/-- `exitFrame` (MM-03.3 §4, O7) ne préserve pas `Inv3` seul : deux racines `Modify` non
+apparentées, chacune suspendue par un descendant `Observe` détenu par le cadre sortant ; la
+sortie restitue les deux descendants. -/
+theorem exit_not_inv3_preserving :
+    let s : S3 := ⟨[1, 0], 2, [⟨none, 0, 0⟩], fun _ => .uninit,
+      [⟨.modify, none, [0], 0, true⟩, ⟨.modify, none, [0], 0, true⟩,
+       ⟨.observe, some 0, [0], 1, true⟩, ⟨.observe, some 1, [0], 1, true⟩], fun _ => []⟩
+    Inv3 s ∧ ExitStep s (.ok (exitEff s)) ∧ ¬ I1 (exitEff s) := by
+  refine ⟨⟨i1_of_i1b (by decide), i2_of_i2b (by decide), fun _ _ x hx => by simp at hx,
+    i4_always _⟩, .ok (by decide), fun h => ?_⟩
+  have := h 0 1 0 .modify .modify (by decide) (by decide) (by decide)
+  simp [Compat] at this
+
 /-! ## Ajout d'une autorité -/
 
 theorem filterMap_congr' {α β : Type} {f g : α → Option β} :
@@ -2063,8 +2088,8 @@ administré ; deux régions émises simultanément valides (autorités actives) 
 régions disponibles disjointes des régions encore distribuées. La clause 4 (accès distribués
 dépendants de l'ancre de l'arène) n'est pas représentée : l'état ne relie pas une autorité à la
 valeur qui la contient. La clause suivante, propre à l'abstraction, relie chaque émission à son
-autorité dérivée de `internal`. Les dernières clauses traduisent l'arbitrage 3 : `internal` est
-une autorité racine distincte de l'ancre, le stockage administré est sous `internal`, et
+autorité dérivée de `internal`. Les dernières clauses traduisent l'arbitrage 3 : `internal` et
+l'ancre sont deux autorités racines distinctes, le stockage administré est sous `internal`, et
 l'empreinte de la valeur `arena` (celle de l'ancre) ne contient pas ce stockage. -/
 def ArenaInv (s : S3) (ar : Arena) : Prop :=
   (∀ l ∈ ar.available, l ∈ ar.storage) ∧
@@ -2073,7 +2098,7 @@ def ArenaInv (s : S3) (ar : Arena) : Prop :=
   (∀ e ∈ ar.issued, s.Active e.2 → ∀ l ∈ e.1, l ∉ ar.available) ∧
   (∀ e ∈ ar.issued, ∃ y, s.A[e.2]? = some y ∧ y.origin = some ar.internal ∧
     y.footprint = e.1 ∧ y.mode = .modify) ∧
-  s.org ar.internal = none ∧ ar.internal ≠ ar.anchor ∧
+  s.org ar.internal = none ∧ s.org ar.anchor = none ∧ ar.internal ≠ ar.anchor ∧
   (∀ l ∈ ar.storage, l ∈ s.afp ar.internal) ∧ (∀ l ∈ ar.storage, l ∉ s.afp ar.anchor)
 
 /-- Préconditions de `arena.issue(region)` (MM-03.3 §6), dans l'ordre : la région est disponible ;
@@ -2114,10 +2139,13 @@ def IssueStep (k : K) (ar : Arena) (via : Nat) (region : List Nat) (dst : Nat) (
 
 /-- Préconditions de `arena.reset()` (MM-03.3 §6 ; I3) : aucune autorité émise encore active ;
 aucune valeur encore utilisable n'a une ancre que la réinitialisation invalide (`Invalidates`,
-MM-03.3.8). Aucune condition d'exclusivité (arbitrage 3). -/
+MM-03.3.8) ; aucune autorité active ne dérive de `internal` (§6 : « une région encore
+effectivement utilisée ne peut être invalidée par `reset` »), ce qui couvre les dérivées d'une
+émission rattachées à `internal` par `exitFrame`. Aucune condition d'exclusivité (arbitrage 3). -/
 def ResetPre (k : K) (s : S3) (ar : Arena) : Prop :=
   (∀ e ∈ ar.issued, ¬ s.Active e.2) ∧
-  (∀ q ∈ List.range s.P.length, s.Usable q → ∀ x ∈ s.D q, ¬ k.Invalidates s ar.anchor x)
+  (∀ q ∈ List.range s.P.length, s.Usable q → ∀ x ∈ s.D q, ¬ k.Invalidates s ar.anchor x) ∧
+  (∀ j ∈ List.range s.A.length, ar.internal ∈ s.ancs j → ¬ s.Active j)
 
 instance (k : K) [∀ s r x, Decidable (k.Invalidates s r x)] (s : S3) (ar : Arena) :
     Decidable (ResetPre k s ar) := by
@@ -2199,7 +2227,7 @@ theorem arena_issue_preserves_disjointness {k : K} {s s' : S3} {ar ar' : Arena} 
         · simp at hy; subst hy; exact active_addAuth hvia
       · exact hinv₁.2.2.1 q hq y hy
   have hdis := arena_issue_disjoint_of_authority hwf hai h4
-  obtain ⟨c0, c1, c2, c3, c4, a1, a2, a3, a4⟩ := hai
+  obtain ⟨c0, c1, c2, c3, c4, a1, a1', a2, a3, a4⟩ := hai
   have old : ∀ e ∈ ar.issued, e.2 < s.A.length := fun e he => by
     obtain ⟨y, hy, -⟩ := c4 e he; exact lt_of_getElem? hy
   have hanc : ar.anchor < s.A.length := by
@@ -2208,7 +2236,8 @@ theorem arena_issue_preserves_disjointness {k : K} {s s' : S3} {ar ar' : Arena} 
     · omega
     · have := chain_lt e; omega
   refine ⟨hwf', hinv', fun l hl => ?_, fun e he l hl => ?_, ?_, fun e he ha l hl => ?_,
-    fun e he => ?_, (org_addAuth_lt hs).trans a1, a2, fun l hl => ?_, fun l hl => ?_⟩
+    fun e he => ?_, (org_addAuth_lt hs).trans a1, (org_addAuth_lt hanc).trans a1', a2,
+    fun l hl => ?_, fun l hl => ?_⟩
   · exact c0 l (List.mem_filter.1 hl).1
   · rcases List.mem_cons.1 he with rfl | he
     · exact c0 l (h1 l hl)
@@ -2249,18 +2278,29 @@ theorem arena_reset_rejects_live_issued {k : K} {s : S3} {ar : Arena} {e : List 
     (he : e ∈ ar.issued) (ha : s.Active e.2) : ResetStep k ar s .reject :=
   .reject fun h => h.1 e he ha
 
-/-- Obligation de `Invalidates` pour l'arène (MM-03.3.8, arbitrage 3) : `reset` invalide
-l'ancre de l'arène et toute autorité qui en dérive. -/
+/-- Une autorité active dérivée de `internal` rend `reset` refusé (MM-03.3 §6). Aucune hypothèse
+sur `K`. -/
+theorem arena_reset_rejects_live_storage_access {k : K} {s : S3} {ar : Arena} {j : Nat}
+    (hj : ar.internal ∈ s.ancs j) (ha : s.Active j) : ResetStep k ar s .reject := by
+  refine .reject fun h => h.2.2 j ?_ hj ha
+  obtain ⟨y, hy, -⟩ := ha; exact List.mem_range.2 (lt_of_getElem? hy)
+
+/-- Obligation de `Invalidates` pour l'arène (MM-03.3.8, arbitrage 3) : `reset` invalide l'ancre
+de l'arène, `internal`, et toute autorité qui dérive de l'une ou de l'autre (les émissions
+dérivent de `internal`). -/
 def ArenaResetContract (k : K) (s : S3) (ar : Arena) : Prop :=
-  ∀ x, (x = ar.anchor ∨ ar.anchor ∈ s.ancs x) → k.Invalidates s ar.anchor x
+  ∀ x, (x = ar.anchor ∨ ar.anchor ∈ s.ancs x ∨ x = ar.internal ∨ ar.internal ∈ s.ancs x) →
+    k.Invalidates s ar.anchor x
 
 /-- `arena_reset_rejects_live_dependents` (MM-03.3 §6, I3, §10), conditionné à l'obligation
 `ArenaResetContract` de `Invalidates` (MM-03.3.8) : si une valeur encore utilisable est ancrée
-sur l'arène ou sur une autorité qui en dérive, `reset` est refusé. -/
+sur l'arène, sur `internal`, ou sur une autorité qui dérive de l'une d'elles, `reset` est
+refusé. -/
 theorem arena_reset_rejects_live_dependents_underInv {k : K} {s : S3} {ar : Arena}
     (hk : ArenaResetContract k s ar) {q x : Nat} (hq : s.Usable q) (hx : x ∈ s.D q)
-    (hxa : x = ar.anchor ∨ ar.anchor ∈ s.ancs x) : ResetStep k ar s .reject := by
-  refine .reject fun h => h.2 q ?_ hq x hx (hk x hxa)
+    (hxa : x = ar.anchor ∨ ar.anchor ∈ s.ancs x ∨ x = ar.internal ∨ ar.internal ∈ s.ancs x) :
+    ResetStep k ar s .reject := by
+  refine .reject fun h => h.2.1 q ?_ hq x hx (hk x hxa)
   obtain ⟨f, hf, -⟩ := hq; simp [placeFrame] at hf
   obtain ⟨pl, hpl, -⟩ := hf; exact List.mem_range.2 (lt_of_getElem? hpl)
 
@@ -2271,9 +2311,9 @@ theorem arena_reset_preserves {k : K} {s s' : S3} {ar ar' : Arena} (hai : ArenaI
   obtain ⟨-, e⟩ := reset_ok_iff.1 h
   have e1 := congrArg Prod.fst e; have e2 := congrArg Prod.snd e
   simp only [resetEff] at e1 e2; subst e1 e2
-  obtain ⟨-, -, -, -, -, a1, a2, a3, a4⟩ := hai
+  obtain ⟨-, -, -, -, -, a1, a1', a2, a3, a4⟩ := hai
   exact ⟨rfl, fun l hl => hl, fun _ he => (by cases he), List.Pairwise.nil,
-    fun _ he => (by cases he), fun _ he => (by cases he), a1, a2, a3, a4⟩
+    fun _ he => (by cases he), fun _ he => (by cases he), a1, a1', a2, a3, a4⟩
 
 /-! ## Cas d'épreuve (MM-03.3 §11)
 
@@ -2287,16 +2327,20 @@ def K0 : K := ⟨fun _ _ => False, fun _ => False, fun _ => False, fun _ _ _ => 
 instance : ∀ r r', Decidable (K0.DeclaredDisjoint r r') := fun _ _ => instDecidableFalse
 instance : DecidablePred K0.Pinned := fun _ => instDecidableFalse
 
-/-- Contrats de l'arène : métadonnées (feuille 0) en mutation partagée ; `reset` de l'arène
-d'ancre `r` invalide `r` et toute autorité qui en dérive. -/
-def KA : K := ⟨fun _ _ => False, fun l => l = 0, fun _ => False, fun s r x => x = r ∨ r ∈ s.ancs x⟩
+/-- Contrats des arènes des cas 6, 7 et 16, dont `internal` est l'autorité 1 : métadonnées
+(feuille 0) en mutation partagée ; `reset` de l'arène d'ancre `r` invalide `r`, l'autorité 1 et
+toute autorité qui dérive de l'une ou de l'autre. -/
+def KA : K := ⟨fun _ _ => False, fun l => l = 0, fun _ => False,
+  fun s r x => x = r ∨ r ∈ s.ancs x ∨ x = 1 ∨ 1 ∈ s.ancs x⟩
 instance : DecidablePred KA.SharedMutable := fun l => inferInstanceAs (Decidable (l = 0))
 instance : DecidablePred KA.Pinned := fun _ => instDecidableFalse
 instance : ∀ s r x, Decidable (KA.Invalidates s r x) := fun s r x =>
-  inferInstanceAs (Decidable (x = r ∨ r ∈ s.ancs x))
+  inferInstanceAs (Decidable (x = r ∨ r ∈ s.ancs x ∨ x = 1 ∨ 1 ∈ s.ancs x))
 
-/-- `KA` satisfait l'obligation `ArenaResetContract` dans tout état, pour toute arène. -/
-theorem KA_contract (s : S3) (ar : Arena) : ArenaResetContract KA s ar := fun _ h => h
+/-- `KA` satisfait l'obligation `ArenaResetContract` dans tout état, pour toute arène dont
+`internal` est l'autorité 1. -/
+theorem KA_contract (s : S3) (ar : Arena) (hi : ar.internal = 1) : ArenaResetContract KA s ar :=
+  fun _ h => by rw [hi] at h; exact h
 
 /-- Contrats d'épinglage : la feuille 0 est épinglée. -/
 def KP : K := ⟨fun _ _ => False, fun _ => False, fun l => l = 0, fun _ _ _ => False⟩
