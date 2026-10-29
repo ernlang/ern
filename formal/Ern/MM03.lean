@@ -3832,6 +3832,39 @@ theorem reset_ok_iff {k : K} {ar : Arena} {via : Nat} {s : S3} {r : S3 × Arena}
 
 /-! ## Pass-1 statements restored on the pass-2 model -/
 
+theorem effOf_some_of_not_mem {m : Mode} {ds : List Mode} (h : Mode.modify ∉ ds) :
+    ∃ e, effOf m ds = some e := by
+  unfold effOf; by_cases h0 : ds = []
+  · simp [h0]
+  · simp [h0, h]
+
+/-- Adding an authority can only lower an existing effective mode to `Observe` (MM-03.3.5). -/
+theorem effective_addAuth_old {s : S3} {y₀ : Authority} {a p : Nat} {e' : Mode}
+    (ha : a < s.A.length) (h : effective (s.addAuth y₀) a p = some e') :
+    ∃ e, effective s a p = some e ∧ (e' = e ∨ e' = .observe) := by
+  obtain ⟨x, hx, xa, xp, he⟩ := effective_some h
+  rw [addAuth_lt ha] at hx
+  rw [effective_eq hx xa xp]
+  rw [descModes_addAuth] at he
+  split at he
+  · rcases effOf_cases he with ⟨h0, -⟩ | ⟨-, hn, rfl⟩
+    · simp at h0
+    · obtain ⟨e, he'⟩ := effOf_some_of_not_mem (m := x.mode) fun hm => hn (List.mem_append_left _ hm)
+      exact ⟨e, he', .inr rfl⟩
+  · rw [List.append_nil] at he; exact ⟨e', he, .inl rfl⟩
+
+theorem org_addAuth_lt {s : S3} {y₀ : Authority} {j : Nat} (h : j < s.A.length) :
+    (s.addAuth y₀).org j = s.org j := by simp only [S3.org, addAuth_lt h]
+
+theorem enter_root_parent {s : S3} {ls : List (Option Nat × Option Nat × Nat)} {i : Nat}
+    (h : (ls[i]?).bind (·.1) = none) : parentOf (enterP s ls) (s.P.length + i) = none := by
+  by_cases hi : i < ls.length
+  · rw [enter_parentOf_new hi]; exact h
+  · simp only [parentOf]
+    rw [List.getElem?_eq_none (by rw [enterP_len]; omega)]; rfl
+
+theorem SameSkel.refl (s : S3) : SameSkel s s := ⟨rfl, fun _ => rfl⟩
+
 /-- `derive` deactivates no authority: O1.5 (the needed anchors stay valid) always
 holds (MM-03.3 §3, O1). -/
 theorem derive_keeps_active {s : S3} {src q x : Nat} {m : Mode} (h : s.Active x) :
