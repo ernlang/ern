@@ -3906,14 +3906,14 @@ instance (n : Nat) (ls : List (Option Nat × Option Nat × Nat)) : Decidable (Sh
 theorem enterPre_shapeOK {s : S3} {ps : List Nat} {ls : List (Option Nat × Option Nat × Nat)}
     (h : EnterPre s ps ls) : ShapeOK s.P.length ls := h.2.2
 
-/-- Static preconditions of `alloc provider owner shape` (B5; C6): the allocator value at
+/-- Static preconditions of `alloc provider owner shape` (B5; C6; D2): the allocator value at
 `provider` is usable, with the right to update its metadata; the place `owner`, which receives
 the ownership, is usable, with exercisable `Modify`; the leaves of the provider are `Init`; the
-shape is well-formed. -/
+shape is well-formed and not empty (D2: an allocation of size zero is a shape of one leaf). -/
 def AllocStatic (k : K) (s : S3) (provider owner : Nat)
     (ls : List (Option Nat × Option Nat × Nat)) : Prop :=
   s.Usable provider ∧ ProviderRight k s provider ∧ s.Usable owner ∧ HasRight s .modify owner ∧
-    (∀ l ∈ footprint s.P provider, s.I l = .init) ∧ ShapeOK s.P.length ls
+    (∀ l ∈ footprint s.P provider, s.I l = .init) ∧ ShapeOK s.P.length ls ∧ ls ≠ []
 
 instance (k : K) [DecidablePred k.SharedMutable] (s : S3) (provider owner : Nat)
     (ls : List (Option Nat × Option Nat × Nat)) : Decidable (AllocStatic k s provider owner ls) := by
@@ -4149,7 +4149,7 @@ theorem alloc_usable_new {k : K} (hst : AllocStatic k s pr o ls) : ∀ n i, i < 
       exact .place (show (allocP s o ls)[_]? = _ from hpl) hd rfl (alloc_usable_old hst.2.2.1)
     | some o' =>
       rw [ho] at hpl
-      have h2 := (hst.2.2.2.2.2 i (List.mem_range.2 hi)).2
+      have h2 := (hst.2.2.2.2.2.1 i (List.mem_range.2 hi)).2
       rw [ho] at h2; obtain ⟨h₁, h₂⟩ := h2
       have := alloc_usable_new hst n (o' - s.P.length) (by omega) (by omega)
       rw [show s.P.length + (o' - s.P.length) = o' by omega] at this
@@ -4161,7 +4161,7 @@ theorem alloc_shapeOwner_live {k : K} (hst : AllocStatic k s pr o ls) {i : Nat}
   cases ho : (ls[i]?).bind (·.2.1) with
   | none => exact alloc_usable_old hst.2.2.1
   | some o' =>
-    have h2 := (hst.2.2.2.2.2 i (List.mem_range.2 hi)).2
+    have h2 := (hst.2.2.2.2.2.1 i (List.mem_range.2 hi)).2
     rw [ho] at h2; simp only [OptP] at h2
     have := alloc_usable_new hst (o' - s.P.length + 1) (o' - s.P.length) (Nat.lt_succ_self _)
       (by omega)
@@ -4173,7 +4173,7 @@ end AllocLemmas
 old places are unchanged; each new root authority is the root authority of its element. -/
 theorem alloc_rootChain {k : K} {s : S3} {pr o : Nat} {ls : List (Option Nat × Option Nat × Nat)}
     (hwf : WF3 s) (hst : AllocStatic k s pr o ls) : RootChain (allocEff s pr o ls) := by
-  have hsh := hst.2.2.2.2.2
+  have hsh := hst.2.2.2.2.2.1
   intro a y l ha hl hleaf
   rcases alloc_get ha with ⟨ha', hy⟩ | ⟨-, i, hi, rfl⟩
   · have hlt := hwf.fp a y hy l hl
@@ -4243,7 +4243,7 @@ theorem alloc_preserves {k : K} {pr ow : Nat} {ls : List (Option Nat × Option N
   cases h with
   | ok hst _ =>
   obtain ⟨i1, i2, i3, -⟩ := hinv
-  have hsh := hst.2.2.2.2.2
+  have hsh := hst.2.2.2.2.2.1
   have nodup : (rootIdx ls).Nodup :=
     ((pairwise_lt_range _).sublist List.filter_sublist).imp Nat.ne_of_lt
   have live : ∀ (hd : Holder), HolderLive s hd → HolderLive (allocEff s pr ow ls) hd := by
@@ -4367,6 +4367,22 @@ theorem alloc_owned_root {k : K} {pr ow : Nat} {ls : List (Option Nat × Option 
     unfold shapeOwner; split <;> rfl
   · show (s.A ++ _)[s.A.length + m]? = _
     rw [List.getElem?_append_right (by omega), Nat.add_sub_cancel_left, List.getElem?_map, hm]; rfl
+
+/-- An accepted `alloc` creates a root (B5: `ok`, « nouvelle racine »; D2): the shape is not empty,
+and its first element has no parent, which would have to be an earlier element (`ShapeOK`). With
+`alloc_owned_root` at `m = 0`, the new place `|P|` is a usable owned root with its root authority. -/
+theorem alloc_ok_new_root {k : K} {pr ow : Nat} {ls : List (Option Nat × Option Nat × Nat)}
+    {s s' : S3} (h : AllocStep k pr ow ls s (.ok s')) : (rootIdx ls)[0]? = some 0 := by
+  cases h with
+  | ok hst _ =>
+  obtain ⟨-, -, -, -, -, hsh, hne⟩ := hst
+  cases ls with
+  | nil => exact absurd rfl hne
+  | cons e rest =>
+    have h0 := (hsh 0 (List.mem_range.2 (by simp))).1
+    cases hp : e.1 with
+    | some r => simp [hp, OptP] at h0; omega
+    | none => simp [rootIdx, List.range_succ_eq_map, hp]
 
 /-- `alloc_owned_root` for the shape of one leaf, the `alloc` of pass 3 (B5; C6): the new place is
 a usable root, owned by `owner`, whose footprint is itself; its root authority `Modify`, without
@@ -5445,10 +5461,10 @@ theorem alloc_preserves_noDangling {k : K} {pr ow : Nat}
   rcases alloc_get hz with ⟨-, hy⟩ | ⟨-, i, -, rfl⟩
   · have hqo : q < s.P.length := Nat.lt_of_le_of_lt hql (hwf.fp j z hy l hlz)
     exact hnd j z hy za q (fun hu => hq (alloc_usable_old hu)) l
-      ((shape_footprint_old hst.2.2.2.2.2 hqo l).1 hl) hlz
+      ((shape_footprint_old hst.2.2.2.2.2.1 hqo l).1 hl) hlz
   · have hge : s.P.length ≤ l := shape_root_fp_ge hlz
     by_cases hqo : q < s.P.length
-    · have := (mem_footprint.1 ((shape_footprint_old hst.2.2.2.2.2 hqo l).1 hl)).1; omega
+    · have := (mem_footprint.1 ((shape_footprint_old hst.2.2.2.2.2.1 hqo l).1 hl)).1; omega
     · have hlP' : l < (allocP s ow ls).length := hlP
       rw [allocP_len] at hlP'
       have hu := alloc_usable_new hst (q - s.P.length + 1) (q - s.P.length) (Nat.lt_succ_self _)
@@ -6253,7 +6269,7 @@ theorem arena_inv_preserved {k : K} {s s' : S3} {ar : Arena} (hwf : WF3 s) (hinv
     have hst := lt_of_getElem? hpli
     refine arenaInv_transport hai (fun j y hy => ⟨y, by rw [alloc_lt (lt_of_getElem? hy)]; exact hy,
       rfl, rfl, id, id, id⟩) (hroot.of_P (allocP_lt hst)) ?_
-      (shape_footprint_old hsa.2.2.2.2.2 hst)
+      (shape_footprint_old hsa.2.2.2.2.2.1 hst)
     intro y y' pl h1 h2 h3 h4
     rw [alloc_lt hi, h1] at h2; cases h2
     exact ⟨pl, by rw [show (allocEff _ _ _ _).P = allocP _ _ _ from rfl, allocP_lt hst]; exact h3, h4⟩
@@ -7791,11 +7807,9 @@ example : c13a.F = [1, 0] ∧ c13a.Usable 0 ∧ ¬ ({ c13a with F := [0] } : S3)
     0 ∈ footprint c13a.P 0 ∧ OwnedByFrame c13a.P 1 0 :=
   ⟨rfl, by decide, by decide, by decide, .frame (pl := ⟨none, .frame 1, 0⟩) rfl rfl⟩
 
-/-- `alloc` of the empty shape (C6): the encoding of the locals of `enterFrame` admits it, no
-precondition excludes it, and the outcome is `ok` with no new place and no new authority, while
-B5 describes `ok` as a new root. -/
-example : AllocStep K0 1 0 [] (write3Eff n6e [1]) (.ok (allocEff (write3Eff n6e [1]) 1 0 [])) :=
-  .ok (by decide) trivial
+/-- `alloc` of the empty shape (pass-4 question (e) 2): pass 4 accepted it, with no new place and
+no new authority, the state `allocEff (write3Eff n6e [1]) 1 0 []` below. D2 rejects it. -/
+example : AllocStep K0 1 0 [] (write3Eff n6e [1]) .reject := .reject (by decide)
 example : (allocEff (write3Eff n6e [1]) 1 0 []).P = (write3Eff n6e [1]).P ∧
     (allocEff (write3Eff n6e [1]) 1 0 []).A = (write3Eff n6e [1]).A := by decide
 
