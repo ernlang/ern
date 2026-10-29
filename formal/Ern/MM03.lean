@@ -246,8 +246,9 @@ structure S3 where
 
 /-- Contracts `K` (MM-03.3.8) for an execution. Types are a representation choice: regions as
 lists of leaves; `SharedMutable`, `Pinned` and `ExternalDone` on leaves; `Deallocable p` and
-`FreeCompat p auth` for `free` (A6); `Satisfiable provider extent` for `alloc` (B5). `Invalidates`
-is removed (B9). The obligations of each contract are named hypotheses of theorems, never
+`FreeCompat p auth` for `free` (A6); `Satisfiable provider shape s` for `alloc` (B5; C9: it
+depends on the current state `s`, with the shape encoded as the locals of `enterFrame`, C6).
+`Invalidates` is removed (B9). The obligations of each contract are named hypotheses of theorems, never
 fields. -/
 structure K where
   DeclaredDisjoint : List Nat → List Nat → Prop
@@ -256,7 +257,7 @@ structure K where
   ExternalDone : Nat → Prop
   Deallocable : Nat → Prop
   FreeCompat : Nat → Nat → Prop
-  Satisfiable : Nat → Nat → Prop
+  Satisfiable : Nat → List (Option Nat × Option Nat × Nat) → S3 → Prop
 
 /-- Obligation of `DeclaredDisjoint` (MM-03.3.8): a declaration never covers two regions that
 really overlap. -/
@@ -3855,7 +3856,7 @@ theorem free_no_pin {k : K} {s s' : S3} {p auth : Nat} (h : FreeStep k p auth s 
   intro l hl
   exact hpre.2.2.2.2.2.2.2 l (List.mem_range.2 hl.lt) hl
 
-/-! ## `alloc` (B5) -/
+/-! ## `alloc` (B5, C6, C9) -/
 
 /-- Outcomes of `alloc` (B5): `ok`; `fail`, a defined failure of the allocator contract, with the
 state unchanged; `reject` by the static discipline (MM-03.3 §3). -/
@@ -3875,324 +3876,538 @@ instance (k : K) [DecidablePred k.SharedMutable] (s : S3) (provider : Nat) :
     Decidable (ProviderRight k s provider) := by
   unfold ProviderRight; infer_instance
 
-/-- Static preconditions of `alloc provider owner extent` (B5): the allocator value at `provider` is
-usable, with the right to update its metadata; the place `owner`, which receives the ownership,
-is usable, with exercisable `Modify`. -/
-def AllocStatic (k : K) (s : S3) (provider owner : Nat) : Prop :=
-  s.Usable provider ∧ ProviderRight k s provider ∧ s.Usable owner ∧ HasRight s .modify owner
+/-- Owner of the element of index `i` of a shape `ls` (A5; C6): its owning element if any, `hd`
+otherwise. The owner of a local of `enterFrame` is the case `hd = .frame f` (`localOwner`). -/
+def shapeOwner (ls : List (Option Nat × Option Nat × Nat)) (hd : Holder) (i : Nat) : Holder :=
+  match (ls[i]?).bind (·.2.1) with
+  | some o => .place o
+  | none => hd
 
-instance (k : K) [DecidablePred k.SharedMutable] (s : S3) (provider owner : Nat) :
-    Decidable (AllocStatic k s provider owner) := by
+/-- Places `P` followed by the elements of the shape `ls` (C6: the encoding of the locals of
+`enterFrame`, an indexed forest of (parent, owning element, kind)); the elements without owning
+element are owned by `hd` (A5). -/
+def shapeP (P : List Place) (hd : Holder) (ls : List (Option Nat × Option Nat × Nat)) :
+    List Place :=
+  P ++ (List.range ls.length).map fun i =>
+    ⟨(ls[i]?).bind (·.1), shapeOwner ls hd i, ((ls[i]?).map (·.2.2)).getD 0⟩
+
+/-- `enterFrame` lays out its locals as a shape (C6). -/
+theorem enterP_eq_shapeP (s : S3) (ls : List (Option Nat × Option Nat × Nat)) :
+    enterP s ls = shapeP s.P (.frame s.nF) ls := rfl
+
+/-- Well-formed shape at offset `n` (MM-03.3 §4, O6; C6): the parent and the owning element of an
+element are earlier elements, and a part has the owning element of its parent. It is the clause
+of `EnterPre` on the locals (`enterPre_shapeOK`). -/
+def ShapeOK (n : Nat) (ls : List (Option Nat × Option Nat × Nat)) : Prop :=
+  ∀ i ∈ List.range ls.length,
+    OptP ((ls[i]?).bind (·.1)) (fun r => n ≤ r ∧ r < n + i ∧
+      (ls[i]?).bind (·.2.1) = (ls[r - n]?).bind (·.2.1)) True ∧
+    OptP ((ls[i]?).bind (·.2.1)) (fun o => n ≤ o ∧ o < n + i) True
+
+instance (n : Nat) (ls : List (Option Nat × Option Nat × Nat)) : Decidable (ShapeOK n ls) := by
+  unfold ShapeOK; infer_instance
+
+theorem enterPre_shapeOK {s : S3} {ps : List Nat} {ls : List (Option Nat × Option Nat × Nat)}
+    (h : EnterPre s ps ls) : ShapeOK s.P.length ls := h.2.2
+
+/-- Static preconditions of `alloc provider owner shape` (B5; C6): the allocator value at
+`provider` is usable, with the right to update its metadata; the place `owner`, which receives
+the ownership, is usable, with exercisable `Modify`; the leaves of the provider are `Init`; the
+shape is well-formed. -/
+def AllocStatic (k : K) (s : S3) (provider owner : Nat)
+    (ls : List (Option Nat × Option Nat × Nat)) : Prop :=
+  s.Usable provider ∧ ProviderRight k s provider ∧ s.Usable owner ∧ HasRight s .modify owner ∧
+    (∀ l ∈ footprint s.P provider, s.I l = .init) ∧ ShapeOK s.P.length ls
+
+instance (k : K) [DecidablePred k.SharedMutable] (s : S3) (provider owner : Nat)
+    (ls : List (Option Nat × Option Nat × Nat)) : Decidable (AllocStatic k s provider owner ls) := by
   unfold AllocStatic; infer_instance
 
-/-- Places after `alloc`: a new root place, owned by `owner` (B5). -/
-def allocP (s : S3) (owner : Nat) : List Place := s.P ++ [⟨none, .place owner, 0⟩]
+/-- Places after `alloc` (B5; C6): the elements of the shape appended, those without owning
+element owned by `owner`. -/
+def allocP (s : S3) (owner : Nat) (ls : List (Option Nat × Option Nat × Nat)) : List Place :=
+  shapeP s.P (.place owner) ls
 
-/-- Effect of `alloc` (B5): a new root place of fresh identity `|P|`, owned by `owner`, `Uninit`,
-without anchor, alive, not freed, not pinned; a new root authority `Modify` on its footprint,
-held by `owner`. The extent is read only by the allocator contract. -/
-def allocEff (s : S3) (owner : Nat) : S3 :=
+/-- Effect of `alloc provider owner shape` (B5; C6): the elements of the shape appended as places
+of fresh identities, `Uninit`, without anchor, alive, not freed, not pinned; one root authority
+`Modify` per root element, on its footprint, held by the owner of the element (A4); the metadata
+of the provider, its leaves, set to `Init`. The shape is abstract: it fixes neither alignment nor
+layout (milestone 2). -/
+def allocEff (s : S3) (provider owner : Nat) (ls : List (Option Nat × Option Nat × Nat)) : S3 :=
   { s with
-    P := allocP s owner
-    I := fun l => if l = s.P.length then .uninit else s.I l
-    A := s.A ++ [⟨.modify, none, footprint (allocP s owner) s.P.length, .place owner, true⟩]
-    D := fun q => if q = s.P.length then [] else s.D q
-    dead := fun q => if q = s.P.length then false else s.dead q
-    freed := fun q => if q = s.P.length then false else s.freed q
-    pin := fun q => if q = s.P.length then false else s.pin q }
+    P := allocP s owner ls
+    I := fun l => if s.P.length ≤ l then .uninit
+      else if l ∈ footprint s.P provider then .init else s.I l
+    A := s.A ++ (rootIdx ls).map fun i =>
+      ⟨.modify, none, footprint (allocP s owner ls) (s.P.length + i),
+        shapeOwner ls (.place owner) i, true⟩
+    D := fun q => if s.P.length ≤ q then [] else s.D q
+    dead := fun q => if s.P.length ≤ q then false else s.dead q
+    freed := fun q => if s.P.length ≤ q then false else s.freed q
+    pin := fun q => if s.P.length ≤ q then false else s.pin q }
 
-/-- `alloc provider owner extent` as a relation (B5): `reject` when a static precondition fails;
-`fail`, with the state unchanged, when the allocator contract cannot satisfy the request
-(`Satisfiable`); `ok` otherwise. -/
-inductive AllocStep (k : K) (provider owner extent : Nat) (s : S3) : AOutcome → Prop where
-  | ok : AllocStatic k s provider owner → k.Satisfiable provider extent →
-      AllocStep k provider owner extent s (.ok (allocEff s owner))
-  | fail : AllocStatic k s provider owner → ¬ k.Satisfiable provider extent →
-      AllocStep k provider owner extent s (.fail s)
-  | reject : ¬ AllocStatic k s provider owner → AllocStep k provider owner extent s .reject
+/-- `alloc provider owner shape` as a relation (B5; C6; C9): `reject` when a static precondition
+fails; `fail`, with the state unchanged, when the allocator contract cannot satisfy the request in
+the current state (`Satisfiable`); `ok` otherwise. -/
+inductive AllocStep (k : K) (provider owner : Nat) (ls : List (Option Nat × Option Nat × Nat))
+    (s : S3) : AOutcome → Prop where
+  | ok : AllocStatic k s provider owner ls → k.Satisfiable provider ls s →
+      AllocStep k provider owner ls s (.ok (allocEff s provider owner ls))
+  | fail : AllocStatic k s provider owner ls → ¬ k.Satisfiable provider ls s →
+      AllocStep k provider owner ls s (.fail s)
+  | reject : ¬ AllocStatic k s provider owner ls → AllocStep k provider owner ls s .reject
 
 /-- Determinism of `alloc` (B5). -/
-theorem alloc_det {k : K} {pr ow ex : Nat} {s : S3} {o₁ o₂ : AOutcome}
-    (h₁ : AllocStep k pr ow ex s o₁) (h₂ : AllocStep k pr ow ex s o₂) : o₁ = o₂ := by
+theorem alloc_det {k : K} {pr ow : Nat} {ls : List (Option Nat × Option Nat × Nat)} {s : S3}
+    {o₁ o₂ : AOutcome} (h₁ : AllocStep k pr ow ls s o₁) (h₂ : AllocStep k pr ow ls s o₂) :
+    o₁ = o₂ := by
   cases h₁ <;> cases h₂ <;> first | rfl | contradiction
 
-/-- `alloc_fail_unchanged` (B5): a failed allocation leaves the state unchanged, and happens exactly
-when the static preconditions hold and the allocator contract cannot satisfy the request. -/
-theorem alloc_fail_unchanged {k : K} {pr ow ex : Nat} {s s' : S3}
-    (h : AllocStep k pr ow ex s (.fail s')) :
-    s' = s ∧ AllocStatic k s pr ow ∧ ¬ k.Satisfiable pr ex := by
+/-- `alloc_fail_unchanged` (B5; C9): a failed allocation leaves the state unchanged, and happens
+exactly when the static preconditions hold and the allocator contract cannot satisfy the request
+in the current state. -/
+theorem alloc_fail_unchanged {k : K} {pr ow : Nat} {ls : List (Option Nat × Option Nat × Nat)}
+    {s s' : S3} (h : AllocStep k pr ow ls s (.fail s')) :
+    s' = s ∧ AllocStatic k s pr ow ls ∧ ¬ k.Satisfiable pr ls s := by
   cases h with
   | fail h1 h2 => exact ⟨rfl, h1, h2⟩
 
-theorem allocP_len (s : S3) (o : Nat) : (allocP s o).length = s.P.length + 1 := by simp [allocP]
+section Shape
+variable {P : List Place} {hd : Holder} {ls : List (Option Nat × Option Nat × Nat)}
 
-theorem allocP_lt {s : S3} {o q : Nat} (h : q < s.P.length) : (allocP s o)[q]? = s.P[q]? :=
+theorem shapeP_len (P : List Place) (hd : Holder) (ls : List (Option Nat × Option Nat × Nat)) :
+    (shapeP P hd ls).length = P.length + ls.length := by simp [shapeP]
+
+theorem shapeP_lt {q : Nat} (h : q < P.length) : (shapeP P hd ls)[q]? = P[q]? :=
   List.getElem?_append_left h
 
-theorem allocP_new (s : S3) (o : Nat) : (allocP s o)[s.P.length]? = some ⟨none, .place o, 0⟩ := by
-  simp [allocP]
+theorem shapeP_new {i : Nat} (h : i < ls.length) : (shapeP P hd ls)[P.length + i]? =
+    some ⟨(ls[i]?).bind (·.1), shapeOwner ls hd i, ((ls[i]?).map (·.2.2)).getD 0⟩ := by
+  simp only [shapeP, List.getElem?_append_right (Nat.le_add_right _ _), Nat.add_sub_cancel_left,
+    List.getElem?_map, List.getElem?_range h, Option.map_some]
 
-theorem allocP_get {s : S3} {o q : Nat} {pl : Place} (h : (allocP s o)[q]? = some pl) :
-    (q < s.P.length ∧ s.P[q]? = some pl) ∨ (q = s.P.length ∧ pl = ⟨none, .place o, 0⟩) := by
-  by_cases hq : q < s.P.length
-  · exact .inl ⟨hq, by rwa [allocP_lt hq] at h⟩
-  · have := lt_of_getElem? h; rw [allocP_len] at this
-    obtain rfl : q = s.P.length := by omega
-    rw [allocP_new] at h; cases h; exact .inr ⟨rfl, rfl⟩
+theorem shapeP_get {q : Nat} {pl : Place} (h : (shapeP P hd ls)[q]? = some pl) :
+    (q < P.length ∧ P[q]? = some pl) ∨ (P.length ≤ q ∧ ∃ i, i < ls.length ∧
+      q = P.length + i ∧ pl = ⟨(ls[i]?).bind (·.1), shapeOwner ls hd i,
+        ((ls[i]?).map (·.2.2)).getD 0⟩) := by
+  by_cases hq : q < P.length
+  · exact .inl ⟨hq, by rwa [shapeP_lt hq] at h⟩
+  · have hi : q - P.length < ls.length := by
+      have := lt_of_getElem? h; rw [shapeP_len] at this; omega
+    have e : q = P.length + (q - P.length) := by omega
+    rw [e, shapeP_new hi] at h; cases h
+    exact .inr ⟨by omega, _, hi, e, rfl⟩
 
-theorem alloc_parentOf_lt {s : S3} {o q : Nat} (h : q < s.P.length) :
-    parentOf (allocP s o) q = parentOf s.P q := by simp [parentOf, allocP_lt h]
+theorem shape_parentOf_new {i : Nat} (h : i < ls.length) :
+    parentOf (shapeP P hd ls) (P.length + i) = (ls[i]?).bind (·.1) := by
+  simp [parentOf, shapeP_new h]
 
-theorem alloc_parentOf_new (s : S3) (o : Nat) : parentOf (allocP s o) s.P.length = none := by
-  simp [parentOf, allocP_new]
+theorem shape_parentOf_lt {q : Nat} (h : q < P.length) :
+    parentOf (shapeP P hd ls) q = parentOf P q := by
+  simp [parentOf, shapeP_lt h]
 
-/-- The leaves of the new place: itself at most (B5). -/
-theorem alloc_footprint_new_sub {s : S3} {o l : Nat}
-    (h : l ∈ footprint (allocP s o) s.P.length) : l = s.P.length := by
-  obtain ⟨hl, -, -, h | h⟩ := mem_footprint.1 h
-  · exact h
-  · have := chain_lt h; rw [allocP_len] at hl; omega
+theorem shape_root_fp_ge {i l : Nat} (h : l ∈ footprint (shapeP P hd ls) (P.length + i)) :
+    P.length ≤ l := by
+  obtain ⟨-, -, -, h | h⟩ := mem_footprint.1 h
+  · omega
+  · have := chain_lt h; omega
 
-/-- The footprint of an old place does not change with `alloc` (MM-03.3.2; B5). -/
-theorem alloc_footprint_old {s : S3} {o q : Nat} (hq : q < s.P.length) :
-    ∀ l, l ∈ footprint (allocP s o) q ↔ l ∈ footprint s.P q := by
-  have hch : ∀ l < s.P.length, chain (parentOf (allocP s o)) l = chain (parentOf s.P) l :=
-    fun l hl => chain_congr fun j hj => alloc_parentOf_lt (Nat.lt_of_le_of_lt hj hl)
+theorem shape_roots_disjoint {i i' l : Nat} (hii : i ≠ i') (hn : (ls[i]?).bind (·.1) = none)
+    (hn' : (ls[i']?).bind (·.1) = none) (h : l ∈ footprint (shapeP P hd ls) (P.length + i))
+    (h' : l ∈ footprint (shapeP P hd ls) (P.length + i')) : False := by
+  have hlt : ∀ {j}, l ∈ footprint (shapeP P hd ls) (P.length + j) → j < ls.length := fun hj => by
+    obtain ⟨hl, -, -, hq⟩ := mem_footprint.1 hj
+    rw [shapeP_len] at hl
+    rcases hq with hq | hq
+    · omega
+    · have := chain_lt hq; omega
+  have hi := hlt h; have hi' := hlt h'
+  have r := shape_parentOf_new (P := P) (hd := hd) hi; rw [hn] at r
+  have r' := shape_parentOf_new (P := P) (hd := hd) hi'; rw [hn'] at r'
+  obtain ⟨-, -, -, h | h⟩ := mem_footprint.1 h <;> obtain ⟨-, -, -, h' | h'⟩ := mem_footprint.1 h'
+  · omega
+  · subst h; rw [chain_none r] at h'; simp at h'
+  · subst h'; rw [chain_none r'] at h; simp at h
+  · exact hii (by have := chainF_root _ _ _ _ h r h' r'; omega)
+
+theorem shape_chain_ge (hsh : ShapeOK P.length ls) : ∀ n q, q < n → P.length ≤ q →
+    ∀ x ∈ chain (parentOf (shapeP P hd ls)) q, P.length ≤ x
+  | 0, _, h, _, _, _ => absurd h (Nat.not_lt_zero _)
+  | n + 1, q, hq, hge, x, hx => by
+    have hi : q - P.length < ls.length := by
+      cases hpo : parentOf (shapeP P hd ls) q with
+      | none => rw [chain_none hpo] at hx; simp at hx
+      | some r =>
+        simp only [parentOf] at hpo
+        cases h' : (shapeP P hd ls)[q]? with
+        | none => rw [h'] at hpo; cases hpo
+        | some _ => have := lt_of_getElem? h'; rw [shapeP_len] at this; omega
+    have hpo := shape_parentOf_new (P := P) (hd := hd) hi
+    rw [show P.length + (q - P.length) = q by omega] at hpo
+    cases hb : (ls[q - P.length]?).bind (·.1) with
+    | none => rw [hb] at hpo; rw [chain_none hpo] at hx; simp at hx
+    | some r =>
+      rw [hb] at hpo
+      have h1 := (hsh (q - P.length) (List.mem_range.2 hi)).1
+      rw [hb] at h1; simp only [OptP] at h1
+      rw [chain_cons hpo (by omega)] at hx
+      rcases List.mem_cons.1 hx with rfl | hx
+      · omega
+      · exact shape_chain_ge hsh n r (by omega) (by omega) x hx
+
+/-- The footprint of an existing place does not change when a shape is appended: new elements
+have new parents (MM-03.3.2; C6). -/
+theorem shape_footprint_old (hsh : ShapeOK P.length ls) {q : Nat} (hq : q < P.length) :
+    ∀ l, l ∈ footprint (shapeP P hd ls) q ↔ l ∈ footprint P q := by
+  have hpar : ∀ j < P.length, parentOf (shapeP P hd ls) j = parentOf P j :=
+    fun j hj => shape_parentOf_lt hj
+  have hch : ∀ l < P.length, chain (parentOf (shapeP P hd ls)) l = chain (parentOf P) l :=
+    fun l hl => chain_congr fun j hj => hpar j (by omega)
   intro l
-  simp only [mem_footprint, isLeaf, partOf, allocP_len]
+  simp only [mem_footprint, isLeaf, partOf, shapeP_len]
   constructor
   · rintro ⟨hl, hleaf, -, hpo⟩
-    have hln : l < s.P.length := by
-      rcases Nat.lt_or_ge l s.P.length with h | h
+    have hln : l < P.length := by
+      rcases Nat.lt_or_ge l P.length with h | h
       · exact h
-      · obtain rfl : l = s.P.length := by omega
-        rcases hpo with hpo | hpo
+      · rcases hpo with rfl | hpo
         · omega
-        · rw [chain_none (alloc_parentOf_new s o)] at hpo; simp at hpo
-    refine ⟨hln, fun r hr => ?_, hln, ?_⟩
-    · rw [← alloc_parentOf_lt hr]; exact hleaf r (by omega)
-    · rwa [hch l hln] at hpo
+        · have := shape_chain_ge (hd := hd) hsh (l + 1) l (Nat.lt_succ_self l) h q hpo; omega
+    refine ⟨hln, fun r hr => by rw [← hpar r hr]; exact hleaf r (by omega), hln, ?_⟩
+    rwa [hch l hln] at hpo
   · rintro ⟨hl, hleaf, -, hpo⟩
     refine ⟨by omega, fun r hr => ?_, by omega, by rwa [hch l hl]⟩
-    by_cases hrn : r < s.P.length
-    · rw [alloc_parentOf_lt hrn]; exact hleaf r hrn
-    · obtain rfl : r = s.P.length := by omega
-      rw [alloc_parentOf_new]; simp
+    by_cases hrn : r < P.length
+    · rw [hpar r hrn]; exact hleaf r hrn
+    · intro he
+      have hi : r - P.length < ls.length := by omega
+      have hpo' := shape_parentOf_new (P := P) (hd := hd) hi
+      rw [show P.length + (r - P.length) = r by omega, he] at hpo'
+      have h1 := (hsh (r - P.length) (List.mem_range.2 hi)).1
+      rw [← hpo'] at h1; simp only [OptP] at h1; omega
 
-theorem alloc_usable_old {s : S3} {o q : Nat} (h : s.Usable q) : (allocEff s o).Usable q := by
+end Shape
+
+section AllocLemmas
+variable {s : S3} {pr o : Nat} {ls : List (Option Nat × Option Nat × Nat)}
+
+theorem allocP_len (s : S3) (o : Nat) (ls : List (Option Nat × Option Nat × Nat)) :
+    (allocP s o ls).length = s.P.length + ls.length := shapeP_len _ _ _
+
+theorem allocP_lt {q : Nat} (h : q < s.P.length) : (allocP s o ls)[q]? = s.P[q]? := shapeP_lt h
+
+theorem alloc_get {j : Nat} {z : Authority} (h : (allocEff s pr o ls).A[j]? = some z) :
+    (j < s.A.length ∧ s.A[j]? = some z) ∨
+    (s.A.length ≤ j ∧ ∃ i, (rootIdx ls)[j - s.A.length]? = some i ∧
+      z = ⟨.modify, none, footprint (allocP s o ls) (s.P.length + i),
+        shapeOwner ls (.place o) i, true⟩) := by
+  simp only [allocEff] at h
+  by_cases hj : j < s.A.length
+  · rw [List.getElem?_append_left hj] at h; exact .inl ⟨hj, h⟩
+  · rw [List.getElem?_append_right (by omega), List.getElem?_map] at h
+    cases hi : (rootIdx ls)[j - s.A.length]? with
+    | none => rw [hi] at h; cases h
+    | some i => rw [hi] at h; cases h; exact .inr ⟨by omega, i, rfl, rfl⟩
+
+theorem alloc_lt {j : Nat} (h : j < s.A.length) : (allocEff s pr o ls).A[j]? = s.A[j]? :=
+  List.getElem?_append_left h
+
+theorem alloc_ancs_lt {j : Nat} (h : j < s.A.length) : (allocEff s pr o ls).ancs j = s.ancs j :=
+  chain_congr fun _ hi => by simp only [S3.org, alloc_lt (Nat.lt_of_le_of_lt hi h)]
+
+theorem alloc_usable_old {q : Nat} (h : s.Usable q) : (allocEff s pr o ls).Usable q := by
   induction h with
   | @frame q f pl hpl hd ho hf =>
-    exact .frame (show (allocP s o)[q]? = _ by rw [allocP_lt (lt_of_getElem? hpl)]; exact hpl)
-      (by simp [allocEff, hd, Nat.ne_of_lt (lt_of_getElem? hpl)]) ho hf
+    exact .frame (show (allocP s o ls)[q]? = _ by rw [allocP_lt (lt_of_getElem? hpl)]; exact hpl)
+      (by simp [allocEff, hd, show ¬ s.P.length ≤ q from Nat.not_le.2 (lt_of_getElem? hpl)])
+      ho hf
   | @place q o' pl hpl hd ho _ ih =>
-    exact .place (show (allocP s o)[q]? = _ by rw [allocP_lt (lt_of_getElem? hpl)]; exact hpl)
-      (by simp [allocEff, hd, Nat.ne_of_lt (lt_of_getElem? hpl)]) ho ih
+    exact .place (show (allocP s o ls)[q]? = _ by rw [allocP_lt (lt_of_getElem? hpl)]; exact hpl)
+      (by simp [allocEff, hd, show ¬ s.P.length ≤ q from Nat.not_le.2 (lt_of_getElem? hpl)])
+      ho ih
 
-theorem alloc_usable_back {s : S3} {o q : Nat} (hwf : WF3 s) (h : (allocEff s o).Usable q)
+theorem alloc_usable_back (hwf : WF3 s) {q : Nat} (h : (allocEff s pr o ls).Usable q)
     (hq : q < s.P.length) : s.Usable q := by
   induction h with
   | @frame q f pl hpl hd ho hf =>
     have hpl' : s.P[q]? = some pl := by
-      have : (allocP s o)[q]? = some pl := hpl; rwa [allocP_lt hq] at this
-    exact .frame hpl' (by simpa [allocEff, Nat.ne_of_lt hq] using hd) ho hf
+      have : (allocP s o ls)[q]? = some pl := hpl; rwa [allocP_lt hq] at this
+    exact .frame hpl' (by simpa [allocEff, show ¬ s.P.length ≤ q by omega] using hd) ho hf
   | @place q o' pl hpl hd ho _ ih =>
     have hpl' : s.P[q]? = some pl := by
-      have : (allocP s o)[q]? = some pl := hpl; rwa [allocP_lt hq] at this
-    exact .place hpl' (by simpa [allocEff, Nat.ne_of_lt hq] using hd) ho
+      have : (allocP s o ls)[q]? = some pl := hpl; rwa [allocP_lt hq] at this
+    exact .place hpl' (by simpa [allocEff, show ¬ s.P.length ≤ q by omega] using hd) ho
       (ih (hwf.ownerPlace q pl o' hpl' ho))
 
-theorem alloc_A_get {s : S3} {o j : Nat} {z : Authority} (h : (allocEff s o).A[j]? = some z) :
-    (j < s.A.length ∧ s.A[j]? = some z) ∨
-      (j = s.A.length ∧ z = ⟨.modify, none, footprint (allocP s o) s.P.length, .place o, true⟩) :=
-  addAuth_get (s := s) h
+/-- New elements are usable after `alloc` (A5; C6): their owners lead to `owner`. -/
+theorem alloc_usable_new {k : K} (hst : AllocStatic k s pr o ls) : ∀ n i, i < n → i < ls.length →
+    (allocEff s pr o ls).Usable (s.P.length + i)
+  | 0, _, h, _ => absurd h (Nat.not_lt_zero _)
+  | n + 1, i, _, hi => by
+    have hpl := shapeP_new (P := s.P) (hd := .place o) hi
+    have hd : (allocEff s pr o ls).dead (s.P.length + i) = false := by simp [allocEff]
+    unfold shapeOwner at hpl
+    cases ho : (ls[i]?).bind (·.2.1) with
+    | none =>
+      rw [ho] at hpl
+      exact .place (show (allocP s o ls)[_]? = _ from hpl) hd rfl (alloc_usable_old hst.2.2.1)
+    | some o' =>
+      rw [ho] at hpl
+      have h2 := (hst.2.2.2.2.2 i (List.mem_range.2 hi)).2
+      rw [ho] at h2; obtain ⟨h₁, h₂⟩ := h2
+      have := alloc_usable_new hst n (o' - s.P.length) (by omega) (by omega)
+      rw [show s.P.length + (o' - s.P.length) = o' by omega] at this
+      exact .place (show (allocP s o ls)[_]? = _ from hpl) hd rfl this
 
-theorem alloc_ancs_lt {s : S3} {o j : Nat} (h : j < s.A.length) :
-    (allocEff s o).ancs j = s.ancs j :=
-  ancs_addAuth_lt (y₀ := ⟨.modify, none, footprint (allocP s o) s.P.length, .place o, true⟩) h
+theorem alloc_shapeOwner_live {k : K} (hst : AllocStatic k s pr o ls) {i : Nat}
+    (hi : i < ls.length) : HolderLive (allocEff s pr o ls) (shapeOwner ls (.place o) i) := by
+  unfold shapeOwner
+  cases ho : (ls[i]?).bind (·.2.1) with
+  | none => exact alloc_usable_old hst.2.2.1
+  | some o' =>
+    have h2 := (hst.2.2.2.2.2 i (List.mem_range.2 hi)).2
+    rw [ho] at h2; simp only [OptP] at h2
+    have := alloc_usable_new hst (o' - s.P.length + 1) (o' - s.P.length) (Nat.lt_succ_self _)
+      (by omega)
+    rwa [show s.P.length + (o' - s.P.length) = o' by omega] at this
 
-/-- `alloc_fresh` (B5): the new place and the new authority have fresh identities. Before `alloc`,
-no place is at index `|P|`, no authority covers it, no place has it as parent or owner; no
-authority is at index `|A|` or has it as origin. After `alloc`, the new place is `Uninit`,
-without anchor, alive, not freed and not pinned. -/
-theorem alloc_fresh {k : K} {pr ow ex : Nat} {s s' : S3} (hwf : WF3 s)
-    (h : AllocStep k pr ow ex s (.ok s')) :
-    s.P[s.P.length]? = none ∧ s.A[s.A.length]? = none ∧
-    (∀ (a : Nat) (y : Authority), s.A[a]? = some y → s.P.length ∉ y.footprint) ∧
-    (∀ (q : Nat) (pl : Place), s.P[q]? = some pl →
-      pl.parent ≠ some s.P.length ∧ pl.owner ≠ .place s.P.length) ∧
-    (∀ (b : Nat) (y : Authority), s.A[b]? = some y → y.origin ≠ some s.A.length) ∧
-    s'.P.length = s.P.length + 1 ∧ s'.I s.P.length = .uninit ∧ s'.D s.P.length = [] ∧
-    s'.dead s.P.length = false ∧ s'.freed s.P.length = false ∧ s'.pin s.P.length = false := by
-  cases h with
-  | ok _ _ =>
-  refine ⟨List.getElem?_eq_none (Nat.le_refl _), List.getElem?_eq_none (Nat.le_refl _),
-    fun a y hy hl => Nat.lt_irrefl _ (hwf.fp a y hy _ hl), fun q pl hq => ⟨fun hp => ?_, fun ho => ?_⟩,
-    fun b y hy ho => ?_, allocP_len s ow, by simp [allocEff], by simp [allocEff], by simp [allocEff],
-    by simp [allocEff], by simp [allocEff]⟩
-  · obtain ⟨pr, hpr, -⟩ := hwf.parts q pl _ hq hp
-    exact absurd (lt_of_getElem? hpr) (Nat.lt_irrefl _)
-  · exact Nat.lt_irrefl _ (hwf.ownerPlace q pl _ hq ho)
-  · exact Nat.lt_irrefl _ (Nat.lt_trans (hwf.origin b y _ hy ho) (lt_of_getElem? hy))
+end AllocLemmas
 
-/-- `alloc_owned_root` (B5): the new place is a usable root, owned by `owner`, whose footprint is
-itself; its root authority `Modify`, without origin, covers that footprint and is held by
-`owner`. -/
-theorem alloc_owned_root {k : K} {pr ow ex : Nat} {s s' : S3} (hwf : WF3 s)
-    (h : AllocStep k pr ow ex s (.ok s')) :
-    s'.P[s.P.length]? = some ⟨none, .place ow, 0⟩ ∧ OwnedRoot s' s.P.length ∧
-    s'.Usable s.P.length ∧ (∀ l, l ∈ footprint s'.P s.P.length ↔ l = s.P.length) ∧
-    s'.A[s.A.length]? = some ⟨.modify, none, footprint s'.P s.P.length, .place ow, true⟩ := by
-  cases h with
-  | ok hst _ =>
-  have hnew : (allocEff s ow).P[s.P.length]? = some ⟨none, .place ow, 0⟩ := allocP_new s ow
-  refine ⟨hnew, by simp [OwnedRoot, OptP, hnew, Holder.isPlace],
-    .place hnew (by simp [allocEff]) rfl (alloc_usable_old hst.2.2.1), fun l => ⟨alloc_footprint_new_sub,
-    fun e => ?_⟩, by simp [allocEff]⟩
-  subst e
-  refine mem_footprint.2 ⟨by show s.P.length < (allocP s ow).length; rw [allocP_len]; omega,
-    fun r hr he => ?_, by show s.P.length < (allocP s ow).length; rw [allocP_len]; omega, .inl rfl⟩
-  show False
-  have hr' : r < s.P.length + 1 := by have : r < (allocP s ow).length := hr; rwa [allocP_len] at this
-  rcases Nat.lt_or_ge r s.P.length with hrl | hrl
-  · have he' : parentOf s.P r = some s.P.length := by
-      rw [← alloc_parentOf_lt hrl]; exact he
-    simp only [parentOf] at he'
-    cases hq : s.P[r]? with
-    | none => rw [hq] at he'; cases he'
-    | some pl =>
-      rw [hq] at he'
-      obtain ⟨pr, hpr, -⟩ := hwf.parts r pl _ hq he'
-      exact absurd (lt_of_getElem? hpr) (Nat.lt_irrefl _)
-  · obtain rfl : r = s.P.length := by omega
-    have he' : parentOf (allocP s ow) s.P.length = some s.P.length := he
-    rw [alloc_parentOf_new] at he'; cases he'
+/-- `alloc` preserves `RootChain` (B1; C6): old authorities keep their chains and the footprints of
+old places are unchanged; each new root authority is the root authority of its element. -/
+theorem alloc_rootChain {k : K} {s : S3} {pr o : Nat} {ls : List (Option Nat × Option Nat × Nat)}
+    (hwf : WF3 s) (hst : AllocStatic k s pr o ls) : RootChain (allocEff s pr o ls) := by
+  have hsh := hst.2.2.2.2.2
+  intro a y l ha hl hleaf
+  rcases alloc_get ha with ⟨ha', hy⟩ | ⟨-, i, hi, rfl⟩
+  · have hlt := hwf.fp a y hy l hl
+    have hleaf0 : isLeaf s.P l := fun r hr => by
+      have := hleaf r (by show r < (allocP s o ls).length; rw [allocP_len]; omega)
+      rwa [show parentOf (allocEff s pr o ls).P r = parentOf s.P r from shape_parentOf_lt hr]
+        at this
+    obtain ⟨x0, z, r, hx0, hz, hzo, ⟨hrl, hrp⟩, ⟨hl', hc⟩, hfz⟩ :=
+      hwf.rootChain a y l hy hl hleaf0
+    have hx0lt : x0 < s.A.length := by
+      rcases hx0 with rfl | hx0
+      · exact ha'
+      · exact Nat.lt_trans (chain_lt hx0) ha'
+    refine ⟨x0, z, r, by rw [alloc_ancs_lt ha']; exact hx0, by rw [alloc_lt hx0lt]; exact hz, hzo,
+      ⟨?_, ?_⟩, ⟨?_, ?_⟩, fun l' => ?_⟩
+    · show r < (allocP s o ls).length; rw [allocP_len]; omega
+    · show parentOf (allocP s o ls) r = none; rw [allocP, shape_parentOf_lt hrl]; exact hrp
+    · show l < (allocP s o ls).length; rw [allocP_len]; omega
+    · rcases hc with rfl | hc
+      · exact .inl rfl
+      · right
+        show r ∈ chain (parentOf (shapeP s.P (.place o) ls)) l
+        rwa [chain_congr (fun j hj => shape_parentOf_lt (Nat.lt_of_le_of_lt hj hl'))]
+    · show _ ↔ l' ∈ footprint (shapeP s.P (.place o) ls) r
+      rw [shape_footprint_old hsh hrl]; exact hfz l'
+  · obtain ⟨hil, hin⟩ := rootIdx_mem hi
+    refine ⟨a, _, s.P.length + i, .inl rfl, ha, rfl, ⟨?_, ?_⟩, (mem_footprint.1 hl).2.2,
+      fun _ => Iff.rfl⟩
+    · show s.P.length + i < (allocP s o ls).length; rw [allocP_len]; omega
+    · show parentOf (allocP s o ls) (s.P.length + i) = none
+      rw [allocP, shape_parentOf_new hil]; exact hin
 
-/-- `alloc` preserves `RootHeld` (A4; B5): the new root is held by `owner`, the owner of the new
-place. -/
-theorem alloc_rootHeld {s : S3} {o : Nat} (hwf : WF3 s) (hr : RootHeld s) :
-    RootHeld (allocEff s o) := by
+/-- `alloc` preserves `RootHeld` (A4; B5; C6): the root of each new element is held by the owner of
+the element. -/
+theorem alloc_rootHeld {s : S3} {pr o : Nat} {ls : List (Option Nat × Option Nat × Nat)}
+    (hwf : WF3 s) (hr : RootHeld s) : RootHeld (allocEff s pr o ls) := by
   intro x z l r hx ho hl hrp hlr
-  rcases alloc_A_get hx with ⟨-, hx'⟩ | ⟨-, rfl⟩
+  rcases alloc_get hx with ⟨-, hx'⟩ | ⟨-, i, hi, rfl⟩
   · have hlt := hwf.fp x z hx' l hl
     obtain ⟨-, hc⟩ := hlr
-    have hch : chain (parentOf (allocP s o)) l = chain (parentOf s.P) l :=
-      chain_congr fun j hj => alloc_parentOf_lt (Nat.lt_of_le_of_lt hj hlt)
+    have hch : chain (parentOf (allocP s o ls)) l = chain (parentOf s.P) l :=
+      chain_congr fun j hj => shape_parentOf_lt (Nat.lt_of_le_of_lt hj hlt)
     have hrl : r < s.P.length := by
       rcases hc with rfl | hc
       · exact hlt
       · have : r ∈ chain (parentOf s.P) l := by rw [← hch]; exact hc
         exact Nat.lt_trans (chain_lt this) hlt
-    have hrp' : RootPlace s.P r := ⟨hrl, by rw [← alloc_parentOf_lt hrl]; exact hrp.2⟩
+    have hrp' : RootPlace s.P r := ⟨hrl, by rw [← shape_parentOf_lt hrl]; exact hrp.2⟩
     have hlr' : partOf s.P l r := ⟨hlt, by
       rcases hc with rfl | hc
       · exact .inl rfl
       · right; rw [← hch]; exact hc⟩
-    obtain ⟨pr, hpr, hh⟩ := hr x z l r hx' ho hl hrp' hlr'
-    exact ⟨pr, by show (allocP s o)[r]? = _; rw [allocP_lt hrl]; exact hpr, hh⟩
-  · obtain rfl := alloc_footprint_new_sub hl
-    have hroot : RootPlace (allocEff s o).P s.P.length :=
-      ⟨by show s.P.length < (allocP s o).length; rw [allocP_len]; omega, alloc_parentOf_new s o⟩
-    have hself : partOf (allocEff s o).P s.P.length s.P.length := ⟨hroot.1, .inl rfl⟩
-    obtain rfl := rootOf_unique hrp hroot hlr hself
-    exact ⟨_, allocP_new s o, rfl⟩
+    obtain ⟨pr', hpr, hh⟩ := hr x z l r hx' ho hl hrp' hlr'
+    exact ⟨pr', by show (allocP s o ls)[r]? = _; rw [allocP_lt hrl]; exact hpr, hh⟩
+  · obtain ⟨hil, hin⟩ := rootIdx_mem hi
+    have hroot : RootPlace (allocEff s pr o ls).P (s.P.length + i) :=
+      ⟨by show s.P.length + i < (allocP s o ls).length; rw [allocP_len]; omega,
+        by show parentOf (allocP s o ls) (s.P.length + i) = none
+           rw [allocP, shape_parentOf_new hil]; exact hin⟩
+    obtain rfl := rootOf_unique hrp hroot hlr (mem_footprint.1 hl).2.2
+    exact ⟨_, shapeP_new hil, rfl⟩
 
-/-- `alloc` preserves `WF3` and `Inv3base` (B5; MM-03.3 §2). -/
-theorem alloc_preserves {k : K} {pr ow ex : Nat} {s s' : S3} (hwf : WF3 s) (hinv : Inv3base s)
-    (h : AllocStep k pr ow ex s (.ok s')) : WF3 s' ∧ Inv3base s' := by
+/-- `alloc` preserves `WF3` and `Inv3base` (B5; C6; MM-03.3 §2). -/
+theorem alloc_preserves {k : K} {pr ow : Nat} {ls : List (Option Nat × Option Nat × Nat)}
+    {s s' : S3} (hwf : WF3 s) (hinv : Inv3base s) (h : AllocStep k pr ow ls s (.ok s')) :
+    WF3 s' ∧ Inv3base s' := by
   cases h with
   | ok hst _ =>
   obtain ⟨i1, i2, i3, -⟩ := hinv
-  have how : s.Usable ow := hst.2.2.1
-  have newfp : ∀ {l}, l ∈ footprint (allocP s ow) s.P.length → l = s.P.length :=
-    alloc_footprint_new_sub
-  have live : ∀ (hd : Holder), HolderLive s hd → HolderLive (allocEff s ow) hd := by
+  have hsh := hst.2.2.2.2.2
+  have nodup : (rootIdx ls).Nodup :=
+    ((pairwise_lt_range _).sublist List.filter_sublist).imp Nat.ne_of_lt
+  have live : ∀ (hd : Holder), HolderLive s hd → HolderLive (allocEff s pr ow ls) hd := by
     intro hd hl; cases hd with
     | frame f => exact hl
     | place p => exact alloc_usable_old hl
-  refine ⟨⟨?_, ?_, hwf.ne, hwf.nodup, hwf.frames, ?_, ?_, ?_, ?_, ?_,
-    alloc_rootHeld hwf hwf.rootHeld⟩, ?_, ?_, ?_, i4_always _⟩
+  refine ⟨⟨?_, ?_, hwf.ne, hwf.nodup, hwf.frames, ?_, ?_, ?_, ?_,
+    alloc_rootChain hwf hst, alloc_rootHeld hwf hwf.rootHeld⟩, ?_, ?_, ?_, i4_always _⟩
   · intro b y a hb ho
-    rcases alloc_A_get hb with ⟨-, hb'⟩ | ⟨-, rfl⟩
+    rcases alloc_get hb with ⟨-, hb'⟩ | ⟨-, _, -, rfl⟩
     · exact hwf.origin b y a hb' ho
     · cases ho
   · intro a y hy l hl
-    show l < (allocP s ow).length
+    show l < (allocP s ow ls).length
     rw [allocP_len]
-    rcases alloc_A_get hy with ⟨-, hy'⟩ | ⟨-, rfl⟩
+    rcases alloc_get hy with ⟨-, hy'⟩ | ⟨-, i, -, rfl⟩
     · have := hwf.fp a y hy' l hl; omega
-    · have := newfp hl; omega
+    · have := (mem_footprint.1 hl).1; rwa [allocP_len] at this
   · intro q pl f hq ho
-    rcases allocP_get hq with ⟨-, hq'⟩ | ⟨-, rfl⟩
+    rcases shapeP_get hq with ⟨-, hq'⟩ | ⟨-, i, -, -, rfl⟩
     · exact hwf.ownerFrame q pl f hq' ho
-    · cases ho
+    · simp only [shapeOwner] at ho; split at ho <;> cases ho
   · intro q pl o hq ho
-    show o < (allocP s ow).length
+    show o < (allocP s ow ls).length
     rw [allocP_len]
-    rcases allocP_get hq with ⟨-, hq'⟩ | ⟨-, rfl⟩
+    rcases shapeP_get hq with ⟨-, hq'⟩ | ⟨-, i, hi, -, rfl⟩
     · have := hwf.ownerPlace q pl o hq' ho; omega
-    · cases ho; have := how.lt; omega
+    · simp only [shapeOwner] at ho; split at ho
+      · rename_i o' ho'; cases ho
+        have h2 := (hsh i (List.mem_range.2 hi)).2
+        rw [ho'] at h2; exact Nat.lt_of_lt_of_le h2.2 (by omega)
+      · cases ho; have := hst.2.2.1.lt; omega
   · intro q pl r hq hp
-    rcases allocP_get hq with ⟨hql, hq'⟩ | ⟨-, rfl⟩
-    · obtain ⟨pr, hpr, hlt, ho, hd⟩ := hwf.parts q pl r hq' hp
-      refine ⟨pr, by show (allocP s ow)[r]? = _; rw [allocP_lt (by omega)]; exact hpr, hlt, ho, ?_⟩
-      simp [allocEff, Nat.ne_of_lt hql, show r ≠ s.P.length by omega, hd]
-    · cases hp
+    rcases shapeP_get hq with ⟨hq', hq''⟩ | ⟨hq', i, hi, rfl, rfl⟩
+    · obtain ⟨pr', hpr, hlt, ho, hd⟩ := hwf.parts q pl r hq'' hp
+      refine ⟨pr', by show (allocP s ow ls)[r]? = _; rw [allocP_lt (by omega)]; exact hpr, hlt, ho,
+        ?_⟩
+      simp [allocEff, show ¬ s.P.length ≤ r by omega, show ¬ s.P.length ≤ q by omega, hd]
+    · have h1 := (hsh i (List.mem_range.2 hi)).1
+      simp only at hp; rw [hp] at h1; obtain ⟨hr₁, hr₂, hown⟩ := h1
+      have hri : r - s.P.length < ls.length := by omega
+      refine ⟨_, by show (allocP s ow ls)[r]? = _
+                    rw [show r = s.P.length + (r - s.P.length) by omega, allocP, shapeP_new hri],
+        by omega, ?_, by simp [allocEff, show s.P.length ≤ r by omega]⟩
+      simp only [shapeOwner, hown]
   · intro a y hy ya
-    rcases alloc_A_get hy with ⟨-, hy'⟩ | ⟨-, rfl⟩
+    rcases alloc_get hy with ⟨-, hy'⟩ | ⟨-, i, hi, rfl⟩
     · exact live _ (hwf.poss a y hy' ya)
-    · exact live _ how
-  · intro a y l ha hl hleaf
-    rcases alloc_A_get ha with ⟨ha', ha''⟩ | ⟨ha', rfl⟩
-    · have hlt := hwf.fp a y ha'' l hl
-      have hleaf0 : isLeaf s.P l := fun r hr => by
-        have := hleaf r (by show r < (allocP s ow).length; rw [allocP_len]; omega)
-        rwa [show parentOf (allocEff s ow).P r = parentOf s.P r from alloc_parentOf_lt hr] at this
-      obtain ⟨x0, z, r, hx0, hz, hzo, ⟨hrl, hrp⟩, ⟨hl', hc⟩, hfz⟩ :=
-        hwf.rootChain a y l ha'' hl hleaf0
-      have hx0lt : x0 < s.A.length := by
-        rcases hx0 with rfl | hx0
-        · exact ha'
-        · exact Nat.lt_trans (chain_lt hx0) ha'
-      refine ⟨x0, z, r, by rw [alloc_ancs_lt ha']; exact hx0,
-        by show (s.A ++ _)[x0]? = _; rw [List.getElem?_append_left hx0lt]; exact hz, hzo,
-        ⟨?_, ?_⟩, ⟨?_, ?_⟩, fun l' => ?_⟩
-      · show r < (allocP s ow).length; rw [allocP_len]; omega
-      · show parentOf (allocP s ow) r = none; rw [alloc_parentOf_lt hrl]; exact hrp
-      · show l < (allocP s ow).length; rw [allocP_len]; omega
-      · rcases hc with rfl | hc
-        · exact .inl rfl
-        · right
-          show r ∈ chain (parentOf (allocP s ow)) l
-          rwa [chain_congr (fun j hj => alloc_parentOf_lt (Nat.lt_of_le_of_lt hj hl'))]
-      · show _ ↔ l' ∈ footprint (allocP s ow) r
-        rw [alloc_footprint_old hrl]; exact hfz l'
-    · refine ⟨a, _, s.P.length, .inl rfl, ha, rfl, ⟨?_, alloc_parentOf_new s ow⟩,
-        (mem_footprint.1 hl).2.2, fun _ => Iff.rfl⟩
-      show s.P.length < (allocP s ow).length; rw [allocP_len]; omega
+    · exact alloc_shapeOwner_live hst (rootIdx_mem hi).1
   · intro a b x y p hab ha hb xa ya xp yp hnab hnba
-    rcases alloc_A_get ha with ⟨ha', ha''⟩ | ⟨ha', rfl⟩ <;>
-      rcases alloc_A_get hb with ⟨hb', hb''⟩ | ⟨hb', rfl⟩
+    rcases alloc_get ha with ⟨ha', hx⟩ | ⟨ha', i, hi, rfl⟩ <;>
+      rcases alloc_get hb with ⟨hb', hy⟩ | ⟨hb', i', hi', rfl⟩
     · rw [alloc_ancs_lt hb'] at hnab; rw [alloc_ancs_lt ha'] at hnba
-      exact i1 a b x y p hab ha'' hb'' xa ya xp yp hnab hnba
-    · have := hwf.fp a x ha'' p xp; have := newfp yp; omega
-    · have := hwf.fp b y hb'' p yp; have := newfp xp; omega
-    · exact absurd (ha'.trans hb'.symm) hab
+      exact i1 a b x y p hab hx hy xa ya xp yp hnab hnba
+    · have := hwf.fp a x hx p xp
+      have := shape_root_fp_ge yp; omega
+    · have := hwf.fp b y hy p yp
+      have := shape_root_fp_ge xp; omega
+    · have hk : a - s.A.length ≠ b - s.A.length := by omega
+      have hii : i ≠ i' := fun e => hk ((nodup.getElem?_inj (lt_of_getElem? hi)).1 (by
+        rw [hi, hi', e]))
+      exact (shape_roots_disjoint hii (rootIdx_mem hi).2 (rootIdx_mem hi').2 xp yp).elim
   · intro b y a hb ho
-    rcases alloc_A_get hb with ⟨-, hb'⟩ | ⟨-, rfl⟩
+    rcases alloc_get hb with ⟨-, hb'⟩ | ⟨-, _, -, rfl⟩
     · obtain ⟨x₁, hx₁, hh⟩ := i2 b y a hb' ho
-      refine ⟨x₁, ?_, hh⟩
-      show (s.A ++ _)[a]? = _; rw [List.getElem?_append_left (lt_of_getElem? hx₁)]; exact hx₁
+      exact ⟨x₁, by rw [alloc_lt (lt_of_getElem? hx₁)]; exact hx₁, hh⟩
     · cases ho
   · intro q hq x hx
     by_cases hql : q < s.P.length
-    · have hx' : x ∈ s.D q := by simpa [allocEff, Nat.ne_of_lt hql] using hx
+    · have hx' : x ∈ s.D q := by simpa [allocEff, show ¬ s.P.length ≤ q by omega] using hx
       obtain ⟨y, hy, ya⟩ := i3 q (alloc_usable_back hwf hq hql) x hx'
-      refine ⟨y, ?_, ya⟩
-      show (s.A ++ _)[x]? = _; rw [List.getElem?_append_left (lt_of_getElem? hy)]; exact hy
-    · have := hq.lt
-      have : q = s.P.length := by
-        have h' : q < (allocP s ow).length := this; rw [allocP_len] at h'; omega
-      subst this; simp [allocEff] at hx
+      exact ⟨y, by rw [alloc_lt (lt_of_getElem? hy)]; exact hy, ya⟩
+    · simp [allocEff, show s.P.length ≤ q by omega] at hx
+
+/-- `alloc_fresh` (B5; C6): the new places and the new authorities have fresh identities. Before
+`alloc`, no place is at an index `|P| + i`, no authority covers one, no place has one as parent or
+owner; no authority is at an index `|A| + j` or has one as origin. After `alloc`, the new places
+are `Uninit`, without anchor, alive, not freed and not pinned. -/
+theorem alloc_fresh {k : K} {pr ow : Nat} {ls : List (Option Nat × Option Nat × Nat)}
+    {s s' : S3} (hwf : WF3 s) (h : AllocStep k pr ow ls s (.ok s')) :
+    (∀ i, s.P[s.P.length + i]? = none) ∧ (∀ j, s.A[s.A.length + j]? = none) ∧
+    (∀ (a : Nat) (y : Authority) (i : Nat), s.A[a]? = some y → s.P.length + i ∉ y.footprint) ∧
+    (∀ (q : Nat) (pl : Place) (i : Nat), s.P[q]? = some pl →
+      pl.parent ≠ some (s.P.length + i) ∧ pl.owner ≠ .place (s.P.length + i)) ∧
+    (∀ (b : Nat) (y : Authority) (j : Nat), s.A[b]? = some y →
+      y.origin ≠ some (s.A.length + j)) ∧
+    s'.P.length = s.P.length + ls.length ∧
+    ∀ i, s'.I (s.P.length + i) = .uninit ∧ s'.D (s.P.length + i) = [] ∧
+      s'.dead (s.P.length + i) = false ∧ s'.freed (s.P.length + i) = false ∧
+      s'.pin (s.P.length + i) = false := by
+  cases h with
+  | ok _ _ =>
+  refine ⟨fun _ => List.getElem?_eq_none (by omega), fun _ => List.getElem?_eq_none (by omega),
+    fun a y i hy hl => by have := hwf.fp a y hy _ hl; omega,
+    fun q pl i hq => ⟨fun hp => ?_, fun ho => ?_⟩, fun b y j hy ho => ?_, allocP_len s ow ls,
+    fun i => by simp [allocEff]⟩
+  · obtain ⟨pr', hpr, -⟩ := hwf.parts q pl _ hq hp
+    have := lt_of_getElem? hpr; omega
+  · have := hwf.ownerPlace q pl _ hq ho; omega
+  · have := hwf.origin b y _ hy ho; have := lt_of_getElem? hy; omega
+
+/-- `alloc_owned_root` (B5; C6): each root element of the shape is a usable owned root, owned by
+its owning element or by `owner`; its root authority `Modify`, without origin, covers its
+footprint and is held by that owner. -/
+theorem alloc_owned_root {k : K} {pr ow : Nat} {ls : List (Option Nat × Option Nat × Nat)}
+    {s s' : S3} (h : AllocStep k pr ow ls s (.ok s')) :
+    ∀ m i, (rootIdx ls)[m]? = some i →
+      s'.P[s.P.length + i]? = some ⟨none, shapeOwner ls (.place ow) i, ((ls[i]?).map (·.2.2)).getD 0⟩ ∧
+      OwnedRoot s' (s.P.length + i) ∧ s'.Usable (s.P.length + i) ∧
+      s'.A[s.A.length + m]? =
+        some ⟨.modify, none, footprint s'.P (s.P.length + i), shapeOwner ls (.place ow) i, true⟩ := by
+  cases h with
+  | ok hst _ =>
+  intro m i hm
+  obtain ⟨hil, hin⟩ := rootIdx_mem hm
+  have hnew : (allocEff s pr ow ls).P[s.P.length + i]? =
+      some ⟨none, shapeOwner ls (.place ow) i, ((ls[i]?).map (·.2.2)).getD 0⟩ := by
+    have := shapeP_new (P := s.P) (hd := .place ow) hil; rw [hin] at this; exact this
+  refine ⟨hnew, ?_, alloc_usable_new hst (i + 1) i (Nat.lt_succ_self i) hil, ?_⟩
+  · simp only [OwnedRoot, OptP, hnew, true_and]
+    unfold shapeOwner; split <;> rfl
+  · show (s.A ++ _)[s.A.length + m]? = _
+    rw [List.getElem?_append_right (by omega), Nat.add_sub_cancel_left, List.getElem?_map, hm]; rfl
+
+/-- `alloc_owned_root` for the shape of one leaf, the `alloc` of pass 3 (B5; C6): the new place is
+a usable root, owned by `owner`, whose footprint is itself; its root authority `Modify`, without
+origin, covers that footprint and is held by `owner`. -/
+theorem alloc_owned_root_leaf {k : K} {pr ow : Nat} {s s' : S3} (hwf : WF3 s)
+    (h : AllocStep k pr ow [(none, none, 0)] s (.ok s')) :
+    s'.P[s.P.length]? = some ⟨none, .place ow, 0⟩ ∧ OwnedRoot s' s.P.length ∧
+    s'.Usable s.P.length ∧ (∀ l, l ∈ footprint s'.P s.P.length ↔ l = s.P.length) ∧
+    s'.A[s.A.length]? = some ⟨.modify, none, footprint s'.P s.P.length, .place ow, true⟩ := by
+  have h0 := alloc_owned_root h 0 0 rfl
+  cases h with
+  | ok hst _ =>
+  obtain ⟨hnew, hroot, hu, hA⟩ := h0
+  refine ⟨hnew, hroot, hu, fun l => ⟨fun hl => ?_, fun e => ?_⟩, hA⟩
+  · obtain ⟨hl, -, -, hc | hc⟩ := mem_footprint.1 hl
+    · exact hc
+    · have := chain_lt hc; have : l < (allocP s ow [(none, none, 0)]).length := hl
+      rw [allocP_len] at this; simp at this; omega
+  · subst e
+    have hlen : s.P.length < (allocEff s pr ow [(none, none, 0)]).P.length := by
+      show s.P.length < (allocP s ow [(none, none, 0)]).length; rw [allocP_len]; simp
+    refine mem_footprint.2 ⟨hlen, fun r hr he => ?_, hlen, .inl rfl⟩
+    have hr' : r < s.P.length + 1 := by
+      have : r < (allocP s ow [(none, none, 0)]).length := hr; rw [allocP_len] at this; simpa using this
+    rcases Nat.lt_or_ge r s.P.length with hrl | hrl
+    · have he' : parentOf s.P r = some s.P.length := by
+        rw [← shape_parentOf_lt (hd := .place ow) (ls := [(none, none, 0)]) hrl]; exact he
+      simp only [parentOf] at he'
+      cases hq : s.P[r]? with
+      | none => rw [hq] at he'; cases he'
+      | some pl =>
+        rw [hq] at he'
+        obtain ⟨pr', hpr, -⟩ := hwf.parts r pl _ hq he'
+        exact absurd (lt_of_getElem? hpr) (Nat.lt_irrefl _)
+    · obtain rfl : r = s.P.length := by omega
+      have he' : parentOf (allocP s ow [(none, none, 0)]) (s.P.length + 0) = some s.P.length := he
+      rw [allocP, shape_parentOf_new (by simp)] at he'; cases he'
 
 /-! ## Preservation of `AnchorOrder` (B8, C1) -/
 
@@ -4484,60 +4699,61 @@ theorem enter_preserves_anchorOrder {s s' : S3} {ps : List Nat}
       rw [List.dropWhile_cons]; simp only [hne, ↓reduceIte]
   · simp [enterEff, show s.P.length ≤ q by omega] at hx
 
-theorem alloc_frameOf_old {s : S3} {o : Nat} (hwf : WF3 s) {q f : Nat} (hq : q < s.P.length) :
-    FrameOf (allocEff s o) q f ↔ FrameOf s q f := by
+theorem alloc_frameOf_old {s : S3} {pr o : Nat} {ls : List (Option Nat × Option Nat × Nat)}
+    (hwf : WF3 s) {q f : Nat} (hq : q < s.P.length) :
+    FrameOf (allocEff s pr o ls) q f ↔ FrameOf s q f := by
   constructor
   · intro h
     revert hq
     induction h with
     | @frame q f pl hpl ho =>
       intro hq
-      exact .frame (by have : (allocP s o)[q]? = some pl := hpl; rwa [allocP_lt hq] at this) ho
+      exact .frame (by have : (allocP s o ls)[q]? = some pl := hpl; rwa [allocP_lt hq] at this) ho
     | @place q o' f pl hpl ho _ ih =>
       intro hq
       have hpl' : s.P[q]? = some pl := by
-        have : (allocP s o)[q]? = some pl := hpl; rwa [allocP_lt hq] at this
+        have : (allocP s o ls)[q]? = some pl := hpl; rwa [allocP_lt hq] at this
       exact .place hpl' ho (ih (hwf.ownerPlace q pl o' hpl' ho))
   · intro h
     clear hq
     induction h with
     | frame hpl ho =>
-      exact .frame (show (allocP s o)[_]? = _ by rw [allocP_lt (lt_of_getElem? hpl)]; exact hpl) ho
+      exact .frame (show (allocP s o ls)[_]? = _ by rw [allocP_lt (lt_of_getElem? hpl)]; exact hpl) ho
     | place hpl ho _ ih =>
-      exact .place (show (allocP s o)[_]? = _ by rw [allocP_lt (lt_of_getElem? hpl)]; exact hpl)
+      exact .place (show (allocP s o ls)[_]? = _ by rw [allocP_lt (lt_of_getElem? hpl)]; exact hpl)
         ho ih
 
-theorem alloc_pframe_old {s : S3} {o : Nat} (hwf : WF3 s) {q : Nat} (hq : q < s.P.length) :
-    (allocEff s o).pframe q = s.pframe q :=
+theorem alloc_pframe_old {s : S3} {pr o : Nat} {ls : List (Option Nat × Option Nat × Nat)}
+    (hwf : WF3 s) {q : Nat} (hq : q < s.P.length) :
+    (allocEff s pr o ls).pframe q = s.pframe q :=
   Option.ext fun f => by rw [pframe_iff, pframe_iff, alloc_frameOf_old hwf hq]
 
-/-- `alloc` preserves `AnchorOrder` (B8, C1; B5), under `WF3`: the frames of old places do not
-change and the new place has no anchor. -/
-theorem alloc_preserves_anchorOrder {k : K} {pr ow ex : Nat} {s s' : S3} (hwf : WF3 s)
-    (hinv : Inv3 s) (h : AllocStep k pr ow ex s (.ok s')) : AnchorOrder s' := by
+/-- `alloc` preserves `AnchorOrder` (B8, C1; B5; C6), under `WF3`: the frames of old places do not
+change and the new places have no anchor. -/
+theorem alloc_preserves_anchorOrder {k : K} {pr ow : Nat}
+    {ls : List (Option Nat × Option Nat × Nat)} {s s' : S3} (hwf : WF3 s)
+    (hinv : Inv3 s) (h : AllocStep k pr ow ls s (.ok s')) : AnchorOrder s' := by
   cases h with
   | ok _ _ =>
   intro q hq x hx
   by_cases hql : q < s.P.length
   · have hq0 := alloc_usable_back hwf hq hql
-    have hx0 : x ∈ s.D q := by simpa [allocEff, Nat.ne_of_lt hql] using hx
+    have hx0 : x ∈ s.D q := by simpa [allocEff, show ¬ s.P.length ≤ q by omega] using hx
     have hok := hinv.ao q hq0 x hx0
     obtain ⟨z, hz⟩ := hok.get
     obtain ⟨g, hg⟩ := hok.frame hz
     have hxl := hok.lt
-    have he : (allocEff s ow).effAnchor x = s.effAnchor x := effAnchor_congr (alloc_ancs_lt hxl)
+    have he : (allocEff s pr ow ls).effAnchor x = s.effAnchor x :=
+      effAnchor_congr (alloc_ancs_lt hxl)
     have hrl : s.effAnchor x < s.A.length := Nat.lt_of_le_of_lt (effAnchor_le s x) hxl
-    refine (effAnchorOK_of_same (s' := allocEff s ow) (z' := z) hz (by
-      rw [he]; show (s.A ++ _)[_]? = _; rw [List.getElem?_append_left hrl]; exact hz)
-      ?_ (fun _ _ _ => Iff.rfl) (alloc_pframe_old hwf hql)).2 hok
+    refine (effAnchorOK_of_same (s' := allocEff s pr ow ls) (z' := z) hz (by
+      rw [he, alloc_lt hrl]; exact hz) ?_ (fun _ _ _ => Iff.rfl) (alloc_pframe_old hwf hql)).2 hok
     cases hh : z.holder with
     | frame f => rfl
     | place p =>
       rw [hh] at hg
       exact alloc_pframe_old hwf (pframe_iff.1 hg).lt
-  · have : q = s.P.length := by
-      have h' : q < (allocP s ow).length := hq.lt; rw [allocP_len] at h'; omega
-    subst this; simp [allocEff] at hx
+  · simp [allocEff, show s.P.length ≤ q by omega] at hx
 
 theorem transfer_D (s : S3) (src dst q : Nat) : (transferEff s src dst).D q =
     if q = dst then s.D dst ++ depsOf s src else if partOf s.P q src then [] else s.D q := rfl
@@ -4794,8 +5010,8 @@ inductive Reachable (k : K) : S3 → Prop where
   | endUse {s s' : S3} {p : Nat} : Reachable k s → EndUseStep k p s (.ok s') → Reachable k s'
   | free {s s' : S3} {p auth : Nat} :
       Reachable k s → FreeStep k p auth s (.ok s') → Reachable k s'
-  | alloc {s s' : S3} {pr ow ex : Nat} :
-      Reachable k s → AllocStep k pr ow ex s (.ok s') → Reachable k s'
+  | alloc {s s' : S3} {pr ow : Nat} {ls : List (Option Nat × Option Nat × Nat)} :
+      Reachable k s → AllocStep k pr ow ls s (.ok s') → Reachable k s'
 
 theorem init_wf : WF3 S3.init ∧ Inv3base S3.init := by
   refine ⟨⟨fun _ _ _ h => by simp [S3.init] at h, fun _ _ h => by simp [S3.init] at h,
@@ -5066,10 +5282,11 @@ theorem enter_preserves_noDangling {s s' : S3} {ps : List Nat}
       rw [show s.P.length + (q - s.P.length) = q by omega] at hu
       exact hq hu
 
-/-- `alloc` preserves `NoDangling` (C2; B5), under `WF3`: old places keep their footprints and
-their usability; the new root authority covers only the new place, usable through its owner. -/
-theorem alloc_preserves_noDangling {k : K} {pr ow ex : Nat} {s s' : S3} (hwf : WF3 s)
-    (hinv : Inv3 s) (h : AllocStep k pr ow ex s (.ok s')) : NoDangling s' := by
+/-- `alloc` preserves `NoDangling` (C2; B5; C6), under `WF3`: old places keep their footprints and
+their usability; a new root authority covers only new elements, which are usable. -/
+theorem alloc_preserves_noDangling {k : K} {pr ow : Nat}
+    {ls : List (Option Nat × Option Nat × Nat)} {s s' : S3} (hwf : WF3 s)
+    (hinv : Inv3 s) (h : AllocStep k pr ow ls s (.ok s')) : NoDangling s' := by
   cases h with
   | ok hst _ =>
   intro j z hz za q hq l hl hlz
@@ -5078,17 +5295,19 @@ theorem alloc_preserves_noDangling {k : K} {pr ow ex : Nat} {s s' : S3} (hwf : W
     rcases hlq.2 with rfl | hc
     · exact Nat.le_refl _
     · exact Nat.le_of_lt (chain_lt hc)
-  rcases alloc_A_get hz with ⟨-, hy⟩ | ⟨-, rfl⟩
+  rcases alloc_get hz with ⟨-, hy⟩ | ⟨-, i, -, rfl⟩
   · have hqo : q < s.P.length := Nat.lt_of_le_of_lt hql (hwf.fp j z hy l hlz)
     exact hinv.nd j z hy za q (fun hu => hq (alloc_usable_old hu)) l
-      ((alloc_footprint_old hqo l).1 hl) hlz
-  · have hl' := alloc_footprint_new_sub hlz
+      ((shape_footprint_old hst.2.2.2.2.2 hqo l).1 hl) hlz
+  · have hge : s.P.length ≤ l := shape_root_fp_ge hlz
     by_cases hqo : q < s.P.length
-    · have := (mem_footprint.1 ((alloc_footprint_old hqo l).1 hl)).1; omega
-    · have hlP' : l < (allocP s ow).length := hlP
+    · have := (mem_footprint.1 ((shape_footprint_old hst.2.2.2.2.2 hqo l).1 hl)).1; omega
+    · have hlP' : l < (allocP s ow ls).length := hlP
       rw [allocP_len] at hlP'
-      obtain rfl : q = s.P.length := by omega
-      exact hq (.place (allocP_new s ow) (by simp [allocEff]) rfl (alloc_usable_old hst.2.2.1))
+      have hu := alloc_usable_new hst (q - s.P.length + 1) (q - s.P.length) (Nat.lt_succ_self _)
+        (by omega)
+      rw [show s.P.length + (q - s.P.length) = q by omega] at hu
+      exact hq hu
 
 /-- A place usable before the exit and not after belongs to the exited frame, directly or through
 its owners (MM-03.3.1; A5). -/
@@ -5423,12 +5642,14 @@ def ArenaInv (s : S3) (ar : Arena) : Prop :=
     y.origin = none ∧ y.mode = .modify ∧ y.holder = pl.owner) ∧
   (∀ l, l ∈ s.afp ar.internal ↔ l ∈ footprint s.P ar.storage)
 
-/-- Right to update the metadata of the arena (A10): an authority `via` exercisable at `Observe`
-(B2) with a present effective mode on every metadata leaf, all `SharedMutable` (a `writeShared`,
-A9), with valid dependencies. -/
+/-- Right to update the metadata of the arena (A10; C6, aligned with `ProviderRight`): exercisable
+`Modify` on the arena value, or an authority `via` exercisable at `Observe` (B2) with a present
+effective mode on every metadata leaf, all `SharedMutable` (a `writeShared`, A9), with valid
+dependencies. -/
 def MetaRight (k : K) (s : S3) (ar : Arena) (via : Nat) : Prop :=
-  s.ExercisableAt via .observe ∧ arenaValue s ar ≠ none ∧
-  ∀ l ∈ metaLeaves s ar, effective s via l ≠ none ∧ k.SharedMutable l ∧ DepsValid s l
+  OptP (arenaValue s ar) (fun v => HasRight s .modify v) False ∨
+  (s.ExercisableAt via .observe ∧ arenaValue s ar ≠ none ∧
+    ∀ l ∈ metaLeaves s ar, effective s via l ≠ none ∧ k.SharedMutable l ∧ DepsValid s l)
 
 instance (k : K) [DecidablePred k.SharedMutable] (s : S3) (ar : Arena) (via : Nat) :
     Decidable (MetaRight k s ar via) := by
@@ -5726,7 +5947,8 @@ inductive KStep (k : K) : S3 → S3 → Prop where
   | unpin {s s' : S3} {p : Nat} : UnpinStep k p s (.ok s') → KStep k s s'
   | endUse {s s' : S3} {p : Nat} : EndUseStep k p s (.ok s') → KStep k s s'
   | free {s s' : S3} {p auth : Nat} : FreeStep k p auth s (.ok s') → KStep k s s'
-  | alloc {s s' : S3} {pr ow ex : Nat} : AllocStep k pr ow ex s (.ok s') → KStep k s s'
+  | alloc {s s' : S3} {pr ow : Nat} {ls : List (Option Nat × Option Nat × Nat)} :
+      AllocStep k pr ow ls s (.ok s') → KStep k s s'
 
 /-- Sufficient conditions for the arena invariant to carry over to a new state: existing
 authorities keep mode and footprint, only lose activity, keep an origin equal to `internal` or
@@ -5879,17 +6101,15 @@ theorem arena_inv_preserved {k : K} {s s' : S3} {ar : Arena} (hwf : WF3 s) (hinv
     obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs
     exact releases _ ((freeS_releases s _).trans cleanup_releases) rfl
   | alloc hs =>
-    rename_i ow _
     cases hs with
-    | ok _ _ =>
+    | ok hsa _ =>
     have hst := lt_of_getElem? hpli
-    refine arenaInv_transport hai (fun j y hy => ⟨y, by
-      show (s.A ++ _)[j]? = _; rw [List.getElem?_append_left (lt_of_getElem? hy)]; exact hy,
-      rfl, rfl, id, id, id⟩) (hroot.of_P (allocP_lt hst)) ?_ (alloc_footprint_old hst)
+    refine arenaInv_transport hai (fun j y hy => ⟨y, by rw [alloc_lt (lt_of_getElem? hy)]; exact hy,
+      rfl, rfl, id, id, id⟩) (hroot.of_P (allocP_lt hst)) ?_
+      (shape_footprint_old hsa.2.2.2.2.2 hst)
     intro y y' pl h1 h2 h3 h4
-    have h2' : (s.A ++ _)[ar.internal]? = some y' := h2
-    rw [List.getElem?_append_left hi, h1] at h2'; cases h2'
-    exact ⟨pl, by show (allocP s ow)[_]? = _; rw [allocP_lt hst]; exact h3, h4⟩
+    rw [alloc_lt hi, h1] at h2; cases h2
+    exact ⟨pl, by rw [show (allocEff _ _ _ _).P = allocP _ _ _ from rfl, allocP_lt hst]; exact h3, h4⟩
 
 /-! ## Determinism and `ok` outcomes (MM-03.3 §3–5; A6–A10) -/
 
@@ -6300,7 +6520,7 @@ leaves or places, `FreeCompat` by a list of pairs; no declared disjointness; eve
 satisfiable. -/
 def KT (sh pinned done dealloc : List Nat) (compat : List (Nat × Nat)) : K :=
   ⟨fun _ _ => False, (· ∈ sh), (· ∈ pinned), (· ∈ done), (· ∈ dealloc),
-    fun p a => (p, a) ∈ compat, fun _ _ => True⟩
+    fun p a => (p, a) ∈ compat, fun _ _ _ => True⟩
 
 section TestContracts
 variable (sh pinned done dealloc : List Nat) (compat : List (Nat × Nat))
@@ -6316,8 +6536,8 @@ instance : DecidablePred (KT sh pinned done dealloc compat).Deallocable :=
   fun p => inferInstanceAs (Decidable (p ∈ dealloc))
 instance : ∀ p a, Decidable ((KT sh pinned done dealloc compat).FreeCompat p a) :=
   fun p a => inferInstanceAs (Decidable ((p, a) ∈ compat))
-instance : ∀ p e, Decidable ((KT sh pinned done dealloc compat).Satisfiable p e) :=
-  fun _ _ => instDecidableTrue
+instance : ∀ p ls s, Decidable ((KT sh pinned done dealloc compat).Satisfiable p ls s) :=
+  fun _ _ _ => instDecidableTrue
 end TestContracts
 
 /-- Empty contracts. -/
@@ -6557,11 +6777,11 @@ arena block (expected: reject). Frame 1: 0 box value, 1 allocator value; in the 
 frame, `alloc` with provider 1 and owner 0 creates the storage 2, owned by 0, with root 2 (B5). -/
 abbrev KF : K := KT [] [] [] [2] [(2, 7)]
 def n6e : S3 := enter1 [(none, none, 0), (none, none, 0)]
-def n6a : S3 := write3Eff (allocEff (write3Eff n6e [1]) 0) [2]
+def n6a : S3 := write3Eff (allocEff (write3Eff n6e [1]) 1 0 [(none, none, 0)]) [2]
 example : Write3Step 1 [1] n6e (.ok (write3Eff n6e [1])) := .ok (by decide)
-example : AllocStep KF 1 0 8 (write3Eff n6e [1]) (.ok (allocEff (write3Eff n6e [1]) 0)) :=
+example : AllocStep KF 1 0 [(none, none, 0)] (write3Eff n6e [1]) (.ok (allocEff (write3Eff n6e [1]) 1 0 [(none, none, 0)])) :=
   .ok (by decide) (by decide)
-example : Write3Step 2 [2] (allocEff (write3Eff n6e [1]) 0) (.ok n6a) := .ok (by decide)
+example : Write3Step 2 [2] (allocEff (write3Eff n6e [1]) 1 0 [(none, none, 0)]) (.ok n6a) := .ok (by decide)
 example : FreeStep KF 2 7 n6a (.ok (freeEff n6a 2)) := .ok (by decide)
 example : EndUseStep KF 0 (freeEff n6a 2) (.ok (endUseEff (freeEff n6a 2) 0)) := .ok (by decide)
 example : FreeStep KF 2 7 (deriveEff n6a 2 2 .observe) .reject := .reject (by decide)
@@ -6616,7 +6836,7 @@ example : EndUseStep K0 0 (pinEff c13a 0 true) .reject := .reject (by decide)
 
 /-- Contracts declaring every pair of regions disjoint, without the obligation `DDSound`. -/
 def KDD : K := ⟨fun _ _ => True, fun _ => False, fun _ => False, fun _ => False, fun _ => False,
-  fun _ _ => False, fun _ _ => False⟩
+  fun _ _ => False, fun _ _ _ => False⟩
 instance : ∀ r r', Decidable (KDD.DeclaredDisjoint r r') := fun _ _ => instDecidableTrue
 
 /-- Without the obligation `DDSound` (MM-03.3.8), `split` (MM-03.3 §3, O2) accepts two overlapping
@@ -7047,12 +7267,12 @@ example : TransferStep K0 1 4 ma1 .reject := .reject (by decide)
 /-- `alloc` in the middle of a frame, provider distinct from the owner, then `free` (expected:
 `ok`, B5): case n6 above. `alloc` not satisfiable (expected: `fail`, state unchanged); `alloc` by a
 callee without right on the provider of the caller (expected: reject). -/
-def KNS : K := { KT [] [] [] [] [] with Satisfiable := fun _ _ => False }
+def KNS : K := { KT [] [] [] [] [] with Satisfiable := fun _ _ _ => False }
 instance : DecidablePred KNS.SharedMutable := fun l => inferInstanceAs (Decidable (l ∈ ([] : List Nat)))
-instance : ∀ p e, Decidable (KNS.Satisfiable p e) := fun _ _ => instDecidableFalse
-example : AllocStep KNS 1 0 8 (write3Eff n6e [1]) (.fail (write3Eff n6e [1])) :=
+instance : ∀ p ls s, Decidable (KNS.Satisfiable p ls s) := fun _ _ _ => instDecidableFalse
+example : AllocStep KNS 1 0 [(none, none, 0)] (write3Eff n6e [1]) (.fail (write3Eff n6e [1])) :=
   .fail (by decide) (by decide)
-example : AllocStep KF 1 2 8 (enterEff (write3Eff n6e [1]) [] [(none, none, 0)]) .reject :=
+example : AllocStep KF 1 2 [(none, none, 0)] (enterEff (write3Eff n6e [1]) [] [(none, none, 0)]) .reject :=
   .reject (by decide)
 
 /-- `free` of a pinned leaf (expected: reject, B6); `unpin` under `ExternalDone`, then `free`
@@ -7069,12 +7289,14 @@ example : FreeStep KFP 2 7 (pinEff (pinEff n6a 2 true) 2 false)
 
 /-- `alloc` (B5) does not preserve `Inv3` alone (A1): in a state satisfying `Inv3` where an
 authority covers a leaf that does not exist yet, the root authority of the new place covers it too
-in `Modify`. I1 fails. `WF3` (footprints made of existing places) excludes this state. -/
+in `Modify`. I1 fails. `WF3` (footprints made of existing places) excludes this state. The
+provider 0 is `Init` (C6). -/
 theorem alloc_not_inv3_preserving :
-    let s : S3 := ⟨[0], 1, [⟨none, .frame 0, 0⟩], fun _ => .uninit,
+    let s : S3 := ⟨[0], 1, [⟨none, .frame 0, 0⟩], fun _ => .init,
       [⟨.modify, none, [0], .frame 0, true⟩, ⟨.modify, none, [1], .frame 0, true⟩],
       fun _ => [], fun _ => false, fun _ => false, fun _ => false⟩
-    Inv3 s ∧ AllocStep K0 0 0 8 s (.ok (allocEff s 0)) ∧ ¬ I1 (allocEff s 0) := by
+    Inv3 s ∧ AllocStep K0 0 0 [(none, none, 0)] s (.ok (allocEff s 0 0 [(none, none, 0)])) ∧
+      ¬ I1 (allocEff s 0 0 [(none, none, 0)]) := by
   intro s
   have hA : ∀ {b : Nat} {y : Authority}, s.A[b]? = some y →
       (b = 0 ∧ y = ⟨.modify, none, [0], .frame 0, true⟩) ∨
@@ -7091,7 +7313,7 @@ theorem alloc_not_inv3_preserving :
     all_goals first | exact absurd rfl hab | (simp at xp yp; omega)
   · rcases hA hb with ⟨-, rfl⟩ | ⟨-, rfl⟩ <;> cases ho
   · have := h 1 2 ⟨.modify, none, [1], .frame 0, true⟩
-      ⟨.modify, none, footprint (allocP s 0) 1, .place 0, true⟩ 1
+      ⟨.modify, none, footprint (allocP s 0 [(none, none, 0)]) 1, .place 0, true⟩ 1
       (by decide) (by decide) (by decide) rfl rfl (by decide) (by decide) (by decide) (by decide)
     exact absurd this.1 (by decide)
 
@@ -7122,15 +7344,15 @@ example : Write3Step 1 [1] (exitEff (releaseEff rq1 1)) .reject := .reject (by d
 example : FreeStep KR 1 7 (exitEff (releaseEff rq1 1)) .reject := .reject (by decide)
 example : (exitEff (releaseEff rq1 1)).Usable 1 := by decide
 
-/-- Initialisation of the allocator (report, (e) 6): B5 does not require it. `alloc` accepts a
-provider whose value was moved out, or never initialised. Frame 1: 0 owner, 1 allocator value,
-2 another local. -/
+/-- Initialisation of the allocator (pass-3 report, (e) 6): B5 did not require it. C6 requires the
+leaves of the provider `Init`: `alloc` rejects a provider whose value was moved out, or never
+initialised. Frame 1: 0 owner, 1 allocator value, 2 another local. -/
 def mv0 : S3 := enter1 [(none, none, 0), (none, none, 0), (none, none, 0)]
 def mv1 : S3 := transferEff (write3Eff mv0 [1]) 1 2
 example : TransferStep K0 1 2 (write3Eff mv0 [1]) (.ok mv1) := .ok (by decide)
 example : mv1.I 1 = .moved ∧ Read3Step 1 [1] mv1 .reject := ⟨by decide, .reject (by decide)⟩
-example : AllocStep K0 1 0 8 mv1 (.ok (allocEff mv1 0)) := .ok (by decide) trivial
-example : AllocStep K0 1 0 8 mv0 (.ok (allocEff mv0 0)) := .ok (by decide) trivial
+example : AllocStep K0 1 0 [(none, none, 0)] mv1 .reject := .reject (by decide)
+example : AllocStep K0 1 0 [(none, none, 0)] mv0 .reject := .reject (by decide)
 
 /-- `endUse` and the end of external obligations (pass-3 report, (e) 9): A8 let `endUse` end a
 pinned leaf under `ExternalDone`, while B6 reserves the end of external obligations to `unpin`.
