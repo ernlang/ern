@@ -2556,27 +2556,15 @@ theorem enter_rootChain {s : S3} {ps : List Nat} {ls : List (Option Nat × Optio
     · show s.P.length + i < (enterP s ls).length; rw [enterP_len]; omega
     · show parentOf (enterP s ls) (s.P.length + i) = none; rw [enter_parentOf_new hil]; exact hin
 
-/-- `enterFrame` preserves `WF3` and `Inv3base` (MM-03.3 §4, O6; §10; A3; A5). -/
-theorem enter_preserves {s s' : S3} {ps : List Nat} {ls : List (Option Nat × Option Nat × Nat)}
-    (hwf : WF3 s) (hinv : Inv3base s) (h : EnterStep ps ls s (.ok s')) : WF3 s' ∧ Inv3base s' := by
-  obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
-  obtain ⟨i1, i2, i3, -⟩ := hinv
-  have nodup : (rootIdx ls).Nodup :=
-    ((pairwise_lt_range _).sublist List.filter_sublist).imp Nat.ne_of_lt
-  have skel_old : ∀ {j z}, (enterEff s ps ls).A[j]? = some z → j < s.A.length →
-      ∃ y, s.A[j]? = some y ∧ z.mode = y.mode ∧ z.origin = y.origin ∧
-        z.footprint = y.footprint ∧ z.active = y.active ∧
-        (z.holder = y.holder ∨ (j ∈ ps ∧ z.holder = .frame s.nF)) := by
-    intro j z hz hj
-    rcases enter_get hz with ⟨-, y, hy, rfl⟩ | ⟨hj', -⟩
-    · refine ⟨y, hy, ?_⟩; split <;> simp_all
-    · omega
+/-- `enterFrame` preserves `WF3` (MM-03.3 §4, O6; A3; A5; B1). -/
+theorem enter_preserves_wf {s : S3} {ps : List Nat} {ls : List (Option Nat × Option Nat × Nat)}
+    (hwf : WF3 s) (hpre : EnterPre s ps ls) : WF3 (enterEff s ps ls) := by
   have live : ∀ (hd : Holder), HolderLive s hd → HolderLive (enterEff s ps ls) hd := by
     intro hd hl; cases hd with
     | frame f => exact List.mem_cons_of_mem _ hl
     | place p => exact enter_usable_old hl
-  refine ⟨⟨?_, ?_, by simp [enterEff], ?_, ?_, ?_, ?_, ?_, ?_, rootsDisjoint_always _,
-    enter_rootChain hwf hpre⟩, ?_, ?_, ?_, i4_always _⟩
+  refine ⟨?_, ?_, by simp [enterEff], ?_, ?_, ?_, ?_, ?_, ?_, rootsDisjoint_always _,
+    enter_rootChain hwf hpre⟩
   · intro b y a hb ho
     rcases enter_get hb with ⟨hb', y₀, hy₀, rfl⟩ | ⟨-, _, -, hz⟩
     · exact hwf.origin b y₀ a hy₀ (by split at ho <;> exact ho)
@@ -2624,6 +2612,14 @@ theorem enter_preserves {s s' : S3} {ps : List Nat} {ls : List (Option Nat × Op
       · exact List.mem_cons_self ..
       · exact live _ (hwf.poss a y₀ hy₀ (by split at ya <;> simp_all))
     · exact enter_localOwner_live hpre (rootIdx_mem hi).1
+/-- `enterFrame` preserves `WF3` and `Inv3base` (MM-03.3 §4, O6; §10; A3; A5). -/
+theorem enter_preserves {s s' : S3} {ps : List Nat} {ls : List (Option Nat × Option Nat × Nat)}
+    (hwf : WF3 s) (hinv : Inv3base s) (h : EnterStep ps ls s (.ok s')) : WF3 s' ∧ Inv3base s' := by
+  obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
+  obtain ⟨i1, i2, i3, -⟩ := hinv
+  have nodup : (rootIdx ls).Nodup :=
+    ((pairwise_lt_range _).sublist List.filter_sublist).imp Nat.ne_of_lt
+  refine ⟨enter_preserves_wf hwf hpre, ?_, ?_, ?_, i4_always _⟩
   · intro a b x y p hab ha hb xa ya xp yp hnab hnba
     rcases enter_get ha with ⟨ha', x₀, hx₀, rfl⟩ | ⟨ha', i, hi, rfl⟩ <;>
       rcases enter_get hb with ⟨hb', y₀, hy₀, rfl⟩ | ⟨hb', i', hi', rfl⟩
@@ -4139,6 +4135,264 @@ theorem reachable_access_invariant_underDD {k : K} (hdd : DDSound k) {s : S3}
   | endUse _ hs ih => exact endUse_preserves ih.1 ih.2 hs
   | free _ hs ih => exact free_preserves ih.1 ih.2 hs
 
+/-! ## Closure of the exit (O7; B1)
+
+`exitFrame_no_dangling`, the closure theorem of the milestone, does not follow from `WF3` and
+`Inv3`: it also needs `RootHeld` (report, (m)). `RootHeld` holds in every reached state. -/
+
+/-- `RootHeld`: an authority without origin is held by the owner of every leaf it covers. Not a
+clause of `WF3`: the clause missing from B1 for `exitFrame_no_dangling` (report, (m)). -/
+def RootHeld (s : S3) : Prop :=
+  ∀ (x : Nat) (z : Authority) (l : Nat), s.A[x]? = some z → z.origin = none → l ∈ z.footprint →
+    ∃ pl, s.P[l]? = some pl ∧ z.holder = pl.owner
+
+theorem RootHeld.transport {s s' : S3} (h : RootHeld s) (hP : s'.P = s.P)
+    (hA : ∀ (x : Nat) (z' : Authority), s'.A[x]? = some z' → z'.origin = none →
+      ∃ z, s.A[x]? = some z ∧ z.origin = none ∧ z'.footprint = z.footprint ∧
+        z'.holder = z.holder) : RootHeld s' := by
+  intro x z' l hx ho hl
+  obtain ⟨z, hz, hzo, hf, hh⟩ := hA x z' hx ho
+  obtain ⟨pl, hpl, hpl'⟩ := h x z l hz hzo (hf ▸ hl)
+  exact ⟨pl, by rw [hP]; exact hpl, hh.trans hpl'⟩
+
+theorem OnlyReleases.rootHeld {s s₁ : S3} (h : OnlyReleases s s₁) (hr : RootHeld s)
+    (hP : s₁.P = s.P) : RootHeld s₁ :=
+  hr.transport hP fun x z' hx ho => by
+    obtain ⟨z, hz, -, e1, e2, e3, -⟩ := h.2 x z' hx
+    exact ⟨z, hz, e1 ▸ ho, e2, e3⟩
+
+theorem derive_preserves_rootHeld {s s' : S3} {src q : Nat} {m : Mode} (hr : RootHeld s)
+    (h : DeriveStep src q m s (.ok s')) : RootHeld s' := by
+  obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
+  refine hr.transport rfl fun x z' hx ho => ?_
+  rcases addAuth_get hx with ⟨-, hx'⟩ | ⟨-, rfl⟩
+  · exact ⟨z', hx', ho, rfl, rfl⟩
+  · cases ho
+
+theorem split_preserves_rootHeld {k : K} {s s' : S3} {src : Nat} {rs : List (List Nat)}
+    (hr : RootHeld s) (h : SplitStep k src rs s (.ok s')) : RootHeld s' := by
+  obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
+  refine hr.transport rfl fun x z' hx ho => ?_
+  simp only [splitEff] at hx
+  by_cases hlt : x < s.A.length
+  · rw [List.getElem?_append_left hlt] at hx; exact ⟨z', hx, ho, rfl, rfl⟩
+  · rw [List.getElem?_append_right (Nat.le_of_not_lt hlt), List.getElem?_map] at hx
+    obtain ⟨r, -, rfl⟩ := Option.map_eq_some_iff.1 hx
+    cases ho
+
+theorem release_preserves_rootHeld {s s' : S3} {a : Nat} (hr : RootHeld s)
+    (h : ReleaseStep a s (.ok s')) : RootHeld s' := by
+  obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
+  exact (release_releases s a).rootHeld hr (by unfold releaseEff; split <;> rfl)
+
+theorem transfer_preserves_rootHeld {k : K} {s s' : S3} {src dst : Nat} (hr : RootHeld s)
+    (h : TransferStep k src dst s (.ok s')) : RootHeld s' := by
+  obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
+  intro x z' l hx ho hl
+  rw [transfer_A_get] at hx
+  obtain ⟨z, hz, rfl⟩ := Option.map_eq_some_iff.1 hx
+  have ho' : z.origin = none := by split at ho <;> exact ho
+  have hl' : l ∈ z.footprint := by split at hl <;> exact hl
+  obtain ⟨pl, hpl, hh⟩ := hr x z l hz ho' hl'
+  refine ⟨_, by rw [transfer_P_get, hpl]; rfl, ?_⟩
+  by_cases hc : heldIn s.P src pl.owner <;> simp [hc, hh]
+
+theorem depend_preserves_rootHeld {s s' : S3} {q x : Nat} (hr : RootHeld s)
+    (h : DependStep q x s (.ok s')) : RootHeld s' := by
+  obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h; exact hr
+
+theorem write3_preserves_rootHeld {s : S3} (ls : List Nat) (hr : RootHeld s) :
+    RootHeld (write3Eff s ls) := hr
+
+theorem pinEff_preserves_rootHeld {s : S3} (p : Nat) (b : Bool) (hr : RootHeld s) :
+    RootHeld (pinEff s p b) := hr
+
+theorem endUse_preserves_rootHeld {k : K} {s s' : S3} {p : Nat} (hr : RootHeld s)
+    (h : EndUseStep k p s (.ok s')) : RootHeld s' := by
+  obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
+  exact ((endUseS_releases s p).trans cleanup_releases).rootHeld hr rfl
+
+theorem free_preserves_rootHeld {k : K} {s s' : S3} {p auth : Nat} (hr : RootHeld s)
+    (h : FreeStep k p auth s (.ok s')) : RootHeld s' := by
+  obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
+  exact ((freeS_releases s p).trans cleanup_releases).rootHeld hr rfl
+
+theorem WF3.ownerOf_aux {s : S3} (hw : WF3 s) :
+    ∀ n l r, l < n → partOf s.P l r →
+      ∃ pl pr, s.P[l]? = some pl ∧ s.P[r]? = some pr ∧ pl.owner = pr.owner
+  | 0, _, _, h, _ => absurd h (Nat.not_lt_zero _)
+  | n + 1, l, r, hl, ⟨hlen, hlr⟩ => by
+    obtain ⟨pl, hpl⟩ : ∃ pl, s.P[l]? = some pl := ⟨_, List.getElem?_eq_some_iff.2 ⟨hlen, rfl⟩⟩
+    rcases hlr with rfl | hc
+    · exact ⟨pl, pl, hpl, hpl, rfl⟩
+    cases hpo : parentOf s.P l with
+    | none => rw [chain_none hpo] at hc; simp at hc
+    | some p =>
+      have hpar : pl.parent = some p := by simp [parentOf, hpl] at hpo; exact hpo
+      obtain ⟨pr, hpr, hlt, ho, -⟩ := hw.parts l pl p hpl hpar
+      rw [chain_cons hpo hlt] at hc
+      rcases List.mem_cons.1 hc with rfl | hc
+      · exact ⟨pl, pr, hpl, hpr, ho.symm⟩
+      · obtain ⟨pl', pr', hpl', hpr', he⟩ :=
+          WF3.ownerOf_aux hw n p r (by omega) ⟨lt_of_getElem? hpr, .inr hc⟩
+        rw [hpr] at hpl'; cases hpl'
+        exact ⟨pl, pr', hpl, hpr', ho.symm.trans he⟩
+
+/-- A part has the owner of the place it belongs to (A5, `WF3`). -/
+theorem WF3.ownerOf {s : S3} (hw : WF3 s) {l r : Nat} (h : partOf s.P l r) :
+    ∃ pl pr, s.P[l]? = some pl ∧ s.P[r]? = some pr ∧ pl.owner = pr.owner :=
+  hw.ownerOf_aux (l + 1) l r (Nat.lt_succ_self l) h
+
+theorem enter_preserves_rootHeld {s s' : S3} {ps : List Nat}
+    {ls : List (Option Nat × Option Nat × Nat)} (hwf : WF3 s) (hr : RootHeld s)
+    (h : EnterStep ps ls s (.ok s')) : RootHeld s' := by
+  obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
+  have hw' := enter_preserves_wf hwf hpre
+  intro x z l hx ho hl
+  rcases enter_get hx with ⟨-, z₀, hz₀, rfl⟩ | ⟨-, i, hi, rfl⟩
+  · have ho' : z₀.origin = none := by split at ho <;> exact ho
+    have hl' : l ∈ z₀.footprint := by split at hl <;> exact hl
+    have hnp : x ∉ ps := fun hp => by
+      have := hpre.2.1 x hp; simp only [OptP, hz₀] at this; exact this.2.2 ho'
+    obtain ⟨pl, hpl, hh⟩ := hr x z₀ l hz₀ ho' hl'
+    refine ⟨pl, by show (enterP s ls)[l]? = _; rw [enterP_lt (lt_of_getElem? hpl)]; exact hpl, ?_⟩
+    simp [hnp, hh]
+  · obtain ⟨-, -, hlr⟩ := mem_footprint.1 hl
+    obtain ⟨pl, pr, hpl, hpr, he⟩ := hw'.ownerOf hlr
+    have hnew := enterP_new (s := s) (rootIdx_mem hi).1
+    rw [show (enterEff s ps ls).P = enterP s ls from rfl, hnew] at hpr
+    cases hpr
+    exact ⟨pl, hpl, he.symm⟩
+
+/-- Under `ExitPre` (MM-03.3 §4, O7; A7), the root of the chain of a surviving authority
+survives. -/
+theorem exit_root_survives {s : S3} {F₀ : Frames}
+    (h3 : ∀ a ∈ List.range s.A.length, Survives s F₀ a → s.org a ≠ none →
+      firstSurv s F₀ (s.ancs a) ≠ none) :
+    ∀ n a, a < n → Survives s F₀ a → ∀ x0, (x0 = a ∨ x0 ∈ s.ancs a) → s.org x0 = none →
+      Survives s F₀ x0
+  | 0, _, h, _, _, _, _ => absurd h (Nat.not_lt_zero _)
+  | n + 1, a, ha, hs, x0, hx0, hx0o => by
+    rcases hx0 with rfl | hx0
+    · exact hs
+    have hA : a < s.A.length := by
+      unfold Survives OptP at hs; split at hs
+      · exact lt_of_getElem? ‹_›
+      · exact hs.elim
+    have horg : s.org a ≠ none := fun e => by rw [S3.ancs, chain_none e] at hx0; simp at hx0
+    cases hz : firstSurv s F₀ (s.ancs a) with
+    | none => exact absurd hz (h3 a (List.mem_range.2 hA) hs horg)
+    | some z =>
+      obtain ⟨hz1, hzs⟩ := firstSurv_some hz
+      rcases ancs_root_after (a + 1) a (Nat.lt_succ_self a) z x0 hz1 hx0 hx0o with rfl | hx'
+      · exact hzs
+      · exact exit_root_survives h3 n z (by have := chain_lt hz1; omega) hzs x0 (.inr hx') hx0o
+
+theorem exit_preserves_rootHeld {s s' : S3} (hr : RootHeld s) (h : ExitStep s (.ok s')) :
+    RootHeld s' := by
+  obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
+  unfold ExitPre at hpre
+  split at hpre
+  · rename_i f F₀ hF
+    obtain ⟨-, -, h3⟩ := hpre
+    refine hr.transport (by rw [exitEff_eq hF]) fun x z' hx ho => ?_
+    rw [exit_A_get hF] at hx
+    obtain ⟨z, hz, rfl⟩ := Option.map_eq_some_iff.1 hx
+    refine ⟨z, hz, ?_, (exitG_same s F₀ x z).2.1, (exitG_same s F₀ x z).2.2⟩
+    rcases exitG_origin (s := s) (F₀ := F₀) (a := x) (y := z) with e | ⟨hsv, hn, e⟩
+    · rw [← e]; exact ho
+    · rw [e] at ho
+      exact absurd ho (h3 x (List.mem_range.2 (lt_of_getElem? hz)) hsv (by simp [S3.org, hz, hn]))
+  · exact hpre.elim
+
+theorem init_rootHeld : RootHeld S3.init := fun _ _ _ h => by simp [S3.init] at h
+
+/-- `RootHeld` holds in every reached state, under `DDSound k` (MM-03.3.8). -/
+theorem reachable_rootHeld {k : K} (hdd : DDSound k) {s : S3} (h : Reachable k s) : RootHeld s := by
+  induction h with
+  | init => exact init_rootHeld
+  | derive _ hs ih => exact derive_preserves_rootHeld ih hs
+  | split _ hs ih => exact split_preserves_rootHeld ih hs
+  | release _ hs ih => exact release_preserves_rootHeld ih hs
+  | transfer _ hs ih => exact transfer_preserves_rootHeld ih hs
+  | depend _ hs ih => exact depend_preserves_rootHeld ih hs
+  | enter hr hs ih => exact enter_preserves_rootHeld (reachable_access_invariant_underDD hdd hr).1 ih hs
+  | exit _ hs ih => exact exit_preserves_rootHeld ih hs
+  | read _ hs ih => rw [read3_preserves hs]; exact ih
+  | write _ hs ih => rw [(Guarded.ok_iff.1 hs).2]; exact write3_preserves_rootHeld _ ih
+  | writeShared _ hs ih => rw [(Guarded.ok_iff.1 hs).2]; exact write3_preserves_rootHeld _ ih
+  | pin _ hs ih => rw [(Guarded.ok_iff.1 hs).2]; exact pinEff_preserves_rootHeld _ _ ih
+  | unpin _ hs ih => rw [(Guarded.ok_iff.1 hs).2]; exact pinEff_preserves_rootHeld _ _ ih
+  | endUse _ hs ih => exact endUse_preserves_rootHeld ih hs
+  | free _ hs ih => exact free_preserves_rootHeld ih hs
+
+/-- A place that belongs to the exited frame through ownership is not usable once the frame is
+popped (MM-03.3.1; A5). -/
+theorem ownedByFrame_not_usable {s : S3} {f : Nat} {F₀ : Frames} (hnd : f ∉ F₀) {q : Nat}
+    (h : OwnedByFrame s.P f q) : ¬ ({ s with F := F₀ } : S3).Usable q := by
+  induction h with
+  | @frame q pl hpl ho =>
+    intro hu
+    cases hu with
+    | frame hpl' _ ho' hf => rw [hpl] at hpl'; cases hpl'; rw [ho] at ho'; cases ho'; exact hnd hf
+    | place hpl' _ ho' _ => rw [hpl] at hpl'; cases hpl'; rw [ho] at ho'; cases ho'
+  | @place q o pl hpl ho _ ih =>
+    intro hu
+    cases hu with
+    | frame hpl' _ ho' _ => rw [hpl] at hpl'; cases hpl'; rw [ho] at ho'; cases ho'
+    | place hpl' _ ho' hU => rw [hpl] at hpl'; cases hpl'; rw [ho] at ho'; cases ho'; exact ih hU
+
+theorem OwnedByFrame.of_owner {P : List Place} {f q l : Nat} {pq pl : Place}
+    (h : OwnedByFrame P f q) (hq : P[q]? = some pq) (hl : P[l]? = some pl)
+    (ho : pl.owner = pq.owner) : OwnedByFrame P f l := by
+  cases h with
+  | frame h1 h2 => rw [hq] at h1; cases h1; exact .frame hl (ho.trans h2)
+  | place h1 h2 h3 => rw [hq] at h1; cases h1; exact .place hl (ho.trans h2) h3
+
+/-- `exitFrame_no_dangling` under `RootHeld` (MM-03.3 §4, O7; MM-03.3.1; A4; A5; A7; B1): after the
+exit, no active authority covers a leaf of a place of the exited frame, its locals and the storage
+they own transitively, whatever authorities transfers and re-anchorings kept. The chain of an
+active authority ends at the root authority of the leaf's root place (`RootChain`), which survives
+by `ExitPre`; that root is held by the owner of the leaf (`RootHeld`), which does not survive. -/
+theorem exitFrame_no_dangling_underRootHeld {s s' : S3} {f : Nat} {F₀ : Frames} (hwf : WF3 s)
+    (hr : RootHeld s) (hF : s.F = f :: F₀) (h : ExitStep s (.ok s')) :
+    ∀ q, OwnedByFrame s.P f q → ∀ (j : Nat) (y : Authority), s'.A[j]? = some y →
+      y.active = true → ∀ l ∈ footprint s.P q, l ∉ y.footprint := by
+  obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
+  unfold ExitPre at hpre; rw [hF] at hpre
+  obtain ⟨-, -, h3⟩ := hpre
+  have hnd := (List.nodup_cons.1 (hF ▸ hwf.nodup)).1
+  intro q hq j y hy ya l hl hly
+  rw [exit_A_get hF] at hy
+  obtain ⟨y₀, hy₀, rfl⟩ := Option.map_eq_some_iff.1 hy
+  have hs := exitG_active ya
+  rw [(exitG_same s F₀ j y₀).2.1] at hly
+  obtain ⟨hlP, hleaf, hlq⟩ := mem_footprint.1 hl
+  obtain ⟨x0, z, r, hx0, hz, hzo, -, hlr, hfz⟩ := hwf.rootChain j y₀ l hy₀ hly hleaf
+  have hx0o : s.org x0 = none := by simp [S3.org, hz, hzo]
+  have hs0 := exit_root_survives h3 (j + 1) j (Nat.lt_succ_self j) hs x0 hx0 hx0o
+  have hlz : l ∈ z.footprint := (hfz l).2 (mem_footprint.2 ⟨hlP, hleaf, hlr⟩)
+  obtain ⟨pl, hpl, hh⟩ := hr x0 z l hz hzo hlz
+  unfold Survives at hs0; rw [hz] at hs0
+  obtain ⟨-, hlive⟩ := hs0
+  rw [hh] at hlive
+  obtain ⟨pl', pq, hpl', hpq, he⟩ := hwf.ownerOf hlq
+  rw [hpl] at hpl'; cases hpl'
+  have hol : OwnedByFrame s.P f l := hq.of_owner hpq hpl he
+  cases hol with
+  | frame h1 h2 => rw [hpl] at h1; cases h1; rw [h2] at hlive; exact hnd hlive
+  | place h1 h2 h3' =>
+    rw [hpl] at h1; cases h1; rw [h2] at hlive; exact ownedByFrame_not_usable hnd h3' hlive
+
+/-- `exitFrame_no_dangling` on reached states (MM-03.3 §4, O7; §10), under `DDSound k`
+(MM-03.3.8). -/
+theorem exitFrame_no_dangling_reachable {k : K} (hdd : DDSound k) {s s' : S3} {f : Nat}
+    {F₀ : Frames} (hs : Reachable k s) (hF : s.F = f :: F₀) (h : ExitStep s (.ok s')) :
+    ∀ q, OwnedByFrame s.P f q → ∀ (j : Nat) (y : Authority), s'.A[j]? = some y →
+      y.active = true → ∀ l ∈ footprint s.P q, l ∉ y.footprint :=
+  exitFrame_no_dangling_underRootHeld (reachable_access_invariant_underDD hdd hs).1
+    (reachable_rootHeld hdd hs) hF h
+
 /-! ## Redundant preconditions (A11) -/
 
 /-- O1.4 follows from O1.1 and O1.3 under I1 (MM-03.3 §3, O1; A11): it is not a precondition of
@@ -5616,6 +5870,50 @@ example : NoEscape ma1 2 (ma1.pframe 3) := by decide
 example : TransferStep K0 1 4 ma1 .reject := .reject (by decide)
 example : AnchorMoves ma1 1 2 ∧ (transferEff ma1 1 4).Usable 3 ∧ 2 ∈ (transferEff ma1 1 4).D 3 ∧
     ¬ NoEscape (transferEff ma1 1 4) 2 ((transferEff ma1 1 4).pframe 3) := by decide
+
+/-! ### Closure of the exit (O7; B1) -/
+
+/-- Witness state of `exitFrame_no_dangling_needs_rootHeld`: frame 1, called by frame 0, owns the
+place 0, whose root authority 0 is held by frame 0. -/
+def nd0 : S3 := ⟨[1, 0], 2, [⟨none, .frame 1, 0⟩], fun _ => .uninit,
+  [⟨.modify, none, [0], .frame 0, true⟩], fun _ => [], fun _ => false, fun _ => false,
+  fun _ => false⟩
+
+/-- `exitFrame_no_dangling` does not hold under `WF3` and `Inv3` alone (MM-03.3 §4, O7; B1): in this
+state, which satisfies both, the exit of frame 1 is accepted and the authority 0 stays active on
+the leaf of the local 0 of the exited frame. The state violates `RootHeld`, the missing clause:
+the root authority of the place is held by another frame than its owner. -/
+theorem exitFrame_no_dangling_needs_rootHeld :
+    WF3 nd0 ∧ Inv3 nd0 ∧ ¬ RootHeld nd0 ∧ ExitStep nd0 (.ok (exitEff nd0)) ∧
+      OwnedByFrame nd0.P 1 0 ∧ (exitEff nd0).A[0]? = some ⟨.modify, none, [0], .frame 0, true⟩ ∧
+      0 ∈ footprint nd0.P 0 := by
+  have hA : ∀ {b : Nat} {y : Authority}, nd0.A[b]? = some y →
+      b = 0 ∧ y = ⟨.modify, none, [0], .frame 0, true⟩ := by
+    intro b y h
+    have := lt_of_getElem? h; simp [nd0] at this; subst this; simp [nd0] at h; exact ⟨rfl, h.symm⟩
+  have hP : ∀ {q : Nat} {pl : Place}, nd0.P[q]? = some pl → q = 0 ∧ pl = ⟨none, .frame 1, 0⟩ := by
+    intro q pl h
+    have := lt_of_getElem? h; simp [nd0] at this; subst this; simp [nd0] at h; exact ⟨rfl, h.symm⟩
+  refine ⟨⟨fun b y a hb ho => ?_, fun a x ha l hl => ?_, by decide, by decide, by decide,
+    fun q pl f hq ho => ?_, fun q pl o hq ho => ?_, fun q pl r hq hp => ?_, fun a y ha ya => ?_,
+    rootsDisjoint_always _, fun a y l ha hl _ => ?_⟩,
+    ⟨⟨fun a b x y p hab ha hb _ _ _ _ _ _ => ?_, fun b y a hb ho => ?_,
+      fun q _ x hx => by simp [nd0] at hx, i4_always _⟩, fun q _ x hx => by simp [nd0] at hx⟩,
+    fun h => ?_, .ok (by decide), .frame (pl := ⟨none, .frame 1, 0⟩) rfl rfl, by decide,
+    by decide⟩
+  · obtain ⟨-, rfl⟩ := hA hb; cases ho
+  · obtain ⟨-, rfl⟩ := hA ha; simp at hl; subst hl; decide
+  · obtain ⟨-, rfl⟩ := hP hq; cases ho; decide
+  · obtain ⟨-, rfl⟩ := hP hq; cases ho
+  · obtain ⟨-, rfl⟩ := hP hq; cases hp
+  · obtain ⟨-, rfl⟩ := hA ha; decide
+  · obtain ⟨rfl, rfl⟩ := hA ha; simp at hl; subst hl
+    exact ⟨0, _, 0, .inl rfl, rfl, rfl, by decide, by decide, fun l' => by
+      rw [show footprint nd0.P 0 = [0] by decide]⟩
+  · obtain ⟨rfl, -⟩ := hA ha; obtain ⟨rfl, -⟩ := hA hb; exact absurd rfl hab
+  · obtain ⟨-, rfl⟩ := hA hb; cases ho
+  · obtain ⟨pl, hpl, hh⟩ := h 0 _ 0 rfl rfl (by decide)
+    obtain ⟨-, rfl⟩ := hP hpl; cases hh
 
 /-! ### `AnchorOrder` and the exit (B8) -/
 
