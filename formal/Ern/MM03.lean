@@ -584,6 +584,106 @@ theorem getElem?_mapI {α β : Type} (f : Nat → α → β) :
     simp only [mapI, List.getElem?_cons_succ, getElem?_mapI f (i + 1) l j]
     congr 2; omega
 
+/-! ## Exercisable authorities (A2) -/
+
+/-- `s.Exercisable a` (A2): base case, an active authority held by the current frame; inductive
+case, an active authority held by a usable place `p` for which the current frame already has an
+exercisable authority whose effective mode permits the mode of `a` on the whole footprint of
+`p`. Inductive, so no cycle justifies a right. -/
+inductive S3.Exercisable (s : S3) : Nat → Prop where
+  | base {a : Nat} {y : Authority} : s.A[a]? = some y → y.active = true →
+      y.holder = .frame s.top → S3.Exercisable s a
+  | held {a p b : Nat} {y : Authority} : s.A[a]? = some y → y.active = true →
+      y.holder = .place p → s.Usable p → S3.Exercisable s b →
+      (∀ l ∈ footprint s.P p, Allows (effective s b l) y.mode) → S3.Exercisable s a
+
+/-- One step of `Exercisable`, read on a Boolean premise. -/
+def exR (s : S3) (E : Nat → Bool) (a : Nat) : Bool :=
+  match s.A[a]? with
+  | some y => y.active && match y.holder with
+    | .frame f => f == s.top
+    | .place p => decide (s.Usable p) && (List.range s.A.length).any fun b =>
+        decide (∀ l ∈ footprint s.P p, Allows (effective s b l) y.mode) && E b
+  | none => false
+
+theorem any_congr' {α : Type} {f g : α → Bool} : ∀ {l : List α}, (∀ b ∈ l, f b = g b) →
+    l.any f = l.any g
+  | [], _ => rfl
+  | a :: l, h => by
+    simp only [List.any_cons, h a (List.mem_cons_self ..),
+      any_congr' fun b hb => h b (List.mem_cons_of_mem a hb)]
+
+theorem exR_rule (s : S3) : KRule s.A.length (exR s) where
+  mono p q hpq a h := by
+    unfold exR at h ⊢; split at h
+    · simp only [Bool.and_eq_true] at h ⊢
+      refine ⟨h.1, ?_⟩; split at h
+      · simpa using h.2
+      · simp only [Bool.and_eq_true, List.any_eq_true] at h ⊢
+        obtain ⟨hu, b, hb, hc, he⟩ := h.2
+        exact ⟨hu, b, hb, hc, hpq b he⟩
+    · exact h
+  bound p a h := by
+    unfold exR at h; split at h
+    · exact lt_of_getElem? ‹_›
+    · cases h
+  loc p q hpq a := by
+    unfold exR; split
+    · congr 1; split
+      · rfl
+      · congr 1
+        exact any_congr' fun b hb => by rw [hpq b (List.mem_range.1 hb)]
+    · rfl
+
+theorem exercisable_of_kiter (s : S3) : ∀ k a, kiter (exR s) k a = true → s.Exercisable a
+  | 0, _, h => by simp [kiter] at h
+  | k + 1, a, h => by
+    simp only [kiter, exR] at h
+    split at h
+    · rename_i y hy
+      simp only [Bool.and_eq_true] at h
+      obtain ⟨ha, h⟩ := h
+      split at h
+      · rename_i f hf; exact .base hy ha (by simp at h; rw [hf, h])
+      · rename_i p hp
+        simp only [Bool.and_eq_true, List.any_eq_true, decide_eq_true_eq] at h
+        obtain ⟨hu, b, -, hc, hb⟩ := h
+        exact .held hy ha hp hu (exercisable_of_kiter s k b hb) hc
+    · cases h
+
+theorem exR_base {s : S3} {E : Nat → Bool} {a : Nat} {y : Authority} (hy : s.A[a]? = some y)
+    (ha : y.active = true) (hf : y.holder = .frame s.top) : exR s E a = true := by
+  simp [exR, hy, ha, hf]
+
+theorem exR_held {s : S3} {E : Nat → Bool} {a p b : Nat} {y : Authority} (hy : s.A[a]? = some y)
+    (ha : y.active = true) (hp : y.holder = .place p) (hu : s.Usable p) (hb : b < s.A.length)
+    (hc : ∀ l ∈ footprint s.P p, Allows (effective s b l) y.mode) (hE : E b = true) :
+    exR s E a = true := by
+  simp only [exR, hy, ha, hp, Bool.true_and, Bool.and_eq_true, decide_eq_true_eq,
+    List.any_eq_true, List.mem_range]
+  exact ⟨hu, b, hb, hc, hE⟩
+
+theorem exercisable_iff {s : S3} {a : Nat} :
+    s.Exercisable a ↔ kiter (exR s) (s.A.length + 1) a = true := by
+  refine ⟨fun h => ?_, exercisable_of_kiter s _ a⟩
+  induction h with
+  | base hy ha hf => exact exR_base hy ha hf
+  | held hy ha hp hu hb hc ih =>
+    rw [← kiter_fix (exR_rule s)]
+    have hb' := kiter_bound (exR_rule s) _ _ ih
+    exact exR_held hy ha hp hu hb' hc ih
+
+instance (s : S3) (a : Nat) : Decidable (s.Exercisable a) :=
+  decidable_of_iff _ exercisable_iff.symm
+
+/-- The current frame has an exercisable authority whose effective mode permits `m` on every
+leaf of `q` (A2: "`Modify` exerçable sur `p`"). -/
+def HasRight (s : S3) (m : Mode) (q : Nat) : Prop :=
+  ∃ a ∈ List.range s.A.length, s.Exercisable a ∧ ∀ l ∈ footprint s.P q, Allows (effective s a l) m
+
+instance (s : S3) (m : Mode) (q : Nat) : Decidable (HasRight s m q) := by
+  unfold HasRight; infer_instance
+
 /-! ## Outcomes and guarded relations (MM-03.3 §3) -/
 
 /-- `Outcome3` (MM-03.3 §3): `ok` with the new state, or `reject`, refusal by the static
@@ -617,12 +717,13 @@ origin `src`, footprint `footprint place`, mode `m`, held by the current frame. 
 def deriveEff (s : S3) (src q : Nat) (m : Mode) : S3 :=
   s.addAuth ⟨m, some src, footprint s.P q, .frame s.top, true⟩
 
-/-- Preconditions of `derive` (MM-03.3 §3, O1), in order: 1 active origin; place still usable
+/-- Preconditions of `derive` (MM-03.3 §3, O1), in order: 1 active origin, exercisable (A2);
+place still usable
 (MM-03.3.1); 2 requested footprint within the origin's; 3 mode permitted by the effective
 authority of the origin on each leaf; 4 every existing authority stays compatible with the
 derived one in the resulting state. O1.5 is not restated: `derive` deactivates nothing. -/
 def DerivePre (s : S3) (src q : Nat) (m : Mode) : Prop :=
-  s.Active src ∧ s.Usable q ∧
+  s.Active src ∧ s.Exercisable src ∧ s.Usable q ∧
   (∀ p ∈ footprint s.P q, p ∈ s.afp src) ∧
   (∀ p ∈ footprint s.P q, Allows (effective s src p) m) ∧
   (∀ b ∈ List.range s.A.length, ∀ p ∈ footprint s.P q,
@@ -651,14 +752,14 @@ def DistribExcl (s : S3) (src j p : Nat) : Prop :=
 instance (s : S3) (src j p : Nat) : Decidable (DistribExcl s src j p) := by
   unfold DistribExcl; infer_instance
 
-/-- Preconditions of `split` (MM-03.3 §3, O2), in order: 1 the origin is an active authority
-with effective `Modify` on every leaf of the regions; 2 regions within the available footprint
+/-- Preconditions of `split` (MM-03.3 §3, O2), in order: 1 the origin is an active, exercisable
+(A2) authority with effective `Modify` on every leaf of the regions; 2 regions within the available footprint
 (the origin's footprint where its effective authority is present); 3 regions pairwise disjoint,
 structurally (no shared leaf) or by `DeclaredDisjoint` (MM-03.3.8); 4 no region covers an
 exclusive right already distributed. O2.5 is not restated: `split` changes neither `D` nor
 activity. -/
 def SplitPre (k : K) (s : S3) (src : Nat) (rs : List (List Nat)) : Prop :=
-  s.Active src ∧ (∀ r ∈ rs, ∀ p ∈ r, effective s src p = some .modify) ∧
+  s.Active src ∧ s.Exercisable src ∧ (∀ r ∈ rs, ∀ p ∈ r, effective s src p = some .modify) ∧
   (∀ r ∈ rs, ∀ p ∈ r, p ∈ s.afp src ∧ effective s src p ≠ none) ∧
   rs.Pairwise (fun r r' => (∀ l ∈ r, l ∉ r') ∨ k.DeclaredDisjoint r r') ∧
   (∀ r ∈ rs, ∀ p ∈ r, ∀ j ∈ List.range s.A.length, ¬ DistribExcl s src j p)
@@ -728,13 +829,15 @@ instance (s : S3) (src j : Nat) : Decidable (ActiveDerivedOutside s src j) := by
 
 /-- Preconditions of `transfer` (MM-03.3 §3, O4), in order: source usable (MM-03.3.1) and
 1 initialised; 2 destination usable, without an `Init` leaf, sharing no leaf with the source,
-and still usable once it owns the source's storage (no ownership cycle); 4 no active derived
+and still usable once it owns the source's storage (no ownership cycle); exercisable `Modify`
+on the source and on the destination (A2); 4 no active derived
 access on the source other than those it holds; 5 anchors of the value valid; 6 non-escape
 (MM-03.3.6) towards the destination's frame; 7 no leaf of the source pinned, statically
 (`Pinned`, MM-03.3.8) or dynamically (A8). O4.3 holds by construction. -/
 def TransferPre (k : K) (s : S3) (src dst : Nat) : Prop :=
   s.Usable src ∧ (∀ l ∈ footprint s.P src, s.I l = .init) ∧
   s.Usable dst ∧ (∀ l ∈ footprint s.P dst, s.I l ≠ .init) ∧ ¬ overlap s.P src dst ∧
+  HasRight s .modify src ∧ HasRight s .modify dst ∧
   (transferEff s src dst).Usable dst ∧
   (∀ j ∈ List.range s.A.length, ¬ ActiveDerivedOutside s src j) ∧
   (∀ x ∈ depsOf s src, s.Active x) ∧
@@ -790,14 +893,16 @@ def enterP (s : S3) (ls : List (Option Nat × Option Nat × Nat)) : List Place :
 def rootIdx (ls : List (Option Nat × Option Nat × Nat)) : List Nat :=
   (List.range ls.length).filter fun i => ((ls[i]?).bind (·.1)).isNone
 
-/-- Effect of `enterFrame` (MM-03.3 §4, O6) with locals `ls`: new frame `nF` pushed; locals
+/-- Effect of `enterFrame` (MM-03.3 §4, O6) with parameters `ps` and locals `ls`: new frame
+`nF` pushed; the parameters, derived by the caller, are now held by the new frame (A3); locals
 appended, uninitialised, without dependency, alive and unpinned; one active root `Modify`
 authority per root local on its footprint, held by the owner of the local (pass-1
 arbitrage 2; A4). -/
-def enterEff (s : S3) (ls : List (Option Nat × Option Nat × Nat)) : S3 :=
+def enterEff (s : S3) (ps : List Nat) (ls : List (Option Nat × Option Nat × Nat)) : S3 :=
   { F := s.nF :: s.F, nF := s.nF + 1, P := enterP s ls
     I := fun l => if s.P.length ≤ l then .uninit else s.I l
-    A := s.A ++ (rootIdx ls).map fun i =>
+    A := mapI (fun j y => if j ∈ ps then { y with holder := .frame s.nF } else y) 0 s.A ++
+      (rootIdx ls).map fun i =>
       ⟨.modify, none, footprint (enterP s ls) (s.P.length + i), localOwner ls s.nF i, true⟩
     D := fun q => if s.P.length ≤ q then [] else s.D q
     dead := fun q => if s.P.length ≤ q then false else s.dead q
@@ -805,20 +910,26 @@ def enterEff (s : S3) (ls : List (Option Nat × Option Nat × Nat)) : S3 :=
     pin := fun q => if s.P.length ≤ q then false else s.pin q }
 
 /-- Preconditions of `enterFrame` (MM-03.3 §4, O6): the calling frame is active (non-empty
-stack); the parent and the owner of a local are earlier locals; a part has the owner of its
+stack); each parameter is an active authority derived by the caller and held by it (A3); the
+parent and the owner of a local are earlier locals; a part has the owner of its
 parent. -/
-def EnterPre (s : S3) (ls : List (Option Nat × Option Nat × Nat)) : Prop :=
-  s.F ≠ [] ∧ ∀ i ∈ List.range ls.length,
+def EnterPre (s : S3) (ps : List Nat) (ls : List (Option Nat × Option Nat × Nat)) : Prop :=
+  s.F ≠ [] ∧
+  (∀ a ∈ ps, OptP (s.A[a]?) (fun y => y.active = true ∧ y.holder = .frame s.top ∧
+    y.origin ≠ none) False) ∧
+  ∀ i ∈ List.range ls.length,
     OptP ((ls[i]?).bind (·.1)) (fun r => s.P.length ≤ r ∧ r < s.P.length + i ∧
       (ls[i]?).bind (·.2.1) = (ls[r - s.P.length]?).bind (·.2.1)) True ∧
     OptP ((ls[i]?).bind (·.2.1)) (fun o => s.P.length ≤ o ∧ o < s.P.length + i) True
 
-instance (s : S3) (ls : List (Option Nat × Option Nat × Nat)) : Decidable (EnterPre s ls) := by
+instance (s : S3) (ps : List Nat) (ls : List (Option Nat × Option Nat × Nat)) :
+    Decidable (EnterPre s ps ls) := by
   unfold EnterPre; infer_instance
 
-/-- `enterFrame` as a relation (MM-03.3 §4, O6). -/
-def EnterStep (ls : List (Option Nat × Option Nat × Nat)) (s : S3) : Outcome3 S3 → Prop :=
-  Guarded (EnterPre s ls) (enterEff s ls)
+/-- `enterFrame` as a relation (MM-03.3 §4, O6; A3). -/
+def EnterStep (ps : List Nat) (ls : List (Option Nat × Option Nat × Nat)) (s : S3) :
+    Outcome3 S3 → Prop :=
+  Guarded (EnterPre s ps ls) (enterEff s ps ls)
 
 /-! ## O7 `exitFrame` (MM-03.3 §4, A4, A5, A7) -/
 
@@ -886,8 +997,10 @@ def CanReadLeaf (s : S3) (a p : Nat) : Prop :=
 instance (s : S3) (a p : Nat) : Decidable (CanReadLeaf s a p) :=
   inferInstanceAs (Decidable (_ ∧ _))
 
-/-- `canRead3` (MM-03.3 §5): ordinary read of leaves `ls` by authority `a`. -/
-def canRead3 (s : S3) (a : Nat) (ls : List Nat) : Prop := ∀ p ∈ ls, CanReadLeaf s a p
+/-- `canRead3` (MM-03.3 §5): ordinary read of leaves `ls` by authority `a`, exercisable by the
+current frame (A2). -/
+def canRead3 (s : S3) (a : Nat) (ls : List Nat) : Prop :=
+  s.Exercisable a ∧ ∀ p ∈ ls, CanReadLeaf s a p
 
 instance (s : S3) (a : Nat) (ls : List Nat) : Decidable (canRead3 s a ls) := by
   unfold canRead3; infer_instance
@@ -896,11 +1009,12 @@ instance (s : S3) (a : Nat) (ls : List Nat) : Decidable (canRead3 s a ls) := by
 def Read3Step (a : Nat) (ls : List Nat) (s : S3) : Outcome3 S3 → Prop :=
   Guarded (canRead3 s a ls) s
 
-/-- `canWrite3` (MM-03.3 §5): on each leaf, effective `Modify` of `a`, no other authority with
+/-- `canWrite3` (MM-03.3 §5): `a` exercisable by the current frame (A2); on each leaf,
+effective `Modify` of `a`, no other authority with
 a present effective mode, needed dependencies valid. The type and storage condition is not
 represented. -/
 def canWrite3 (s : S3) (a : Nat) (ls : List Nat) : Prop :=
-  ∀ p ∈ ls, effective s a p = some .modify ∧
+  s.Exercisable a ∧ ∀ p ∈ ls, effective s a p = some .modify ∧
     (∀ b ∈ List.range s.A.length, b ≠ a → effective s b p = none) ∧ DepsValid s p
 
 instance (s : S3) (a : Nat) (ls : List Nat) : Decidable (canWrite3 s a ls) := by
