@@ -737,6 +737,29 @@ def EffAnchorOK (s : S3) (x : Nat) (fd : Option Nat) : Prop :=
 instance (s : S3) (x : Nat) (fd : Option Nat) : Decidable (EffAnchorOK s x fd) := by
   unfold EffAnchorOK; infer_instance
 
+/-- `AnchorOrder` extended to held authorities (G4): for every usable place `q` and every active
+authority held by `q`, the frame of the effective anchor of that authority is the frame of `q` or
+one of its ancestors (`EffAnchorOK`, C1). -/
+def AnchorOrderHeld (s : S3) : Prop :=
+  ∀ q, s.Usable q → ∀ (x : Nat) (y : Authority), s.A[x]? = some y → y.active = true →
+    y.holder = .place q → EffAnchorOK s x (s.pframe q)
+
+/-- `AnchorOrderHeld` read on the places of `P` and the authorities of `A`: decidable form. -/
+theorem anchorOrderHeld_iff {s : S3} : AnchorOrderHeld s ↔
+    ∀ q ∈ List.range s.P.length, s.Usable q → ∀ x ∈ List.range s.A.length,
+      OptP (s.A[x]?) (fun y => y.active = true → y.holder = .place q →
+        EffAnchorOK s x (s.pframe q)) True := by
+  constructor
+  · intro h q _ hq x _
+    unfold OptP; split
+    · rename_i y hy; exact h q hq x y hy
+    · trivial
+  · intro h q hq x y hy ya hh
+    have := h q (List.mem_range.2 hq.lt) hq x (List.mem_range.2 (lt_of_getElem? hy))
+    simp only [OptP, hy] at this; exact this ya hh
+
+instance (s : S3) : Decidable (AnchorOrderHeld s) := decidable_of_iff _ anchorOrderHeld_iff.symm
+
 /-- `mapI f i l` applies `f` to each element of `l` with its index, counted from `i`. -/
 def mapI {α β : Type} (f : Nat → α → β) : Nat → List α → List β
   | _, [] => []
@@ -1167,7 +1190,8 @@ places it owns, whose frame changes with it (A5), each frame read after the tran
 usable after the transfer, if its effective anchor moves with the value, or if the dependent
 itself moves (the destination, or a place the value owns), the frame of the effective anchor is
 the dependent's frame or an ancestor of it, both frames read after the transfer
-(`EffAnchorOK`). O4.3 holds by construction. -/
+(`EffAnchorOK`); G4: `AnchorOrderHeld` in the arrival state, for the authorities held by the value
+and by the places it owns, which change holder or frame. O4.3 holds by construction. -/
 def TransferPre (k : K) (s : S3) (src dst : Nat) : Prop :=
   s.Usable src ∧ (∀ l ∈ footprint s.P src, s.I l = .init) ∧
   s.Usable dst ∧ (∀ l ∈ footprint s.P dst, s.I l ≠ .init) ∧ ¬ overlap s.P src dst ∧
@@ -1181,7 +1205,8 @@ def TransferPre (k : K) (s : S3) (src dst : Nat) : Prop :=
   (∀ q ∈ List.range s.P.length, (transferEff s src dst).Usable q →
     ∀ x ∈ (transferEff s src dst).D q,
       (AnchorMoves s src (s.effAnchor x) ∨ q = dst ∨ OwnedWithin s src q) →
-      EffAnchorOK (transferEff s src dst) x ((transferEff s src dst).pframe q))
+      EffAnchorOK (transferEff s src dst) x ((transferEff s src dst).pframe q)) ∧
+  AnchorOrderHeld (transferEff s src dst)
 
 instance (k : K) [DecidablePred k.Pinned] (s : S3) (src dst : Nat) :
     Decidable (TransferPre k s src dst) := by
@@ -1233,7 +1258,8 @@ anchor (C1, `EffAnchorOK`): the frame of the effective anchor of `a` is the fram
 of its ancestors. G2: `p` is a leaf, the place of a reference (MM-03.3.2, `isLeaf`); `p` holds no
 active authority (overwriting an `Init` leaf without authority is allowed); in the arrival state,
 `p` is still exercisable at `Modify` by the current frame (`HasRight`,
-`store_keeps_target_reachable`). No inverse operation exists (F4). -/
+`store_keeps_target_reachable`). G4: `AnchorOrderHeld` in the arrival state. No inverse
+operation exists (F4). -/
 def StorePre (s : S3) (a p : Nat) : Prop :=
   OptP (s.A[a]?) (fun y => y.active = true ∧ y.origin ≠ none ∧ y.holder = .frame s.top) False ∧
   s.Usable p ∧ HasRight s .modify p ∧
@@ -1242,7 +1268,7 @@ def StorePre (s : S3) (a p : Nat) : Prop :=
   EffAnchorOK s a (s.pframe p) ∧ isLeaf s.P p ∧
   (∀ j ∈ List.range s.A.length, OptP (s.A[j]?) (fun z => z.active = true → z.holder ≠ .place p)
     True) ∧
-  HasRight (storeEff s a p) .modify p
+  HasRight (storeEff s a p) .modify p ∧ AnchorOrderHeld (storeEff s a p)
 
 instance (s : S3) (a p : Nat) : Decidable (StorePre s a p) := by unfold StorePre; infer_instance
 
@@ -1301,7 +1327,8 @@ instance (s' : S3) (p : Nat) : Decidable (ParamOriginHidden s' p) := by
 stack); each parameter is an active authority derived by the caller and held by it (A3); the
 parent and the owner of a local are earlier locals; a part has the owner of its
 parent; G1: in `enterEff s ps ls`, the state where the new frame has received its parameters,
-the direct origin of every `Modify` parameter is exercisable at no mode (`ParamOriginHidden`). -/
+the direct origin of every `Modify` parameter is exercisable at no mode (`ParamOriginHidden`);
+G4: `AnchorOrderHeld` in the arrival state. -/
 def EnterPre (s : S3) (ps : List Nat) (ls : List (Option Nat × Option Nat × Nat)) : Prop :=
   s.F ≠ [] ∧
   (∀ a ∈ ps, OptP (s.A[a]?) (fun y => y.active = true ∧ y.holder = .frame s.top ∧
@@ -1310,7 +1337,7 @@ def EnterPre (s : S3) (ps : List Nat) (ls : List (Option Nat × Option Nat × Na
     OptP ((ls[i]?).bind (·.1)) (fun r => s.P.length ≤ r ∧ r < s.P.length + i ∧
       (ls[i]?).bind (·.2.1) = (ls[r - s.P.length]?).bind (·.2.1)) True ∧
     OptP ((ls[i]?).bind (·.2.1)) (fun o => s.P.length ≤ o ∧ o < s.P.length + i) True) ∧
-  ∀ p ∈ ps, ParamOriginHidden (enterEff s ps ls) p
+  (∀ p ∈ ps, ParamOriginHidden (enterEff s ps ls) p) ∧ AnchorOrderHeld (enterEff s ps ls)
 
 instance (s : S3) (ps : List Nat) (ls : List (Option Nat × Option Nat × Nat)) :
     Decidable (EnterPre s ps ls) := by
@@ -1347,25 +1374,6 @@ def exitG (s : S3) (F₀ : Frames) (a : Nat) (y : Authority) : Authority :=
     | some _ => { y with origin := firstSurv s F₀ (s.ancs a) }
   else { y with active := false }
 
-/-- Preconditions of `exitFrame` (MM-03.3 §4, O7; A7; B4): the exiting frame has a caller; every
-anchor of a place still usable after the exit has a surviving authority among itself and its
-ancestors along `origin`; every surviving derived authority has a surviving strict ancestor;
-B4: no leaf of a place that dies with the frame, transitively owned storage included, is
-pinned, dynamically (A8) or statically (`Pinned`, MM-03.3.8). Otherwise the exit is rejected. -/
-def ExitPre (k : K) (s : S3) : Prop :=
-  match s.F with
-  | _ :: F₀ => F₀ ≠ [] ∧
-      (∀ q ∈ List.range s.P.length, ({ s with F := F₀ } : S3).Usable q →
-        ∀ x ∈ s.D q, firstSurv s F₀ (x :: s.ancs x) ≠ none) ∧
-      (∀ a ∈ List.range s.A.length, Survives s F₀ a → s.org a ≠ none →
-        firstSurv s F₀ (s.ancs a) ≠ none) ∧
-      (∀ q ∈ List.range s.P.length, s.Usable q → ¬ ({ s with F := F₀ } : S3).Usable q →
-        ∀ l ∈ footprint s.P q, s.pin l = false ∧ ¬ k.Pinned l)
-  | [] => False
-
-instance (k : K) [DecidablePred k.Pinned] (s : S3) : Decidable (ExitPre k s) := by
-  unfold ExitPre; split <;> infer_instance
-
 /-- Effect of `exitFrame` (MM-03.3 §4, O7; A4; A5; A7): return to the caller; each anchor
 replaced by the first surviving authority among itself and its ancestors; authorities that do
 not survive released; surviving derived authorities re-attached. -/
@@ -1377,6 +1385,27 @@ def exitEff (s : S3) : S3 :=
       D := fun q => (s.D q).map fun x => (firstSurv s F₀ (x :: s.ancs x)).getD x
       A := mapI (exitG s F₀) 0 s.A }
   | [] => s
+
+/-- Preconditions of `exitFrame` (MM-03.3 §4, O7; A7; B4): the exiting frame has a caller; every
+anchor of a place still usable after the exit has a surviving authority among itself and its
+ancestors along `origin`; every surviving derived authority has a surviving strict ancestor;
+B4: no leaf of a place that dies with the frame, transitively owned storage included, is
+pinned, dynamically (A8) or statically (`Pinned`, MM-03.3.8); G4: `AnchorOrderHeld` in the arrival
+state, after the re-anchoring. Otherwise the exit is rejected. -/
+def ExitPre (k : K) (s : S3) : Prop :=
+  match s.F with
+  | _ :: F₀ => F₀ ≠ [] ∧
+      (∀ q ∈ List.range s.P.length, ({ s with F := F₀ } : S3).Usable q →
+        ∀ x ∈ s.D q, firstSurv s F₀ (x :: s.ancs x) ≠ none) ∧
+      (∀ a ∈ List.range s.A.length, Survives s F₀ a → s.org a ≠ none →
+        firstSurv s F₀ (s.ancs a) ≠ none) ∧
+      (∀ q ∈ List.range s.P.length, s.Usable q → ¬ ({ s with F := F₀ } : S3).Usable q →
+        ∀ l ∈ footprint s.P q, s.pin l = false ∧ ¬ k.Pinned l) ∧
+      AnchorOrderHeld (exitEff s)
+  | [] => False
+
+instance (k : K) [DecidablePred k.Pinned] (s : S3) : Decidable (ExitPre k s) := by
+  unfold ExitPre; split <;> infer_instance
 
 /-- `exitFrame` as a relation (MM-03.3 §4, O7). -/
 def ExitStep (k : K) (s : S3) : Outcome3 S3 → Prop := Guarded (ExitPre k s) (exitEff s)
@@ -4996,7 +5025,7 @@ theorem transfer_effAnchorOK_unmoved {s : S3} {src dst x : Nat} {z : Authority}
 effective anchor or the dependent moves, by the clause B8; otherwise both frames are unchanged. -/
 theorem transfer_preserves_anchorOrder {k : K} {s s' : S3} {src dst : Nat} (hwf : WF3 s)
     (hao : AnchorOrder s) (h : TransferStep k src dst s (.ok s')) : AnchorOrder s' := by
-  obtain ⟨⟨hsrc, -, -, -, -, -, -, -, -, -, -, -, h8⟩, rfl⟩ := Guarded.ok_iff.1 h
+  obtain ⟨⟨hsrc, -, -, -, -, -, -, -, -, -, -, -, h8, -⟩, rfl⟩ := Guarded.ok_iff.1 h
   intro q hq x hx
   by_cases hm : AnchorMoves s src (s.effAnchor x) ∨ q = dst ∨ OwnedWithin s src q
   · exact h8 q (List.mem_range.2 (by have := hq.lt; rwa [transfer_len] at this)) hq x hx hm
@@ -5912,7 +5941,7 @@ exercisable at `Modify` by the current frame. -/
 theorem store_keeps_target_reachable {s s' : S3} {a p : Nat} (h : StoreStep a p s (.ok s')) :
     HasRight s' .modify p := by
   obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
-  exact hpre.2.2.2.2.2.2.2
+  exact hpre.2.2.2.2.2.2.2.1
 
 /-- `store` writes one leaf (G2): the target `p` is a leaf, and it is the only leaf whose
 initialisation changes, becoming `Init`. -/
@@ -5944,7 +5973,8 @@ theorem mem_of_mem_dropWhile {p : Nat → Bool} : ∀ {l : List Nat} {x : Nat}, 
     · exact List.mem_cons_of_mem _ (mem_of_mem_dropWhile h)
     · exact h
 
-/-- `store_escape_rejected_at_transfer` (F4; MM-03.3.1: « Un accès temporaire ne peut être
+/-- `anchor_escape_rejected_at_transfer`, the pass-6 statement of `store_escape_rejected_at_transfer`,
+kept on the anchors (F4; MM-03.3.1: « Un accès temporaire ne peut être
 prolongé simplement en le stockant dans un cadre plus ancien »; MM-03.3.6; C1): a value `src`,
 one of whose parts (`src` included) is anchored on an authority `a` whose effective anchor does
 not move with the value and is of the current frame `f`, such as an authority derived from a
@@ -5954,7 +5984,7 @@ whose frame, after the transfer, is an older frame `g`: the dependency follows t
 anchor. An effective anchor that moves with the value, the root of storage the value owns,
 travels with it (A5). The theorem speaks of the authorities placed by `store`, which anchors
 them; a block issued to `src` is held without being an anchor (pass-6 report, (d) 3). -/
-theorem store_escape_rejected_at_transfer {k : K} {s : S3} {src dst a f g : Nat} {F₀ : Frames}
+theorem anchor_escape_rejected_at_transfer {k : K} {s : S3} {src dst a f g : Nat} {F₀ : Frames}
     {z : Authority} (hwf : WF3 s) (hF : s.F = f :: F₀) (ha : a ∈ depsOf s src)
     (hz : s.A[s.effAnchor a]? = some z) (hm : ¬ AnchorMoves s src (s.effAnchor a))
     (hzf : s.hframe z.holder = some f)
@@ -5965,8 +5995,38 @@ theorem store_escape_rejected_at_transfer {k : K} {s : S3} {src dst a f g : Nat}
   have hin : a ∈ (transferEff s src dst).D dst := by
     simp only [transferEff, ↓reduceIte]
     exact List.mem_append_right _ ha
-  have hok := hpre.2.2.2.2.2.2.2.2.2.2.2.2 dst
+  have hok := hpre.2.2.2.2.2.2.2.2.2.2.2.2.1 dst
     (List.mem_range.2 (by have := hdst.lt; simpa [transferEff] using this)) hdst a hin (.inr (.inl rfl))
+  rw [transfer_effAnchorOK_unmoved hz hm, hg] at hok
+  unfold EffAnchorOK at hok
+  rw [hz] at hok
+  simp only [OptP, hzf] at hok
+  have hnd := List.nodup_cons.1 (hF ▸ hwf.nodup)
+  rw [hF] at hok
+  unfold ancestor at hok
+  have hfg : f ≠ g := fun e => hnd.1 (e ▸ hgF)
+  simp only [List.dropWhile_cons, show (f != g) = true by simp [hfg], ↓reduceIte] at hok
+  exact hnd.1 (mem_of_mem_dropWhile hok)
+
+/-- `store_escape_rejected_at_transfer` (F4, restated on the holder by G4; MM-03.3.1: « Un accès
+temporaire ne peut être prolongé simplement en le stockant dans un cadre plus ancien »; C1): a
+value `src`, one of whose parts (`src` included) holds an active authority `a` whose effective
+anchor does not move with the value and is of the current frame `f`, cannot be transferred to a
+destination whose frame, after the transfer, is an older frame `g`: the authority follows the
+value (A4) and G4 checks its effective anchor in the arrival state. No restriction to `store`:
+the authority may have been placed by `store`, `issue` or an earlier `transfer`. -/
+theorem store_escape_rejected_at_transfer {k : K} {s : S3} {src dst a f g : Nat} {F₀ : Frames}
+    {y z : Authority} (hwf : WF3 s) (hF : s.F = f :: F₀) (ha : s.A[a]? = some y)
+    (ya : y.active = true) (hh : heldIn s.P src y.holder)
+    (hz : s.A[s.effAnchor a]? = some z) (hm : ¬ AnchorMoves s src (s.effAnchor a))
+    (hzf : s.hframe z.holder = some f)
+    (hg : (transferEff s src dst).pframe dst = some g) (hgF : g ∈ F₀) :
+    TransferStep k src dst s .reject := by
+  refine .reject fun hpre => ?_
+  have hdst : (transferEff s src dst).Usable dst := hpre.2.2.2.2.2.2.2.1
+  have ha' : (transferEff s src dst).A[a]? = some { y with holder := .place dst } := by
+    rw [transfer_A_get, ha]; simp [hh]
+  have hok := hpre.2.2.2.2.2.2.2.2.2.2.2.2.2 dst hdst a _ ha' ya rfl
   rw [transfer_effAnchorOK_unmoved hz hm, hg] at hok
   unfold EffAnchorOK at hok
   rw [hz] at hok
@@ -6507,6 +6567,149 @@ theorem init_rootLive (statics : Statics) : RootLive (S3.init statics) := by
     fun _ => Iff.rfl⟩
   simp only [S3.init, List.getElem?_map, hj]; rfl
 
+/-! ## Preservation of `AnchorOrderHeld` (G4) -/
+
+theorem ancestor_self {f : Nat} : ∀ {F : Frames}, f ∈ F → ancestor F f f
+  | g :: F, h => by
+    unfold ancestor
+    simp only [List.dropWhile_cons]
+    by_cases e : g = f
+    · subst e; simp
+    · have hgf : (g != f) = true := by simp [e]
+      simp only [hgf, ↓reduceIte]
+      exact ancestor_self (List.mem_cons.1 h |>.resolve_left (fun h' => e h'.symm))
+
+/-- A root authority held by a usable place satisfies the condition of G4: it is its own effective
+anchor, of the frame of its holder (C1). -/
+theorem effAnchorOK_root_held {s : S3} {x q : Nat} {y : Authority} (hy : s.A[x]? = some y)
+    (ho : y.origin = none) (hh : y.holder = .place q) (hq : s.Usable q) :
+    EffAnchorOK s x (s.pframe q) := by
+  have he : s.effAnchor x = x :=
+    effAnchor_eq (x + 1) x (Nat.lt_succ_self x) x (.inl rfl) (by simp [S3.org, hy, ho])
+  obtain ⟨f, hf, hfF⟩ := hq.frameOf
+  have hpf : s.pframe q = some f := pframe_iff.2 hf
+  unfold EffAnchorOK; rw [he, hy]
+  simp only [OptP, hh, S3.hframe, hpf]
+  exact ancestor_self hfF
+
+/-- `AnchorOrderHeld` carries over to a state with the same places and stack, fewer usable places,
+the same chains of origins and holders for the existing authorities, and no new active authority
+held by a place (G4). -/
+theorem AnchorOrderHeld.of {s s' : S3} (ho : AnchorOrderHeld s) (hP : s'.P = s.P) (hF : s'.F = s.F)
+    (hu : ∀ q, s'.Usable q → s.Usable q)
+    (hanc : ∀ a, a < s.A.length → s'.ancs a = s.ancs a)
+    (hA : ∀ (x : Nat) (y : Authority), s.A[x]? = some y →
+      ∃ y', s'.A[x]? = some y' ∧ y'.origin = y.origin ∧ y'.holder = y.holder)
+    (hback : ∀ (x q : Nat) (y' : Authority), s'.A[x]? = some y' → y'.active = true →
+      y'.holder = .place q → ∃ y, s.A[x]? = some y ∧ y.active = true ∧ y.holder = .place q) :
+    AnchorOrderHeld s' := by
+  intro q hq x y' hx ya hh
+  obtain ⟨y, hy, ya₀, hh₀⟩ := hback x q y' hx ya hh
+  have hok := ho q (hu q hq) x y hy ya₀ hh₀
+  obtain ⟨z, hz⟩ := hok.get
+  have he : s'.effAnchor x = s.effAnchor x := effAnchor_congr (hanc x hok.lt)
+  obtain ⟨z', hz', -, e2⟩ := hA _ z hz
+  exact (effAnchorOK_of_same hz (by rw [he]; exact hz') (by rw [e2, S3.hframe_congr hP])
+    (fun g f _ => by rw [hF]) (S3.pframe_congr hP q)).2 hok
+
+theorem OnlyReleases.back {s s₁ : S3} (h : OnlyReleases s s₁) {x q : Nat} {y' : Authority}
+    (hx : s₁.A[x]? = some y') (ya : y'.active = true) (hh : y'.holder = .place q) :
+    ∃ y, s.A[x]? = some y ∧ y.active = true ∧ y.holder = .place q := by
+  obtain ⟨y, hy, -, -, -, e, ha⟩ := h.2 x y' hx
+  exact ⟨y, hy, ha ya, e ▸ hh⟩
+
+theorem derive_preserves_anchorOrderHeld {s s' : S3} {src q : Nat} {m : Mode}
+    (h : AnchorOrderHeld s) (hs : DeriveStep src q m s (.ok s')) : AnchorOrderHeld s' := by
+  obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs
+  refine h.of rfl rfl (fun _ hq => hq.of_eqs rfl rfl rfl) (fun _ ha => ancs_addAuth_lt ha)
+    (fun x y hy => ⟨y, by rw [deriveEff, addAuth_lt (lt_of_getElem? hy)]; exact hy, rfl, rfl⟩)
+    fun x q y' hx ya hh => ?_
+  rcases addAuth_get hx with ⟨-, hx'⟩ | ⟨-, rfl⟩
+  · exact ⟨y', hx', ya, hh⟩
+  · cases hh
+
+theorem split_preserves_anchorOrderHeld {k : K} {s s' : S3} {src : Nat} {rs : List (List Nat)}
+    (h : AnchorOrderHeld s) (hs : SplitStep k src rs s (.ok s')) : AnchorOrderHeld s' := by
+  obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs
+  refine h.of rfl rfl (fun _ hq => hq.of_eqs rfl rfl rfl)
+    (fun a ha => chain_congr fun j hj => by
+      simp only [S3.org]; show ((s.A ++ _)[j]?).bind _ = _
+      rw [List.getElem?_append_left (by omega)])
+    (fun x y hy => ⟨y, by
+      show (s.A ++ _)[x]? = _; rw [List.getElem?_append_left (lt_of_getElem? hy)]; exact hy,
+      rfl, rfl⟩)
+    fun x q y' hx ya hh => ?_
+  have hx' : (s.A ++ rs.map fun r => (⟨.modify, some src, r, .frame s.top, true⟩ : Authority))[x]? =
+    some y' := hx
+  by_cases hxl : x < s.A.length
+  · rw [List.getElem?_append_left hxl] at hx'; exact ⟨y', hx', ya, hh⟩
+  · rw [List.getElem?_append_right (by omega), List.getElem?_map] at hx'
+    cases hr : rs[x - s.A.length]? with
+    | none => rw [hr] at hx'; cases hx'
+    | some r => rw [hr] at hx'; cases hx'; cases hh
+
+theorem releases_preserve_anchorOrderHeld {s s₁ : S3} (h : AnchorOrderHeld s)
+    (hr : OnlyReleases s s₁) (hP : s₁.P = s.P) (hF : s₁.F = s.F)
+    (hu : ∀ q, s₁.Usable q → s.Usable q) : AnchorOrderHeld s₁ :=
+  h.of hP hF hu (fun _ _ => by unfold S3.ancs; rw [hr.org]) (fun _ _ hy => hr.fwd hy)
+    fun _ _ _ hx ya hh => hr.back hx ya hh
+
+theorem release_preserves_anchorOrderHeld {s s' : S3} {a : Nat} (h : AnchorOrderHeld s)
+    (hs : ReleaseStep a s (.ok s')) : AnchorOrderHeld s' := by
+  obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs
+  have hP : (releaseEff s a).P = s.P := by unfold releaseEff; split <;> rfl
+  have hF : (releaseEff s a).F = s.F := by unfold releaseEff; split <;> rfl
+  have hd : (releaseEff s a).dead = s.dead := by unfold releaseEff; split <;> rfl
+  exact releases_preserve_anchorOrderHeld h (release_releases s a) hP hF
+    fun _ hq => (S3.Usable.congr hP hF hd).1 hq
+
+theorem sameA_preserves_anchorOrderHeld {s s' : S3} (h : AnchorOrderHeld s) (hA : s'.A = s.A)
+    (hP : s'.P = s.P) (hF : s'.F = s.F) (hd : s'.dead = s.dead) : AnchorOrderHeld s' :=
+  h.of hP hF (fun _ hq => (S3.Usable.congr hP hF hd).1 hq)
+    (fun _ _ => by unfold S3.ancs S3.org; rw [hA]) (fun _ y hy => ⟨y, by rw [hA]; exact hy, rfl, rfl⟩)
+    fun _ _ y' hx ya hh => ⟨y', by rw [← hA]; exact hx, ya, hh⟩
+
+theorem endUse_preserves_anchorOrderHeld {k : K} {s s' : S3} {p : Nat} (h : AnchorOrderHeld s)
+    (hs : EndUseStep k p s (.ok s')) : AnchorOrderHeld s' := by
+  obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs
+  exact releases_preserve_anchorOrderHeld h ((endUseS_releases s p).trans cleanup_releases) rfl rfl
+    fun q hq => S3.Usable.mono (s := s) (s' := endUseEff s p) rfl (fun _ h => h)
+      (fun q h => by simp only [endUseEff, cleanup, endUseS, Bool.or_eq_false_iff] at h; exact h.1) hq
+
+theorem free_preserves_anchorOrderHeld {k : K} {s s' : S3} {p a : Nat} (h : AnchorOrderHeld s)
+    (hs : FreeStep k p a s (.ok s')) : AnchorOrderHeld s' := by
+  obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs
+  exact releases_preserve_anchorOrderHeld h ((freeS_releases s p).trans cleanup_releases) rfl rfl
+    fun q hq => S3.Usable.mono (s := s) (s' := freeEff s p) rfl (fun _ h => h)
+      (fun q h => by simp only [freeEff, cleanup, freeS, Bool.or_eq_false_iff] at h; exact h.1) hq
+
+/-- `alloc` preserves `AnchorOrderHeld` (G4), under `WF3`: the frames of old places do not change,
+and each new root authority held by a place is its own effective anchor, of the frame of that
+place. -/
+theorem alloc_preserves_anchorOrderHeld {k : K} {pv ow : Nat}
+    {ls : List (Option Nat × Option Nat × Nat)} {s s' : S3} (hwf : WF3 s)
+    (h : AnchorOrderHeld s) (hs : AllocStep k pv ow ls s (.ok s')) : AnchorOrderHeld s' := by
+  cases hs with
+  | ok _ _ =>
+  intro q hq x y hx ya hh
+  rcases alloc_get hx with ⟨hxl, hx'⟩ | ⟨-, i, -, rfl⟩
+  · have hq0 : s.Usable q := by have := hwf.poss x y hx' ya; rw [hh] at this; exact this
+    have hok := h q hq0 x y hx' ya hh
+    obtain ⟨z, hz⟩ := hok.get
+    obtain ⟨g, hg⟩ := hok.frame hz
+    have he : (allocEff s pv ow ls).effAnchor x = s.effAnchor x :=
+      effAnchor_congr (alloc_ancs_lt hxl)
+    have hrl : s.effAnchor x < s.A.length := Nat.lt_of_le_of_lt (effAnchor_le s x) hxl
+    refine (effAnchorOK_of_same (s' := allocEff s pv ow ls) (z' := z) hz (by
+      rw [he, alloc_lt hrl]; exact hz) ?_ (fun _ _ _ => Iff.rfl)
+      (alloc_pframe_old hwf hq0.lt)).2 hok
+    cases hzh : z.holder with
+    | frame f => rfl
+    | place p =>
+      rw [hzh] at hg
+      exact alloc_pframe_old hwf (pframe_iff.1 hg).lt
+  · exact effAnchorOK_root_held hx rfl hh hq
+
 /-! ## Redundant preconditions (A11) -/
 
 /-- O1.4 follows from O1.1 and O1.3 under I1 (MM-03.3 §3, O1; A11): it is not a precondition of
@@ -6585,13 +6788,25 @@ instance (k : K) [DecidablePred k.SharedMutable] (s : S3) (ar : Arena) (via : Na
     Decidable (MetaRight k s ar via) := by
   unfold MetaRight; infer_instance
 
+/-- Effect of `arena.issue(region)` (MM-03.3 §6; A10): a `Modify` block derived from `internal`
+on the region, held by the destination value; the destination and the metadata become `Init`;
+the region leaves `available` and joins `issued`. -/
+def issueEff (s : S3) (ar : Arena) (region : List Nat) (dst : Nat) : S3 × Arena :=
+  ({ s.addAuth ⟨.modify, some ar.internal, region, .place dst, true⟩ with
+      I := fun l => if l ∈ footprint s.P dst ∨ l ∈ metaLeaves s ar then .init else s.I l },
+   { ar with
+      available := ar.available.filter fun l => decide (l ∉ region)
+      issued := (region, s.A.length) :: ar.issued })
+
 /-- Static preconditions of `arena.issue(region)` (MM-03.3 §6; A10): metadata right (A10); the
 region lies in the storage administered by `internal`; the destination `dst` of the block is
-usable, exercisable in `Modify` (A2) and holds no initialised value. -/
+usable, exercisable in `Modify` (A2) and holds no initialised value; G4: `AnchorOrderHeld` in the
+arrival state, where the block is held by `dst`. -/
 def IssueStatic (k : K) (s : S3) (ar : Arena) (via : Nat) (region : List Nat) (dst : Nat) :
     Prop :=
   MetaRight k s ar via ∧ s.Active ar.internal ∧ (∀ l ∈ region, l ∈ s.afp ar.internal) ∧
-  s.Usable dst ∧ HasRight s .modify dst ∧ (∀ l ∈ footprint s.P dst, s.I l ≠ .init)
+  s.Usable dst ∧ HasRight s .modify dst ∧ (∀ l ∈ footprint s.P dst, s.I l ≠ .init) ∧
+  AnchorOrderHeld (issueEff s ar region dst).1
 
 instance (k : K) [DecidablePred k.SharedMutable] (s : S3) (ar : Arena) (via : Nat)
     (region : List Nat) (dst : Nat) : Decidable (IssueStatic k s ar via region dst) := by
@@ -6612,16 +6827,6 @@ def IssueRight (s : S3) (ar : Arena) (region : List Nat) : Prop :=
 
 instance (s : S3) (ar : Arena) (region : List Nat) : Decidable (IssueRight s ar region) := by
   unfold IssueRight; infer_instance
-
-/-- Effect of `arena.issue(region)` (MM-03.3 §6; A10): a `Modify` block derived from `internal`
-on the region, held by the destination value; the destination and the metadata become `Init`;
-the region leaves `available` and joins `issued`. -/
-def issueEff (s : S3) (ar : Arena) (region : List Nat) (dst : Nat) : S3 × Arena :=
-  ({ s.addAuth ⟨.modify, some ar.internal, region, .place dst, true⟩ with
-      I := fun l => if l ∈ footprint s.P dst ∨ l ∈ metaLeaves s ar then .init else s.I l },
-   { ar with
-      available := ar.available.filter fun l => decide (l ∉ region)
-      issued := (region, s.A.length) :: ar.issued })
 
 /-- Outcomes of `issue` (A10): `ok`, defined failure `fail` with the state unchanged, `reject`
 (pass-1 arbitrage 6). -/
@@ -8017,13 +8222,65 @@ theorem reachable_no_orphan {k : K} (hdd : DDSound k) {statics : Statics} {s : S
     (h : Reachable k statics s) : NoOrphan s :=
   noOrphan_of_rootLive (reachable_invariants hdd h).1 (reachable_rootLive hdd h)
 
-/-- The invariant of the reached states extended by G3 (MM-03.3 §10; B8, C1, C2, D3, G3): `WF3`,
-`Inv3`, `NoOrphan`, and `ArenaInv` for every live arena. Under `DDSound k` (MM-03.3.8). -/
+/-- `AnchorOrderHeld` on the reached states (G4): for every usable place and every active authority
+it holds, the frame of the effective anchor is the frame of the place or one of its ancestors.
+`transfer`, `issue`, `store`, `enterFrame` and the exit check it in their arrival state; the other
+operations preserve it. Under `DDSound k` (MM-03.3.8). -/
+theorem reachable_anchorOrderHeld {k : K} (hdd : DDSound k) {statics : Statics} {s : S3}
+    (h : Reachable k statics s) : AnchorOrderHeld s := by
+  induction h with
+  | init _ =>
+    intro q hq x y hx _ hh
+    obtain ⟨i, -, rfl⟩ := init_get hx
+    exact effAnchorOK_root_held hx rfl hh hq
+  | derive _ hs ih => exact derive_preserves_anchorOrderHeld ih hs
+  | split _ hs ih => exact split_preserves_anchorOrderHeld ih hs
+  | release _ hs ih => exact release_preserves_anchorOrderHeld ih hs
+  | transfer _ hs ih =>
+    obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 hs; exact hpre.2.2.2.2.2.2.2.2.2.2.2.2.2
+  | depend _ hs ih =>
+    obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact sameA_preserves_anchorOrderHeld ih rfl rfl rfl rfl
+  | enter _ hs ih => obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 hs; exact hpre.2.2.2.2
+  | exit _ hs ih =>
+    obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 hs
+    unfold ExitPre at hpre; split at hpre
+    · exact hpre.2.2.2.2
+    · exact hpre.elim
+  | read _ hs ih => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact ih
+  | write _ hs ih =>
+    obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact sameA_preserves_anchorOrderHeld ih rfl rfl rfl rfl
+  | writeShared _ hs ih =>
+    obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact sameA_preserves_anchorOrderHeld ih rfl rfl rfl rfl
+  | pin _ hs ih =>
+    obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact sameA_preserves_anchorOrderHeld ih rfl rfl rfl rfl
+  | unpin _ hs ih =>
+    obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact sameA_preserves_anchorOrderHeld ih rfl rfl rfl rfl
+  | endUse _ hs ih => exact endUse_preserves_anchorOrderHeld ih hs
+  | free _ hs ih => exact free_preserves_anchorOrderHeld ih hs
+  | alloc hr hs ih => exact alloc_preserves_anchorOrderHeld (reachable_invariants hdd hr).1 ih hs
+  | newArena _ hs ih =>
+    obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact sameA_preserves_anchorOrderHeld ih rfl rfl rfl rfl
+  | issue _ hs ih =>
+    cases hs with
+    | ok _ hst =>
+      cases hst with
+      | ok hp _ _ => exact sameA_preserves_anchorOrderHeld hp.2.2.2.2.2.2 rfl rfl rfl rfl
+  | reset _ hs ih =>
+    obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs
+    unfold resetAtEff; split
+    · exact sameA_preserves_anchorOrderHeld ih rfl rfl rfl rfl
+    · exact ih
+  | store _ hs ih => obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 hs; exact hpre.2.2.2.2.2.2.2.2
+
+/-- The invariant of the reached states extended by G3 and G4 (MM-03.3 §10; B8, C1, C2, D3, G3, G4):
+`WF3`, `Inv3`, `AnchorOrder` extended to held authorities (`AnchorOrderHeld`), `NoOrphan`, and
+`ArenaInv` for every live arena. Under `DDSound k` (MM-03.3.8). -/
 theorem reachable_access_invariant_ext {k : K} (hdd : DDSound k) {statics : Statics} {s : S3}
     (h : Reachable k statics s) :
-    WF3 s ∧ Inv3 s ∧ NoOrphan s ∧ ∀ ar ∈ s.arenas, s.Active ar.internal → ArenaInv s ar :=
+    WF3 s ∧ Inv3 s ∧ AnchorOrderHeld s ∧ NoOrphan s ∧
+      ∀ ar ∈ s.arenas, s.Active ar.internal → ArenaInv s ar :=
   let h' := reachable_access_invariant_underDD hdd h
-  ⟨h'.1, h'.2.1, reachable_no_orphan hdd h, h'.2.2⟩
+  ⟨h'.1, h'.2.1, reachable_anchorOrderHeld hdd h, reachable_no_orphan hdd h, h'.2.2⟩
 
 /-- `exitFrame_no_dangling` on reached states (MM-03.3 §4, O7; §10), under `DDSound k`
 (MM-03.3.8). -/
@@ -9596,7 +9853,7 @@ theorem enter_params_protected {s s' : S3} {ps : List Nat}
         ∀ b, effective s' b l ≠ none → b = p ∨ p ∈ s'.ancs b := by
   have hi1 := (enter_preserves hwf hinv h).2.1
   obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
-  refine ⟨hpre.2.2.2, hi1, fun p hp y hy hm l hl b hb =>
+  refine ⟨hpre.2.2.2.1, hi1, fun p hp y hy hm l hl b hb =>
     call_params_effective_protected hi1 hy ?_ hm hl hb⟩
   have h2 := hpre.2.1 p hp
   unfold OptP at h2; split at h2
@@ -9841,19 +10098,18 @@ example : IssueAt K0 0 1 [4] 6 lb4 (.ok lb5) :=
 example : TransferStep K0 1 0 lb5 .reject := .reject (by decide)
 example : TransferStep K0 1 7 lb5 (.ok (transferEff lb5 1 7)) := .ok (by decide)
 
-/-- A value that holds a block derived from a local buffer, without being anchored on it, is not
-stopped at the `transfer` (pass-6 report, (d) and (e)): the block 8 is held by the local 5 of
-frame 2, derived from `internal` 7, of effective anchor the root 3 of the buffer, held by frame 2;
-`issue` does not add it to the anchors of 5 (A10). The transfer of 5 to the caller's result 0 is
-accepted, and the block is then held by a place of frame 1; the exit of frame 2 is rejected
-(O7, A7: the block survives and its ancestors do not). -/
+/-- A value that holds a block derived from a local buffer, without being anchored on it: the block
+8 is held by the local 5 of frame 2, derived from `internal` 7, of effective anchor the root 3 of
+the buffer, held by frame 2; `issue` does not add it to the anchors of 5 (A10). In pass 6, the
+transfer of 5 to the caller's result 0 was accepted and only the exit was rejected. In pass 7, the
+transfer is rejected by G4 alone: in the arrival state, the block would be held by the place 0
+of frame 1, while its effective anchor is of frame 2 (`lb5_escape_rejected`). -/
 example : (lb5.A[8]?).map (fun y => (y.origin, y.holder, y.footprint)) = some (some 7, .place 5, [3]) ∧
     lb5.D 5 = [] := by decide
-example : TransferStep K0 5 0 lb5 (.ok (transferEff lb5 5 0)) := .ok (by decide)
 example : ((transferEff lb5 5 0).A[8]?).map (·.holder) = some (.place 0) ∧
     (transferEff lb5 5 0).pframe 0 = some 1 := by decide
-example : ExitStep K0 (transferEff lb5 5 0) .reject := .reject (by decide)
-theorem lb5_reachable : Reachable K0 [] lb5 ∧ Reachable K0 [] (transferEff lb5 5 0) := by
+theorem lb5_reachable : Reachable K0 [] lb5 ∧ TransferStep K0 5 0 lb5 .reject ∧
+    ¬ AnchorOrderHeld (transferEff lb5 5 0) := by
   have r0 : Reachable K0 [] lb0 := .enter (.derive (.enter (.init (by decide)) (.ok (by decide)))
     (.ok (by decide))) (.ok (by decide))
   have r3 : Reachable K0 [] lb3 := .newArena (.store (.derive r0
@@ -9864,7 +10120,17 @@ theorem lb5_reachable : Reachable K0 [] lb5 ∧ Reachable K0 [] (transferEff lb5
     .ok (ar := arLb) (by decide) (.ok (by decide) (by decide) (by decide))))
     (show IssueAt K0 0 1 [4] 6 lb4 (.ok lb5) from
       .ok (ar := arLb') (by decide) (.ok (by decide) (by decide) (by decide)))
-  exact ⟨r5, .transfer r5 (show TransferStep K0 5 0 lb5 (.ok _) from .ok (by decide))⟩
+  exact ⟨r5, .reject (by decide), by decide⟩
+
+/-- The rejection of `transfer 5 0` in `lb5`, from `store_escape_rejected_at_transfer` restated on
+the holder (G4): the block 8, placed by `issue` and not an anchor, is held by the value 5; its
+effective anchor, the root 3 of the buffer, is held by frame 2 and does not move with 5; the
+result 0 is of frame 1. -/
+theorem lb5_escape_rejected : TransferStep K0 5 0 lb5 .reject :=
+  store_escape_rejected_at_transfer (a := 8) (f := 2) (g := 1) (F₀ := [1, 0])
+    (y := ⟨.modify, some 7, [3], .place 5, true⟩) (z := ⟨.modify, none, [3, 4], .frame 2, true⟩)
+    (reachable_access_invariant_underDD (KT_dd [] [] [] [] []) lb5_reachable.1).1 (by decide)
+    (by decide) rfl (by decide) (by decide) (by decide) rfl (by decide) (by decide)
 
 /-! ### Arena on an allocation owned by its value, returned (F1) -/
 
@@ -9901,7 +10167,7 @@ example : DeriveStep 2 1 .observe vw1 (.ok vw2) := .ok (by decide)
 example : StoreStep 5 2 vw2 (.ok vw3) := .ok (by decide)
 example : TransferStep K0 2 0 vw3 .reject := .reject (by decide)
 example : TransferStep K0 2 3 vw3 (.ok (transferEff vw3 2 3)) := .ok (by decide)
-/-- The same rejection, obtained from `store_escape_rejected_at_transfer` on the reached state
+/-- The same rejection, obtained from `anchor_escape_rejected_at_transfer` on the reached state
 `vw3`: the effective anchor of 5 is the root 2 of the array, held by frame 2, and the result 0 is
 of frame 1. -/
 theorem vw3_escape_rejected : Reachable K0 [] vw3 ∧ TransferStep K0 2 0 vw3 .reject := by
@@ -9909,7 +10175,7 @@ theorem vw3_escape_rejected : Reachable K0 [] vw3 ∧ TransferStep K0 2 0 vw3 .r
     (.ok (by decide))) (.ok (by decide))) (.ok (by decide))) (show Write3Step 2 [1] vw0 (.ok vw1) from
       .ok (by decide))) (show DeriveStep 2 1 .observe vw1 (.ok vw2) from .ok (by decide)))
     (show StoreStep 5 2 vw2 (.ok vw3) from .ok (by decide))
-  refine ⟨r, store_escape_rejected_at_transfer (a := 5) (f := 2) (g := 1) (F₀ := [1, 0])
+  refine ⟨r, anchor_escape_rejected_at_transfer (a := 5) (f := 2) (g := 1) (F₀ := [1, 0])
     (z := ⟨.modify, none, [1], .frame 2, true⟩)
     (reachable_access_invariant_underDD (KT_dd [] [] [] [] []) r).1 (by decide) (by decide)
     (by decide) (by decide) rfl (by decide) (by decide)⟩
@@ -9934,7 +10200,7 @@ theorem fw3_escape_rejected : Reachable K0 [] fw3 ∧ TransferStep K0 2 0 fw3 .r
     (.ok (by decide))) (.ok (by decide))) (.ok (by decide))) (show Write3Step 2 [1] fw0 (.ok fw1) from
       .ok (by decide))) (show DeriveStep 2 1 .observe fw1 (.ok fw2) from .ok (by decide)))
     (show StoreStep 5 3 fw2 (.ok fw3) from .ok (by decide))
-  refine ⟨r, store_escape_rejected_at_transfer (a := 5) (f := 2) (g := 1) (F₀ := [1, 0])
+  refine ⟨r, anchor_escape_rejected_at_transfer (a := 5) (f := 2) (g := 1) (F₀ := [1, 0])
     (z := ⟨.modify, none, [1], .frame 2, true⟩)
     (reachable_access_invariant_underDD (KT_dd [] [] [] [] []) r).1 (by decide) (by decide)
     (by decide) (by decide) rfl (by decide) (by decide)⟩
@@ -9943,7 +10209,7 @@ theorem fw3_escape_rejected : Reachable K0 [] fw3 ∧ TransferStep K0 2 0 fw3 .r
 1, of root 3 held by the place 1, 3 a structure, 4 another local. The view 6 on 2 is stored into
 3. Its effective anchor, the root 3, is held by a place of frame 2 that does not move with the
 structure: the transfer of the structure to the caller's result is rejected
-(`store_escape_rejected_at_transfer`), to the other local 4 accepted (expected: reject; `ok`). -/
+(`anchor_escape_rejected_at_transfer`), to the other local 4 accepted (expected: reject; `ok`). -/
 def hw0 : S3 := enterEff (deriveEff (enter1 [(none, none, 0)]) 0 0 .modify) [1]
   [(none, none, 0), (none, some 1, 0), (none, none, 0), (none, none, 0)]
 def hw1 : S3 := write3Eff hw0 [2]
@@ -9956,7 +10222,7 @@ theorem hw3_escape_rejected : Reachable K0 [] hw3 ∧ TransferStep K0 3 0 hw3 .r
     (.ok (by decide))) (.ok (by decide))) (.ok (by decide))) (show Write3Step 3 [2] hw0 (.ok hw1) from
       .ok (by decide))) (show DeriveStep 3 2 .observe hw1 (.ok hw2) from .ok (by decide)))
     (show StoreStep 6 3 hw2 (.ok hw3) from .ok (by decide))
-  refine ⟨r, store_escape_rejected_at_transfer (a := 6) (f := 2) (g := 1) (F₀ := [1, 0])
+  refine ⟨r, anchor_escape_rejected_at_transfer (a := 6) (f := 2) (g := 1) (F₀ := [1, 0])
     (z := ⟨.modify, none, [2], .place 1, true⟩)
     (reachable_access_invariant_underDD (KT_dd [] [] [] [] []) r).1 (by decide) (by decide)
     (by decide) (by decide) (by decide) (by decide) (by decide)⟩
