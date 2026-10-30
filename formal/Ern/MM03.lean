@@ -5899,16 +5899,18 @@ theorem mem_of_mem_dropWhile {p : Nat → Bool} : ∀ {l : List Nat} {x : Nat}, 
 
 /-- `store_escape_rejected_at_transfer` (F4; MM-03.3.1: « Un accès temporaire ne peut être
 prolongé simplement en le stockant dans un cadre plus ancien »; MM-03.3.6; C1): a value `src`,
-one of whose parts (`src` included) is anchored on an authority `a` whose effective anchor is
-held by the current frame `f`, such as an authority derived from a local of `f` and stored into
-`src` or one of its fields, cannot be transferred to a destination whose frame, after the
-transfer, is an older frame `g`: the dependency follows the value (`depsOf`, MM-03.3.6;
-MM-03.3 §3, O4) and the clause B8 of `transfer` checks its effective anchor. It speaks of the
-authorities placed by `store`, which anchors them; a block issued to `src` is held without being
-an anchor (pass-6 report, (d)). -/
+one of whose parts (`src` included) is anchored on an authority `a` whose effective anchor does
+not move with the value and is of the current frame `f`, such as an authority derived from a
+local of `f` and stored into `src` or one of its fields, cannot be transferred to a destination
+whose frame, after the transfer, is an older frame `g`: the dependency follows the value
+(`depsOf`, MM-03.3.6; MM-03.3 §3, O4) and the clause B8 of `transfer` checks its effective
+anchor. An effective anchor that moves with the value, the root of storage the value owns,
+travels with it (A5). The theorem speaks of the authorities placed by `store`, which anchors
+them; a block issued to `src` is held without being an anchor (pass-6 report, (d) 3). -/
 theorem store_escape_rejected_at_transfer {k : K} {s : S3} {src dst a f g : Nat} {F₀ : Frames}
     {z : Authority} (hwf : WF3 s) (hF : s.F = f :: F₀) (ha : a ∈ depsOf s src)
-    (hz : s.A[s.effAnchor a]? = some z) (hzf : z.holder = .frame f)
+    (hz : s.A[s.effAnchor a]? = some z) (hm : ¬ AnchorMoves s src (s.effAnchor a))
+    (hzf : s.hframe z.holder = some f)
     (hg : (transferEff s src dst).pframe dst = some g) (hgF : g ∈ F₀) :
     TransferStep k src dst s .reject := by
   refine .reject fun hpre => ?_
@@ -5918,16 +5920,12 @@ theorem store_escape_rejected_at_transfer {k : K} {s : S3} {src dst a f g : Nat}
     exact List.mem_append_right _ ha
   have hok := hpre.2.2.2.2.2.2.2.2.2.2.2.2 dst
     (List.mem_range.2 (by have := hdst.lt; simpa [transferEff] using this)) hdst a hin (.inr (.inl rfl))
-  have hanc : (transferEff s src dst).effAnchor a = s.effAnchor a :=
-    effAnchor_congr (by rw [(transfer_skel s src dst).ancs])
-  have hA' : (transferEff s src dst).A[s.effAnchor a]? = some z := by
-    rw [transfer_A_get, hz]; simp [hzf, heldIn]
+  rw [transfer_effAnchorOK_unmoved hz hm, hg] at hok
   unfold EffAnchorOK at hok
-  rw [hanc, hA'] at hok
-  simp only [OptP, hzf, S3.hframe, hg] at hok
+  rw [hz] at hok
+  simp only [OptP, hzf] at hok
   have hnd := List.nodup_cons.1 (hF ▸ hwf.nodup)
-  have hF' : (transferEff s src dst).F = f :: F₀ := hF
-  rw [hF'] at hok
+  rw [hF] at hok
   unfold ancestor at hok
   have hfg : f ≠ g := fun e => hnd.1 (e ▸ hgF)
   simp only [List.dropWhile_cons, show (f != g) = true by simp [hfg], ↓reduceIte] at hok
@@ -9094,6 +9092,18 @@ example : TransferStep K0 5 0 lb5 (.ok (transferEff lb5 5 0)) := .ok (by decide)
 example : ((transferEff lb5 5 0).A[8]?).map (·.holder) = some (.place 0) ∧
     (transferEff lb5 5 0).pframe 0 = some 1 := by decide
 example : ExitStep K0 (transferEff lb5 5 0) .reject := .reject (by decide)
+theorem lb5_reachable : Reachable K0 [] lb5 ∧ Reachable K0 [] (transferEff lb5 5 0) := by
+  have r0 : Reachable K0 [] lb0 := .enter (.derive (.enter (.init (by decide)) (.ok (by decide)))
+    (.ok (by decide))) (.ok (by decide))
+  have r3 : Reachable K0 [] lb3 := .newArena (.store (.derive r0
+    (show DeriveStep 3 2 .modify lb0 (.ok lb1) from .ok (by decide)))
+    (show StoreStep 7 1 lb1 (.ok lb2) from .ok (by decide)))
+    (show NewArenaStep 2 7 lb2 (.ok lb3) from .ok (by decide))
+  have r5 : Reachable K0 [] lb5 := .issue (.issue r3 (show IssueAt K0 0 1 [3] 5 lb3 (.ok lb4) from
+    .ok (ar := arLb) (by decide) (.ok (by decide) (by decide) (by decide))))
+    (show IssueAt K0 0 1 [4] 6 lb4 (.ok lb5) from
+      .ok (ar := arLb') (by decide) (.ok (by decide) (by decide) (by decide)))
+  exact ⟨r5, .transfer r5 (show TransferStep K0 5 0 lb5 (.ok _) from .ok (by decide))⟩
 
 /-! ### Arena on an allocation owned by its value, returned (F1) -/
 
@@ -9141,7 +9151,7 @@ theorem vw3_escape_rejected : Reachable K0 [] vw3 ∧ TransferStep K0 2 0 vw3 .r
   refine ⟨r, store_escape_rejected_at_transfer (a := 5) (f := 2) (g := 1) (F₀ := [1, 0])
     (z := ⟨.modify, none, [1], .frame 2, true⟩)
     (reachable_access_invariant_underDD (KT_dd [] [] [] [] []) r).1 (by decide) (by decide)
-    (by decide) rfl (by decide) (by decide)⟩
+    (by decide) (by decide) rfl (by decide) (by decide)⟩
 
 /-- A view stored into a field of a structure (F4; MM-03.3.6): frame 2 has 1 array, 2 structure
 with the field 3, 4 another local. The view 5 on the array is stored into the field 3 (expected:
@@ -9166,7 +9176,29 @@ theorem fw3_escape_rejected : Reachable K0 [] fw3 ∧ TransferStep K0 2 0 fw3 .r
   refine ⟨r, store_escape_rejected_at_transfer (a := 5) (f := 2) (g := 1) (F₀ := [1, 0])
     (z := ⟨.modify, none, [1], .frame 2, true⟩)
     (reachable_access_invariant_underDD (KT_dd [] [] [] [] []) r).1 (by decide) (by decide)
-    (by decide) rfl (by decide) (by decide)⟩
+    (by decide) (by decide) rfl (by decide) (by decide)⟩
+
+/-- A view on a local owned by another local (F4; A5): frame 2 has 1 a value, 2 a local owned by
+1, of root 3 held by the place 1, 3 a structure, 4 another local. The view 6 on 2 is stored into
+3. Its effective anchor, the root 3, is held by a place of frame 2 that does not move with the
+structure: the transfer of the structure to the caller's result is rejected
+(`store_escape_rejected_at_transfer`), to the other local 4 accepted (expected: reject; `ok`). -/
+def hw0 : S3 := enterEff (deriveEff (enter1 [(none, none, 0)]) 0 0 .modify) [1]
+  [(none, none, 0), (none, some 1, 0), (none, none, 0), (none, none, 0)]
+def hw1 : S3 := write3Eff hw0 [2]
+def hw2 : S3 := deriveEff hw1 3 2 .observe
+def hw3 : S3 := storeEff hw2 6 3
+example : (hw3.A[hw3.effAnchor 6]?).map (·.holder) = some (.place 1) := by decide
+example : TransferStep K0 3 4 hw3 (.ok (transferEff hw3 3 4)) := .ok (by decide)
+theorem hw3_escape_rejected : Reachable K0 [] hw3 ∧ TransferStep K0 3 0 hw3 .reject := by
+  have r : Reachable K0 [] hw3 := .store (.derive (.write (.enter (.derive (.enter (.init (by decide))
+    (.ok (by decide))) (.ok (by decide))) (.ok (by decide))) (show Write3Step 3 [2] hw0 (.ok hw1) from
+      .ok (by decide))) (show DeriveStep 3 2 .observe hw1 (.ok hw2) from .ok (by decide)))
+    (show StoreStep 6 3 hw2 (.ok hw3) from .ok (by decide))
+  refine ⟨r, store_escape_rejected_at_transfer (a := 6) (f := 2) (g := 1) (F₀ := [1, 0])
+    (z := ⟨.modify, none, [2], .place 1, true⟩)
+    (reachable_access_invariant_underDD (KT_dd [] [] [] [] []) r).1 (by decide) (by decide)
+    (by decide) (by decide) (by decide) (by decide) (by decide)⟩
 
 /-! ### A second arena on the same root (F1) -/
 
@@ -9179,6 +9211,10 @@ def y3 : S3 := storeEff y1 4 2
 example : DeriveStep 3 3 .modify (newArenaEff x2 4 3) (.ok y1) := .ok (by decide)
 example : StoreStep 4 2 y1 (.ok y3) := .ok (by decide)
 example : y3.Active 3 ∧ NewArenaStep 3 4 y3 (.ok (newArenaEff y3 3 4)) := ⟨by decide, .ok (by decide)⟩
+/-- In the state of the case `x2`, before that derivation, every second arena on the root place 3
+or its part 4 is rejected, whatever its `internal` (an index beyond `A` fails `NewArenaPre`). -/
+example : ∀ st ∈ [3, 4], ∀ i ∈ List.range (newArenaEff x2 4 3).A.length,
+    ¬ NewArenaPre (newArenaEff x2 4 3) st i := by decide
 
 /-! ### `store` of a root (F4) -/
 
@@ -9286,9 +9322,10 @@ into B. Expected: the second `store` rejected. Obtained: accepted. In `fa7`, bef
 the frame, which has effective `Modify` on A (B2): `HasRight` on B holds, and no clause of
 `StorePre` fails. In `fa8`, neither 7 nor 8 is exercisable, and `release` of 7 or 8, `endUse` of
 2 or 3 and `reset` are rejected; the `endUse` and `reset` rejections already hold before the
-second store, where 8 could still be released first. Whether frame 1 can free 7 or 8 before its
-exit is open (F7: no conclusion of impossibility without proof). The exit of frame 1 releases
-both. Each state is reached from `S3.init []`; the list of arenas is non-empty from `fa2` on. -/
+second store, where 8 could still be released first. The exit of frame 1 releases both; so does
+the end of the arena value before the exit (`progress_cycle_freed_before_exit`). Whether a
+sequence frees 7 or 8 while keeping the arena live is open (F7: no conclusion of impossibility
+without proof). Each state is reached from `S3.init []`; the list of arenas is non-empty from `fa2` on. -/
 def fa0 : S3 := enter1 [(none, none, 0), (none, none, 0), (none, none, 0), (none, none, 0)]
 def fa1 : S3 :=
   allocEff (write3Eff fa0 [1]) 1 0 [(none, none, 0), (some 4, none, 0), (some 4, none, 0)]
@@ -9329,6 +9366,32 @@ theorem progress_cycle_whole_nodes :
   exact ⟨r8, by decide, s6, s8, by decide, by decide, by decide, by decide, by decide,
     .reject (by decide), .reject (by decide), .reject (by decide), .reject (by decide),
     .reject (by decide), .exit r8 hx, by decide, by decide⟩
+
+/-- Before the second store of F7 (a), in `fa7`: `release 8` is accepted, while `endUse` of 2 and
+3 and `reset` are already rejected. -/
+example : ReleaseStep 8 fa7 (.ok (releaseEff fa7 8)) := .ok (by decide)
+example : EndUseStep K0 2 fa7 .reject ∧ EndUseStep K0 3 fa7 .reject ∧ ResetAtStep K0 0 0 fa7 .reject :=
+  ⟨.reject (by decide), .reject (by decide), .reject (by decide)⟩
+
+/-- F7 (a): the cycle is undone before the exit of frame 1, at the cost of the arena. In `fa8`,
+`endUse 0` of the arena value is rejected (the node values hold live blocks). The frame
+allocates two places 7 and 8 owned by 0, transfers the node values 2 and 3 into them (A5: the
+blocks are then held within the storage of 0), and ends 0: the storage 4, its parts and the
+places 7 and 8 die, and 7 and 8, the stored authorities, are released (A6). Frame 1 is still the
+current frame; the arena is dead and cannot be reset. -/
+def fc1 : S3 := allocEff fa8 1 0 [(none, none, 0), (none, none, 0)]
+def fc4 : S3 := endUseEff (transferEff (transferEff fc1 2 7) 3 8) 0
+theorem progress_cycle_freed_before_exit :
+    EndUseStep K0 0 fa8 .reject ∧ Reachable K0 [] fc4 ∧ fc4.F = [1, 0] ∧ ¬ fc4.Active 7 ∧
+      ¬ fc4.Active 8 ∧ ¬ fc4.Active 4 ∧ ResetAtStep K0 0 0 fc4 .reject :=
+  ⟨.reject (by decide), .endUse (.transfer (.transfer (.alloc progress_cycle_whole_nodes.1
+    (.ok (by decide) trivial)) (.ok (by decide))) (.ok (by decide))) (.ok (by decide)), by decide,
+    by decide, by decide, by decide, .reject (by decide)⟩
+example : (fc1.P[7]?).map (·.owner) = some (.place 0) ∧ (fc1.P[8]?).map (·.owner) = some (.place 0) :=
+  by decide
+example : ((transferEff (transferEff fc1 2 7) 3 8).A[5]?).map (·.holder) = some (.place 7) ∧
+    ((transferEff (transferEff fc1 2 7) 3 8).A[6]?).map (·.holder) = some (.place 8) := by decide
+example : ¬ fc4.Usable 4 ∧ ¬ fc4.Usable 5 ∧ ¬ fc4.Usable 6 ∧ ¬ fc4.Usable 7 ∧ ¬ fc4.Usable 8 := by decide
 
 /-- F7 (b), cycle on disjoint fields. Same frame; storage 4 with the nodes 5 (A, fields 6 `data`
 and 7 `link`) and 8 (B, fields 9 `data` and 10 `link`); blocks 5 on `[6, 7]` and 6 on `[9, 10]`
