@@ -1260,6 +1260,33 @@ instance (k : K) [DecidablePred k.Pinned] (s : S3) (src dst : Nat) :
     Decidable (TransferPre k s src dst) := by
   unfold TransferPre; infer_instance
 
+/-- The preconditions of `transfer` other than the shape of the destination (J1): `TransferPre`
+without its last clause (`transferPre_iff`). Used to show that a transfer is rejected by the shape
+clause alone. -/
+def TransferPreBase (k : K) (s : S3) (src dst : Nat) : Prop :=
+  s.Usable src ∧ (∀ l ∈ footprint s.P src, s.I l = .init) ∧
+  s.Usable dst ∧ (∀ l ∈ footprint s.P dst, s.I l ≠ .init) ∧ ¬ overlap s.P src dst ∧
+  HasRight s .modify src ∧ HasRight s .modify dst ∧
+  (transferEff s src dst).Usable dst ∧
+  (∀ j ∈ List.range s.A.length, ¬ ActiveDerivedOutside s src j) ∧
+  (∀ x ∈ depsOf s src, s.Active x) ∧
+  (∀ x ∈ movedDeps s src,
+    NoEscape (transferEff s src dst) x ((transferEff s src dst).pframe dst)) ∧
+  (∀ l ∈ footprint s.P src, ¬ k.Pinned l ∧ s.pin l = false) ∧
+  (∀ q ∈ List.range s.P.length, (transferEff s src dst).Usable q →
+    ∀ x ∈ (transferEff s src dst).D q,
+      (AnchorMoves s src (s.effAnchor x) ∨ q = dst ∨ OwnedWithin s src q) →
+      EffAnchorOK (transferEff s src dst) x ((transferEff s src dst).pframe q)) ∧
+  AnchorOrderHeld (transferEff s src dst)
+
+instance (k : K) [DecidablePred k.Pinned] (s : S3) (src dst : Nat) :
+    Decidable (TransferPreBase k s src dst) := by
+  unfold TransferPreBase; infer_instance
+
+theorem transferPre_iff {k : K} {s : S3} {src dst : Nat} :
+    TransferPre k s src dst ↔ TransferPreBase k s src dst ∧ SameShape s.P src dst := by
+  unfold TransferPre TransferPreBase; simp only [and_assoc]
+
 /-- `transfer` as a relation (MM-03.3 §3, O4). -/
 def TransferStep (k : K) (src dst : Nat) (s : S3) : Outcome3 S3 → Prop :=
   Guarded (TransferPre k s src dst) (transferEff s src dst)
@@ -11741,12 +11768,47 @@ def sq1 : S3 := write3Eff sq0 [1, 3, 4]
 theorem transfer_shape_ordered :
     Reachable K0 [] sq1 ∧ kids sq1.P 0 = [1, 2] ∧ kids sq1.P 5 = [6, 9] ∧
       ¬ SameShape sq1.P 0 5 ∧ TransferStep K0 0 5 sq1 .reject ∧
-      (SameShape sq1.P 0 5 → TransferPre K0 sq1 0 5) ∧
+      TransferPreBase K0 sq1 0 5 ∧
       TransferStep K0 0 10 sq1 (.ok (transferEff sq1 0 10)) ∧
       SameShape sq1.P 1 9 ∧ SameShape sq1.P 2 6 := by
   exact ⟨.write (.enter (.init (by decide)) (.ok (by decide)))
     (show Write3Step 0 [1, 3, 4] sq0 (.ok sq1) from .ok (by decide)), by decide, by decide,
     by decide, .reject (by decide), by decide, .ok (by decide), by decide, by decide⟩
+
+/-- J1, field by field (question (e) 1 of the pass-8 report): what the container itself holds or owns
+moves only with the container. Frame 1: structure 0 with the leaf 1 and the structure 2 of fields 3
+and 4, which owns the storage 11 (root 3, held by 0); structure 5 with the structure 6 of fields 7
+and 8, then the leaf 9; 10 the allocator value. The leaves of 0 are written. The transfer of 0
+into 5 is rejected by the shape clause alone (ordered isomorphism); it would give 11 to 5. Field by
+field, 1 into 9 and 2 into 6 are accepted: every leaf of 0 is `Moved` and every leaf of 5 `Init`,
+but 11 is still owned by 0 and its root still held by 0. -/
+def zo0 : S3 := enter1 [(none, none, 0), (some 0, none, 0), (some 0, none, 0), (some 2, none, 0),
+  (some 2, none, 0), (none, none, 0), (some 5, none, 0), (some 6, none, 0), (some 6, none, 0),
+  (some 5, none, 0), (none, none, 0)]
+def zo1 : S3 := write3Eff zo0 [10]
+def zo2 : S3 := allocEff zo1 10 0 [(none, none, 0)]
+def zo3 : S3 := write3Eff zo2 [1, 3, 4]
+def zo4 : S3 := transferEff zo3 1 9
+def zo5 : S3 := transferEff zo4 2 6
+theorem transfer_field_by_field_container_stays :
+    Reachable K0 [] zo5 ∧ (zo3.P[11]?).map (·.owner) = some (.place 0) ∧
+      (zo3.A[3]?).map (·.holder) = some (.place 0) ∧
+      ¬ SameShape zo3.P 0 5 ∧ TransferPreBase K0 zo3 0 5 ∧
+      TransferStep K0 0 5 zo3 .reject ∧
+      ((transferEff zo3 0 5).P[11]?).map (·.owner) = some (.place 5) ∧
+      TransferStep K0 1 9 zo3 (.ok zo4) ∧ TransferStep K0 2 6 zo4 (.ok zo5) ∧
+      (∀ l ∈ footprint zo5.P 0, zo5.I l = .moved) ∧ (∀ l ∈ footprint zo5.P 5, zo5.I l = .init) ∧
+      (zo5.P[11]?).map (·.owner) = some (.place 0) ∧ (zo5.A[3]?).map (·.holder) = some (.place 0) := by
+  have r1 : Reachable K0 [] zo1 := .write (.enter (.init (by decide)) (.ok (by decide)))
+    (show Write3Step 2 [10] zo0 (.ok zo1) from .ok (by decide))
+  have r2 : Reachable K0 [] zo2 := .alloc r1
+    (show AllocStep K0 10 0 [(none, none, 0)] zo1 (.ok zo2) from .ok (by decide) trivial)
+  have r3 : Reachable K0 [] zo3 := .write r2 (show Write3Step 0 [1, 3, 4] zo2 (.ok zo3) from
+    .ok (by decide))
+  have h4 : TransferStep K0 1 9 zo3 (.ok zo4) := .ok (by decide)
+  have h5 : TransferStep K0 2 6 zo4 (.ok zo5) := .ok (by decide)
+  exact ⟨.transfer (.transfer r3 h4) h5, by decide, by decide, by decide, by decide,
+    .reject (by decide), by decide, h4, h5, by decide, by decide, by decide, by decide⟩
 
 /-- J1, bullets 2 and 3: an `issue` to a leaf of the arena value that is not `Init` makes it
 `Init`, so the initialisation of the arena value changes (a question of the pass-8 report). Frame 1:
@@ -11813,5 +11875,86 @@ theorem child_arena_in_block :
     .ok (ar := arCq2) (by decide) (.ok (by decide) (by decide) (by decide) (by decide))
   exact ⟨.issue r5 hi, by decide, hi, .reject (by decide), .ok (by decide), .ok (by decide),
     .reject (ar := arCq2) (by decide) (.reject (by decide))⟩
+
+/-- Verdicts of pass 7 that J1 changes, on states still reached. `newArena` in the cases `a`, `nA`,
+`x`, `na`, `fa`, `fb`, `tc`, `ci` and `it` before the arena value is written: accepted in pass 7,
+rejected by J1 (`LeavesInit`, the only clause of `NewArenaPre` added since pass 7); each case now
+writes the arena value first. -/
+example : NewArenaStep 3 3 a2 .reject ∧ NewArenaStep 2 2 nA2 .reject ∧ NewArenaStep 3 3 x2 .reject ∧
+    NewArenaStep 3 3 na1 .reject ∧ NewArenaStep 4 4 fa1 .reject ∧ NewArenaStep 4 4 fb1 .reject ∧
+    NewArenaStep 5 5 tc1 .reject ∧ NewArenaStep 4 5 ci1 .reject ∧ NewArenaStep 5 3 it1 .reject :=
+  ⟨.reject (by decide), .reject (by decide), .reject (by decide), .reject (by decide),
+    .reject (by decide), .reject (by decide), .reject (by decide), .reject (by decide),
+    .reject (by decide)⟩
+
+/-- The `transfer` of the pass-7 witness of `held_unexercisable_by_transfer`, the structure 0 into
+the leaf 2, accepted in pass 7, is rejected by J1 (shape). -/
+def huP : S3 := storeEff (deriveEff (enter1 [(none, none, 0), (some 0, none, 0), (none, none, 0)])
+  1 2 .modify) 2 1
+example : Reachable K0 [] huP ∧ TransferStep K0 0 2 huP .reject ∧ ¬ SameShape huP.P 0 2 :=
+  ⟨.store (.derive (.enter (.init (by decide)) (.ok (by decide))) (.ok (by decide)))
+    (.ok (by decide)), .reject (by decide), by decide⟩
+
+/-- The `transfer` of the pass-7 witness of `call_protects_params_safe_fails_unblock`, the leaf 1
+into the structure 2, accepted in pass 7, is rejected by J1 (shape). -/
+def ubP : S3 := storeEff (deriveEff (enter1 [(none, none, 0), (none, none, 0), (none, none, 0),
+  (some 2, none, 0), (some 2, none, 0), (none, none, 0), (some 5, none, 0), (some 5, none, 0)])
+  0 0 .modify) 4 1
+example : Reachable K0 [] ubP ∧ TransferStep K0 1 2 ubP .reject ∧ ¬ SameShape ubP.P 1 2 :=
+  ⟨.store (.derive (.enter (.init (by decide)) (.ok (by decide))) (.ok (by decide)))
+    (.ok (by decide)), .reject (by decide), by decide⟩
+
+/-- The emission of the child arena of the case `x` to the leaf 2, accepted in pass 7, is rejected:
+2 now holds the parent's block and is `Init` (J1). The child can issue to the leaf 4, part of its own
+region, a block then held by the place it covers (as in `held_unexercisable_by_issue`). -/
+example : Reachable K0 [] x5 ∧ IssueAt K0 1 0 [4] 2 x5 .reject ∧
+    IssueAt K0 1 0 [4] 4 x5
+      (.ok (arenaSet (issueEff x5 ⟨4, 4, [4], []⟩ [4] 4).1 1 (issueEff x5 ⟨4, 4, [4], []⟩ [4] 4).2)) ∧
+    x5.I 2 = .init ∧ isLeaf x5.P 4 ∧ x5.I 4 ≠ .init := by
+  have r0 : Reachable K0 [] x0 := .enter (.init (by decide)) (.ok (by decide))
+  have r1 : Reachable K0 [] (write3Eff x0 [1]) :=
+    .write r0 (show Write3Step 1 [1] x0 (.ok _) from .ok (by decide))
+  have r2 : Reachable K0 [] x2 := .alloc r1
+    (show AllocStep K0 1 0 [(none, none, 0), (some 3, none, 0)] _ (.ok x2) from .ok (by decide) trivial)
+  have r3 : Reachable K0 [] x3 := .newArena (.write r2 (show Write3Step 0 [0] x2 (.ok x2w) from
+    .ok (by decide))) (show NewArenaStep 3 3 x2w (.ok x3) from .ok (by decide))
+  have r4 : Reachable K0 [] x4 := .issue r3 (show IssueAt K0 0 0 [4] 2 x3 (.ok x4) from
+    .ok (ar := arX) (by decide) (.ok (by decide) (by decide) (by decide) (by decide)))
+  exact ⟨.newArena r4 (show NewArenaStep 4 4 x4 (.ok x5) from .ok (by decide)),
+    .reject (ar := ⟨4, 4, [4], []⟩) (by decide) (.reject (by decide)),
+    .ok (by decide) (.ok (by decide) (by decide) (by decide) (by decide)), by decide, by decide,
+    by decide⟩
+
+/-- The `transfer` of the pass-7 case `fw`, the structure 2 into the leaf 4, accepted in pass 7, is
+rejected by J1 (shape); the case now has a structure 4 with the field 5. -/
+def fwP0 : S3 := enterEff (deriveEff (enter1 [(none, none, 0)]) 0 0 .modify) [1]
+  [(none, none, 0), (none, none, 0), (some 2, none, 0), (none, none, 0)]
+def fwP : S3 := storeEff (deriveEff (write3Eff fwP0 [1]) 2 1 .observe) 5 3
+example : Reachable K0 [] fwP ∧ TransferStep K0 2 4 fwP .reject ∧ ¬ SameShape fwP.P 2 4 ∧
+    TransferPreBase K0 fwP 2 4 :=
+  ⟨.store (.derive (.write (.enter (.derive (.enter (.init (by decide)) (.ok (by decide)))
+    (.ok (by decide))) (.ok (by decide))) (show Write3Step 2 [1] fwP0 (.ok _) from .ok (by decide)))
+    (show DeriveStep 2 1 .observe (write3Eff fwP0 [1]) (.ok _) from .ok (by decide)))
+    (show StoreStep 5 3 _ (.ok fwP) from .ok (by decide)),
+    .reject (by decide), by decide, by decide⟩
+
+/-- The `transfer` of the pass-7 state `xferNd` (outside `WF3`), into the leaf 3, accepted in pass 7,
+is rejected by J1 (shape); the example on `xferNd` now has a place 4, the part of 3 that corresponds
+to the part 1 of the source. -/
+def xferNdP : S3 := ⟨[1, 0], 6, [⟨none, .frame 1, 0⟩, ⟨some 0, .frame 5, 0⟩, ⟨none, .place 1, 0⟩,
+  ⟨none, .frame 1, 0⟩], fun l => if l = 1 then .init else .uninit,
+  [⟨.modify, none, [1], .frame 1, true⟩, ⟨.modify, none, [3], .frame 1, true⟩,
+    ⟨.modify, none, [], .frame 1, false⟩],
+  fun q => if q = 2 then [2] else [], fun _ => false, fun _ => false, fun _ => false, [], fun _ => []⟩
+example : TransferStep K0 0 3 xferNdP .reject ∧ ¬ SameShape xferNdP.P 0 3 :=
+  ⟨.reject (by decide), by decide⟩
+
+/-- The transfers of pass 7 that J1 rejects for their shape fail only the shape clause: every other
+precondition of `transfer` holds (`TransferPreBase`, `transferPre_iff`). Cases `c11a`, `tx`, `hu`,
+`ub`, `xferNd`, `tw`, `vt` and the pass-7 witness of `transfer_not_inv3_preserving`. -/
+example : TransferPreBase K0 c11a 0 3 ∧ TransferPreBase K0 (transferEff tx0 1 2) 2 0 ∧
+    TransferPreBase K0 huP 0 2 ∧ TransferPreBase K0 ubP 1 2 ∧ TransferPreBase K0 xferNdP 0 3 ∧
+    TransferPreBase K0 tw2 4 0 ∧ TransferPreBase K0 vt1 0 1 ∧ TransferPreBase K0 xferCex7 0 3 := by
+  decide
 
 end Ern.MM03
