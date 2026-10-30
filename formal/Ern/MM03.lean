@@ -1190,8 +1190,8 @@ places it owns, whose frame changes with it (A5), each frame read after the tran
 usable after the transfer, if its effective anchor moves with the value, or if the dependent
 itself moves (the destination, or a place the value owns), the frame of the effective anchor is
 the dependent's frame or an ancestor of it, both frames read after the transfer
-(`EffAnchorOK`); G4: `AnchorOrderHeld` in the arrival state, for the authorities held by the value
-and by the places it owns, which change holder or frame. O4.3 holds by construction. -/
+(`EffAnchorOK`); G4: `AnchorOrderHeld` in the arrival state, the whole predicate, for every held
+authority. O4.3 holds by construction. -/
 def TransferPre (k : K) (s : S3) (src dst : Nat) : Prop :=
   s.Usable src ∧ (∀ l ∈ footprint s.P src, s.I l = .init) ∧
   s.Usable dst ∧ (∀ l ∈ footprint s.P dst, s.I l ≠ .init) ∧ ¬ overlap s.P src dst ∧
@@ -1296,7 +1296,7 @@ def rootIdx (ls : List (Option Nat × Option Nat × Nat)) : List Nat :=
   (List.range ls.length).filter fun i => ((ls[i]?).bind (·.1)).isNone
 
 /-- Effect of `enterFrame` (MM-03.3 §4, O6) with parameters `ps` and locals `ls`: new frame
-`nF` pushed; the parameters, derived by the caller, are now held by the new frame (A3); locals
+`nF` pushed; the parameters, held by the caller, are now held by the new frame (A3); locals
 appended, uninitialised, without dependency, alive and unpinned; one active root `Modify`
 authority per root local on its footprint, held by the owner of the local (pass-1
 arbitrage 2; A4); the ghost record `callParams` of the new frame is `ps` (F6). -/
@@ -1324,9 +1324,9 @@ instance (s' : S3) (p : Nat) : Decidable (ParamOriginHidden s' p) := by
   unfold ParamOriginHidden; infer_instance
 
 /-- Preconditions of `enterFrame` before G1 and G4 (MM-03.3 §4, O6): the calling frame is active
-(non-empty stack); each parameter is an active authority derived by the caller and held by it
-(A3); the parent and the owner of a local are earlier locals; a part has the owner of its
-parent. -/
+(non-empty stack); each parameter is an active derived authority (`origin ≠ none`) held by the
+caller (A3, read since pass 2 without requiring the caller to be the deriving frame); the parent
+and the owner of a local are earlier locals; a part has the owner of its parent. -/
 def EnterPreBase (s : S3) (ps : List Nat) (ls : List (Option Nat × Option Nat × Nat)) : Prop :=
   s.F ≠ [] ∧
   (∀ a ∈ ps, OptP (s.A[a]?) (fun y => y.active = true ∧ y.holder = .frame s.top ∧
@@ -10138,7 +10138,7 @@ def ua2 : S3 := releaseEff ua1 8
 theorem call_protects_params_safe_fails_unblock_active :
     Reachable K0 [] ua2 ∧ ReleaseStep 7 ub11 (.ok ua1) ∧ ReleaseStep 8 ua1 (.ok ua2) ∧
       ua2.Active 5 ∧ ua2.ExercisableAt 4 .modify ∧ effective ua2 4 0 = none ∧
-      ¬ CallProtects ua2 := by
+      ¬ CallProtects ua2 ∧ ua2.callParams 2 = [5, 6, 9] ∧ ua2.org 5 = some 4 := by
   have r0 : Reachable K0 [] ub0 := .enter (.init (by decide)) (.ok (by decide))
   have r1 : Reachable K0 [] ub1 := .derive r0 (show DeriveStep 0 0 .modify ub0 (.ok ub1) from
     .ok (by decide))
@@ -10164,7 +10164,7 @@ theorem call_protects_params_safe_fails_unblock_active :
   exact ⟨.release (.release (.enter r10 he) h1) h2, h1, h2, by decide, by decide, by decide,
     not_callProtects (f := 2) (F₀ := [1, 0]) (p := 5) (b := 4) (l := 0) (m := .modify)
       (by decide) (by decide) (by decide) (by decide) (by decide) (by decide) (by decide)
-      (by decide)⟩
+      (by decide), by decide, by decide⟩
 
 /-- F6, kept by G1, also fails through the re-anchoring of the exit (O7, A7), which no clause at the
 entry constrains: a frame passes its parameter on, the callee derives from it, stores the result
@@ -10183,6 +10183,7 @@ def xr5 : S3 := storeEff xr4 4 1
 def xr6 : S3 := exitEff xr5
 theorem call_protects_params_safe_fails_exit :
     Reachable K0 [] xr6 ∧ xr6.F = [2, 1, 0] ∧ xr6.callParams 2 = [1] ∧ xr6.ancs 4 = [0] ∧
+      ¬ xr6.Active 1 ∧
       ¬ CallProtects xr6 ∧ ¬ CallProtectsDirect xr6 ∧
       Write3Step 4 [0] xr6 (.ok (write3Eff xr6 [0])) := by
   have r0 : Reachable K0 [] xr0 :=
@@ -10200,7 +10201,7 @@ theorem call_protects_params_safe_fails_exit :
   have hd : ¬ CallProtectsDirect xr6 := not_callProtectsDirect (f := 2) (F₀ := [1, 0]) (p := 1)
     (b := 4) (l := 0) (m := .modify) (by decide) (by decide) (by decide) (by decide) (by decide)
     (by decide) (by decide) (by decide)
-  exact ⟨r6, by decide, by decide, by decide, fun h => hd h.direct, hd, .ok (by decide)⟩
+  exact ⟨r6, by decide, by decide, by decide, by decide, fun h => hd h.direct, hd, .ok (by decide)⟩
 
 /-- The same where every parameter is derived by its caller (A3 read strictly): frame 2 stores its
 parameter 1 into the place 2 it owns through the local 1, derives 5, `Modify` on 1, and 6, `Modify`
@@ -10246,7 +10247,7 @@ theorem call_protects_params_safe_fails_exit_strict :
 descendants, now rejected at `enterFrame` by G1. Frame 1: local 0, of root 0; the caller derives 1,
 `Modify` on 0, then 2, `Modify` on 0 from 1, and calls with `[1, 2]`: in the state where the new
 frame holds its parameters, the parameter 1, origin of the parameter 2, is exercisable, so the
-call is rejected (G1). The state `cp1` the call would produce, no longer reached, still violates
+call is rejected (G1). The state `cp1` the call would produce, no longer produced by this call, violates
 `CallProtects`: there, the parameter 1 is exercisable, covers the leaf 0 of the parameter 2, and is
 its ancestor; after the callee releases 2, it writes the leaf 0 through 1. -/
 def cp0 : S3 := deriveEff (deriveEff (enter1 [(none, none, 0)]) 0 0 .modify) 1 0 .modify
@@ -10275,7 +10276,7 @@ rejected at `enterFrame` by G1. Frame 1: value 0, of root 0 held by frame 1, whi
 1, of root 1 held by the place 0. The caller derives 2, `Modify` on 1 from the root 1, and 3,
 `Modify` on 0, and calls with `[2, 3]`: in the state where the new frame holds its parameters, the
 root 1, origin of the parameter 2, is exercisable through the parameter 3, so the call is
-rejected (G1). The state `co1` the call would produce, no longer reached, still violates
+rejected (G1). The state `co1` the call would produce, no longer produced by this call, violates
 `CallProtects`; after the callee releases 2, it writes the leaf 1 through the root 1. -/
 def co0 : S3 :=
   deriveEff (deriveEff (enter1 [(none, none, 0), (none, some 0, 0)]) 1 1 .modify) 0 0 .modify
@@ -10609,8 +10610,10 @@ blocks 5 on `[5]` and 6 on `[6]` are issued to 2 and 3. The frame derives 7, `Mo
 the block 6, and stores it into A; then derives 8, `Modify` on A from the block 5, and stores it
 into B. Expected: the second `store` rejected. Obtained in pass 6: accepted. Obtained in pass 7:
 rejected by the clause of arrival of G2 alone, every other clause of `StorePre` holding: after the
-store, B is covered by 7 only, held by A, and A by 8 only, held by B, so neither 7 nor 8 would be
-exercisable and the current frame would lose `Modify` on B. In `fa7`, 7 is exercisable through 8,
+store, the only authority with an effective mode on B would be 7, held by A, and on A only 8, held
+by B, so neither 7 nor 8 would be exercisable and the current frame would lose `Modify` on B (in the
+sense of `CoversHolder`, G3, B stays covered by `internal` 4 and the block 6, without effective
+mode). In `fa7`, 7 is exercisable through 8,
 held by the frame, which has effective `Modify` on A (B2). The clause guards `store` only: with a
 helper, then its `release`, the same cycle is reached (`f7a_cycle_by_release`). Each state is reached
 from `S3.init []`; the list of arenas is non-empty from `fa2` on. -/
@@ -10812,7 +10815,7 @@ rejected (expected and obtained), by the clause of arrival of G2: the only autho
 effective mode on C would be 10, held by B, on which only 9 has one, held by A, on which only 11 has
 one, held by C. In the sense of `CoversHolder` (G3), C stays covered by `internal` 5 and by its
 block 8, which have no effective mode there. The same cycle is reached with a helper released
-after the stores (`f7a_cycle_by_release`, `cycle_by_release`). -/
+after the stores (`three_node_cycle_by_release`). -/
 def tc0 : S3 := enter1 [(none, none, 0), (none, none, 0), (none, none, 0), (none, none, 0),
   (none, none, 0)]
 def tc1 : S3 := allocEff (write3Eff tc0 [1]) 1 0
@@ -10893,12 +10896,21 @@ region unavailable and fails, the state unchanged, as in pass 6, although its ar
 break `AnchorOrderHeld`. -/
 def ci3 : S3 := arenaSet (issueEff ci2 arCi [5] 3).1 0 (issueEff ci2 arCi [5] 3).2
 theorem callee_issue_unavailable_fails :
-    Reachable K0 [] ci3 ∧ IssueAt K0 0 0 [5] 0 ci3 (.fail ci3) := by
+    Reachable K0 [] ci3 ∧ IssueAt K0 0 0 [5] 0 ci3 (.fail ci3) ∧
+      ¬ AnchorOrderHeld (issueEff ci3 (issueEff ci2 arCi [5] 3).2 [5] 0).1 := by
   have r2 := callee_issue_to_caller.1
   exact ⟨.issue r2 callee_issue_to_caller.2.2.2.2.2.2.2,
-    .fail (ar := (issueEff ci2 arCi [5] 3).2) (by decide) (.fail (by decide) (by decide))⟩
+    .fail (ar := (issueEff ci2 arCi [5] 3).2) (by decide) (.fail (by decide) (by decide)), by decide⟩
 
 /-! ### Held authorities that no frame can exercise (G3) -/
+
+/-- No authority is held by the base frame 0 (G3 witnesses): with the stack `[1, 0]`, only the
+current frame can exercise anything. -/
+def NothingAtFrame0 (s : S3) : Prop :=
+  ∀ j ∈ List.range s.A.length, OptP (s.A[j]?) (fun y => y.holder ≠ .frame 0) True
+
+instance (s : S3) : Decidable (NothingAtFrame0 s) := by unfold NothingAtFrame0; infer_instance
+
 
 /-- `NoOrphan` (G3) holds on every reached state, but it does not make a held authority
 exercisable: `transfer` builds an active authority held by the place it covers, which no frame
@@ -10915,11 +10927,11 @@ theorem held_unexercisable_by_transfer :
     Reachable K0 [] hu1 ∧ (hu1.A[2]?).map (fun y => (y.active, y.holder, y.footprint)) =
       some (true, .place 2, [2]) ∧ ¬ hu1.ExercisableAt 2 .observe ∧ ¬ HasRight hu1 .modify 2 ∧
       ReleaseStep 2 hu1 .reject ∧ EndUseStep K0 2 hu1 .reject ∧ NoOrphan hu1 ∧
-      ExitStep K0 hu1 (.ok (exitEff hu1)) ∧ ¬ (exitEff hu1).Active 2 := by
+      ExitStep K0 hu1 (.ok (exitEff hu1)) ∧ ¬ (exitEff hu1).Active 2 ∧ NothingAtFrame0 hu1 := by
   have r : Reachable K0 [] hu1 := .transfer (.store (.derive (.enter (.init (by decide))
     (.ok (by decide))) (.ok (by decide))) (.ok (by decide))) (.ok (by decide))
   exact ⟨r, by decide, by decide, by decide, .reject (by decide), .reject (by decide),
-    reachable_no_orphan (KT_dd [] [] [] [] []) r, .ok (by decide), by decide⟩
+    reachable_no_orphan (KT_dd [] [] [] [] []) r, .ok (by decide), by decide, by decide⟩
 
 /-- The same through `issue` (G3; A10): from `fa2` (arena value 0, storage 4 with the nodes 5 and
 6, `internal` 4 held by 0), the block on the node 5 is issued to the node 5 itself (`ok`): the block
@@ -10928,7 +10940,8 @@ block is exercisable at no mode. -/
 def iu1 : S3 := arenaSet (issueEff fa2 arFa [5] 5).1 0 (issueEff fa2 arFa [5] 5).2
 theorem held_unexercisable_by_issue :
     Reachable K0 [] iu1 ∧ (iu1.A[5]?).map (fun y => (y.active, y.holder, y.footprint)) =
-      some (true, .place 5, [5]) ∧ ¬ iu1.ExercisableAt 5 .observe ∧ NoOrphan iu1 := by
+      some (true, .place 5, [5]) ∧ ¬ iu1.ExercisableAt 5 .observe ∧ NoOrphan iu1 ∧
+      NothingAtFrame0 iu1 := by
   have r0 : Reachable K0 [] fa0 := .enter (.init (by decide)) (.ok (by decide))
   have r1 : Reachable K0 [] fa1 := .alloc (.write r0 (show Write3Step 1 [1] fa0 (.ok _) from
     .ok (by decide))) (show AllocStep K0 1 0 [(none, none, 0), (some 4, none, 0), (some 4, none, 0)]
@@ -10937,7 +10950,7 @@ theorem held_unexercisable_by_issue :
     .ok (by decide))
   have r : Reachable K0 [] iu1 := .issue r2 (show IssueAt K0 0 0 [5] 5 fa2 (.ok iu1) from
     .ok (ar := arFa) (by decide) (.ok (by decide) (by decide) (by decide) (by decide)))
-  exact ⟨r, by decide, by decide, reachable_no_orphan (KT_dd [] [] [] [] []) r⟩
+  exact ⟨r, by decide, by decide, reachable_no_orphan (KT_dd [] [] [] [] []) r, by decide⟩
 
 /-! ### Leaves made `Init` without a write (G2; review of pass 7) -/
 
@@ -10955,13 +10968,15 @@ def tw2 : S3 := storeEff tw1 3 4
 def tw3 : S3 := transferEff tw2 4 0
 theorem transfer_inits_unwritten_after_store :
     Reachable K0 [] tw3 ∧ StoreStep 3 0 tw1 .reject ∧ tw2.I 2 = .uninit ∧ tw3.I 2 = .init ∧
-      Read3Step 0 [2] tw3 (.ok tw3) ∧ (tw3.A[3]?).map (·.holder) = some (.place 0) := by
+      Read3Step 0 [2] tw3 (.ok tw3) ∧ (tw3.A[3]?).map (·.holder) = some (.place 0) ∧
+      footprint tw3.P 0 = [1, 2] ∧ tw3.I 1 = .init := by
   have r1 : Reachable K0 [] tw1 := .derive (.enter (.init (by decide)) (.ok (by decide)))
     (.ok (by decide))
   have r2 : Reachable K0 [] tw2 := .store r1 (show StoreStep 3 4 tw1 (.ok tw2) from .ok (by decide))
   have r3 : Reachable K0 [] tw3 := .transfer r2 (show TransferStep K0 4 0 tw2 (.ok tw3) from
     .ok (by decide))
-  exact ⟨r3, .reject (by decide), by decide, by decide, .ok (by decide), by decide⟩
+  exact ⟨r3, .reject (by decide), by decide, by decide, .ok (by decide), by decide, by decide,
+    by decide⟩
 
 /-- The same without `store` (MM-03.3 §3, O4.2; MM-03.3.3): frame 1 has the leaf 0 and the
 structure 1 with the fields 2 and 3. The frame writes 0 and transfers it into 1: the field 3,
@@ -10991,7 +11006,8 @@ theorem issue_inits_unwritten :
     Reachable K0 [] it3 ∧ it2.I 4 = .uninit ∧ it2.I 0 = .uninit ∧
       Read3Step 2 [4] it2 .reject ∧ Read3Step 2 [4] it3 (.ok it3) ∧
       Read3Step 0 [0] it2 .reject ∧ Read3Step 0 [0] it3 (.ok it3) ∧
-      (it3.A[4]?).map (·.holder) = some (.place 2) := by
+      (it3.A[4]?).map (·.holder) = some (.place 2) ∧ footprint it3.P 2 = [3, 4] ∧
+      it3.I 3 = .init := by
   have r0 : Reachable K0 [] it0 := .enter (.init (by decide)) (.ok (by decide))
   have r1 : Reachable K0 [] it1 := .alloc (.write r0 (show Write3Step 1 [1] it0 (.ok _) from
     .ok (by decide))) (show AllocStep K0 1 0 [(none, none, 0), (some 5, none, 0)] _ (.ok it1) from
@@ -11001,16 +11017,9 @@ theorem issue_inits_unwritten :
   have r3 : Reachable K0 [] it3 := .issue r2 (show IssueAt K0 0 0 [6] 2 it2 (.ok it3) from
     .ok (ar := arIt) (by decide) (.ok (by decide) (by decide) (by decide) (by decide)))
   exact ⟨r3, by decide, by decide, .reject (by decide), .ok (by decide), .reject (by decide),
-    .ok (by decide), by decide⟩
+    .ok (by decide), by decide, by decide, by decide⟩
 
 /-! ### Cycles of holders closed after the stores (G2, G3; review of pass 7) -/
-
-/-- No authority is held by the base frame 0 (G3 witnesses): with the stack `[1, 0]`, only the
-current frame can exercise anything. -/
-def NothingAtFrame0 (s : S3) : Prop :=
-  ∀ j ∈ List.range s.A.length, OptP (s.A[j]?) (fun y => y.holder ≠ .frame 0) True
-
-instance (s : S3) : Decidable (NothingAtFrame0 s) := by unfold NothingAtFrame0; infer_instance
 
 /-- The clause of arrival of G2 guards `store` only: the cycle of F7 (a), rejected at the second
 `store` (`progress_cycle_whole_nodes`), is built anyway with a helper. From `fa7`, the frame derives
@@ -11027,7 +11036,9 @@ theorem f7a_cycle_by_release :
       (fh2.A[7]?, fh2.A[8]?) = ((storeEff fa7 8 6).A[7]?, (storeEff fa7 8 6).A[8]?) ∧
       ¬ fh2.ExercisableAt 7 .observe ∧ ¬ fh2.ExercisableAt 8 .observe ∧
       ¬ HasRight fh2 .observe 5 ∧ ¬ HasRight fh2 .observe 6 ∧
-      fh2.F = [1, 0] ∧ NothingAtFrame0 fh2 ∧ NoOrphan fh2 := by
+      fh2.F = [1, 0] ∧ NothingAtFrame0 fh2 ∧ NoOrphan fh2 ∧
+      (fh2.A[7]?).map (fun y => (y.active, y.holder)) = some (true, .place 5) ∧
+      (fh2.A[8]?).map (fun y => (y.active, y.holder)) = some (true, .place 6) := by
   have r7 : Reachable K0 [] fa7 := progress_cycle_whole_nodes.1
   have d : DeriveStep 7 6 .modify fa7 (.ok fh0) := .ok (by decide)
   have st : StoreStep 8 6 fh0 (.ok fh1) := .ok (by decide)
@@ -11035,7 +11046,28 @@ theorem f7a_cycle_by_release :
   have r : Reachable K0 [] fh2 := .release (.store (.derive r7 d) st) rl
   exact ⟨r, progress_cycle_whole_nodes.2.2.2.1, st, rl, by decide, by decide, by decide,
     by decide, by decide, by decide, by decide, by decide, by decide,
-    reachable_no_orphan (KT_dd [] [] [] [] []) r⟩
+    reachable_no_orphan (KT_dd [] [] [] [] []) r, by decide, by decide⟩
+
+/-- The same pattern on the three-node cycle (G2): from `tc8`, where `store 11 8` is rejected, the
+frame derives the helper 12, `Modify` on C from 10; `store 11 8` is then accepted; `release 12`
+closes the cycle, with 9, 10 and 11 as after the rejected store. -/
+def tn0 : S3 := deriveEff tc8 10 8 .modify
+def tn1 : S3 := storeEff tn0 11 8
+def tn2 : S3 := releaseEff tn1 12
+theorem three_node_cycle_by_release :
+    Reachable K0 [] tn2 ∧ StoreStep 11 8 tc8 .reject ∧ StoreStep 11 8 tn0 (.ok tn1) ∧
+      ReleaseStep 12 tn1 (.ok tn2) ∧
+      (tn2.A[9]?, tn2.A[10]?, tn2.A[11]?) =
+        ((storeEff tc8 11 8).A[9]?, (storeEff tc8 11 8).A[10]?, (storeEff tc8 11 8).A[11]?) ∧
+      ¬ tn2.ExercisableAt 9 .observe ∧ ¬ tn2.ExercisableAt 10 .observe ∧
+      ¬ tn2.ExercisableAt 11 .observe ∧ NothingAtFrame0 tn2 ∧ NoOrphan tn2 := by
+  have r8 : Reachable K0 [] tc8 := progress_cycle_three_nodes.1
+  have d : DeriveStep 10 8 .modify tc8 (.ok tn0) := .ok (by decide)
+  have st : StoreStep 11 8 tn0 (.ok tn1) := .ok (by decide)
+  have rl : ReleaseStep 12 tn1 (.ok tn2) := .ok (by decide)
+  have r : Reachable K0 [] tn2 := .release (.store (.derive r8 d) st) rl
+  exact ⟨r, progress_cycle_three_nodes.2.2.2.1, st, rl, by decide, by decide, by decide, by decide,
+    by decide, reachable_no_orphan (KT_dd [] [] [] [] []) r⟩
 
 /-- The same pattern on two leaves of the frame (G2): frame 1 has the leaves 0, 1 and 2, of roots
 0, 1 and 2. It derives 3, `Modify` on 1, and stores it into 0; derives the helper 4, `Modify` on 1
@@ -11062,9 +11094,12 @@ theorem cycle_by_release :
       ¬ (releaseEff eu5 4).ExercisableAt 3 .observe ∧
       ¬ (releaseEff eu5 4).ExercisableAt 5 .observe ∧
       ¬ HasRight (releaseEff eu5 4) .observe 0 ∧ ¬ HasRight (releaseEff eu5 4) .observe 1 ∧
-      NothingAtFrame0 (releaseEff eu5 4) := by
+      NothingAtFrame0 (releaseEff eu5 4) ∧
+      ((releaseEff eu5 4).A[3]?).map (fun y => (y.active, y.holder)) = some (true, .place 0) ∧
+      ((releaseEff eu5 4).A[5]?).map (fun y => (y.active, y.holder)) = some (true, .place 1) := by
   have rl : ReleaseStep 4 eu5 (.ok (releaseEff eu5 4)) := .ok (by decide)
-  exact ⟨rl, .release eu5_reachable.1 rl, by decide, by decide, by decide, by decide, by decide⟩
+  exact ⟨rl, .release eu5_reachable.1 rl, by decide, by decide, by decide, by decide, by decide,
+    by decide, by decide⟩
 
 /-- `endUse` closes the cycle (G2, G3; A6): the helper is stored into the leaf 2 (`ok`), whose
 `endUse` releases it (`ok`); afterwards `release` of 3 and 5 and `endUse` of 0 and 1 are
@@ -11077,12 +11112,14 @@ theorem cycle_by_endUse :
       ¬ eu7.ExercisableAt 3 .observe ∧ ¬ eu7.ExercisableAt 5 .observe ∧
       ¬ HasRight eu7 .observe 0 ∧ ¬ HasRight eu7 .observe 1 ∧ NothingAtFrame0 eu7 ∧
       ReleaseStep 3 eu7 .reject ∧ ReleaseStep 5 eu7 .reject ∧
-      EndUseStep K0 0 eu7 .reject ∧ EndUseStep K0 1 eu7 .reject := by
+      EndUseStep K0 0 eu7 .reject ∧ EndUseStep K0 1 eu7 .reject ∧ ¬ eu7.Active 4 ∧
+      (eu7.A[3]?).map (fun y => (y.active, y.holder)) = some (true, .place 0) ∧
+      (eu7.A[5]?).map (fun y => (y.active, y.holder)) = some (true, .place 1) := by
   have st : StoreStep 4 2 eu5 (.ok eu6) := .ok (by decide)
   have eu : EndUseStep K0 2 eu6 (.ok eu7) := .ok (by decide)
   exact ⟨st, eu, .endUse (.store eu5_reachable.1 st) eu, by decide, by decide, by decide,
     by decide, by decide, by decide, by decide, .reject (by decide), .reject (by decide),
-    .reject (by decide), .reject (by decide)⟩
+    .reject (by decide), .reject (by decide), by decide, by decide, by decide⟩
 
 /-- The exit closes the cycle (G2, G3; O7, A7): from `dl1` (parameters 2 on 0 and 3 on 1), the
 callee derives 4, `Modify` on 1 from 3, and stores it into 0; derives the helper 5 from 4 and 6,
@@ -11099,7 +11136,9 @@ theorem cycle_by_exit :
       ex5.F = [1, 0] ∧ ex5.org 4 = some 1 ∧ ex5.org 6 = some 0 ∧
       ¬ ex5.ExercisableAt 4 .observe ∧ ¬ ex5.ExercisableAt 6 .observe ∧
       ¬ HasRight ex5 .observe 0 ∧ ¬ HasRight ex5 .observe 1 ∧ NothingAtFrame0 ex5 ∧
-      NoOrphan ex5 := by
+      NoOrphan ex5 ∧ ¬ ex5.Active 5 ∧
+      (ex5.A[4]?).map (fun y => (y.active, y.holder)) = some (true, .place 0) ∧
+      (ex5.A[6]?).map (fun y => (y.active, y.holder)) = some (true, .place 1) := by
   have r1 : Reachable K0 [] dl1 := call_params_distinct_locals.1
   have r2 : Reachable K0 [] ex2 := .store (.derive r1 (.ok (by decide))) (.ok (by decide))
   have r3 : Reachable K0 [] ex3 := .derive (.derive r2 (.ok (by decide))) (.ok (by decide))
@@ -11107,7 +11146,8 @@ theorem cycle_by_exit :
   have ex : ExitStep K0 ex4 (.ok ex5) := .ok (by decide)
   have r5 : Reachable K0 [] ex5 := .exit r4 ex
   exact ⟨r4, ex, r5, by decide, by decide, by decide, by decide, by decide, by decide, by decide,
-    by decide, by decide, by decide, reachable_no_orphan (KT_dd [] [] [] [] []) r5⟩
+    by decide, by decide, by decide, reachable_no_orphan (KT_dd [] [] [] [] []) r5, by decide,
+    by decide, by decide⟩
 
 /-- `free` closes the cycle (G2, G3; A6): frame 1 has the leaves 0, 1, the allocator value 2 and
 the owner value 3; `alloc` gives the storage 4 owned by 3, of root 4. The frame builds the cycle on
@@ -11125,7 +11165,9 @@ theorem cycle_by_free :
     Reachable KFr [] fr5 ∧ FreeStep KFr 4 4 fr5 (.ok fr6) ∧ Reachable KFr [] fr6 ∧
       fr5.ExercisableAt 5 .modify ∧ fr5.ExercisableAt 7 .modify ∧
       ¬ fr6.ExercisableAt 5 .observe ∧ ¬ fr6.ExercisableAt 7 .observe ∧
-      ¬ HasRight fr6 .observe 0 ∧ ¬ HasRight fr6 .observe 1 ∧ NoOrphan fr6 := by
+      ¬ HasRight fr6 .observe 0 ∧ ¬ HasRight fr6 .observe 1 ∧ NoOrphan fr6 ∧ NothingAtFrame0 fr6 ∧
+      (fr6.A[5]?).map (fun y => (y.active, y.holder)) = some (true, .place 0) ∧
+      (fr6.A[7]?).map (fun y => (y.active, y.holder)) = some (true, .place 1) := by
   have r0 : Reachable KFr [] fr0 := .enter (.init (by decide)) (.ok (by decide))
   have r1 : Reachable KFr [] fr1 := .alloc (.write r0 (show Write3Step 2 [2] fr0 (.ok _) from
     .ok (by decide))) (show AllocStep KFr 2 3 [(none, none, 0)] _ (.ok fr1) from
@@ -11136,7 +11178,7 @@ theorem cycle_by_free :
   have fs : FreeStep KFr 4 4 fr5 (.ok fr6) := .ok (by decide)
   have r6 : Reachable KFr [] fr6 := .free r5 fs
   exact ⟨r5, fs, r6, by decide, by decide, by decide, by decide, by decide, by decide,
-    reachable_no_orphan (KT_dd [] [] [] [4] [(4, 4)]) r6⟩
+    reachable_no_orphan (KT_dd [] [] [] [4] [(4, 4)]) r6, by decide, by decide, by decide⟩
 
 /-- Passing the helper of `eu5` as a parameter is rejected by G1: its origin 3 is exercisable
 once the new frame holds the helper, which covers the holder 1 of 5, and 5 covers the holder 0 of
@@ -11210,7 +11252,7 @@ theorem noOrphanEff_fails :
     Reachable K0 [] hu1 ∧ NoOrphan hu1 ∧ ¬ NoOrphanEff hu1 ∧
       Reachable K0 [] iu1 ∧ NoOrphan iu1 ∧ ¬ NoOrphanEff iu1 := by
   obtain ⟨r, -, -, -, -, -, hn, -⟩ := held_unexercisable_by_transfer
-  obtain ⟨r', -, -, hn'⟩ := held_unexercisable_by_issue
+  obtain ⟨r', -, -, hn', -⟩ := held_unexercisable_by_issue
   exact ⟨r, hn, not_noOrphanEff hu1 [0, 1] (by decide) (by decide) 2
     ⟨.modify, some 1, [2], .place 2, true⟩ 2 (by decide) rfl rfl (by decide), r', hn',
     not_noOrphanEff iu1 [0, 1, 2, 3, 4] (by decide) (by decide) 5
