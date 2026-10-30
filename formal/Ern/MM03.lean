@@ -9981,6 +9981,126 @@ theorem call_protects_params_safe_false :
   have hr := call_protects_params_safe_fails_unblock.1
   exact ⟨fun h => hd (h _ hr).direct, fun h => hd (h _ hr)⟩
 
+/-- `effOf` depends on the modes of the active covering descendants only through which modes occur
+(MM-03.3.5). -/
+theorem effOf_congr {m : Mode} {ds ds' : List Mode} (h : ∀ m', m' ∈ ds ↔ m' ∈ ds') :
+    effOf m ds = effOf m ds' := by
+  unfold effOf
+  by_cases h0 : ds = []
+  · have h0' : ds' = [] := nil_of_forall_not_mem fun m' hm => by
+      have := (h m').2 hm; rw [h0] at this; simp at this
+    simp [h0, h0']
+  · have h0' : ds' ≠ [] := fun e => h0 (nil_of_forall_not_mem fun m' hm => by
+      have := (h m').1 hm; rw [e] at this; simp at this)
+    simp only [h0, h0', ↓reduceIte, h .modify]
+
+theorem release_get {s : S3} {p : Nat} {y : Authority} (hy : s.A[p]? = some y) (j : Nat) :
+    (releaseEff s p).A[j]? = if p = j then some { y with active := false } else s.A[j]? := by
+  rw [releaseEff_eq hy]; exact set_get (lt_of_getElem? hy)
+
+/-- The release of a `Modify` authority `p` whose origin `o` is active changes the effective mode of
+no authority other than `p` and `o` (MM-03.3.5; I2): on a leaf of `p`, every strict ancestor of
+`o` keeps `o`, active and `Modify`, as a covering descendant. -/
+theorem release_effective_other {s : S3} {p o b l : Nat} {y x : Authority} (hwf : WF3 s)
+    (hi2 : I2 s) (hy : s.A[p]? = some y) (hm : y.mode = .modify) (ho : y.origin = some o)
+    (hx : s.A[o]? = some x) (xa : x.active = true) (hbo : b ≠ o) (hbp : b ≠ p) :
+    effective (releaseEff s p) b l = effective s b l := by
+  have hanc := release_ancs hy
+  have hop : o ≠ p := fun e => by
+    have := hwf.origin p y o hy ho; omega
+  have hpb : p ≠ b := Ne.symm hbp
+  unfold effective; rw [release_get hy]; simp only [hpb, ↓reduceIte]
+  cases s.A[b]? with
+  | none => rfl
+  | some xb =>
+    simp only
+    split
+    · apply effOf_congr
+      intro m'
+      rw [mem_descModes, mem_descModes, hanc]
+      constructor
+      · rintro ⟨j, z, hz, za, hl, hb, hzm⟩
+        rw [release_get hy] at hz
+        split at hz
+        · cases hz; simp at za
+        · exact ⟨j, z, hz, za, hl, hb, hzm⟩
+      · rintro ⟨j, z, hz, za, hl, hb, hzm⟩
+        by_cases hj : p = j
+        · subst hj; rw [hy] at hz; cases hz
+          obtain ⟨x', hx', hcov⟩ := hi2 p y o hy ho
+          rw [hx] at hx'; cases hx'
+          have hbo' : b ∈ s.ancs o := by
+            rw [ancs_cons (x := p) (o := o) hwf.origin (by simp [S3.org, hy, ho])] at hb
+            rcases List.mem_cons.1 hb with e | e
+            · exact absurd e hbo
+            · exact e
+          obtain ⟨hlx, hle⟩ := hcov l hl
+          have hxm : x.mode = .modify := by
+            rcases hle with e | e
+            · rw [hm] at e; cases e
+            · exact e
+          have hpo : p ≠ o := Ne.symm hop
+          refine ⟨o, x, by rw [release_get hy]; simp only [hpo, ↓reduceIte]; exact hx, xa, hlx, hbo', ?_⟩
+          rw [hxm, ← hzm, hm]
+        · exact ⟨j, z, by rw [release_get hy]; simp only [hj, ↓reduceIte]; exact hz, za, hl, hb, hzm⟩
+    · rfl
+
+/-- G1, targeted search: the release of a `Modify` authority `p` alone never makes its direct
+origin `o` exercisable, at any mode. The release changes the effective mode of no other
+authority than `p` and `o` (`release_effective_other`), so an authority exercisable after it was
+exercisable before, or its exercise goes through `o` itself (the closure of `ExercisableAt`, B2).
+The origin of a parameter can still become exercisable during the call through the release of
+other authorities (`call_protects_params_safe_fails_unblock`). -/
+theorem release_keeps_origin_hidden {s s' : S3} {p o : Nat} {y : Authority} {m : Mode}
+    (hwf : WF3 s) (hi2 : I2 s) (hy : s.A[p]? = some y) (hm : y.mode = .modify)
+    (ho : y.origin = some o) (hs : ReleaseStep p s (.ok s')) (hn : ¬ s.ExercisableAt o m) :
+    ¬ s'.ExercisableAt o m := by
+  obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs
+  have hop : o ≠ p := fun e => by
+    have := hwf.origin p y o hy ho; omega
+  have htop : (releaseEff s p).top = s.top := by rw [releaseEff_eq hy]; rfl
+  have hP : (releaseEff s p).P = s.P := by rw [releaseEff_eq hy]
+  have hpo : p ≠ o := Ne.symm hop
+  have hxo : (releaseEff s p).A[o]? = s.A[o]? := by rw [release_get hy]; simp only [hpo, ↓reduceIte]
+  cases hx : s.A[o]? with
+  | none =>
+    intro h; cases h <;> (rename_i hz _ _ _ <;> skip) <;> simp_all
+  | some x =>
+  by_cases xa : x.active = true
+  · have key : ∀ c m', ¬ s.ExercisableAt o m' → (releaseEff s p).ExercisableAt c m' →
+        s.ExercisableAt c m' := by
+      intro c m' hn' hc
+      revert hn'
+      induction hc with
+      | @base c m' z hz za hle hh =>
+        intro _
+        rw [release_get hy] at hz
+        split at hz
+        · cases hz; simp at za
+        · exact .base hz za hle (htop ▸ hh)
+      | @held c q b m' z hz za hle hh _ hall ih =>
+        intro hn'
+        rw [release_get hy] at hz
+        split at hz
+        · cases hz; simp at za
+        · have hb := ih hn'
+          refine .held hz za hle hh hb fun l hl => ?_
+          have h1 := hall l (by rw [hP]; exact hl)
+          by_cases hbo : b = o
+          · subst hbo; exact absurd hb hn'
+          by_cases hbp : b = p
+          · subst hbp
+            have : effective (releaseEff s b) b l = none := by
+              unfold effective; rw [release_get hy]; simp
+            rw [this] at h1; exact h1.elim
+          · rwa [release_effective_other hwf hi2 hy hm ho hx xa hbo hbp] at h1
+    exact fun h => hn (key o m hn h)
+  · intro h
+    rw [hx] at hxo
+    cases h with
+    | base hz za _ _ => rw [hxo] at hz; cases hz; exact xa za
+    | held hz za _ _ _ _ => rw [hxo] at hz; cases hz; exact xa za
+
 /-- The pass-6 counterexample to F6 where the caller passes an authority and one of its
 descendants, now rejected at `enterFrame` by G1. Frame 1: local 0, of root 0; the caller derives 1,
 `Modify` on 0, then 2, `Modify` on 0 from 1, and calls with `[1, 2]`: in the state where the new
@@ -10447,5 +10567,177 @@ theorem progress_cycle_disjoint_fields :
   have z : ResetAtStep K0 0 0 fb10 (.ok (resetAtEff fb10 0)) := .ok (by decide)
   exact ⟨.reset (.endUse (.endUse (.release (.release (.store r7 s8) l1) l2) e1) e2) z,
     by decide, by decide, s6, s8, l1, l2, e1, e2, z⟩
+
+/-! ## New cases of pass 7 -/
+
+/-! ### Parameters (G1) -/
+
+/-- Twin of `call_protects_params_safe_fails_param` and `_fails_owned` (G1): parameters on two
+distinct locals. Frame 1: locals 0 and 1, of roots 0 and 1; the caller derives 2, `Modify` on 0,
+and 3, `Modify` on 1, and calls with `[2, 3]` (expected and obtained: `ok`); `CallProtects` holds
+in the callee. -/
+def dl0 : S3 :=
+  deriveEff (deriveEff (enter1 [(none, none, 0), (none, none, 0)]) 0 0 .modify) 1 1 .modify
+def dl1 : S3 := enterEff dl0 [2, 3] []
+theorem call_params_distinct_locals :
+    Reachable K0 [] dl1 ∧ EnterStep [2, 3] [] dl0 (.ok dl1) ∧ CallProtects dl1 := by
+  have he : EnterStep [2, 3] [] dl0 (.ok dl1) := .ok (by decide)
+  exact ⟨.enter (.derive (.derive (.enter (.init (by decide)) (.ok (by decide))) (.ok (by decide)))
+    (.ok (by decide))) he, he, callProtects_of_check (by decide)⟩
+
+/-- An arena passed in `Observe` and a `Modify` parameter derived from a block held by a value of
+the caller (G1). From `fa3` (frame 1: arena value 0, storage 4 of root 4 held by 0, block 5 on
+the node 5 held by the node value 2), the caller derives 6, `Modify` on the node 5 from the block
+5, and 7, `Observe` on the arena value 0, and calls with `[6, 7]` (expected and obtained: `ok`):
+the block 5, origin of 6, is held by the place 2, on which no authority of the callee has an
+effective mode; 7 is in `Observe`, which G1 does not constrain. `CallProtects` fails in the
+callee, on the statement only: `internal` 4, held by the arena value 0, is exercisable at
+`Observe` through 7, covers the leaf 5 of the parameter 6 and is an ancestor of 6, not a
+descendant; it has no effective mode on 5 while the block 5 is active. -/
+def ob0 : S3 := deriveEff (deriveEff fa3 5 5 .modify) 0 0 .observe
+def ob1 : S3 := enterEff ob0 [6, 7] []
+theorem call_arena_observe_block_param :
+    Reachable K0 [] ob1 ∧ EnterStep [6, 7] [] ob0 (.ok ob1) ∧ ¬ CallProtects ob1 ∧
+      effective ob1 4 5 = none ∧
+      (ob0.A[6]?).map (fun y => (y.mode, y.origin)) = some (.modify, some 5) ∧
+      (ob0.A[5]?).map (·.holder) = some (.place 2) ∧
+      (ob0.A[7]?).map (·.mode) = some .observe := by
+  have r3 : Reachable K0 [] fa3 := by
+    have r0 : Reachable K0 [] fa0 := .enter (.init (by decide)) (.ok (by decide))
+    have r1 : Reachable K0 [] fa1 := .alloc (.write r0 (show Write3Step 1 [1] fa0 (.ok _) from
+      .ok (by decide))) (show AllocStep K0 1 0 [(none, none, 0), (some 4, none, 0), (some 4, none, 0)]
+        _ (.ok fa1) from .ok (by decide) trivial)
+    have r2 : Reachable K0 [] fa2 := .newArena r1 (show NewArenaStep 4 4 fa1 (.ok fa2) from
+      .ok (by decide))
+    exact .issue r2 (show IssueAt K0 0 0 [5] 2 fa2 (.ok fa3) from
+      .ok (ar := arFa) (by decide) (.ok (by decide) (by decide) (by decide)))
+  have he : EnterStep [6, 7] [] ob0 (.ok ob1) := .ok (by decide)
+  exact ⟨.enter (.derive (.derive r3 (.ok (by decide))) (.ok (by decide))) he, he,
+    not_callProtects (f := 2) (F₀ := [1, 0]) (p := 6) (b := 4) (l := 5) (m := .observe)
+      (by decide) (by decide) (by decide) (by decide) (by decide) (by decide) (by decide)
+      (by decide), by decide, by decide, by decide, by decide⟩
+
+/-! ### `store` on a leaf (G2) -/
+
+/-- `store` into the reference field of a structure (G2): frame 1 has the structure 0 with the
+fields 1 (`ptr`) and 2 (`length`), and the buffer 3. The frame derives 2, `Modify` on 3, and
+stores it into the field 1 (expected and obtained: `ok`): the field 1 alone becomes `Init`. A read
+of `length` is then rejected, the field 2 being `Uninit` (expected and obtained: reject); after a
+write of `length`, the read is accepted (twin, `ok`). A `store` into the whole structure 0 is
+rejected, 0 not being a leaf (expected and obtained: reject); into the field 1, accepted (twin). -/
+def sf0 : S3 := deriveEff (enter1 [(none, none, 0), (some 0, none, 0), (some 0, none, 0),
+  (none, none, 0)]) 1 3 .modify
+def sf1 : S3 := storeEff sf0 2 1
+theorem store_field_length_uninit :
+    Reachable K0 [] sf1 ∧ StoreStep 2 1 sf0 (.ok sf1) ∧ sf1.I 1 = .init ∧ sf1.I 2 = .uninit ∧
+      Read3Step 0 [2] sf1 .reject ∧
+      Read3Step 0 [2] (write3Eff sf1 [2]) (.ok (write3Eff sf1 [2])) ∧
+      Write3Step 0 [2] sf1 (.ok (write3Eff sf1 [2])) ∧
+      StoreStep 2 0 sf0 .reject := by
+  have hs : StoreStep 2 1 sf0 (.ok sf1) := .ok (by decide)
+  exact ⟨.store (.derive (.enter (.init (by decide)) (.ok (by decide))) (.ok (by decide))) hs, hs,
+    by decide, by decide, .reject (by decide), .ok (by decide), .ok (by decide),
+    store_nonleaf_rejected (r := 1) (by decide) (by decide)⟩
+
+/-- `store` into a leaf that already holds an authority (G2): frame 1 has the leaves 0, 1 and 2.
+The frame derives 3, `Modify` on 1, and stores it into 0 (`ok`); it derives 4, `Modify` on 2: the
+`store` of 4 into 0 is rejected, 0 holding 3 (expected and obtained: reject). After the `release`
+of 3, which leaves the anchors of 0 (F4), the same `store` is accepted (twin, `ok`). -/
+def so0 : S3 := enter1 [(none, none, 0), (none, none, 0), (none, none, 0)]
+def so1 : S3 := deriveEff (storeEff (deriveEff so0 1 1 .modify) 3 0) 2 2 .modify
+def so2 : S3 := releaseEff so1 3
+theorem store_occupied_leaf :
+    Reachable K0 [] so1 ∧ StoreStep 4 0 so1 .reject ∧ ReleaseStep 3 so1 (.ok so2) ∧
+      StoreStep 4 0 so2 (.ok (storeEff so2 4 0)) ∧ Reachable K0 [] (storeEff so2 4 0) := by
+  have r1 : Reachable K0 [] so1 := .derive (.store (.derive (.enter (.init (by decide))
+    (.ok (by decide))) (.ok (by decide))) (.ok (by decide))) (.ok (by decide))
+  have hr : ReleaseStep 3 so1 (.ok so2) := .ok (by decide)
+  have hs : StoreStep 4 0 so2 (.ok (storeEff so2 4 0)) := .ok (by decide)
+  exact ⟨r1, store_occupied_rejected (j := 3) (z := ⟨.modify, some 1, [1], .place 0, true⟩)
+    (by decide) rfl rfl, hr, hs, .store (.release r1 hr) hs⟩
+
+/-! ### Progress (F7; G2) -/
+
+/-- A cycle of three authorities on three nodes (F7; G2). Frame 1: 0 arena value, 1 allocator
+value, 2, 3 and 4 node values; storage 5 with the nodes 6 (A), 7 (B) and 8 (C), owned by 0, of
+root 5; `newArena 5 5`; the blocks 6, 7 and 8 on the nodes are issued to 2, 3 and 4. The frame
+derives 9, `Modify` on B from the block 7, stores it into A; 10, `Modify` on C from the block 8,
+stores it into B; 11, `Modify` on A from the block 6, and stores it into C: the last `store` is
+rejected (expected and obtained), by the clause of arrival of G2: C would be covered by 10 only,
+held by B, itself covered by 9 only, held by A, itself covered by 11 only, held by C. -/
+def tc0 : S3 := enter1 [(none, none, 0), (none, none, 0), (none, none, 0), (none, none, 0),
+  (none, none, 0)]
+def tc1 : S3 := allocEff (write3Eff tc0 [1]) 1 0
+  [(none, none, 0), (some 5, none, 0), (some 5, none, 0), (some 5, none, 0)]
+def tc2 : S3 := newArenaEff tc1 5 5
+def arTc : Arena := ⟨5, 5, [6, 7, 8], []⟩
+def tc3 : S3 := arenaSet (issueEff tc2 arTc [6] 2).1 0 (issueEff tc2 arTc [6] 2).2
+def arTc' : Arena := ⟨5, 5, [7, 8], [([6], 6)]⟩
+def tc4 : S3 := arenaSet (issueEff tc3 arTc' [7] 3).1 0 (issueEff tc3 arTc' [7] 3).2
+def arTc'' : Arena := ⟨5, 5, [8], [([7], 7), ([6], 6)]⟩
+def tc5 : S3 := arenaSet (issueEff tc4 arTc'' [8] 4).1 0 (issueEff tc4 arTc'' [8] 4).2
+def tc6 : S3 := storeEff (deriveEff tc5 7 7 .modify) 9 6
+def tc7 : S3 := storeEff (deriveEff tc6 8 8 .modify) 10 7
+def tc8 : S3 := deriveEff tc7 6 6 .modify
+theorem progress_cycle_three_nodes :
+    Reachable K0 [] tc8 ∧ StoreStep 9 6 (deriveEff tc5 7 7 .modify) (.ok tc6) ∧
+      StoreStep 10 7 (deriveEff tc6 8 8 .modify) (.ok tc7) ∧ StoreStep 11 8 tc8 .reject ∧
+      ¬ HasRight (storeEff tc8 11 8) .modify 8 := by
+  have r0 : Reachable K0 [] tc0 := .enter (.init (by decide)) (.ok (by decide))
+  have r1 : Reachable K0 [] tc1 := .alloc (.write r0 (show Write3Step 1 [1] tc0 (.ok _) from
+    .ok (by decide))) (show AllocStep K0 1 0
+      [(none, none, 0), (some 5, none, 0), (some 5, none, 0), (some 5, none, 0)] _ (.ok tc1) from
+      .ok (by decide) trivial)
+  have r2 : Reachable K0 [] tc2 := .newArena r1 (show NewArenaStep 5 5 tc1 (.ok tc2) from
+    .ok (by decide))
+  have r3 : Reachable K0 [] tc3 := .issue r2 (show IssueAt K0 0 0 [6] 2 tc2 (.ok tc3) from
+    .ok (ar := arTc) (by decide) (.ok (by decide) (by decide) (by decide)))
+  have r4 : Reachable K0 [] tc4 := .issue r3 (show IssueAt K0 0 0 [7] 3 tc3 (.ok tc4) from
+    .ok (ar := arTc') (by decide) (.ok (by decide) (by decide) (by decide)))
+  have r5 : Reachable K0 [] tc5 := .issue r4 (show IssueAt K0 0 0 [8] 4 tc4 (.ok tc5) from
+    .ok (ar := arTc'') (by decide) (.ok (by decide) (by decide) (by decide)))
+  have s6 : StoreStep 9 6 (deriveEff tc5 7 7 .modify) (.ok tc6) := .ok (by decide)
+  have s7 : StoreStep 10 7 (deriveEff tc6 8 8 .modify) (.ok tc7) := .ok (by decide)
+  have r8 : Reachable K0 [] tc8 := .derive (.store (.derive (.store (.derive r5
+    (.ok (by decide))) s6) (.ok (by decide))) s7) (.ok (by decide))
+  exact ⟨r8, s6, s7, .reject (by decide), by decide⟩
+
+/-! ### Transfer and issue towards the caller (G4) -/
+
+/-- Twin of `lb5_escape_rejected` (G4): the arena of case 16, whose storage is owned by the
+caller's value 0; the callee issues the block 7 to its local 6, then transfers 6 to the caller's
+buffer 2 and exits (expected and obtained: `ok` at each step). -/
+theorem lb5_twin : TransferStep KA 6 2 a7 (.ok a8) ∧ ExitStep KA a8 (.ok a9) ∧ Reachable KA [] a11 :=
+  ⟨.ok (by decide), .ok (by decide), case16_reachable.1⟩
+
+/-- `issue` of a block of the callee's local arena to a value of the caller (G4). Frame 1: 0 the
+result; it derives 1, `Modify` on 0, and calls with `[1]`. Frame 2: 1 arena value, 2 allocator
+value, 3 a local; `alloc` gives the storage 4, with the part 5, owned by 1, of root 5;
+`newArena 4 5`. The `issue` of `[5]` to the caller's value 0 is rejected (expected and
+obtained: reject) by the clause of arrival of G4 alone: the block would be held by a place of
+frame 1, its effective anchor, the root 5, being of frame 2. The same `issue` to the local 3 is
+accepted (twin, `ok`). -/
+def ci0 : S3 := enterEff (deriveEff (enter1 [(none, none, 0)]) 0 0 .modify) [1]
+  [(none, none, 0), (none, none, 0), (none, none, 0)]
+def ci1 : S3 := allocEff (write3Eff ci0 [2]) 2 1 [(none, none, 0), (some 4, none, 0)]
+def ci2 : S3 := newArenaEff ci1 4 5
+def arCi : Arena := ⟨4, 5, [5], []⟩
+theorem callee_issue_to_caller :
+    Reachable K0 [] ci2 ∧ ci2.arenas = [arCi] ∧ IssueAt K0 0 0 [5] 0 ci2 .reject ∧
+      (MetaRight K0 ci2 arCi 0 ∧ ci2.Active arCi.internal ∧
+        (∀ l ∈ [5], l ∈ ci2.afp arCi.internal) ∧ ci2.Usable 0 ∧ HasRight ci2 .modify 0 ∧
+        ∀ l ∈ footprint ci2.P 0, ci2.I l ≠ .init) ∧
+      ¬ AnchorOrderHeld (issueEff ci2 arCi [5] 0).1 ∧
+      IssueAt K0 0 0 [5] 3 ci2 (.ok (arenaSet (issueEff ci2 arCi [5] 3).1 0
+        (issueEff ci2 arCi [5] 3).2)) := by
+  have r0 : Reachable K0 [] ci0 := .enter (.derive (.enter (.init (by decide)) (.ok (by decide)))
+    (.ok (by decide))) (.ok (by decide))
+  have r1 : Reachable K0 [] ci1 := .alloc (.write r0 (show Write3Step 3 [2] ci0 (.ok _) from
+    .ok (by decide))) (show AllocStep K0 2 1 [(none, none, 0), (some 4, none, 0)] _ (.ok ci1) from
+      .ok (by decide) trivial)
+  have r2 : Reachable K0 [] ci2 := .newArena r1 (show NewArenaStep 4 5 ci1 (.ok ci2) from
+    .ok (by decide))
+  exact ⟨r2, by decide, .reject (ar := arCi) (by decide) (.reject (by decide)), by decide, by decide,
+    .ok (ar := arCi) (by decide) (.ok (by decide) (by decide) (by decide))⟩
 
 end Ern.MM03
