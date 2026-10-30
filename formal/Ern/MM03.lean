@@ -11645,4 +11645,49 @@ theorem noOrphanEff_fails :
     not_noOrphanEff iu1 [0, 1, 2, 3, 4] (by decide) (by decide) 5
     ⟨.modify, some 4, [5], .place 5, true⟩ 5 (by decide) rfl rfl (by decide)⟩
 
+/-! ## New cases of pass 8 (J1) -/
+
+/-- J1: the transfer of a structure whose field holds a stored authority moves that authority to the
+corresponding field of the destination. In `fw3`, the view 5 is held by the field 3 of the structure
+2; after the transfer of 2 into the structure 4, it is held by the field 5 of 4. -/
+theorem transfer_field_authority_follows :
+    TransferStep K0 2 4 fw3 (.ok (transferEff fw3 2 4)) ∧ corr fw3.P 2 4 3 = some 5 ∧
+      (fw3.A[5]?).map (·.holder) = some (.place 3) ∧
+      ((transferEff fw3 2 4).A[5]?).map (·.holder) = some (.place 5) :=
+  ⟨.ok (by decide), by decide, by decide, by decide⟩
+
+/-- J1: the transfer of a value that owns storage moves the ownership and the root to the
+corresponding part of the destination (A5; `RootHeld`). Frame 1: structure 0 with the field 1,
+which owns the place 2 (root 1, held by 1); structure 3 with the field 4. The frame writes the field
+1 and transfers 0 into 3: the place 2 is now owned by the field 4, its root is held by 4, and it
+stays usable. -/
+def ts0 : S3 := write3Eff (enter1 [(none, none, 0), (some 0, none, 0), (none, some 1, 0),
+  (none, none, 0), (some 3, none, 0)]) [1]
+def ts1 : S3 := transferEff ts0 0 3
+theorem transfer_owned_storage_follows :
+    Reachable K0 [] ts1 ∧ TransferStep K0 0 3 ts0 (.ok ts1) ∧
+      (ts0.P[2]?).map (·.owner) = some (.place 1) ∧ (ts0.A[1]?).map (·.holder) = some (.place 1) ∧
+      (ts1.P[2]?).map (·.owner) = some (.place 4) ∧ (ts1.A[1]?).map (·.holder) = some (.place 4) ∧
+      ts1.Usable 2 ∧ ts1.I 4 = .init ∧ ts1.I 1 = .moved := by
+  have ht : TransferStep K0 0 3 ts0 (.ok ts1) := .ok (by decide)
+  exact ⟨.transfer (.write (.enter (.init (by decide)) (.ok (by decide)))
+    (show Write3Step 0 [1] _ (.ok ts0) from .ok (by decide))) ht, ht, by decide, by decide,
+    by decide, by decide, by decide, by decide, by decide⟩
+
+/-- J1: a partly initialised aggregate moves field by field. Frame 1: structure 0 with the fields 1
+and 2, structure 3 with the fields 4 and 5; only the field 1 is written. The transfer of 0 into 3 is
+rejected (the field 2 is not `Init`, O4.1); the transfer of the field 1 into the field 4 is accepted,
+after which 4 is read and 5 is not. -/
+def pf0 : S3 := write3Eff (enter1 [(none, none, 0), (some 0, none, 0), (some 0, none, 0),
+  (none, none, 0), (some 3, none, 0), (some 3, none, 0)]) [1]
+def pf1 : S3 := transferEff pf0 1 4
+theorem transfer_field_by_field :
+    Reachable K0 [] pf1 ∧ TransferStep K0 0 3 pf0 .reject ∧ SameShape pf0.P 0 3 ∧
+      TransferStep K0 1 4 pf0 (.ok pf1) ∧ Read3Step 1 [4] pf1 (.ok pf1) ∧
+      Read3Step 1 [5] pf1 .reject := by
+  have ht : TransferStep K0 1 4 pf0 (.ok pf1) := .ok (by decide)
+  exact ⟨.transfer (.write (.enter (.init (by decide)) (.ok (by decide)))
+    (show Write3Step 0 [1] _ (.ok pf0) from .ok (by decide))) ht, .reject (by decide), by decide,
+    ht, .ok (by decide), .reject (by decide)⟩
+
 end Ern.MM03
