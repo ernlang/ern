@@ -1281,18 +1281,30 @@ def enterEff (s : S3) (ps : List Nat) (ls : List (Option Nat × Option Nat × Na
     arenas := s.arenas
     callParams := fun f => if f = s.nF then ps else s.callParams f }
 
+/-- G1, for one parameter `p` and the state `s'` where the new frame has received its parameters:
+if `p` is a `Modify` authority with an origin, that origin, its direct origin only, is
+exercisable (A2, B2) at no mode in `s'`. -/
+def ParamOriginHidden (s' : S3) (p : Nat) : Prop :=
+  OptP (s'.A[p]?) (fun y => y.mode = .modify →
+    OptP y.origin (fun o => ¬ s'.ExercisableAt o .observe ∧ ¬ s'.ExercisableAt o .modify) True) True
+
+instance (s' : S3) (p : Nat) : Decidable (ParamOriginHidden s' p) := by
+  unfold ParamOriginHidden; infer_instance
+
 /-- Preconditions of `enterFrame` (MM-03.3 §4, O6): the calling frame is active (non-empty
 stack); each parameter is an active authority derived by the caller and held by it (A3); the
 parent and the owner of a local are earlier locals; a part has the owner of its
-parent. -/
+parent; G1: in `enterEff s ps ls`, the state where the new frame has received its parameters,
+the direct origin of every `Modify` parameter is exercisable at no mode (`ParamOriginHidden`). -/
 def EnterPre (s : S3) (ps : List Nat) (ls : List (Option Nat × Option Nat × Nat)) : Prop :=
   s.F ≠ [] ∧
   (∀ a ∈ ps, OptP (s.A[a]?) (fun y => y.active = true ∧ y.holder = .frame s.top ∧
     y.origin ≠ none) False) ∧
-  ∀ i ∈ List.range ls.length,
+  (∀ i ∈ List.range ls.length,
     OptP ((ls[i]?).bind (·.1)) (fun r => s.P.length ≤ r ∧ r < s.P.length + i ∧
       (ls[i]?).bind (·.2.1) = (ls[r - s.P.length]?).bind (·.2.1)) True ∧
-    OptP ((ls[i]?).bind (·.2.1)) (fun o => s.P.length ≤ o ∧ o < s.P.length + i) True
+    OptP ((ls[i]?).bind (·.2.1)) (fun o => s.P.length ≤ o ∧ o < s.P.length + i) True) ∧
+  ∀ p ∈ ps, ParamOriginHidden (enterEff s ps ls) p
 
 instance (s : S3) (ps : List Nat) (ls : List (Option Nat × Option Nat × Nat)) :
     Decidable (EnterPre s ps ls) := by
@@ -2602,7 +2614,7 @@ theorem enter_usable_new {s : S3} {ps : List Nat} {ls : List (Option Nat × Opti
       exact .frame (show (enterP s ls)[_]? = _ from hpl) hd rfl (List.mem_cons_self ..)
     | some o =>
       rw [ho] at hpl
-      have h2 := (hpre.2.2 i (List.mem_range.2 hi)).2
+      have h2 := (hpre.2.2.1 i (List.mem_range.2 hi)).2
       rw [ho] at h2; obtain ⟨h₁, h₂⟩ := h2
       have := enter_usable_new hpre n (o - s.P.length) (by omega) (by omega)
       rw [show s.P.length + (o - s.P.length) = o by omega] at this
@@ -2646,7 +2658,7 @@ theorem enter_localOwner_live {s : S3} {ps : List Nat} {ls : List (Option Nat ×
   cases ho : (ls[i]?).bind (·.2.1) with
   | none => exact List.mem_cons_self ..
   | some o =>
-    have h2 := (hpre.2.2 i (List.mem_range.2 hi)).2
+    have h2 := (hpre.2.2.1 i (List.mem_range.2 hi)).2
     rw [ho] at h2
     have := enter_usable_new hpre (o - s.P.length + 1) (o - s.P.length) (Nat.lt_succ_self _)
       (by simp only [OptP] at h2; omega)
@@ -2672,7 +2684,7 @@ theorem enter_chain_ge {s : S3} {ps : List Nat} {ls : List (Option Nat × Option
     | none => rw [hb] at hpo; rw [chain_none hpo] at hx; simp at hx
     | some r =>
       rw [hb] at hpo
-      have h1 := (hpre.2.2 (q - s.P.length) (List.mem_range.2 hi)).1
+      have h1 := (hpre.2.2.1 (q - s.P.length) (List.mem_range.2 hi)).1
       rw [hb] at h1; simp only [OptP] at h1
       rw [chain_cons hpo (by omega)] at hx
       rcases List.mem_cons.1 hx with rfl | hx
@@ -2708,7 +2720,7 @@ theorem enter_footprint_old {s : S3} {ps : List Nat} {ls : List (Option Nat × O
       have hi : r - s.P.length < ls.length := by omega
       have hpo' := enter_parentOf_new (s := s) hi
       rw [show s.P.length + (r - s.P.length) = r by omega, he] at hpo'
-      have h1 := (hpre.2.2 (r - s.P.length) (List.mem_range.2 hi)).1
+      have h1 := (hpre.2.2.1 (r - s.P.length) (List.mem_range.2 hi)).1
       rw [← hpo'] at h1; simp only [OptP] at h1; omega
 
 /-- `enterFrame` preserves `RootChain` (B1): old authorities keep their chains and the footprints
@@ -2817,7 +2829,7 @@ theorem enter_preserves_wf {s : S3} {ps : List Nat} {ls : List (Option Nat × Op
     · have := hwf.ownerPlace q pl o hq' ho; omega
     · simp only [localOwner] at ho; split at ho
       · rename_i o' ho'; cases ho
-        have h2 := (hpre.2.2 i (List.mem_range.2 hi)).2
+        have h2 := (hpre.2.2.1 i (List.mem_range.2 hi)).2
         rw [ho'] at h2; exact Nat.lt_of_lt_of_le h2.2 (by omega)
       · cases ho
   · intro q pl r hq hp
@@ -2825,7 +2837,7 @@ theorem enter_preserves_wf {s : S3} {ps : List Nat} {ls : List (Option Nat × Op
     · obtain ⟨pr, hpr, hlt, ho, hd⟩ := hwf.parts q pl r hq'' hp
       refine ⟨pr, by show (enterP s ls)[r]? = _; rw [enterP_lt (by omega)]; exact hpr, hlt, ho, ?_⟩
       simp [enterEff, show ¬ s.P.length ≤ r by omega, show ¬ s.P.length ≤ q by omega, hd]
-    · have h1 := (hpre.2.2 i (List.mem_range.2 hi)).1
+    · have h1 := (hpre.2.2.1 i (List.mem_range.2 hi)).1
       simp only at hp; rw [hp] at h1; obtain ⟨hr₁, hr₂, hown⟩ := h1
       have hri : r - s.P.length < ls.length := by omega
       refine ⟨_, by show (enterP s ls)[r]? = _; rw [show r = s.P.length + (r - s.P.length) by omega,
@@ -3985,7 +3997,7 @@ instance (n : Nat) (ls : List (Option Nat × Option Nat × Nat)) : Decidable (Sh
   unfold ShapeOK; infer_instance
 
 theorem enterPre_shapeOK {s : S3} {ps : List Nat} {ls : List (Option Nat × Option Nat × Nat)}
-    (h : EnterPre s ps ls) : ShapeOK s.P.length ls := h.2.2
+    (h : EnterPre s ps ls) : ShapeOK s.P.length ls := h.2.2.1
 
 /-- Static preconditions of `alloc provider owner shape` (B5; C6; D2): the allocator value at
 `provider` is usable, with the right to update its metadata; the place `owner`, which receives
@@ -8897,12 +8909,13 @@ example : EnterStep [1] [] ow0 (.ok (enterEff ow0 [1] [])) ∧ (enterEff ow0 [1]
 
 /-! ## Protection of the parameters of a call (F6) -/
 
-/-- `call_protects_params_safe` as stated by F6, transitive form, as a predicate on a state: for a
-stack `G ++ f :: F₀`, the current frame being `f` or a frame called by `f` transitively, every
-authority exercisable by the current frame (A2, B2) that covers a leaf of the footprint of a
-`Modify` authority of `callParams f` is that authority or one of its descendants, whether the
-parameter is active or not. It concerns safe accesses only: neither raw pointers nor suspension
-are represented. -/
+/-- `call_protects_params_safe` as stated by F6 and kept by G1, transitive form, as a predicate on a
+state: for a stack `G ++ f :: F₀`, the current frame being `f` or a frame called by `f`
+transitively, every authority exercisable by the current frame (A2, B2) that covers a leaf of the
+footprint of a `Modify` authority of `callParams f` is that authority or one of its descendants,
+whether the parameter is active or not. It concerns the safe accesses of the kernel only: neither
+raw pointers nor suspension are represented, and no consequence on `noalias` is drawn here (G1:
+milestone 2 and the low-level translation). -/
 def CallProtects (s : S3) : Prop :=
   ∀ (G : Frames) (f : Nat) (F₀ : Frames), s.F = G ++ f :: F₀ →
     ∀ p ∈ s.callParams f, ∀ y : Authority, s.A[p]? = some y → y.mode = .modify →
@@ -8966,19 +8979,161 @@ theorem call_params_effective_protected {s : S3} (h1 : I1 s) {p b l : Nat} {y : 
     · have := (h1 b p x y l e hx hp xa ya xl hl hbp hpb).2
       rw [hm] at this; cases this
 
-/-- F6 is not provable as stated: a counterexample on a reached state, where the caller passes an
-authority and one of its descendants. Frame 1: local 0, of root 0; the caller derives 1, `Modify`
-on 0, then 2, `Modify` on 0 from 1, and calls with `[1, 2]`. In frame 2, the parameter 1 is
-exercisable, covers the leaf 0 of the parameter 2, and is its ancestor, not a descendant. After
-the callee releases 2, it writes the leaf 0 through 1. -/
+/-- `enter_params_protected` (G1): at the entry, the parameters satisfy the clause of G1
+(`ParamOriginHidden`) and exclusivity: I1 holds (MM-03.3 §2), and on each leaf of a `Modify`
+parameter `p`, every authority with a present effective mode is `p` or one of its descendants
+(MM-03.3.5). -/
+theorem enter_params_protected {s s' : S3} {ps : List Nat}
+    {ls : List (Option Nat × Option Nat × Nat)} (hwf : WF3 s) (hinv : Inv3base s)
+    (h : EnterStep ps ls s (.ok s')) :
+    (∀ p ∈ ps, ParamOriginHidden s' p) ∧ I1 s' ∧
+      ∀ p ∈ ps, ∀ y : Authority, s'.A[p]? = some y → y.mode = .modify → ∀ l ∈ y.footprint,
+        ∀ b, effective s' b l ≠ none → b = p ∨ p ∈ s'.ancs b := by
+  have hi1 := (enter_preserves hwf hinv h).2.1
+  obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
+  refine ⟨hpre.2.2.2, hi1, fun p hp y hy hm l hl b hb =>
+    call_params_effective_protected hi1 hy ?_ hm hl hb⟩
+  have h2 := hpre.2.1 p hp
+  unfold OptP at h2; split at h2
+  · rename_i y₀ hy₀
+    rw [enter_lt (lt_of_getElem? hy₀), hy₀] at hy
+    simp only [Option.map_some, Option.some.injEq] at hy
+    subst hy; split <;> exact h2.1
+  · exact h2.elim
+
+/-- A witness against `CallProtects` (F6, G1): a `Modify` parameter `p` of the current frame `f`,
+and an authority `b`, exercisable at some mode, that covers a leaf of `p` and is neither `p` nor a
+descendant of `p`. -/
+theorem not_callProtectsDirect {s : S3} {f p b l : Nat} {F₀ : Frames} {m : Mode}
+    (hF : s.F = f :: F₀) (hp : p ∈ s.callParams f) (hm : (s.A[p]?).map (·.mode) = some .modify)
+    (hl : l ∈ s.afp p) (hb : s.ExercisableAt b m) (hlb : l ∈ s.afp b) (hne : b ≠ p)
+    (hd : p ∉ s.ancs b) : ¬ CallProtectsDirect s := by
+  intro h
+  obtain ⟨y, hy, e⟩ := Option.map_eq_some_iff.1 hm
+  rcases h f F₀ hF p hp y hy e b m hb l (by simpa [S3.afp, hy] using hl) hlb with h | h
+  · exact hne h
+  · exact hd h
+
+theorem not_callProtects {s : S3} {f p b l : Nat} {F₀ : Frames} {m : Mode} (hF : s.F = f :: F₀)
+    (hp : p ∈ s.callParams f) (hm : (s.A[p]?).map (·.mode) = some .modify) (hl : l ∈ s.afp p)
+    (hb : s.ExercisableAt b m) (hlb : l ∈ s.afp b) (hne : b ≠ p) (hd : p ∉ s.ancs b) :
+    ¬ CallProtects s :=
+  fun h => not_callProtectsDirect hF hp hm hl hb hlb hne hd h.direct
+
+/-- F6, kept by G1, is still not provable: a counterexample on a reached state, at the entry. G1
+constrains the direct origin of a parameter only; here the caller passes a parameter and an
+ancestor of its origin. Frame 1: local 0, of root 0; the caller derives 1, `Modify` on 0, then 2
+from 1 and 3 from 2, and calls with `[1, 3]`: the origins 0 and 2 are held by frame 1, so the call
+is accepted. In frame 2, the parameter 1 is exercisable, covers the leaf 0 of the parameter 3, and
+is an ancestor of 3, not a descendant. The failure concerns the statement only: 1 has no
+effective mode on 0 while 2 is active, also after the callee releases 3. -/
+def gp0 : S3 :=
+  deriveEff (deriveEff (deriveEff (enter1 [(none, none, 0)]) 0 0 .modify) 1 0 .modify) 2 0 .modify
+def gp1 : S3 := enterEff gp0 [1, 3] []
+theorem call_protects_params_safe_fails_grand :
+    Reachable K0 [] gp1 ∧ EnterStep [1, 3] [] gp0 (.ok gp1) ∧ ¬ CallProtects gp1 ∧
+      ReleaseStep 3 gp1 (.ok (releaseEff gp1 3)) ∧ ¬ CallProtects (releaseEff gp1 3) ∧
+      effective (releaseEff gp1 3) 1 0 = none := by
+  have he : EnterStep [1, 3] [] gp0 (.ok gp1) := .ok (by decide)
+  have hr : Reachable K0 [] gp1 := .enter (.derive (.derive (.derive (.enter (.init (by decide))
+    (.ok (by decide))) (.ok (by decide))) (.ok (by decide))) (.ok (by decide))) he
+  exact ⟨hr, he, not_callProtects (f := 2) (F₀ := [1, 0]) (p := 3) (b := 1) (l := 0) (m := .modify)
+    (by decide) (by decide) (by decide) (by decide) (by decide) (by decide) (by decide) (by decide),
+    .ok (by decide), not_callProtects (f := 2) (F₀ := [1, 0]) (p := 3) (b := 1) (l := 0)
+    (m := .modify) (by decide) (by decide) (by decide) (by decide) (by decide) (by decide)
+    (by decide) (by decide), by decide⟩
+
+/-- F6, kept by G1, is still not provable: a counterexample during the invocation, where the direct
+origin of a parameter, exercisable at no mode at the entry, becomes exercisable after the callee
+releases that parameter and two authorities that blocked another parameter (G1, targeted search).
+Frame 1: `L` (0), `src` (1), a structure `q` (2) with the fields 3 and 4, a structure `w` (5) with
+the fields 6 and 7; roots 0, 1, 2 (on 3 and 4) and 3 (on 6 and 7). The caller derives 4, `Modify` on
+`L`, stores it into `src` (F4) and transfers `src` into `q`: 4 is held by `q`. It derives 5 from 4
+on `L`, 6 from the root 2 on `q`, 7 and 8 from 6 on the fields 3 and 4, 9 from the root 3 on `w`,
+stores 7 into 6 and 8 into 7, and calls with `[5, 6, 9]`. At the entry, 4 is exercisable at no
+mode: 6 has no effective mode on `q`, and 7 and 8, exercisable through 9, each cover one field of
+`q`; the call is accepted (G1) and `CallProtects` holds. The callee releases 5: 4 is still hidden.
+It releases 7 and 8, held by the fields of `w` on which 9 gives `Modify` (C4): 6 regains effective
+`Modify` on `q`, so 4 is exercisable, covers the leaf 0 of 5, and is its ancestor. The callee then
+writes the leaf 0 through 4. -/
+def ub0 : S3 := enter1 [(none, none, 0), (none, none, 0), (none, none, 0), (some 2, none, 0),
+  (some 2, none, 0), (none, none, 0), (some 5, none, 0), (some 5, none, 0)]
+def ub1 : S3 := deriveEff ub0 0 0 .modify
+def ub2 : S3 := storeEff ub1 4 1
+def ub3 : S3 := transferEff ub2 1 2
+def ub4 : S3 := deriveEff ub3 4 0 .modify
+def ub5 : S3 := deriveEff ub4 2 2 .modify
+def ub6 : S3 := deriveEff ub5 6 3 .modify
+def ub7 : S3 := deriveEff ub6 6 4 .modify
+def ub8 : S3 := deriveEff ub7 3 5 .modify
+def ub9 : S3 := storeEff ub8 7 6
+def ub10 : S3 := storeEff ub9 8 7
+def ub11 : S3 := enterEff ub10 [5, 6, 9] []
+def ub12 : S3 := releaseEff ub11 5
+def ub13 : S3 := releaseEff ub12 7
+def ub14 : S3 := releaseEff ub13 8
+theorem call_protects_params_safe_fails_unblock :
+    Reachable K0 [] ub14 ∧ EnterStep [5, 6, 9] [] ub10 (.ok ub11) ∧ CallProtects ub11 ∧
+      ¬ ub11.ExercisableAt 4 .observe ∧ ¬ ub12.ExercisableAt 4 .observe ∧
+      ub14.ExercisableAt 4 .modify ∧ ¬ CallProtects ub14 ∧
+      Write3Step 4 [0] ub14 (.ok (write3Eff ub14 [0])) := by
+  have r0 : Reachable K0 [] ub0 := .enter (.init (by decide)) (.ok (by decide))
+  have r1 : Reachable K0 [] ub1 := .derive r0 (show DeriveStep 0 0 .modify ub0 (.ok ub1) from
+    .ok (by decide))
+  have r2 : Reachable K0 [] ub2 := .store r1 (show StoreStep 4 1 ub1 (.ok ub2) from .ok (by decide))
+  have r3 : Reachable K0 [] ub3 := .transfer r2 (show TransferStep K0 1 2 ub2 (.ok ub3) from
+    .ok (by decide))
+  have r4 : Reachable K0 [] ub4 := .derive r3 (show DeriveStep 4 0 .modify ub3 (.ok ub4) from
+    .ok (by decide))
+  have r5 : Reachable K0 [] ub5 := .derive r4 (show DeriveStep 2 2 .modify ub4 (.ok ub5) from
+    .ok (by decide))
+  have r6 : Reachable K0 [] ub6 := .derive r5 (show DeriveStep 6 3 .modify ub5 (.ok ub6) from
+    .ok (by decide))
+  have r7 : Reachable K0 [] ub7 := .derive r6 (show DeriveStep 6 4 .modify ub6 (.ok ub7) from
+    .ok (by decide))
+  have r8 : Reachable K0 [] ub8 := .derive r7 (show DeriveStep 3 5 .modify ub7 (.ok ub8) from
+    .ok (by decide))
+  have r9 : Reachable K0 [] ub9 := .store r8 (show StoreStep 7 6 ub8 (.ok ub9) from .ok (by decide))
+  have r10 : Reachable K0 [] ub10 := .store r9 (show StoreStep 8 7 ub9 (.ok ub10) from
+    .ok (by decide))
+  have he : EnterStep [5, 6, 9] [] ub10 (.ok ub11) := .ok (by decide)
+  have r12 : Reachable K0 [] ub12 := .release (.enter r10 he)
+    (show ReleaseStep 5 ub11 (.ok ub12) from .ok (by decide))
+  have r13 : Reachable K0 [] ub13 := .release r12 (show ReleaseStep 7 ub12 (.ok ub13) from
+    .ok (by decide))
+  have r14 : Reachable K0 [] ub14 := .release r13 (show ReleaseStep 8 ub13 (.ok ub14) from
+    .ok (by decide))
+  exact ⟨r14, he, callProtects_of_check (by decide), by decide, by decide, by decide,
+    not_callProtects (f := 2) (F₀ := [1, 0]) (p := 5) (b := 4) (l := 0) (m := .modify)
+      (by decide) (by decide) (by decide) (by decide) (by decide) (by decide) (by decide)
+      (by decide), .ok (by decide)⟩
+
+/-- `call_protects_params_safe` (F6, kept by G1) is false on the reached states, in its transitive
+form and in its direct form: the witness is `ub14` (`call_protects_params_safe_fails_unblock`). -/
+theorem call_protects_params_safe_false :
+    ¬ (∀ s, Reachable K0 [] s → CallProtects s) ∧
+      ¬ (∀ s, Reachable K0 [] s → CallProtectsDirect s) := by
+  have hd : ¬ CallProtectsDirect ub14 := not_callProtectsDirect (f := 2) (F₀ := [1, 0]) (p := 5)
+    (b := 4) (l := 0) (m := .modify) (by decide) (by decide) (by decide) (by decide) (by decide)
+    (by decide) (by decide) (by decide)
+  have hr := call_protects_params_safe_fails_unblock.1
+  exact ⟨fun h => hd (h _ hr).direct, fun h => hd (h _ hr)⟩
+
+/-- The pass-6 counterexample to F6 where the caller passes an authority and one of its
+descendants, now rejected at `enterFrame` by G1. Frame 1: local 0, of root 0; the caller derives 1,
+`Modify` on 0, then 2, `Modify` on 0 from 1, and calls with `[1, 2]`: in the state where the new
+frame holds its parameters, the parameter 1, origin of the parameter 2, is exercisable, so the
+call is rejected (G1). The state `cp1` the call would produce, no longer reached, still violates
+`CallProtects`: there, the parameter 1 is exercisable, covers the leaf 0 of the parameter 2, and is
+its ancestor; after the callee releases 2, it writes the leaf 0 through 1. -/
 def cp0 : S3 := deriveEff (deriveEff (enter1 [(none, none, 0)]) 0 0 .modify) 1 0 .modify
 def cp1 : S3 := enterEff cp0 [1, 2] []
 theorem call_protects_params_safe_fails_param :
-    Reachable K0 [] cp1 ∧ ¬ CallProtects cp1 ∧
+    Reachable K0 [] cp0 ∧ EnterStep [1, 2] [] cp0 .reject ∧ ¬ CallProtects cp1 ∧
       ReleaseStep 2 cp1 (.ok (releaseEff cp1 2)) ∧ ¬ CallProtects (releaseEff cp1 2) ∧
       Write3Step 1 [0] (releaseEff cp1 2) (.ok (write3Eff (releaseEff cp1 2) [0])) := by
-  have hr : Reachable K0 [] cp1 := .enter (.derive (.derive (.enter (.init (by decide))
-    (.ok (by decide))) (.ok (by decide))) (.ok (by decide))) (.ok (by decide))
+  have hr : Reachable K0 [] cp0 := .derive (.derive (.enter (.init (by decide))
+    (.ok (by decide))) (.ok (by decide))) (.ok (by decide))
   have key : ∀ s : S3, s.F = [2, 1, 0] → s.callParams 2 = [1, 2] → s.ExercisableAt 1 .modify →
       (s.A[2]?).map (fun y => (y.mode, y.footprint)) = some (.modify, [0]) → s.afp 1 = [0] →
       s.ancs 1 = [0] → ¬ CallProtects s := by
@@ -8988,25 +9143,26 @@ theorem call_protects_params_safe_fails_param :
     have := h.direct 2 [1, 0] hF 2 (by rw [hc]; decide) y hy e.1 1 .modify hex 0 (by rw [e.2]; decide)
       (by rw [h1]; decide)
     rw [ha] at this; simp at this
-  exact ⟨hr, key _ (by decide) (by decide) (by decide) (by decide) (by decide) (by decide),
-    .ok (by decide), key _ (by decide) (by decide) (by decide) (by decide) (by decide) (by decide),
-    .ok (by decide)⟩
+  exact ⟨hr, .reject (by decide), key _ (by decide) (by decide) (by decide) (by decide) (by decide)
+    (by decide), .ok (by decide), key _ (by decide) (by decide) (by decide) (by decide) (by decide)
+    (by decide), .ok (by decide)⟩
 
-/-- F6 is not provable as stated: a counterexample on a reached state, through owned storage
-(A5; A2, held authorities). Frame 1: value 0, of root 0 held by frame 1, which owns the storage
+/-- The pass-6 counterexample to F6 through owned storage (A5; A2, held authorities), now
+rejected at `enterFrame` by G1. Frame 1: value 0, of root 0 held by frame 1, which owns the storage
 1, of root 1 held by the place 0. The caller derives 2, `Modify` on 1 from the root 1, and 3,
-`Modify` on 0, and calls with `[2, 3]`. In frame 2, the root 1, held by the place 0 on which the
-parameter 3 has effective `Modify`, is exercisable and covers the leaf 1 of the parameter 2, of
-which it is the origin. After the callee releases 2, it writes the leaf 1 through the root 1. -/
+`Modify` on 0, and calls with `[2, 3]`: in the state where the new frame holds its parameters, the
+root 1, origin of the parameter 2, is exercisable through the parameter 3, so the call is
+rejected (G1). The state `co1` the call would produce, no longer reached, still violates
+`CallProtects`; after the callee releases 2, it writes the leaf 1 through the root 1. -/
 def co0 : S3 :=
   deriveEff (deriveEff (enter1 [(none, none, 0), (none, some 0, 0)]) 1 1 .modify) 0 0 .modify
 def co1 : S3 := enterEff co0 [2, 3] []
 theorem call_protects_params_safe_fails_owned :
-    Reachable K0 [] co1 ∧ ¬ CallProtects co1 ∧
+    Reachable K0 [] co0 ∧ EnterStep [2, 3] [] co0 .reject ∧ ¬ CallProtects co1 ∧
       ReleaseStep 2 co1 (.ok (releaseEff co1 2)) ∧ ¬ CallProtects (releaseEff co1 2) ∧
       Write3Step 1 [1] (releaseEff co1 2) (.ok (write3Eff (releaseEff co1 2) [1])) := by
-  have hr : Reachable K0 [] co1 := .enter (.derive (.derive (.enter (.init (by decide))
-    (.ok (by decide))) (.ok (by decide))) (.ok (by decide))) (.ok (by decide))
+  have hr : Reachable K0 [] co0 := .derive (.derive (.enter (.init (by decide))
+    (.ok (by decide))) (.ok (by decide))) (.ok (by decide))
   have key : ∀ s : S3, s.F = [2, 1, 0] → s.callParams 2 = [2, 3] → s.ExercisableAt 1 .modify →
       (s.A[2]?).map (fun y => (y.mode, y.footprint)) = some (.modify, [1]) → s.afp 1 = [1] →
       s.ancs 1 = [] → ¬ CallProtects s := by
@@ -9016,9 +9172,9 @@ theorem call_protects_params_safe_fails_owned :
     have := h.direct 2 [1, 0] hF 2 (by rw [hc]; decide) y hy e.1 1 .modify hex 1 (by rw [e.2]; decide)
       (by rw [h1]; decide)
     rw [ha] at this; simp at this
-  exact ⟨hr, key _ (by decide) (by decide) (by decide) (by decide) (by decide) (by decide),
-    .ok (by decide), key _ (by decide) (by decide) (by decide) (by decide) (by decide) (by decide),
-    .ok (by decide)⟩
+  exact ⟨hr, .reject (by decide), key _ (by decide) (by decide) (by decide) (by decide) (by decide)
+    (by decide), .ok (by decide), key _ (by decide) (by decide) (by decide) (by decide) (by decide)
+    (by decide), .ok (by decide)⟩
 
 /-! ## New cases of pass 6 -/
 
