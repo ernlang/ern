@@ -10740,4 +10740,43 @@ theorem callee_issue_to_caller :
   exact ⟨r2, by decide, .reject (ar := arCi) (by decide) (.reject (by decide)), by decide, by decide,
     .ok (ar := arCi) (by decide) (.ok (by decide) (by decide) (by decide))⟩
 
+/-! ### Held authorities that no frame can exercise (G3) -/
+
+/-- `NoOrphan` (G3) holds on every reached state, but it does not make a held authority
+exercisable: `transfer` builds an active authority held by the place it covers, which no frame
+can exercise. Frame 1: structure 0 with the field 1, leaf 2; roots 0 (on 1) and 1 (on 2). The frame
+derives 2, `Modify` on 2, stores it into the field 1 (`ok`), then transfers 0 into 2 (`ok`): 2 is
+now held by the place 2 that it covers. Its origin, the root 1, has no effective mode on 2, so
+2 is exercisable at no mode, the frame has no `Modify` on the place 2, and `release` of 2 and
+`endUse` of 2 are rejected. The chain of G3 is the root 1, held by frame 1, then 2. -/
+def hu0 : S3 := storeEff (deriveEff (enter1 [(none, none, 0), (some 0, none, 0), (none, none, 0)])
+  1 2 .modify) 2 1
+def hu1 : S3 := transferEff hu0 0 2
+theorem held_unexercisable_by_transfer :
+    Reachable K0 [] hu1 ∧ (hu1.A[2]?).map (fun y => (y.active, y.holder, y.footprint)) =
+      some (true, .place 2, [2]) ∧ ¬ hu1.ExercisableAt 2 .observe ∧ ¬ HasRight hu1 .modify 2 ∧
+      ReleaseStep 2 hu1 .reject ∧ EndUseStep K0 2 hu1 .reject ∧ NoOrphan hu1 := by
+  have r : Reachable K0 [] hu1 := .transfer (.store (.derive (.enter (.init (by decide))
+    (.ok (by decide))) (.ok (by decide))) (.ok (by decide))) (.ok (by decide))
+  exact ⟨r, by decide, by decide, by decide, .reject (by decide), .reject (by decide),
+    reachable_no_orphan (KT_dd [] [] [] [] []) r⟩
+
+/-- The same through `issue` (G3; A10): from `fa2` (arena value 0, storage 4 with the nodes 5 and
+6, `internal` 4 held by 0), the block on the node 5 is issued to the node 5 itself (`ok`): the block
+is held by the place it covers, its origin `internal` 4 has no effective mode there, and the
+block is exercisable at no mode. -/
+def iu1 : S3 := arenaSet (issueEff fa2 arFa [5] 5).1 0 (issueEff fa2 arFa [5] 5).2
+theorem held_unexercisable_by_issue :
+    Reachable K0 [] iu1 ∧ (iu1.A[5]?).map (fun y => (y.active, y.holder, y.footprint)) =
+      some (true, .place 5, [5]) ∧ ¬ iu1.ExercisableAt 5 .observe ∧ NoOrphan iu1 := by
+  have r0 : Reachable K0 [] fa0 := .enter (.init (by decide)) (.ok (by decide))
+  have r1 : Reachable K0 [] fa1 := .alloc (.write r0 (show Write3Step 1 [1] fa0 (.ok _) from
+    .ok (by decide))) (show AllocStep K0 1 0 [(none, none, 0), (some 4, none, 0), (some 4, none, 0)]
+      _ (.ok fa1) from .ok (by decide) trivial)
+  have r2 : Reachable K0 [] fa2 := .newArena r1 (show NewArenaStep 4 4 fa1 (.ok fa2) from
+    .ok (by decide))
+  have r : Reachable K0 [] iu1 := .issue r2 (show IssueAt K0 0 0 [5] 5 fa2 (.ok iu1) from
+    .ok (ar := arFa) (by decide) (.ok (by decide) (by decide) (by decide)))
+  exact ⟨r, by decide, by decide, reachable_no_orphan (KT_dd [] [] [] [] []) r⟩
+
 end Ern.MM03
