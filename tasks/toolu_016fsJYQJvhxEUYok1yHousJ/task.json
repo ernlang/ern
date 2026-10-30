@@ -1,0 +1,15 @@
+{
+  "tool_use_id": "toolu_016fsJYQJvhxEUYok1yHousJ",
+  "agent_id": "a254b7d5bd7d3d036",
+  "subagent_type": "general-purpose",
+  "task_description": "Adversarial review lens G1",
+  "token_usage": {
+    "input_tokens": 80,
+    "cache_creation_tokens": 203827,
+    "cache_read_tokens": 5655818,
+    "output_tokens": 70748,
+    "api_call_count": 40
+  },
+  "started_at": "2026-10-30T15:02:08.505622+01:00",
+  "completed_at": "2026-10-30T15:14:26.820797+01:00"
+}

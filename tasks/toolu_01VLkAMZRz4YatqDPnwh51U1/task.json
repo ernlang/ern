@@ -1,0 +1,15 @@
+{
+  "tool_use_id": "toolu_01VLkAMZRz4YatqDPnwh51U1",
+  "agent_id": "a3b27fce2f387969f",
+  "subagent_type": "general-purpose",
+  "task_description": "Review G4 and statement diff",
+  "token_usage": {
+    "input_tokens": 108,
+    "cache_creation_tokens": 250078,
+    "cache_read_tokens": 8760268,
+    "output_tokens": 73039,
+    "api_call_count": 54
+  },
+  "started_at": "2026-10-30T15:02:08.595678+01:00",
+  "completed_at": "2026-10-30T15:15:37.721926+01:00"
+}
