@@ -6453,7 +6453,7 @@ theorem arena_inv_preserved {k : K} {s s' : S3} {ar : Arena} (hwf : WF3 s) (hinv
     · obtain ⟨z', hz', ez⟩ := sk.get' hz; simp [skel] at ez
       exact ⟨z', hz', ez.1, ez.2.2.1, fun h => ez.2.2.2 ▸ h, fun h => ez.2.1 ▸ h⟩
     · intro y₁ y₁' v h1 h2 h3
-      rw [store_get hy, if_neg hne, h1] at h2; cases h2; exact ⟨v, h3⟩
+      rw [store_get hy] at h2; simp only [hne, ↓reduceIte, h1] at h2; cases h2; exact ⟨v, h3⟩
 
 /-! ## Determinism and `ok` outcomes (MM-03.3 §3–5; A6–A10) -/
 
@@ -8911,6 +8911,30 @@ def CallProtectsDirect (s : S3) : Prop :=
 theorem CallProtects.direct {s : S3} (h : CallProtects s) : CallProtectsDirect s :=
   fun f F₀ hF => h [] f F₀ hF
 
+theorem S3.ExercisableAt.lt {s : S3} {b : Nat} {m : Mode} (h : s.ExercisableAt b m) :
+    b < s.A.length := by
+  cases h <;> exact lt_of_getElem? ‹_›
+
+/-- The condition of `CallProtects` for one parameter `p`, read on the authorities of `A` and on
+both modes: decidable form. -/
+def ParamProtected (s : S3) (p : Nat) : Prop :=
+  (s.A[p]?).map (·.mode) = some .modify →
+    ∀ b ∈ List.range s.A.length, (s.ExercisableAt b .observe ∨ s.ExercisableAt b .modify) →
+      ∀ l ∈ s.afp p, l ∈ s.afp b → b = p ∨ p ∈ s.ancs b
+
+instance (s : S3) (p : Nat) : Decidable (ParamProtected s p) := by
+  unfold ParamProtected; infer_instance
+
+/-- `CallProtects` holds when every parameter of every frame of the stack is protected
+(`ParamProtected`): a decidable sufficient condition, used on concrete states. -/
+theorem callProtects_of_check {s : S3}
+    (hchk : ∀ f ∈ s.F, ∀ p ∈ s.callParams f, ParamProtected s p) : CallProtects s := by
+  intro G f F₀ hF p hp y hy hm b m hex l hl hlb
+  have hf : f ∈ s.F := by rw [hF]; exact List.mem_append_right _ (List.mem_cons_self ..)
+  exact hchk f hf p hp (by rw [hy]; simp [hm]) b (List.mem_range.2 hex.lt)
+    (by cases m with | observe => exact .inl hex | modify => exact .inr hex) l
+    (by simp only [S3.afp, hy]; exact hl) hlb
+
 /-- The part of F6 that holds without hypothesis on the call (MM-03.3.5; I1): while an active
 `Modify` authority `p` covers a leaf `l`, every authority with a present effective mode on `l` is
 `p` or one of its descendants. It says nothing once `p` is released, nor of authorities that are
@@ -8987,5 +9011,285 @@ theorem call_protects_params_safe_fails_owned :
   exact ⟨hr, key _ (by decide) (by decide) (by decide) (by decide) (by decide) (by decide),
     .ok (by decide), key _ (by decide) (by decide) (by decide) (by decide) (by decide) (by decide),
     .ok (by decide)⟩
+
+/-! ## New cases of pass 6 -/
+
+/-! ### Nested arena with a child value (F1) -/
+
+/-- An arena nested in a block issued to a value distinct from the parent arena value (F1: the
+child arena value is the holder of its `internal`, the block). Frame 1: 0 parent arena value,
+1 allocator value, 2 child arena value; storage 3 with parts 4 and 5, owned by 0, of root 3; the
+parent issues the block 4 on `[4]` to 2; `newArena 4 4` registers the child on the part 4. The
+`reset` of the parent is rejected while the child lives (expected: reject); after the `endUse` of
+the child value, which releases the block, it is accepted (expected: `ok`). -/
+def na0 : S3 := enter1 [(none, none, 0), (none, none, 0), (none, none, 0)]
+def na1 : S3 :=
+  allocEff (write3Eff na0 [1]) 1 0 [(none, none, 0), (some 3, none, 0), (some 3, none, 0)]
+def na2 : S3 := newArenaEff na1 3 3
+def arNa : Arena := ⟨3, 3, [4, 5], []⟩
+def na3 : S3 := arenaSet (issueEff na2 arNa [4] 2).1 0 (issueEff na2 arNa [4] 2).2
+def na4 : S3 := newArenaEff na3 4 4
+example : NewArenaStep 3 3 na1 (.ok na2) := .ok (by decide)
+example : IssueAt K0 0 0 [4] 2 na2 (.ok na3) :=
+  .ok (ar := arNa) (by decide) (.ok (by decide) (by decide) (by decide))
+example : NewArenaStep 4 4 na3 (.ok na4) := .ok (by decide)
+example : na4.arenas.map (arenaValue na4) = [some 0, some 2] := by decide
+example : ResetAtStep K0 0 0 na4 .reject := .reject (by decide)
+example : EndUseStep K0 2 na4 (.ok (endUseEff na4 2)) := .ok (by decide)
+example : ¬ (endUseEff na4 2).Active 4 := by decide
+example : ResetAtStep K0 0 0 (endUseEff na4 2) (.ok (resetAtEff (endUseEff na4 2) 0)) :=
+  .ok (by decide)
+
+/-! ### Arena on a local buffer (F1, F2, F4) -/
+
+/-- An arena whose storage is a local buffer of the callee, administered by a derived authority
+stored into the arena value. Frame 1: 0 result; it derives 1, `Modify` on 0, and calls. Frame 2:
+1 arena value, 2 buffer with parts 3 and 4, 5 and 6 block destinations, 7 another local. The
+callee derives 7, `Modify` on 2, stores it into 1, registers `newArena 2 7`, and issues `[3]` and
+`[4]` (expected: `ok` for each). The transfer of the arena value to the caller's result is
+rejected at the `transfer` (expected: reject): the stored authority is an anchor of the arena
+value whose effective anchor, the root of the buffer, is held by frame 2 (C1, B8). The transfer
+to another local of frame 2 is accepted (expected: `ok`). -/
+def lb0 : S3 := enterEff (deriveEff (enter1 [(none, none, 0)]) 0 0 .modify) [1]
+  [(none, none, 0), (none, none, 0), (some 2, none, 0), (some 2, none, 0), (none, none, 0),
+   (none, none, 0), (none, none, 0)]
+def lb1 : S3 := deriveEff lb0 3 2 .modify
+def lb2 : S3 := storeEff lb1 7 1
+def lb3 : S3 := newArenaEff lb2 2 7
+def arLb : Arena := ⟨2, 7, [3, 4], []⟩
+def lb4 : S3 := arenaSet (issueEff lb3 arLb [3] 5).1 0 (issueEff lb3 arLb [3] 5).2
+def arLb' : Arena := ⟨2, 7, [4], [([3], 8)]⟩
+def lb5 : S3 := arenaSet (issueEff lb4 arLb' [4] 6).1 0 (issueEff lb4 arLb' [4] 6).2
+example : DeriveStep 3 2 .modify lb0 (.ok lb1) := .ok (by decide)
+example : StoreStep 7 1 lb1 (.ok lb2) := .ok (by decide)
+example : NewArenaStep 2 7 lb2 (.ok lb3) := .ok (by decide)
+example : lb3.arenas = [arLb] ∧ arenaValue lb3 arLb = some 1 := by decide
+example : IssueAt K0 0 1 [3] 5 lb3 (.ok lb4) :=
+  .ok (ar := arLb) (by decide) (.ok (by decide) (by decide) (by decide))
+example : lb4.arenas = [arLb'] := by decide
+example : IssueAt K0 0 1 [4] 6 lb4 (.ok lb5) :=
+  .ok (ar := arLb') (by decide) (.ok (by decide) (by decide) (by decide))
+example : TransferStep K0 1 0 lb5 .reject := .reject (by decide)
+example : TransferStep K0 1 7 lb5 (.ok (transferEff lb5 1 7)) := .ok (by decide)
+
+/-! ### Arena on an allocation owned by its value, returned (F1) -/
+
+/-- Frame 1: 0 result; it derives 1, `Modify` on 0, and calls. Frame 2: 1 arena value,
+2 allocator value; `alloc 2 1` gives the storage 3 with the part 4, owned by 1, of root 4 held by
+1; `newArena 3 4`. The arena value is transferred to the caller's result and the callee exits
+(expected: `ok`, `ok`): the arena stays live, with the caller's result as arena value. -/
+def ra0 : S3 := enterEff (deriveEff (enter1 [(none, none, 0)]) 0 0 .modify) [1]
+  [(none, none, 0), (none, none, 0)]
+def ra1 : S3 := allocEff (write3Eff (write3Eff ra0 [2]) [1]) 2 1 [(none, none, 0), (some 3, none, 0)]
+def ra2 : S3 := newArenaEff ra1 3 4
+example : AllocStep K0 2 1 [(none, none, 0), (some 3, none, 0)] (write3Eff (write3Eff ra0 [2]) [1])
+    (.ok ra1) := .ok (by decide) trivial
+example : NewArenaStep 3 4 ra1 (.ok ra2) := .ok (by decide)
+example : TransferStep K0 1 0 ra2 (.ok (transferEff ra2 1 0)) := .ok (by decide)
+example : ExitStep K0 (transferEff ra2 1 0) (.ok (exitEff (transferEff ra2 1 0))) := .ok (by decide)
+example : (exitEff (transferEff ra2 1 0)).Active 4 ∧
+    (exitEff (transferEff ra2 1 0)).arenas.map (arenaValue (exitEff (transferEff ra2 1 0))) =
+      [some 0] := by decide
+
+/-! ### A view stored in a structure (F4) -/
+
+/-- Frame 1: 0 result; it derives 1, `Modify` on 0, and calls. Frame 2: 1 array, 2 structure,
+3 another structure. The callee writes the array, derives 5, an `Observe` view on it, and stores
+it into the structure 2 (expected: `ok`). The transfer of the structure to the caller's result
+is rejected at the `transfer` (expected: reject; `store_escape_rejected_at_transfer`); to the
+other local 3, accepted (expected: `ok`). -/
+def vw0 : S3 := enterEff (deriveEff (enter1 [(none, none, 0)]) 0 0 .modify) [1]
+  [(none, none, 0), (none, none, 0), (none, none, 0)]
+def vw1 : S3 := write3Eff vw0 [1]
+def vw2 : S3 := deriveEff vw1 2 1 .observe
+def vw3 : S3 := storeEff vw2 5 2
+example : DeriveStep 2 1 .observe vw1 (.ok vw2) := .ok (by decide)
+example : StoreStep 5 2 vw2 (.ok vw3) := .ok (by decide)
+example : TransferStep K0 2 0 vw3 .reject := .reject (by decide)
+example : TransferStep K0 2 3 vw3 (.ok (transferEff vw3 2 3)) := .ok (by decide)
+/-- The same rejection, obtained from `store_escape_rejected_at_transfer` on the reached state
+`vw3`: the effective anchor of 5 is the root 2 of the array, held by frame 2, and the result 0 is
+of frame 1. -/
+theorem vw3_escape_rejected : Reachable K0 [] vw3 ∧ TransferStep K0 2 0 vw3 .reject := by
+  have r : Reachable K0 [] vw3 := .store (.derive (.write (.enter (.derive (.enter (.init (by decide))
+    (.ok (by decide))) (.ok (by decide))) (.ok (by decide))) (show Write3Step 2 [1] vw0 (.ok vw1) from
+      .ok (by decide))) (show DeriveStep 2 1 .observe vw1 (.ok vw2) from .ok (by decide)))
+    (show StoreStep 5 2 vw2 (.ok vw3) from .ok (by decide))
+  refine ⟨r, store_escape_rejected_at_transfer (a := 5) (f := 2) (g := 1) (F₀ := [1, 0])
+    (z := ⟨.modify, none, [1], .frame 2, true⟩)
+    (reachable_access_invariant_underDD (KT_dd [] [] [] [] []) r).1 (by decide) (by decide)
+    (by decide) rfl (by decide) (by decide)⟩
+
+/-! ### `store` of a root (F4) -/
+
+/-- Frame 1: locals 0 and 1, of roots 0 and 1. Storing the root 0 into 1 is rejected (expected:
+reject; `store_root_rejected`); storing a `Modify` derived from it is accepted (expected: `ok`). -/
+def sr0 : S3 := enter1 [(none, none, 0), (none, none, 0)]
+example : StoreStep 0 1 sr0 .reject :=
+  store_root_rejected (y := ⟨.modify, none, [0], .frame 1, true⟩) (by decide) rfl
+example : StoreStep 2 1 (deriveEff sr0 0 0 .modify) (.ok (storeEff (deriveEff sr0 0 0 .modify) 2 1)) :=
+  .ok (by decide)
+
+/-! ### `store`, then the end of the value that holds the origin (F4; A6) -/
+
+/-- Frame 1: 0 value, 1 storage owned by 0, of root 1 held by 0, 2 another local. The frame
+derives 3, `Modify` on 1, and stores it into 2. The `endUse` of 0, which releases the root 1, is
+rejected (expected: reject): 3 descends from it and is held by 2 (A6; MM-03.3 §3, O3.2). After
+the `release` of 3 (expected: `ok`; F4: 3 leaves the anchors of 2), the same `endUse` is accepted
+(expected: `ok`). -/
+def se0 : S3 := enter1 [(none, none, 0), (none, some 0, 0), (none, none, 0)]
+def se1 : S3 := deriveEff se0 1 1 .modify
+def se2 : S3 := storeEff se1 3 2
+example : DeriveStep 1 1 .modify se0 (.ok se1) := .ok (by decide)
+example : StoreStep 3 2 se1 (.ok se2) := .ok (by decide)
+example : se2.D 2 = [3] := by decide
+example : EndUseStep K0 0 se2 .reject := .reject (by decide)
+example : ReleaseStep 3 se2 (.ok (releaseEff se2 3)) := .ok (by decide)
+example : (releaseEff se2 3).D 2 = [] := by decide
+example : EndUseStep K0 0 (releaseEff se2 3) (.ok (endUseEff (releaseEff se2 3) 0)) :=
+  .ok (by decide)
+
+/-! ### `transfer(x, x.f)` (F5) -/
+
+/-- Frame 1: 0 value `x` with the field 1, 2 a local `tmp`; the field is written. `transfer(x,
+x.f)` is rejected (expected: reject): the footprints overlap (F5), and the destination is
+initialised. Twin: `transfer(x.f, tmp)` then `transfer(tmp, x)` (expected: `ok`, `ok`). -/
+def tx0 : S3 := write3Eff (enter1 [(none, none, 0), (some 0, none, 0), (none, none, 0)]) [1]
+example : TransferStep K0 0 1 tx0 .reject := .reject (by decide)
+example : overlap tx0.P 0 1 ∧ tx0.I 1 = .init := by decide
+example : TransferStep K0 1 2 tx0 (.ok (transferEff tx0 1 2)) := .ok (by decide)
+example : TransferStep K0 2 0 (transferEff tx0 1 2) (.ok (transferEff (transferEff tx0 1 2) 2 0)) :=
+  .ok (by decide)
+
+/-! ### Non-vacuity of F6 -/
+
+/-- Frame 1: local 0, of root 0; it derives 1, `Modify` on 0, and calls with `[1]`. In frame 2,
+the root 0 of the caller covers the footprint of the parameter and is not exercisable by the
+callee; `CallProtects` holds. After the callee releases the parameter (expected: `ok`), a write
+or a read through the root and a derivation from it are rejected (expected: reject), and
+`CallProtects` still holds. Two nested calls: frame 2 derives 2 from 1 and calls with `[2]`; in
+frame 3 neither 0 nor 1 is exercisable; after releasing 2, a write through 1 or 0 is rejected;
+`CallProtects` holds in its transitive form. -/
+def pv0 : S3 := enterEff (deriveEff (enter1 [(none, none, 0)]) 0 0 .modify) [1] []
+def pv1 : S3 := enterEff (deriveEff pv0 1 0 .modify) [2] []
+example : pv0.callParams 2 = [1] ∧ pv0.afp 0 = pv0.afp 1 ∧ ¬ pv0.ExercisableAt 0 .modify ∧
+    ¬ pv0.ExercisableAt 0 .observe := by decide
+example : CallProtects pv0 := callProtects_of_check (by decide)
+example : ReleaseStep 1 pv0 (.ok (releaseEff pv0 1)) := .ok (by decide)
+example : Write3Step 0 [0] (releaseEff pv0 1) .reject := .reject (by decide)
+example : Read3Step 0 [0] (releaseEff pv0 1) .reject := .reject (by decide)
+example : DeriveStep 0 0 .modify (releaseEff pv0 1) .reject := .reject (by decide)
+example : CallProtects (releaseEff pv0 1) := callProtects_of_check (by decide)
+example : EnterStep [2] [] (deriveEff pv0 1 0 .modify) (.ok pv1) := .ok (by decide)
+example : pv1.F = [3, 2, 1, 0] ∧ ¬ pv1.ExercisableAt 0 .observe ∧ ¬ pv1.ExercisableAt 1 .observe :=
+  by decide
+example : CallProtects pv1 := callProtects_of_check (by decide)
+example : ReleaseStep 2 pv1 (.ok (releaseEff pv1 2)) := .ok (by decide)
+example : Write3Step 1 [0] (releaseEff pv1 2) .reject := .reject (by decide)
+example : Write3Step 0 [0] (releaseEff pv1 2) .reject := .reject (by decide)
+example : CallProtects (releaseEff pv1 2) := callProtects_of_check (by decide)
+
+/-! ### Progress (F7) -/
+
+/-- F7 (a), cycle on whole nodes. Frame 1: 0 arena value, 1 allocator value, 2 and 3 node
+values; storage 4 with the nodes 5 (A) and 6 (B), owned by 0, of root 4; `newArena 4 4`; the
+blocks 5 on `[5]` and 6 on `[6]` are issued to 2 and 3. The frame derives 7, `Modify` on B from
+the block 6, and stores it into A; then derives 8, `Modify` on A from the block 5, and stores it
+into B. Expected: the second `store` rejected. Obtained: accepted. In `fa7`, before it, the block
+6 has lost its effective `Modify` on B to 7, but 7, held by A, is exercisable through 8, held by
+the frame, which has effective `Modify` on A: `HasRight` on B holds. After it, 7 and 8 are each
+exercisable only through the other: neither is exercisable, neither can be released, the node
+values cannot end, the arena cannot be reset. The exit of frame 1 releases both. Each state is
+reached from `S3.init []`, with a non-empty list of arenas. -/
+def fa0 : S3 := enter1 [(none, none, 0), (none, none, 0), (none, none, 0), (none, none, 0)]
+def fa1 : S3 :=
+  allocEff (write3Eff fa0 [1]) 1 0 [(none, none, 0), (some 4, none, 0), (some 4, none, 0)]
+def fa2 : S3 := newArenaEff fa1 4 4
+def arFa : Arena := ⟨4, 4, [5, 6], []⟩
+def fa3 : S3 := arenaSet (issueEff fa2 arFa [5] 2).1 0 (issueEff fa2 arFa [5] 2).2
+def arFa' : Arena := ⟨4, 4, [6], [([5], 5)]⟩
+def fa4 : S3 := arenaSet (issueEff fa3 arFa' [6] 3).1 0 (issueEff fa3 arFa' [6] 3).2
+def fa5 : S3 := deriveEff fa4 6 6 .modify
+def fa6 : S3 := storeEff fa5 7 5
+def fa7 : S3 := deriveEff fa6 5 5 .modify
+def fa8 : S3 := storeEff fa7 8 6
+theorem progress_cycle_whole_nodes :
+    Reachable K0 [] fa8 ∧ fa8.arenas ≠ [] ∧ StoreStep 7 5 fa5 (.ok fa6) ∧
+      StoreStep 8 6 fa7 (.ok fa8) ∧ effective fa7 6 6 = none ∧ fa7.ExercisableAt 7 .modify ∧
+      HasRight fa7 .modify 6 ∧
+      ¬ fa8.ExercisableAt 7 .observe ∧ ¬ fa8.ExercisableAt 8 .observe ∧
+      ReleaseStep 7 fa8 .reject ∧ ReleaseStep 8 fa8 .reject ∧ EndUseStep K0 2 fa8 .reject ∧
+      EndUseStep K0 3 fa8 .reject ∧ ResetAtStep K0 0 0 fa8 .reject ∧
+      Reachable K0 [] (exitEff fa8) ∧ ¬ (exitEff fa8).Active 7 ∧ ¬ (exitEff fa8).Active 8 := by
+  have r0 : Reachable K0 [] fa0 := .enter (.init (by decide)) (.ok (by decide))
+  have r1 : Reachable K0 [] fa1 := .alloc (.write r0 (show Write3Step 1 [1] fa0 (.ok _) from
+    .ok (by decide))) (show AllocStep K0 1 0 [(none, none, 0), (some 4, none, 0), (some 4, none, 0)]
+      _ (.ok fa1) from .ok (by decide) trivial)
+  have r2 : Reachable K0 [] fa2 := .newArena r1 (show NewArenaStep 4 4 fa1 (.ok fa2) from .ok (by decide))
+  have r3 : Reachable K0 [] fa3 := .issue r2 (show IssueAt K0 0 0 [5] 2 fa2 (.ok fa3) from
+    .ok (ar := arFa) (by decide) (.ok (by decide) (by decide) (by decide)))
+  have r4 : Reachable K0 [] fa4 := .issue r3 (show IssueAt K0 0 0 [6] 3 fa3 (.ok fa4) from
+    .ok (ar := arFa') (by decide) (.ok (by decide) (by decide) (by decide)))
+  have r5 : Reachable K0 [] fa5 := .derive r4 (show DeriveStep 6 6 .modify fa4 (.ok fa5) from
+    .ok (by decide))
+  have s6 : StoreStep 7 5 fa5 (.ok fa6) := .ok (by decide)
+  have r7 : Reachable K0 [] fa7 := .derive (.store r5 s6) (show DeriveStep 5 5 .modify fa6 (.ok fa7) from
+    .ok (by decide))
+  have s8 : StoreStep 8 6 fa7 (.ok fa8) := .ok (by decide)
+  have r8 : Reachable K0 [] fa8 := .store r7 s8
+  have hx : ExitStep K0 fa8 (.ok (exitEff fa8)) := .ok (by decide)
+  exact ⟨r8, by decide, s6, s8, by decide, by decide, by decide, by decide, by decide,
+    .reject (by decide), .reject (by decide), .reject (by decide), .reject (by decide),
+    .reject (by decide), .exit r8 hx, by decide, by decide⟩
+
+/-- F7 (b), cycle on disjoint fields. Same frame; storage 4 with the nodes 5 (A, fields 6 `data`
+and 7 `link`) and 8 (B, fields 9 `data` and 10 `link`); blocks 5 on `[6, 7]` and 6 on `[9, 10]`
+issued to 2 and 3. The frame derives 7, `Modify` on `B.data` from the block 6, and stores it into
+`A.link`; then 8, `Modify` on `A.data` from the block 5, stored into `B.link` (expected and
+obtained: `ok`). Teardown: `release` of 7 and 8 (F4: each leaves the anchors of its holder),
+`endUse` of the node values 2 and 3, which releases the blocks, then `reset` of the arena
+(expected and obtained: `ok` at each step). Each state is reached from `S3.init []`. -/
+def fb1 : S3 := allocEff (write3Eff fa0 [1]) 1 0 [(none, none, 0), (some 4, none, 0),
+  (some 5, none, 0), (some 5, none, 0), (some 4, none, 0), (some 8, none, 0), (some 8, none, 0)]
+def fb2 : S3 := newArenaEff fb1 4 4
+def arFb : Arena := ⟨4, 4, [6, 7, 9, 10], []⟩
+def fb3 : S3 := arenaSet (issueEff fb2 arFb [6, 7] 2).1 0 (issueEff fb2 arFb [6, 7] 2).2
+def arFb' : Arena := ⟨4, 4, [9, 10], [([6, 7], 5)]⟩
+def fb4 : S3 := arenaSet (issueEff fb3 arFb' [9, 10] 3).1 0 (issueEff fb3 arFb' [9, 10] 3).2
+def fb5 : S3 := deriveEff fb4 6 9 .modify
+def fb6 : S3 := storeEff fb5 7 7
+def fb7 : S3 := deriveEff fb6 5 6 .modify
+def fb8 : S3 := storeEff fb7 8 10
+def fb9 : S3 := releaseEff (releaseEff fb8 7) 8
+def fb10 : S3 := endUseEff (endUseEff fb9 2) 3
+theorem progress_cycle_disjoint_fields :
+    Reachable K0 [] (resetAtEff fb10 0) ∧ fb8.arenas ≠ [] ∧ fb10.arenas ≠ [] ∧
+      StoreStep 7 7 fb5 (.ok fb6) ∧ StoreStep 8 10 fb7 (.ok fb8) ∧
+      ReleaseStep 7 fb8 (.ok (releaseEff fb8 7)) ∧ ReleaseStep 8 (releaseEff fb8 7) (.ok fb9) ∧
+      EndUseStep K0 2 fb9 (.ok (endUseEff fb9 2)) ∧ EndUseStep K0 3 (endUseEff fb9 2) (.ok fb10) ∧
+      ResetAtStep K0 0 0 fb10 (.ok (resetAtEff fb10 0)) := by
+  have r0 : Reachable K0 [] fa0 := .enter (.init (by decide)) (.ok (by decide))
+  have r1 : Reachable K0 [] fb1 := .alloc (.write r0 (show Write3Step 1 [1] fa0 (.ok _) from
+    .ok (by decide))) (show AllocStep K0 1 0 [(none, none, 0), (some 4, none, 0), (some 5, none, 0),
+      (some 5, none, 0), (some 4, none, 0), (some 8, none, 0), (some 8, none, 0)] _ (.ok fb1) from
+      .ok (by decide) trivial)
+  have r2 : Reachable K0 [] fb2 := .newArena r1 (show NewArenaStep 4 4 fb1 (.ok fb2) from .ok (by decide))
+  have r3 : Reachable K0 [] fb3 := .issue r2 (show IssueAt K0 0 0 [6, 7] 2 fb2 (.ok fb3) from
+    .ok (ar := arFb) (by decide) (.ok (by decide) (by decide) (by decide)))
+  have r4 : Reachable K0 [] fb4 := .issue r3 (show IssueAt K0 0 0 [9, 10] 3 fb3 (.ok fb4) from
+    .ok (ar := arFb') (by decide) (.ok (by decide) (by decide) (by decide)))
+  have r5 : Reachable K0 [] fb5 := .derive r4 (show DeriveStep 6 9 .modify fb4 (.ok fb5) from
+    .ok (by decide))
+  have s6 : StoreStep 7 7 fb5 (.ok fb6) := .ok (by decide)
+  have r7 : Reachable K0 [] fb7 := .derive (.store r5 s6) (show DeriveStep 5 6 .modify fb6 (.ok fb7) from
+    .ok (by decide))
+  have s8 : StoreStep 8 10 fb7 (.ok fb8) := .ok (by decide)
+  have l1 : ReleaseStep 7 fb8 (.ok (releaseEff fb8 7)) := .ok (by decide)
+  have l2 : ReleaseStep 8 (releaseEff fb8 7) (.ok fb9) := .ok (by decide)
+  have e1 : EndUseStep K0 2 fb9 (.ok (endUseEff fb9 2)) := .ok (by decide)
+  have e2 : EndUseStep K0 3 (endUseEff fb9 2) (.ok fb10) := .ok (by decide)
+  have z : ResetAtStep K0 0 0 fb10 (.ok (resetAtEff fb10 0)) := .ok (by decide)
+  exact ⟨.reset (.endUse (.endUse (.release (.release (.store r7 s8) l1) l2) e1) e2) z,
+    by decide, by decide, s6, s8, l1, l2, e1, e2, z⟩
 
 end Ern.MM03
