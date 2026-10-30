@@ -1217,26 +1217,32 @@ def DependStep (q x : Nat) (s : S3) : Outcome3 S3 → Prop :=
 
 /-! ## F4 `store` -/
 
-/-- Effect of `store a p` (F4), the write of a reference into a value: `a` is now held by the
-place `p`; `a` joins the anchors of `p`; the leaves of `p` become `Init`. -/
+/-- Effect of `store a p` (F4; G2), the write of a reference into a value: `a` is now held by the
+place `p`; `a` joins the anchors of `p`; the leaf `p`, and it only, becomes `Init` (G2). -/
 def storeEff (s : S3) (a p : Nat) : S3 := match s.A[a]? with
   | some y => { s with
       A := s.A.set a { y with holder := .place p }
       D := fun q => if q = p then s.D p ++ [a] else s.D q
-      I := fun l => if l ∈ footprint s.P p then .init else s.I l }
+      I := fun l => if l = p then .init else s.I l }
   | none => s
 
-/-- Preconditions of `store a p` (F4), in order: `a` active, derived (`a.origin ≠ none`), held by
-the current frame; `p` usable; exercisable `Modify` on `p` (B2, `HasRight`); `a` covers no leaf
+/-- Preconditions of `store a p` (F4; G2), in order: `a` active, derived (`a.origin ≠ none`), held
+by the current frame; `p` usable; exercisable `Modify` on `p` (B2, `HasRight`); `a` covers no leaf
 of `p` nor of its owned storage, transitively (A5, `OwnedIn`); `AnchorOrder` for the added
 anchor (C1, `EffAnchorOK`): the frame of the effective anchor of `a` is the frame of `p` or one
-of its ancestors. No inverse operation exists (F4). -/
+of its ancestors. G2: `p` is a leaf, the place of a reference (MM-03.3.2, `isLeaf`); `p` holds no
+active authority (overwriting an `Init` leaf without authority is allowed); in the arrival state,
+`p` is still exercisable at `Modify` by the current frame (`HasRight`,
+`store_keeps_target_reachable`). No inverse operation exists (F4). -/
 def StorePre (s : S3) (a p : Nat) : Prop :=
   OptP (s.A[a]?) (fun y => y.active = true ∧ y.origin ≠ none ∧ y.holder = .frame s.top) False ∧
   s.Usable p ∧ HasRight s .modify p ∧
   (∀ l ∈ s.afp a, l ∉ footprint s.P p ∧
     ∀ q ∈ List.range s.P.length, OwnedIn s.P p q → l ∉ footprint s.P q) ∧
-  EffAnchorOK s a (s.pframe p)
+  EffAnchorOK s a (s.pframe p) ∧ isLeaf s.P p ∧
+  (∀ j ∈ List.range s.A.length, OptP (s.A[j]?) (fun z => z.active = true → z.holder ≠ .place p)
+    True) ∧
+  HasRight (storeEff s a p) .modify p
 
 instance (s : S3) (a p : Nat) : Decidable (StorePre s a p) := by unfold StorePre; infer_instance
 
@@ -5781,7 +5787,7 @@ theorem storeEff_eq {s : S3} {a p : Nat} {y : Authority} (hy : s.A[a]? = some y)
     storeEff s a p = { s with
       A := s.A.set a { y with holder := .place p }
       D := fun q => if q = p then s.D p ++ [a] else s.D q
-      I := fun l => if l ∈ footprint s.P p then .init else s.I l } := by
+      I := fun l => if l = p then .init else s.I l } := by
   simp [storeEff, hy]
 
 /-- `store` only changes the holder of `a` among the authorities (F4). -/
@@ -5875,7 +5881,7 @@ theorem store_preserves_anchorOrder {s s' : S3} {a p : Nat} (hwf : WF3 s) (hao :
   split at hx
   · subst q; rcases List.mem_append.1 hx with hx | hx
     · exact hao _ hq' x hx
-    · rw [List.mem_singleton.1 hx]; exact hpre.2.2.2.2
+    · rw [List.mem_singleton.1 hx]; exact hpre.2.2.2.2.1
   · exact hao q hq' x hx
 
 /-- `store` preserves `NoDangling` (F4; C2): footprints, activity and usability are unchanged. -/
@@ -5900,6 +5906,35 @@ theorem store_root_rejected {s : S3} {a p : Nat} {y : Authority} (hy : s.A[a]? =
   .reject fun h => by
     obtain ⟨y', hy', -, ho', -⟩ := store_pre_auth h
     rw [hy] at hy'; cases hy'; exact ho' ho
+
+/-- `store_keeps_target_reachable` (G2): after an `ok` store, the target leaf `p` is still
+exercisable at `Modify` by the current frame. -/
+theorem store_keeps_target_reachable {s s' : S3} {a p : Nat} (h : StoreStep a p s (.ok s')) :
+    HasRight s' .modify p := by
+  obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
+  exact hpre.2.2.2.2.2.2.2
+
+/-- `store` writes one leaf (G2): the target `p` is a leaf, and it is the only leaf whose
+initialisation changes, becoming `Init`. -/
+theorem store_writes_one_leaf {s s' : S3} {a p : Nat} (h : StoreStep a p s (.ok s')) :
+    isLeaf s.P p ∧ s'.I p = .init ∧ ∀ l, l ≠ p → s'.I l = s.I l := by
+  obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
+  obtain ⟨y, hy, -⟩ := store_pre_auth hpre
+  rw [storeEff_eq hy]
+  exact ⟨hpre.2.2.2.2.2.1, by simp, fun l hl => by simp [hl]⟩
+
+/-- `store` into a leaf that holds an active authority is rejected (G2). -/
+theorem store_occupied_rejected {s : S3} {a p j : Nat} {z : Authority} (hz : s.A[j]? = some z)
+    (za : z.active = true) (hzp : z.holder = .place p) : StoreStep a p s .reject :=
+  .reject fun h => by
+    have := h.2.2.2.2.2.2.1 j (List.mem_range.2 (lt_of_getElem? hz))
+    simp only [OptP, hz] at this
+    exact this za hzp
+
+/-- `store` into a place with parts, such as a whole structure, is rejected (G2). -/
+theorem store_nonleaf_rejected {s : S3} {a p r : Nat} (hr : r < s.P.length)
+    (hpr : parentOf s.P r = some p) : StoreStep a p s .reject :=
+  .reject fun h => h.2.2.2.2.2.1 r hr hpr
 
 theorem mem_of_mem_dropWhile {p : Nat → Bool} : ∀ {l : List Nat} {x : Nat}, x ∈ l.dropWhile p → x ∈ l
   | [], _, h => by simp at h
@@ -9473,15 +9508,12 @@ example : Read3Step 0 [0] (exitEff (releaseEff pw0 1)) (.ok (exitEff (releaseEff
 values; storage 4 with the nodes 5 (A) and 6 (B), owned by 0, of root 4; `newArena 4 4`; the
 blocks 5 on `[5]` and 6 on `[6]` are issued to 2 and 3. The frame derives 7, `Modify` on B from
 the block 6, and stores it into A; then derives 8, `Modify` on A from the block 5, and stores it
-into B. Expected: the second `store` rejected. Obtained: accepted. In `fa7`, before it, the block
-6 has lost its effective `Modify` on B to 7, but 7, held by A, is exercisable through 8, held by
-the frame, which has effective `Modify` on A (B2): `HasRight` on B holds, and no clause of
-`StorePre` fails. In `fa8`, neither 7 nor 8 is exercisable, and `release` of 7 or 8, `endUse` of
-2 or 3 and `reset` are rejected; the `endUse` and `reset` rejections already hold before the
-second store, where 8 could still be released first. The exit of frame 1 releases both; so does
-the end of the arena value before the exit (`progress_cycle_freed_before_exit`). Whether a
-sequence frees 7 or 8 while keeping the arena live is open (F7: no conclusion of impossibility
-without proof). Each state is reached from `S3.init []`; the list of arenas is non-empty from `fa2` on. -/
+into B. Expected: the second `store` rejected. Obtained in pass 6: accepted. Obtained in pass 7:
+rejected by the clause of arrival of G2 alone, every other clause of `StorePre` holding: after the
+store, B is covered by 7 only, held by A, and A by 8 only, held by B, so neither 7 nor 8 would be
+exercisable and the current frame would lose `Modify` on B. In `fa7`, 7 is exercisable through 8,
+held by the frame, which has effective `Modify` on A (B2). Each state is reached from
+`S3.init []`; the list of arenas is non-empty from `fa2` on. -/
 def fa0 : S3 := enter1 [(none, none, 0), (none, none, 0), (none, none, 0), (none, none, 0)]
 def fa1 : S3 :=
   allocEff (write3Eff fa0 [1]) 1 0 [(none, none, 0), (some 4, none, 0), (some 4, none, 0)]
@@ -9493,15 +9525,20 @@ def fa4 : S3 := arenaSet (issueEff fa3 arFa' [6] 3).1 0 (issueEff fa3 arFa' [6] 
 def fa5 : S3 := deriveEff fa4 6 6 .modify
 def fa6 : S3 := storeEff fa5 7 5
 def fa7 : S3 := deriveEff fa6 5 5 .modify
-def fa8 : S3 := storeEff fa7 8 6
 theorem progress_cycle_whole_nodes :
-    Reachable K0 [] fa8 ∧ fa8.arenas ≠ [] ∧ StoreStep 7 5 fa5 (.ok fa6) ∧
-      StoreStep 8 6 fa7 (.ok fa8) ∧ effective fa7 6 6 = none ∧ fa7.ExercisableAt 7 .modify ∧
-      HasRight fa7 .modify 6 ∧
-      ¬ fa8.ExercisableAt 7 .observe ∧ ¬ fa8.ExercisableAt 8 .observe ∧
-      ReleaseStep 7 fa8 .reject ∧ ReleaseStep 8 fa8 .reject ∧ EndUseStep K0 2 fa8 .reject ∧
-      EndUseStep K0 3 fa8 .reject ∧ ResetAtStep K0 0 0 fa8 .reject ∧
-      Reachable K0 [] (exitEff fa8) ∧ ¬ (exitEff fa8).Active 7 ∧ ¬ (exitEff fa8).Active 8 := by
+    Reachable K0 [] fa7 ∧ fa7.arenas ≠ [] ∧ StoreStep 7 5 fa5 (.ok fa6) ∧
+      StoreStep 8 6 fa7 .reject ∧ ¬ HasRight (storeEff fa7 8 6) .modify 6 ∧
+      (OptP (fa7.A[8]?) (fun y => y.active = true ∧ y.origin ≠ none ∧ y.holder = .frame fa7.top)
+          False ∧
+        fa7.Usable 6 ∧ HasRight fa7 .modify 6 ∧
+        (∀ l ∈ fa7.afp 8, l ∉ footprint fa7.P 6 ∧
+          ∀ q ∈ List.range fa7.P.length, OwnedIn fa7.P 6 q → l ∉ footprint fa7.P q) ∧
+        EffAnchorOK fa7 8 (fa7.pframe 6) ∧ isLeaf fa7.P 6 ∧
+        ∀ j ∈ List.range fa7.A.length,
+          OptP (fa7.A[j]?) (fun z => z.active = true → z.holder ≠ .place 6) True) ∧
+      effective fa7 6 6 = none ∧ fa7.ExercisableAt 7 .modify ∧
+      ¬ (storeEff fa7 8 6).ExercisableAt 7 .observe ∧
+      ¬ (storeEff fa7 8 6).ExercisableAt 8 .observe := by
   have r0 : Reachable K0 [] fa0 := .enter (.init (by decide)) (.ok (by decide))
   have r1 : Reachable K0 [] fa1 := .alloc (.write r0 (show Write3Step 1 [1] fa0 (.ok _) from
     .ok (by decide))) (show AllocStep K0 1 0 [(none, none, 0), (some 4, none, 0), (some 4, none, 0)]
@@ -9516,38 +9553,14 @@ theorem progress_cycle_whole_nodes :
   have s6 : StoreStep 7 5 fa5 (.ok fa6) := .ok (by decide)
   have r7 : Reachable K0 [] fa7 := .derive (.store r5 s6) (show DeriveStep 5 5 .modify fa6 (.ok fa7) from
     .ok (by decide))
-  have s8 : StoreStep 8 6 fa7 (.ok fa8) := .ok (by decide)
-  have r8 : Reachable K0 [] fa8 := .store r7 s8
-  have hx : ExitStep K0 fa8 (.ok (exitEff fa8)) := .ok (by decide)
-  exact ⟨r8, by decide, s6, s8, by decide, by decide, by decide, by decide, by decide,
-    .reject (by decide), .reject (by decide), .reject (by decide), .reject (by decide),
-    .reject (by decide), .exit r8 hx, by decide, by decide⟩
+  exact ⟨r7, by decide, s6, .reject (by decide), by decide, by decide, by decide, by decide,
+    by decide, by decide⟩
 
 /-- Before the second store of F7 (a), in `fa7`: `release 8` is accepted, while `endUse` of 2 and
-3 and `reset` are already rejected. -/
+3 and `reset` are rejected. -/
 example : ReleaseStep 8 fa7 (.ok (releaseEff fa7 8)) := .ok (by decide)
 example : EndUseStep K0 2 fa7 .reject ∧ EndUseStep K0 3 fa7 .reject ∧ ResetAtStep K0 0 0 fa7 .reject :=
   ⟨.reject (by decide), .reject (by decide), .reject (by decide)⟩
-
-/-- F7 (a): the cycle is undone before the exit of frame 1, at the cost of the arena. In `fa8`,
-`endUse 0` of the arena value is rejected (the node values hold live blocks). The frame
-allocates two places 7 and 8 owned by 0, transfers the node values 2 and 3 into them (A5: the
-blocks are then held within the storage of 0), and ends 0: the storage 4, its parts and the
-places 7 and 8 die, and 7 and 8, the stored authorities, are released (A6). Frame 1 is still the
-current frame; the arena is dead and cannot be reset. -/
-def fc1 : S3 := allocEff fa8 1 0 [(none, none, 0), (none, none, 0)]
-def fc4 : S3 := endUseEff (transferEff (transferEff fc1 2 7) 3 8) 0
-theorem progress_cycle_freed_before_exit :
-    EndUseStep K0 0 fa8 .reject ∧ Reachable K0 [] fc4 ∧ fc4.F = [1, 0] ∧ ¬ fc4.Active 7 ∧
-      ¬ fc4.Active 8 ∧ ¬ fc4.Active 4 ∧ ResetAtStep K0 0 0 fc4 .reject :=
-  ⟨.reject (by decide), .endUse (.transfer (.transfer (.alloc progress_cycle_whole_nodes.1
-    (.ok (by decide) trivial)) (.ok (by decide))) (.ok (by decide))) (.ok (by decide)), by decide,
-    by decide, by decide, by decide, .reject (by decide)⟩
-example : (fc1.P[7]?).map (·.owner) = some (.place 0) ∧ (fc1.P[8]?).map (·.owner) = some (.place 0) :=
-  by decide
-example : ((transferEff (transferEff fc1 2 7) 3 8).A[5]?).map (·.holder) = some (.place 7) ∧
-    ((transferEff (transferEff fc1 2 7) 3 8).A[6]?).map (·.holder) = some (.place 8) := by decide
-example : ¬ fc4.Usable 4 ∧ ¬ fc4.Usable 5 ∧ ¬ fc4.Usable 6 ∧ ¬ fc4.Usable 7 ∧ ¬ fc4.Usable 8 := by decide
 
 /-- F7 (b), cycle on disjoint fields. Same frame; storage 4 with the nodes 5 (A, fields 6 `data`
 and 7 `link`) and 8 (B, fields 9 `data` and 10 `link`); blocks 5 on `[6, 7]` and 6 on `[9, 10]`
