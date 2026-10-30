@@ -5536,11 +5536,13 @@ theorem exit_preserves_noDangling {k : K} {s s' : S3} (hwf : WF3 s) (hnd : NoDan
   · rw [(exitG_same s F₀ j y₀).2.1] at hlz
     exact hnd j y₀ hy₀ (exitG_active' hy₀ za) q hq₀ l hl hlz
 
-/-- `StaticPinnedBottom k s` (C5), obligation on the static pinning `K.Pinned`: every leaf covered
-by `K.Pinned` belongs to a place owned, transitively, by the base frame, the last of the stack.
-Dynamic pinning (`pin`, `unpin`) is not concerned. -/
+/-- `StaticPinnedBottom k s` (C5, F3), obligation on the static pinning `K.Pinned`: every leaf
+covered by `K.Pinned` belongs to a place owned directly by the base frame, the last of the stack
+(frame 0 on reached states, `reachable_base_owns_statics`). F3 replaces the transitive ownership
+of C5 by direct ownership. Dynamic pinning (`pin`, `unpin`) is not concerned. -/
 def StaticPinnedBottom (k : K) (s : S3) : Prop :=
-  ∀ l, k.Pinned l → ∃ q, l ∈ footprint s.P q ∧ OwnedByFrame s.P (s.F.getLastD 0) q
+  ∀ l, k.Pinned l → ∃ (q : Nat) (pl : Place), l ∈ footprint s.P q ∧ s.P[q]? = some pl ∧
+    pl.owner = .frame (s.F.getLastD 0)
 
 /-- A place has at most one owning frame (A5). -/
 theorem OwnedByFrame.unique {P : List Place} {f g q : Nat} (h : OwnedByFrame P f q)
@@ -5555,15 +5557,17 @@ theorem OwnedByFrame.unique {P : List Place} {f g q : Nat} (h : OwnedByFrame P f
     | frame hpl' ho' => rw [hpl] at hpl'; cases hpl'; rw [ho] at ho'; cases ho'
     | place hpl' ho' h'' => rw [hpl] at hpl'; cases hpl'; rw [ho] at ho'; cases ho'; exact ih h''
 
-/-- `static_pinned_never_exits` (C5): under `StaticPinnedBottom`, no frame exit meets a statically
-pinned leaf: a place that stops being usable at the exit covers no leaf of `K.Pinned`. -/
+/-- `static_pinned_never_exits` (C5; F3): under `StaticPinnedBottom`, no frame exit meets a
+statically pinned leaf: a place that stops being usable at the exit covers no leaf of
+`K.Pinned`. -/
 theorem static_pinned_never_exits {k : K} {s : S3} {f : Nat} {F₀ : Frames} (hwf : WF3 s)
     (hsp : StaticPinnedBottom k s) (hF : s.F = f :: F₀) (hne : F₀ ≠ []) :
     ∀ q, s.Usable q → ¬ ({ s with F := F₀ } : S3).Usable q →
       ∀ l ∈ footprint s.P q, ¬ k.Pinned l := by
   intro q hq hq' l hl hpin
   have hof := exit_owned_of_usable hF hq hq'
-  obtain ⟨q', hl', hob⟩ := hsp l hpin
+  obtain ⟨q', pl₀, hl', hq₀, ho₀⟩ := hsp l hpin
+  have hob : OwnedByFrame s.P (s.F.getLastD 0) q' := .frame hq₀ ho₀
   obtain ⟨-, -, hlq⟩ := mem_footprint.1 hl
   obtain ⟨-, -, hlq'⟩ := mem_footprint.1 hl'
   obtain ⟨pl, pq, hpl, hpq, e⟩ := hwf.ownerOf hlq
@@ -8264,9 +8268,9 @@ abbrev KPS : K := KT [] [0] [] [] []
 def stPin : Statics := [((none, none, 0), true)]
 def sp1 : S3 := enterEff (S3.init stPin) [] [(none, none, 0)]
 
-/-- `static_pinned_never_exits` has content on a reached state (C5; D1): `K.Pinned` is not empty,
-`StaticPinnedBottom` holds since frame 0 owns the pinned global, and the exit of frame 1 kills its
-local, which covers no pinned leaf. -/
+/-- `static_pinned_never_exits` has content on a reached state (C5; D1; F3): `K.Pinned` is not
+empty, `StaticPinnedBottom` holds since frame 0 owns the pinned global directly, and the exit of
+frame 1 kills its local, which covers no pinned leaf. -/
 theorem staticPinned_reached :
     Reachable KPS stPin sp1 ∧ KPS.Pinned 0 ∧ StaticPinnedBottom KPS sp1 ∧
       ExitStep KPS sp1 (.ok (exitEff sp1)) ∧
@@ -8277,8 +8281,7 @@ theorem staticPinned_reached :
     intro l hl
     have : l = 0 := List.mem_singleton.1 hl
     subst this
-    exact ⟨0, by decide, show OwnedByFrame sp1.P 0 0 from .frame (pl := ⟨none, .frame 0, 0⟩)
-      (by decide) rfl⟩
+    exact ⟨0, ⟨none, .frame 0, 0⟩, by decide, by decide, rfl⟩
   exact ⟨hr, List.mem_singleton_self _, hsp, .ok (by decide),
     static_pinned_never_exits (reachable_access_invariant_underDD (KT_dd [] [0] [] [] []) hr).1 hsp
       (show sp1.F = 1 :: [0] from rfl) (by decide)⟩
@@ -8335,8 +8338,7 @@ example : Write3Step 0 [0] mm0 (.ok (write3Eff mm0 [0])) := .ok (by decide)
 example : StaticPinnedBottom KPS mm0 := fun l hl => by
   have : l = 0 := List.mem_singleton.1 hl
   subst this
-  exact ⟨0, by decide, show OwnedByFrame mm0.P 0 0 from .frame (pl := ⟨none, .frame 0, 0⟩)
-    (by decide) rfl⟩
+  exact ⟨0, ⟨none, .frame 0, 0⟩, by decide, by decide, rfl⟩
 
 /-! ### `alloc` of the empty shape (D2) -/
 
@@ -8577,7 +8579,8 @@ theorem shared_leaf_same_owner {s : S3} (hw : WF3 s) {q₁ q₂ l : Nat}
   rw [hl] at hl'; cases hl'
   rw [hr, hr']; simp [← he, he']
 
-/-- A static owned by another static (pass-5 report, (c) 2 and (e) 1): a callee holding a derived
+/-- A static owned by another static, a legal behaviour (F3: the owning element stays allowed;
+pass-5 report, (c) 2 and (e) 1): a callee holding a derived
 `Modify` parameter on static 0 exercises the root of static 1, held by 0 (A2), and transfers 1 to
 its local 3; after the exit, static 2, owned by 1, belongs to frame 1, which has exited: frame 0
 no longer owns it and it is not usable. With statics without owning element, the callee could
@@ -8594,33 +8597,21 @@ theorem static_not_owned_by_frame0 :
       (.frame (pl := ⟨none, .frame 1, 0⟩) (by decide) rfl)
   exact absurd (h.unique h1) (by decide)
 
-/-- `StaticPinnedBottom` is an obligation on a state, not an invariant (C5; pass-5 report, (c) 2): it holds
-initially for a pinned static owned by another static, and fails on the reached state `o3`,
-whose exit is then rejected by the pin. -/
+/-- Under F3, `StaticPinnedBottom` asks direct ownership by frame 0: it excludes the initial state
+of `stO` where the pinned leaf 2 belongs to the static 2, owned by the static 1 (pass-5 report,
+(c) 2). Pass 5 proved the obligation true there and false on the reached state `o3`
+(`staticPinnedBottom_not_invariant`, retired). The exit of `o3` is still rejected by the pin
+(B4). -/
 abbrev KP2 : K := KT [] [2] [] [] []
-theorem staticPinnedBottom_not_invariant :
-    StaticPinnedBottom KP2 (S3.init stO) ∧ Reachable KP2 stO o3 ∧ ¬ StaticPinnedBottom KP2 o3 ∧
-      ExitStep KP2 o3 .reject := by
-  refine ⟨fun l hl => ?_, .transfer (.enter (.derive (.init (by decide)) (.ok (by decide)))
-    (.ok (by decide))) (.ok (by decide)), fun h => ?_, .reject (by decide)⟩
-  · have : l = 2 := List.mem_singleton.1 hl
-    subst this
-    exact ⟨2, by decide, .place (pl := ⟨none, .place 1, 0⟩) (by decide) rfl
-      (.place (pl := ⟨none, .place 0, 0⟩) (by decide) rfl
-        (.frame (pl := ⟨none, .frame 0, 0⟩) (by decide) rfl))⟩
-  · obtain ⟨q, hq, hob⟩ := h 2 (List.mem_singleton_self _)
-    have hq2 : q = 2 := by
-      rcases (mem_footprint.1 hq).2.2.2 with e | hc
-      · exact e.symm
-      · have hno : ∀ q < 2, 2 ∉ footprint o3.P q := by decide
-        exact absurd hq (hno q (chain_lt hc))
-    subst hq2
-    have hb : o3.F.getLastD 0 = 0 := by decide
-    rw [hb] at hob
-    have h1 : OwnedByFrame o3.P 1 2 :=
-      .place (pl := ⟨none, .place 3, 0⟩) (by decide) rfl
-        (.frame (pl := ⟨none, .frame 1, 0⟩) (by decide) rfl)
-    exact absurd (hob.unique h1) (by decide)
+theorem staticPinnedBottom_excludes_owned_static :
+    ¬ StaticPinnedBottom KP2 (S3.init stO) ∧ Reachable KP2 stO o3 ∧ ExitStep KP2 o3 .reject := by
+  refine ⟨fun h => ?_, .transfer (.enter (.derive (.init (by decide)) (.ok (by decide)))
+    (.ok (by decide))) (.ok (by decide)), .reject (by decide)⟩
+  obtain ⟨q, pl, hq, hpl, ho⟩ := h 2 (List.mem_singleton_self _)
+  have hlt : q < 3 := lt_of_getElem? hpl
+  have key : ∀ q < 3, 2 ∈ footprint (S3.init stO).P q →
+      ((S3.init stO).P[q]?).map (·.owner) ≠ some (.frame ((S3.init stO).F.getLastD 0)) := by decide
+  exact key q hlt hq (by rw [hpl]; simp [ho])
 
 /-- Why `newArena` asked, in pass 5, a storage owned by a place (pass-5 report, (c) 9 and (e) 4),
 and why F1 asks `internal` held by a place. The part 1 of a local of frame 1 is administered by
