@@ -1155,7 +1155,8 @@ def movedDeps (s : S3) (src : Nat) : List Nat :=
 
 /-- Preconditions of `transfer` (MM-03.3 §3, O4), in order: source usable (MM-03.3.1) and
 1 initialised; 2 destination usable, without an `Init` leaf, sharing no leaf with the source (F5:
-the footprints of source and destination are disjoint, the clause `¬ overlap`),
+the footprints of source and destination are disjoint, the clause `¬ overlap`, redundant with
+clauses 1 and 2 by `transfer_overlap_redundant`),
 and still usable once it owns the source's storage (no ownership cycle); exercisable `Modify`
 on the source and on the destination (B2); 4 no active derived
 access on the source other than those it holds; 5 anchors of the value valid; 6 non-escape
@@ -2419,6 +2420,14 @@ the explicit precondition `¬ overlap s.P src dst` of `TransferPre`. -/
 theorem transfer_footprints_disjoint {k : K} {s s' : S3} {src dst : Nat}
     (h : TransferStep k src dst s (.ok s')) : ∀ l ∈ footprint s.P src, l ∉ footprint s.P dst :=
   fun l hl hl' => (Guarded.ok_iff.1 h).1.2.2.2.2.1 ⟨l, hl, hl'⟩
+
+/-- F5: the clause `¬ overlap s.P src dst` of `TransferPre` is redundant: it follows from clause 1
+(source initialised) and clause 2 (destination without an `Init` leaf). It stays explicit (F5:
+nothing removed). -/
+theorem transfer_overlap_redundant {s : S3} {src dst : Nat}
+    (h1 : ∀ l ∈ footprint s.P src, s.I l = .init)
+    (h2 : ∀ l ∈ footprint s.P dst, s.I l ≠ .init) : ¬ overlap s.P src dst :=
+  fun ⟨l, hl, hl'⟩ => h2 l hl' (h1 l hl)
 
 /-! ## Preservation by `depend`, `read3`, `write3` -/
 
@@ -5889,24 +5898,24 @@ theorem mem_of_mem_dropWhile {p : Nat → Bool} : ∀ {l : List Nat} {x : Nat}, 
     · exact h
 
 /-- `store_escape_rejected_at_transfer` (F4; MM-03.3.1: « Un accès temporaire ne peut être
-prolongé simplement en le stockant dans un cadre plus ancien »; MM-03.3.6; C1): a value `src`
-anchored on an authority `a` whose effective anchor is held by the current frame `f`, such as
-an authority derived from a local of `f` and stored into `src`, cannot be transferred to a
-destination whose frame, after the transfer, is an older frame `g`: the dependency follows the
-value (MM-03.3 §3, O4) and the clause B8 of `transfer` checks its effective anchor. -/
+prolongé simplement en le stockant dans un cadre plus ancien »; MM-03.3.6; C1): a value `src`,
+one of whose parts (`src` included) is anchored on an authority `a` whose effective anchor is
+held by the current frame `f`, such as an authority derived from a local of `f` and stored into
+`src` or one of its fields, cannot be transferred to a destination whose frame, after the
+transfer, is an older frame `g`: the dependency follows the value (`depsOf`, MM-03.3.6;
+MM-03.3 §3, O4) and the clause B8 of `transfer` checks its effective anchor. It speaks of the
+authorities placed by `store`, which anchors them; a block issued to `src` is held without being
+an anchor (pass-6 report, (d)). -/
 theorem store_escape_rejected_at_transfer {k : K} {s : S3} {src dst a f g : Nat} {F₀ : Frames}
-    {z : Authority} (hwf : WF3 s) (hF : s.F = f :: F₀) (ha : a ∈ s.D src)
+    {z : Authority} (hwf : WF3 s) (hF : s.F = f :: F₀) (ha : a ∈ depsOf s src)
     (hz : s.A[s.effAnchor a]? = some z) (hzf : z.holder = .frame f)
     (hg : (transferEff s src dst).pframe dst = some g) (hgF : g ∈ F₀) :
     TransferStep k src dst s .reject := by
   refine .reject fun hpre => ?_
   have hdst : (transferEff s src dst).Usable dst := hpre.2.2.2.2.2.2.2.1
-  have hsrc := hpre.1
   have hin : a ∈ (transferEff s src dst).D dst := by
     simp only [transferEff, ↓reduceIte]
-    refine List.mem_append_right _ ?_
-    simp only [depsOf, List.mem_flatMap, List.mem_filter, List.mem_range, decide_eq_true_eq]
-    exact ⟨src, ⟨hsrc.lt, hsrc.lt, .inl rfl⟩, ha⟩
+    exact List.mem_append_right _ ha
   have hok := hpre.2.2.2.2.2.2.2.2.2.2.2.2 dst
     (List.mem_range.2 (by have := hdst.lt; simpa [transferEff] using this)) hdst a hin (.inr (.inl rfl))
   have hanc : (transferEff s src dst).effAnchor a = s.effAnchor a :=
@@ -8673,8 +8682,9 @@ theorem case16_reachable :
 /-- Return of a value holding a derived `Modify` access to a part of a container of the caller:
 the buffer 2 of case 16 holds the block 7, derived from `internal` on the part 4 of the storage 3.
 After the return, a write of the caller on the whole container (expected: reject), on the other
-part 5 (expected: `ok`). In the model, a value holds a derived access only as a block issued to
-it: `derive` and `split` give the current frame as holder. -/
+part 5 (expected: `ok`). A value holds a derived access as a block issued to it or, since F4, as
+an authority stored into it by `store`; `derive` and `split` give the current frame as holder.
+Case 16 is modelled here by an issued block. -/
 example : (a9.A[7]?).map (fun y => (y.origin, y.holder, y.footprint, y.mode, y.active)) =
     some (some 3, .place 2, [4], .modify, true) := by decide
 example : Write3Step 3 [4, 5] a9 .reject := .reject (by decide)
@@ -9072,6 +9082,19 @@ example : IssueAt K0 0 1 [4] 6 lb4 (.ok lb5) :=
 example : TransferStep K0 1 0 lb5 .reject := .reject (by decide)
 example : TransferStep K0 1 7 lb5 (.ok (transferEff lb5 1 7)) := .ok (by decide)
 
+/-- A value that holds a block derived from a local buffer, without being anchored on it, is not
+stopped at the `transfer` (pass-6 report, (d) and (e)): the block 8 is held by the local 5 of
+frame 2, derived from `internal` 7, of effective anchor the root 3 of the buffer, held by frame 2;
+`issue` does not add it to the anchors of 5 (A10). The transfer of 5 to the caller's result 0 is
+accepted, and the block is then held by a place of frame 1; the exit of frame 2 is rejected
+(O7, A7: the block survives and its ancestors do not). -/
+example : (lb5.A[8]?).map (fun y => (y.origin, y.holder, y.footprint)) = some (some 7, .place 5, [3]) ∧
+    lb5.D 5 = [] := by decide
+example : TransferStep K0 5 0 lb5 (.ok (transferEff lb5 5 0)) := .ok (by decide)
+example : ((transferEff lb5 5 0).A[8]?).map (·.holder) = some (.place 0) ∧
+    (transferEff lb5 5 0).pframe 0 = some 1 := by decide
+example : ExitStep K0 (transferEff lb5 5 0) .reject := .reject (by decide)
+
 /-! ### Arena on an allocation owned by its value, returned (F1) -/
 
 /-- Frame 1: 0 result; it derives 1, `Modify` on 0, and calls. Frame 2: 1 arena value,
@@ -9119,6 +9142,43 @@ theorem vw3_escape_rejected : Reachable K0 [] vw3 ∧ TransferStep K0 2 0 vw3 .r
     (z := ⟨.modify, none, [1], .frame 2, true⟩)
     (reachable_access_invariant_underDD (KT_dd [] [] [] [] []) r).1 (by decide) (by decide)
     (by decide) rfl (by decide) (by decide)⟩
+
+/-- A view stored into a field of a structure (F4; MM-03.3.6): frame 2 has 1 array, 2 structure
+with the field 3, 4 another local. The view 5 on the array is stored into the field 3 (expected:
+`ok`); it is an anchor of the field, not of the structure. The transfer of the structure to the
+caller's result is rejected (expected: reject), the dependency of the field following the value
+(`depsOf`); to the other local 4, accepted (expected: `ok`). -/
+def fw0 : S3 := enterEff (deriveEff (enter1 [(none, none, 0)]) 0 0 .modify) [1]
+  [(none, none, 0), (none, none, 0), (some 2, none, 0), (none, none, 0)]
+def fw1 : S3 := write3Eff fw0 [1]
+def fw2 : S3 := deriveEff fw1 2 1 .observe
+def fw3 : S3 := storeEff fw2 5 3
+example : DeriveStep 2 1 .observe fw1 (.ok fw2) := .ok (by decide)
+example : StoreStep 5 3 fw2 (.ok fw3) := .ok (by decide)
+example : 5 ∉ fw3.D 2 ∧ 5 ∈ fw3.D 3 := by decide
+example : TransferStep K0 2 0 fw3 .reject := .reject (by decide)
+example : TransferStep K0 2 4 fw3 (.ok (transferEff fw3 2 4)) := .ok (by decide)
+theorem fw3_escape_rejected : Reachable K0 [] fw3 ∧ TransferStep K0 2 0 fw3 .reject := by
+  have r : Reachable K0 [] fw3 := .store (.derive (.write (.enter (.derive (.enter (.init (by decide))
+    (.ok (by decide))) (.ok (by decide))) (.ok (by decide))) (show Write3Step 2 [1] fw0 (.ok fw1) from
+      .ok (by decide))) (show DeriveStep 2 1 .observe fw1 (.ok fw2) from .ok (by decide)))
+    (show StoreStep 5 3 fw2 (.ok fw3) from .ok (by decide))
+  refine ⟨r, store_escape_rejected_at_transfer (a := 5) (f := 2) (g := 1) (F₀ := [1, 0])
+    (z := ⟨.modify, none, [1], .frame 2, true⟩)
+    (reachable_access_invariant_underDD (KT_dd [] [] [] [] []) r).1 (by decide) (by decide)
+    (by decide) rfl (by decide) (by decide)⟩
+
+/-! ### A second arena on the same root (F1) -/
+
+/-- The case `x2` (`newArena 4 3` accepted, a second arena with the root 3 as `internal`
+rejected) is in the witnesses of pass 5. F1 guards by `internal` only: once the frame derives
+4, `Modify` on the root place 3, from the root 3 and stores it into the place 2, a second arena
+on the root place 3 with `internal` 4 is accepted while the first lives (pass-6 report, (e)). -/
+def y1 : S3 := deriveEff (newArenaEff x2 4 3) 3 3 .modify
+def y3 : S3 := storeEff y1 4 2
+example : DeriveStep 3 3 .modify (newArenaEff x2 4 3) (.ok y1) := .ok (by decide)
+example : StoreStep 4 2 y1 (.ok y3) := .ok (by decide)
+example : y3.Active 3 ∧ NewArenaStep 3 4 y3 (.ok (newArenaEff y3 3 4)) := ⟨by decide, .ok (by decide)⟩
 
 /-! ### `store` of a root (F4) -/
 
@@ -9169,7 +9229,11 @@ callee; `CallProtects` holds. After the callee releases the parameter (expected:
 or a read through the root and a derivation from it are rejected (expected: reject), and
 `CallProtects` still holds. Two nested calls: frame 2 derives 2 from 1 and calls with `[2]`; in
 frame 3 neither 0 nor 1 is exercisable; after releasing 2, a write through 1 or 0 is rejected;
-`CallProtects` holds in its transitive form. -/
+`CallProtects` holds in its transitive form. Positive twins: the callee writes and reads through
+the parameter; after the release and the exit, the caller writes and derives through its root;
+in the nested case, frame 2 writes through 1 after the exit of frame 3, and frame 1 through 0
+after the exit of frame 2. In `pw0` the leaf is initialised before the call, so the rejected read
+through the root after the release fails on exercise alone, and is accepted after the exit. -/
 def pv0 : S3 := enterEff (deriveEff (enter1 [(none, none, 0)]) 0 0 .modify) [1] []
 def pv1 : S3 := enterEff (deriveEff pv0 1 0 .modify) [2] []
 example : pv0.callParams 2 = [1] ∧ pv0.afp 0 = pv0.afp 1 ∧ ¬ pv0.ExercisableAt 0 .modify ∧
@@ -9188,6 +9252,28 @@ example : ReleaseStep 2 pv1 (.ok (releaseEff pv1 2)) := .ok (by decide)
 example : Write3Step 1 [0] (releaseEff pv1 2) .reject := .reject (by decide)
 example : Write3Step 0 [0] (releaseEff pv1 2) .reject := .reject (by decide)
 example : CallProtects (releaseEff pv1 2) := callProtects_of_check (by decide)
+example : Write3Step 1 [0] pv0 (.ok (write3Eff pv0 [0])) := .ok (by decide)
+example : Read3Step 1 [0] (write3Eff pv0 [0]) (.ok (write3Eff pv0 [0])) := .ok (by decide)
+example : ExitStep K0 (releaseEff pv0 1) (.ok (exitEff (releaseEff pv0 1))) := .ok (by decide)
+example : Write3Step 0 [0] (exitEff (releaseEff pv0 1))
+    (.ok (write3Eff (exitEff (releaseEff pv0 1)) [0])) := .ok (by decide)
+example : DeriveStep 0 0 .modify (exitEff (releaseEff pv0 1))
+    (.ok (deriveEff (exitEff (releaseEff pv0 1)) 0 0 .modify)) := .ok (by decide)
+example : Write3Step 2 [0] pv1 (.ok (write3Eff pv1 [0])) := .ok (by decide)
+example : ExitStep K0 (releaseEff pv1 2) (.ok (exitEff (releaseEff pv1 2))) := .ok (by decide)
+example : Write3Step 1 [0] (exitEff (releaseEff pv1 2))
+    (.ok (write3Eff (exitEff (releaseEff pv1 2)) [0])) := .ok (by decide)
+example : Write3Step 0 [0] (exitEff (releaseEff (exitEff (releaseEff pv1 2)) 1))
+    (.ok (write3Eff (exitEff (releaseEff (exitEff (releaseEff pv1 2)) 1)) [0])) := .ok (by decide)
+def pw0 : S3 := enterEff (deriveEff (write3Eff (enter1 [(none, none, 0)]) [0]) 0 0 .modify) [1] []
+example : CallProtects pw0 := callProtects_of_check (by decide)
+example : Read3Step 1 [0] pw0 (.ok pw0) := .ok (by decide)
+example : ReleaseStep 1 pw0 (.ok (releaseEff pw0 1)) := .ok (by decide)
+example : (releaseEff pw0 1).I 0 = .init ∧ ¬ (releaseEff pw0 1).ExercisableAt 0 .observe := by decide
+example : Read3Step 0 [0] (releaseEff pw0 1) .reject := .reject (by decide)
+example : ExitStep K0 (releaseEff pw0 1) (.ok (exitEff (releaseEff pw0 1))) := .ok (by decide)
+example : Read3Step 0 [0] (exitEff (releaseEff pw0 1)) (.ok (exitEff (releaseEff pw0 1))) :=
+  .ok (by decide)
 
 /-! ### Progress (F7) -/
 
@@ -9197,10 +9283,12 @@ blocks 5 on `[5]` and 6 on `[6]` are issued to 2 and 3. The frame derives 7, `Mo
 the block 6, and stores it into A; then derives 8, `Modify` on A from the block 5, and stores it
 into B. Expected: the second `store` rejected. Obtained: accepted. In `fa7`, before it, the block
 6 has lost its effective `Modify` on B to 7, but 7, held by A, is exercisable through 8, held by
-the frame, which has effective `Modify` on A: `HasRight` on B holds. After it, 7 and 8 are each
-exercisable only through the other: neither is exercisable, neither can be released, the node
-values cannot end, the arena cannot be reset. The exit of frame 1 releases both. Each state is
-reached from `S3.init []`, with a non-empty list of arenas. -/
+the frame, which has effective `Modify` on A (B2): `HasRight` on B holds, and no clause of
+`StorePre` fails. In `fa8`, neither 7 nor 8 is exercisable, and `release` of 7 or 8, `endUse` of
+2 or 3 and `reset` are rejected; the `endUse` and `reset` rejections already hold before the
+second store, where 8 could still be released first. Whether frame 1 can free 7 or 8 before its
+exit is open (F7: no conclusion of impossibility without proof). The exit of frame 1 releases
+both. Each state is reached from `S3.init []`; the list of arenas is non-empty from `fa2` on. -/
 def fa0 : S3 := enter1 [(none, none, 0), (none, none, 0), (none, none, 0), (none, none, 0)]
 def fa1 : S3 :=
   allocEff (write3Eff fa0 [1]) 1 0 [(none, none, 0), (some 4, none, 0), (some 4, none, 0)]
