@@ -228,12 +228,11 @@ structure Authority where
   active : Bool
 deriving DecidableEq, Repr
 
-/-- An arena entry (MM-03.3 §6; A10; D3): `storage` is the place of the administered storage,
-owned by the arena value; `internal` is the authority that administers it, the root of `storage`
-or, for an arena nested in a block of another arena, that block (D3); `available` and `issued`
-are the logical state of §6, `issued` mapping each issued region to the issued block. The owner
-is not a field: it is the owner of `storage`, which follows transfers (A5). The anchor of §6 is
-not a field either: dependents anchor on the blocks (A10). -/
+/-- An arena entry (MM-03.3 §6; A10; D3; F1): `storage` is the place of the administered storage;
+`internal` is the authority that administers it, named by `newArena` (F1); `available` and
+`issued` are the logical state of §6, `issued` mapping each issued region to the issued block.
+The arena value is not a field: it is the place that holds `internal` (F1), which follows
+transfers (A4). The anchor of §6 is not a field either: dependents anchor on the blocks (A10). -/
 structure Arena where
   storage : Nat
   internal : Nat
@@ -5720,11 +5719,12 @@ theorem canWrite3_excl_redundant {s : S3} (h1 : I1 s) {a : Nat} {ls : List Nat}
 
 /-! ## Arena (MM-03.3 §6, A10) -/
 
-/-- The place of the arena value: the owner of its storage (A10). -/
+/-- The place of the arena value: the holder of `internal` (F1, replacing the owner of the storage
+of A10 and D3). -/
 def arenaValue (s : S3) (ar : Arena) : Option Nat :=
-  match s.P[ar.storage]? with
-  | some pl =>
-    match pl.owner with
+  match s.A[ar.internal]? with
+  | some y =>
+    match y.holder with
     | .place v => some v
     | .frame _ => none
   | none => none
@@ -5735,26 +5735,13 @@ def metaLeaves (s : S3) (ar : Arena) : List Nat :=
   | some v => footprint s.P v
   | none => []
 
-/-- The place `q` exists and is owned by a place (A10: the storage of an arena is owned by the
-arena value). -/
-def OwnedStorage (s : S3) (q : Nat) : Prop :=
-  OptP (s.P[q]?) (fun pl => pl.owner.isPlace = true) False
-
-instance (s : S3) (q : Nat) : Decidable (OwnedStorage s q) := by
-  unfold OwnedStorage; infer_instance
-
-theorem OwnedStorage.of_P {s s' : S3} {q : Nat} (h : OwnedStorage s q)
-    (hP : s'.P[q]? = s.P[q]?) : OwnedStorage s' q := by
-  unfold OwnedStorage at h ⊢; rw [hP]; exact h
-
-/-- Arena invariant (MM-03.3 §6; A10; D3). Clauses of §6: issued regions within the administered
-storage (the footprint of `internal`); two simultaneously valid issued regions disjoint;
-available regions disjoint from the still distributed ones; added: available regions within the
-storage. Clauses of A10: each emission is a `Modify` authority derived from `internal` on its
-region; the storage is owned by a place, the arena value. D3: `internal` is a `Modify` authority
-held by the owner of the storage and covering exactly its footprint: its root for an allocated
-root, the block for an arena nested in a block of another arena, so neither a root place nor an
-authority without origin is required (A10 asked both). -/
+/-- Arena invariant (MM-03.3 §6; A10; D3; F1; F2). Clauses of §6: issued regions within the
+administered storage (the footprint of `internal`); two simultaneously valid issued regions
+disjoint; available regions disjoint from the still distributed ones; added: available regions
+within the storage. Clause of A10: each emission is a `Modify` authority derived from `internal`
+on its region. F2: the storage is a place of `P`, owned by anything (a local, a static, an
+allocated root, a block): the ownership clause of A10 is removed. F1: `internal` is a `Modify`
+authority held by a place, the arena value, and covers exactly the footprint of the storage. -/
 def ArenaInv (s : S3) (ar : Arena) : Prop :=
   (∀ l ∈ ar.available, l ∈ s.afp ar.internal) ∧
   (∀ e ∈ ar.issued, ∀ l ∈ e.1, l ∈ s.afp ar.internal) ∧
@@ -5762,9 +5749,9 @@ def ArenaInv (s : S3) (ar : Arena) : Prop :=
   (∀ e ∈ ar.issued, s.Active e.2 → ∀ l ∈ e.1, l ∉ ar.available) ∧
   (∀ e ∈ ar.issued, ∃ y, s.A[e.2]? = some y ∧ y.origin = some ar.internal ∧
     y.footprint = e.1 ∧ y.mode = .modify) ∧
-  OwnedStorage s ar.storage ∧
-  (∃ (y : Authority) (pl : Place), s.A[ar.internal]? = some y ∧ s.P[ar.storage]? = some pl ∧
-    y.mode = .modify ∧ y.holder = pl.owner) ∧
+  ar.storage < s.P.length ∧
+  (∃ (y : Authority) (v : Nat), s.A[ar.internal]? = some y ∧ y.mode = .modify ∧
+    y.holder = .place v) ∧
   (∀ l, l ∈ s.afp ar.internal ↔ l ∈ footprint s.P ar.storage)
 
 /-- Right to update the metadata of the arena (A10; C6, aligned with `ProviderRight`): exercisable
@@ -5928,7 +5915,7 @@ theorem arena_issue_preserves_disjointness {k : K} {s s' : S3} {ar ar' : Arena} 
     (fun l hl => by simpa [S3.afp, hx] using (hreg l hl).1)
     (fun l hl => by rw [(hreg l hl).2]; simp [Allows, OptP, Mode.le]) hdst
   have hdis := issue_disjoint_redundant hwf hai fun l hl => (hreg l hl).2
-  obtain ⟨c0, c1, c2, c3, c4, c5, ⟨yi, pli, hyi, hpli, hmi, hhi⟩, c7⟩ := hai
+  obtain ⟨c0, c1, c2, c3, c4, c5, ⟨yi, vi, hyi, hmi, hhi⟩, c7⟩ := hai
   have old : ∀ e ∈ ar.issued, e.2 < s.A.length := fun e he => by
     obtain ⟨y, hy, -⟩ := c4 e he; exact lt_of_getElem? hy
   have hi := lt_of_getElem? hyi
@@ -5937,7 +5924,7 @@ theorem arena_issue_preserves_disjointness {k : K} {s s' : S3} {ar ar' : Arena} 
       (s := s.addAuth ⟨.modify, some ar.internal, region, .place dst, true⟩) rfl rfl rfl).1 hq) y hy,
     i4_always _⟩, ?_⟩
   refine ⟨fun l hl => ?_, fun e he l hl => ?_, ?_, fun e he ha l hl => ?_, fun e he => ?_, c5,
-    ⟨yi, pli, by show (s.addAuth _).A[ar.internal]? = _; rw [addAuth_lt hi]; exact hyi, hpli,
+    ⟨yi, vi, by show (s.addAuth _).A[ar.internal]? = _; rw [addAuth_lt hi]; exact hyi,
       hmi, hhi⟩, fun l => by
       show l ∈ (s.addAuth _).afp ar.internal ↔ _; rw [afp_addAuth_lt hi]; exact c7 l⟩
   · show l ∈ (s.addAuth _).afp ar.internal
@@ -6076,22 +6063,19 @@ inductive KStep (k : K) : S3 → S3 → Prop where
       AllocStep k pr ow ls s (.ok s') → KStep k s s'
 
 /-- Sufficient conditions for the arena invariant to carry over to a new state: existing
-authorities keep mode and footprint, only lose activity, keep an origin equal to `internal` (the
-conjunct on an absent origin is no longer used since D3); the storage stays owned by a place;
-`internal` stays held by the owner of the storage. -/
+authorities keep mode and footprint, only lose activity, keep an origin equal to `internal`; places
+are not removed; `internal` stays held by a place (F1). -/
 theorem arenaInv_transport {s s' : S3} {ar : Arena} (hai : ArenaInv s ar)
     (hA : ∀ (j : Nat) (y : Authority), s.A[j]? = some y → ∃ y', s'.A[j]? = some y' ∧
       y'.mode = y.mode ∧ y'.footprint = y.footprint ∧ (y'.active = true → y.active = true) ∧
-      (y.origin = some ar.internal → y'.origin = some ar.internal) ∧
-      (y.origin = none → y'.origin = none))
-    (hroot : OwnedStorage s' ar.storage)
-    (hown : ∀ (y y' : Authority) (pl : Place), s.A[ar.internal]? = some y →
-      s'.A[ar.internal]? = some y' → s.P[ar.storage]? = some pl → y.holder = pl.owner →
-      ∃ pl', s'.P[ar.storage]? = some pl' ∧ y'.holder = pl'.owner)
+      (y.origin = some ar.internal → y'.origin = some ar.internal))
+    (hlen : s.P.length ≤ s'.P.length)
+    (hown : ∀ (y y' : Authority) (v : Nat), s.A[ar.internal]? = some y →
+      s'.A[ar.internal]? = some y' → y.holder = .place v → ∃ v', y'.holder = .place v')
     (hfoot : ∀ l, l ∈ footprint s'.P ar.storage ↔ l ∈ footprint s.P ar.storage) :
     ArenaInv s' ar := by
-  obtain ⟨c0, c1, c2, c3, c4, -, ⟨yi, pli, hyi, hpli, hmi, hhi⟩, c7⟩ := hai
-  obtain ⟨yi', hyi', mi, fi, -, -, -⟩ := hA _ yi hyi
+  obtain ⟨c0, c1, c2, c3, c4, c5, ⟨yi, vi, hyi, hmi, hhi⟩, c7⟩ := hai
+  obtain ⟨yi', hyi', mi, fi, -, -⟩ := hA _ yi hyi
   have hafp : s'.afp ar.internal = s.afp ar.internal := by simp [S3.afp, hyi, hyi', fi]
   have act : ∀ x, s'.Active x → x < s.A.length → s.Active x := fun x ⟨y', hy', ya'⟩ hx => by
     obtain ⟨y, hy⟩ : ∃ y, s.A[x]? = some y := ⟨_, List.getElem?_eq_some_iff.2 ⟨hx, rfl⟩⟩
@@ -6099,76 +6083,68 @@ theorem arenaInv_transport {s s' : S3} {ar : Arena} (hai : ArenaInv s ar)
     rw [hy'] at hy''; cases hy''; exact ⟨y, hy, ha ya'⟩
   have old : ∀ e ∈ ar.issued, e.2 < s.A.length := fun e he => by
     obtain ⟨y, hy, -⟩ := c4 e he; exact lt_of_getElem? hy
-  obtain ⟨pl', hpl', hh'⟩ := hown yi yi' pli hyi hyi' hpli hhi
+  obtain ⟨vi', hh'⟩ := hown yi yi' vi hyi hyi' hhi
   refine ⟨fun l hl => hafp ▸ c0 l hl, fun e he l hl => hafp ▸ c1 e he l hl,
     c2.imp_of_mem fun {e e'} he he' h ha ha' => h (act _ ha (old e he)) (act _ ha' (old e' he')),
-    fun e he ha => c3 e he (act _ ha (old e he)), fun e he => ?_, hroot,
-    ⟨yi', pl', hyi', hpl', mi ▸ hmi, hh'⟩, fun l => by rw [hafp, hfoot]; exact c7 l⟩
+    fun e he ha => c3 e he (act _ ha (old e he)), fun e he => ?_, Nat.lt_of_lt_of_le c5 hlen,
+    ⟨yi', vi', hyi', mi ▸ hmi, hh'⟩, fun l => by rw [hafp, hfoot]; exact c7 l⟩
   obtain ⟨y, hy, ho, hf, hm⟩ := c4 e he
-  obtain ⟨y', hy', m', f', -, o', -⟩ := hA _ y hy
+  obtain ⟨y', hy', m', f', -, o'⟩ := hA _ y hy
   exact ⟨y', hy', o' ho, f'.trans hf, m'.trans hm⟩
 
 theorem OwnedRoot.of_P {s s' : S3} {q : Nat} (h : OwnedRoot s q) (hP : s'.P[q]? = s.P[q]?) :
     OwnedRoot s' q := by
   unfold OwnedRoot at h ⊢; rw [hP]; exact h
 
-/-- `arena_inv_preserved` (MM-03.3 §6; A10; D3): every `ok` transition of a kernel operation
+/-- `arena_inv_preserved` (MM-03.3 §6; A10; D3; F1): every `ok` transition of a kernel operation
 preserves the arena invariant of an arena still live afterwards. Liveness after the step is
-needed at the exit only: an `internal` that is a block (D3) may have an ancestor that survives
-it, onto which the exit would re-anchor the blocks issued from it (A7). -/
+needed at the exit only: an `internal` that is a block may have an ancestor that survives it, onto
+which the exit would re-anchor the blocks issued from it (A7). -/
 theorem arena_inv_preserved {k : K} {s s' : S3} {ar : Arena} (hwf : WF3 s) (hinv : Inv3base s)
     (hai : ArenaInv s ar) (h : KStep k s s') (hlive : s'.Active ar.internal) : ArenaInv s' ar := by
-  have hroot := hai.2.2.2.2.2.1
-  obtain ⟨yi, pli, hyi, hpli, -, hhi⟩ := hai.2.2.2.2.2.2.1
+  obtain ⟨yi, vi, hyi, -, hhi⟩ := hai.2.2.2.2.2.2.1
   have hi := lt_of_getElem? hyi
   have same : ∀ s₁ : S3, s₁.A = s.A → s₁.P = s.P → ArenaInv s₁ ar := fun s₁ hA hP =>
-    arenaInv_transport hai (fun j y hy => ⟨y, by rw [hA]; exact hy, rfl, rfl, id, id, id⟩)
-      (hroot.of_P (by rw [hP])) (fun y y' pl h1 h2 h3 h4 => ⟨pl, by rw [hP]; exact h3,
-        by rw [hA, h1] at h2; cases h2; exact h4⟩) (fun l => by rw [hP])
+    arenaInv_transport hai (fun j y hy => ⟨y, by rw [hA]; exact hy, rfl, rfl, id, id⟩)
+      (by rw [hP]; exact Nat.le_refl _) (fun y y' v h1 h2 h3 => ⟨v, by
+        rw [hA, h1] at h2; cases h2; exact h3⟩) (fun l => by rw [hP])
   have append : ∀ (l : List Authority), ArenaInv { s with A := s.A ++ l } ar := fun l =>
     arenaInv_transport hai (fun j y hy => ⟨y, List.getElem?_append_left (lt_of_getElem? hy) ▸ hy,
-      rfl, rfl, id, id, id⟩) hroot
-      (fun y y' pl h1 h2 h3 h4 => ⟨pl, h3, by
+      rfl, rfl, id, id⟩) (Nat.le_refl _)
+      (fun y y' v h1 h2 h3 => ⟨v, by
         rw [show ({ s with A := s.A ++ l } : S3).A = s.A ++ l from rfl,
-          List.getElem?_append_left hi, h1] at h2; cases h2; exact h4⟩) (fun _ => Iff.rfl)
+          List.getElem?_append_left hi, h1] at h2; cases h2; exact h3⟩) (fun _ => Iff.rfl)
   have releases : ∀ s₁, OnlyReleases s s₁ → s₁.P = s.P → ArenaInv s₁ ar := fun s₁ hr hP =>
     arenaInv_transport hai (fun j y hy => by
       obtain ⟨y', hy'⟩ : ∃ y', s₁.A[j]? = some y' :=
         ⟨_, List.getElem?_eq_some_iff.2 ⟨by rw [hr.1]; exact lt_of_getElem? hy, rfl⟩⟩
       obtain ⟨y₀, hy₀, m, o, f, -, a⟩ := hr.2 j y' hy'
       rw [hy] at hy₀; cases hy₀
-      exact ⟨y', hy', m, f, a, fun h => o ▸ h, fun h => o ▸ h⟩)
-      (hroot.of_P (by rw [hP]))
-      (fun y y' pl h1 h2 h3 h4 => by
+      exact ⟨y', hy', m, f, a, fun h => o ▸ h⟩)
+      (by rw [hP]; exact Nat.le_refl _)
+      (fun y y' v h1 h2 h3 => by
         obtain ⟨y₀, hy₀, -, -, -, hh, -⟩ := hr.2 _ y' h2
         rw [h1] at hy₀; cases hy₀
-        exact ⟨pl, by rw [hP]; exact h3, hh ▸ h4⟩) (fun l => by rw [hP])
+        exact ⟨v, hh ▸ h3⟩) (fun l => by rw [hP])
   cases h with
   | derive hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact append _
   | split hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact append _
   | release hs =>
     obtain ⟨⟨⟨x, hx, -⟩, -⟩, rfl⟩ := Guarded.ok_iff.1 hs
-    refine releases _ ⟨by rw [releaseEff_eq hx]; simp, fun j z hz => ?_⟩ (by rw [releaseEff_eq hx])
-    rw [releaseEff_eq hx] at hz; rw [set_get (lt_of_getElem? hx)] at hz
-    split at hz
-    · subst_vars; cases hz; exact ⟨x, hx, rfl, rfl, rfl, rfl, by simp⟩
-    · exact ⟨z, hz, rfl, rfl, rfl, rfl, id⟩
+    exact releases _ (release_releases s _) (by rw [releaseEff_eq hx])
   | transfer hs =>
     rename_i src dst
     obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs
     refine arenaInv_transport hai (fun j y hy =>
       ⟨if heldIn s.P src y.holder then { y with holder := .place dst } else y,
-        by rw [transfer_A_get, hy]; rfl, ?_⟩) ?_ ?_ (fun l => by rw [transfer_footprint])
+        by rw [transfer_A_get, hy]; rfl, ?_⟩) (by simp [transferEff]) ?_
+        (fun l => by rw [transfer_footprint])
     · by_cases hc : heldIn s.P src y.holder <;> simp [hc]
-    · have hr : pli.owner.isPlace = true := by simpa [OwnedStorage, OptP, hpli] using hroot
-      simp only [OwnedStorage, OptP, transfer_P_get, hpli, Option.map_some]
-      by_cases hc : heldIn s.P src pli.owner
-      · simp [hc, Holder.isPlace]
-      · simp [hc, hr]
-    · intro y y' pl h1 h2 h3 h4
+    · intro y y' v h1 h2 h3
       rw [transfer_A_get, h1] at h2; cases h2
-      refine ⟨_, by rw [transfer_P_get, h3]; rfl, ?_⟩
-      by_cases hc : heldIn s.P src pl.owner <;> simp [hc, h4]
+      by_cases hc : heldIn s.P src y.holder
+      · exact ⟨dst, by simp only [hc, ↓reduceIte]⟩
+      · exact ⟨v, by simp only [hc, ↓reduceIte]; exact h3⟩
   | depend hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact same _ rfl rfl
   | read hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact same _ rfl rfl
   | write hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact same _ rfl rfl
@@ -6178,20 +6154,19 @@ theorem arena_inv_preserved {k : K} {s s' : S3} {ar : Arena} (hwf : WF3 s) (hinv
   | enter hs =>
     rename_i ps ls
     obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 hs
-    have hst := lt_of_getElem? hpli
+    have hst := hai.2.2.2.2.2.1
     have hnot : ar.internal ∉ ps := fun hm => by
       have h1 := hpre.2.1 _ hm
       simp only [OptP, hyi] at h1
       obtain ⟨-, hp, -⟩ := h1
-      have h2 : pli.owner.isPlace = true := by simpa [OwnedStorage, OptP, hpli] using hroot
-      rw [← hhi, hp] at h2; simp [Holder.isPlace] at h2
+      rw [hhi] at hp; cases hp
     refine arenaInv_transport hai (fun j y hy => ⟨_, by rw [enter_lt (lt_of_getElem? hy), hy]; rfl,
-      ?_⟩) (hroot.of_P (enterP_lt hst)) ?_ (enter_footprint_old hpre hst)
+      ?_⟩) (by simp [enterEff, enterP_len]) ?_ (enter_footprint_old hpre hst)
     · split <;> simp
-    · intro y y' pl h1 h2 h3 h4
+    · intro y y' v h1 h2 h3
       rw [enter_lt hi, h1] at h2; simp only [Option.map_some, Option.some.injEq, hnot,
         ↓reduceIte] at h2
-      exact ⟨pl, by show (enterP s ls)[_]? = _; rw [enterP_lt hst]; exact h3, h2 ▸ h4⟩
+      exact ⟨v, h2 ▸ h3⟩
   | exit hs =>
     obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 hs
     unfold ExitPre at hpre
@@ -6199,8 +6174,8 @@ theorem arena_inv_preserved {k : K} {s s' : S3} {ar : Arena} (hwf : WF3 s) (hinv
     · rename_i f F₀ hF
       obtain ⟨-, -, hR2, -⟩ := hpre
       refine arenaInv_transport hai (fun j y hy => ⟨_, by rw [exit_A_get hF, hy]; rfl,
-        (exitG_same s F₀ j y).1, (exitG_same s F₀ j y).2.1, exitG_active' hy, fun ho => ?_,
-        fun ho => ?_⟩) (hroot.of_P (by rw [exitEff_eq hF])) ?_ (fun l => by rw [exitEff_eq hF])
+        (exitG_same s F₀ j y).1, (exitG_same s F₀ j y).2.1, exitG_active' hy, fun ho => ?_⟩)
+        (by rw [exitEff_eq hF]; exact Nat.le_refl _) ?_ (fun l => by rw [exitEff_eq hF])
       · rcases exitG_origin (s := s) (F₀ := F₀) (a := j) (y := y) with e | ⟨hsv, -, e⟩
         · rw [e, ho]
         · rw [e]
@@ -6210,12 +6185,9 @@ theorem arena_inv_preserved {k : K} {s s' : S3} {ar : Arena} (hwf : WF3 s) (hinv
             rw [exit_A_get hF, hyi] at hz; cases hz; exact exitG_active za
           rw [ancs_cons hwf.origin hob]
           simp [firstSurv, hsi]
-      · rcases exitG_origin (s := s) (F₀ := F₀) (a := j) (y := y) with e | ⟨-, hn, -⟩
-        · rw [e, ho]
-        · exact absurd ho hn
-      · intro y y' pl h1 h2 h3 h4
+      · intro y y' v h1 h2 h3
         rw [exit_A_get hF, h1] at h2; cases h2
-        exact ⟨pl, by rw [exitEff_eq hF]; exact h3, (exitG_same s F₀ _ y).2.2 ▸ h4⟩
+        exact ⟨v, (exitG_same s F₀ _ y).2.2 ▸ h3⟩
     · exact hpre.elim
   | endUse hs =>
     obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs
@@ -6226,13 +6198,13 @@ theorem arena_inv_preserved {k : K} {s s' : S3} {ar : Arena} (hwf : WF3 s) (hinv
   | alloc hs =>
     cases hs with
     | ok hsa _ =>
-    have hst := lt_of_getElem? hpli
+    have hst := hai.2.2.2.2.2.1
     refine arenaInv_transport hai (fun j y hy => ⟨y, by rw [alloc_lt (lt_of_getElem? hy)]; exact hy,
-      rfl, rfl, id, id, id⟩) (hroot.of_P (allocP_lt hst)) ?_
+      rfl, rfl, id, id⟩) (by simp [allocEff, allocP_len]) ?_
       (shape_footprint_old hsa.2.2.2.2.2.1 hst)
-    intro y y' pl h1 h2 h3 h4
+    intro y y' v h1 h2 h3
     rw [alloc_lt hi, h1] at h2; cases h2
-    exact ⟨pl, by rw [show (allocEff _ _ _ _).P = allocP _ _ _ from rfl, allocP_lt hst]; exact h3, h4⟩
+    exact ⟨v, h3⟩
 
 /-! ## Determinism and `ok` outcomes (MM-03.3 §3–5; A6–A10) -/
 
@@ -6637,47 +6609,32 @@ theorem enter_not_inv3_preserving :
 /-- The state with the entry `i` of `arenas` replaced by `ar` (D3). -/
 def arenaSet (s : S3) (i : Nat) (ar : Arena) : S3 := { s with arenas := s.arenas.set i ar }
 
-/-- Authority `j` can administer the storage `storage` (D3): active, `Modify`, held by the owner
-of `storage`, covering exactly its footprint, and of the kind D3 names: « sa racine si `storage`
-est une racine allouée, l'autorité de bloc si `storage` est un bloc émis par une autre arène »,
-read by the module as: without origin when `storage` is a root place, derived when it is a part.
-D3 says nothing of a part that is not an issued block (pass-5 report, (c) 10 and (e) 6). -/
-def IsInternalFor (s : S3) (storage j : Nat) : Prop :=
-  OptP (s.A[j]?) (fun y => y.active = true ∧ y.mode = .modify ∧
-    OptP (s.P[storage]?) (fun pl => y.holder = pl.owner) False ∧
-    (∀ l ∈ y.footprint, l ∈ footprint s.P storage) ∧
-    (∀ l ∈ footprint s.P storage, l ∈ y.footprint) ∧
-    (y.origin = none ↔ parentOf s.P storage = none)) False
+/-- Preconditions of `newArena storage internal` (D3, F1, F2), in order. Kept from D3: exercisable
+`Modify` on `storage`; `storage` usable. F1: `internal`, named by the caller, is active, `Modify`,
+exercisable at `Modify` (B2), and held by a place, the arena value; the footprint of `internal` is
+the footprint of `storage`; no live arena already has `internal` as `internal`. F1 removes the
+guard by place index of D3 and the kind of `internal`; F2 removes the ownership of the storage
+(A10): the storage may be a local, a static, an allocated root or a block. -/
+def NewArenaPre (s : S3) (storage internal : Nat) : Prop :=
+  HasRight s .modify storage ∧ s.Usable storage ∧
+    OptP (s.A[internal]?) (fun y => y.active = true ∧ y.mode = .modify ∧ y.holder.isPlace = true)
+      False ∧
+    s.ExercisableAt internal .modify ∧
+    (∀ l ∈ s.afp internal, l ∈ footprint s.P storage) ∧
+    (∀ l ∈ footprint s.P storage, l ∈ s.afp internal) ∧
+    (∀ ar ∈ s.arenas, s.Active ar.internal → ar.internal ≠ internal)
 
-instance (s : S3) (storage j : Nat) : Decidable (IsInternalFor s storage j) := by
-  unfold IsInternalFor; infer_instance
-
-/-- The `internal` of a new arena on `storage` (D3): the first authority that can administer it,
-the root of an allocated root, or the block for a storage that is a block of another arena. -/
-def arenaInternal (s : S3) (storage : Nat) : Option Nat :=
-  (List.range s.A.length).find? fun j => decide (IsInternalFor s storage j)
-
-/-- Preconditions of `newArena storage` (D3), in order: exercisable `Modify` on `storage`;
-`storage` usable; `storage` owned by a place, the arena value (A10); no live arena already has
-this storage; an authority administers `storage` (`arenaInternal`), which D3 makes the `internal`
-of the new arena. -/
-def NewArenaPre (s : S3) (storage : Nat) : Prop :=
-  HasRight s .modify storage ∧ s.Usable storage ∧ OwnedStorage s storage ∧
-    (∀ ar ∈ s.arenas, s.Active ar.internal → ar.storage ≠ storage) ∧
-    arenaInternal s storage ≠ none
-
-instance (s : S3) (storage : Nat) : Decidable (NewArenaPre s storage) := by
+instance (s : S3) (storage internal : Nat) : Decidable (NewArenaPre s storage internal) := by
   unfold NewArenaPre; infer_instance
 
-/-- Effect of `newArena storage` (D3): a new entry, the whole storage available, nothing issued. -/
-def newArenaEff (s : S3) (storage : Nat) : S3 :=
-  match arenaInternal s storage with
-  | some i => { s with arenas := s.arenas ++ [⟨storage, i, s.afp i, []⟩] }
-  | none => s
+/-- Effect of `newArena storage internal` (D3; F1): a new entry, the whole storage available,
+nothing issued. -/
+def newArenaEff (s : S3) (storage internal : Nat) : S3 :=
+  { s with arenas := s.arenas ++ [⟨storage, internal, s.afp internal, []⟩] }
 
-/-- `newArena storage : ok | reject` as a relation (D3). -/
-def NewArenaStep (storage : Nat) (s : S3) : Outcome3 S3 → Prop :=
-  Guarded (NewArenaPre s storage) (newArenaEff s storage)
+/-- `newArena storage internal : ok | reject` as a relation (D3; F1). -/
+def NewArenaStep (storage internal : Nat) (s : S3) : Outcome3 S3 → Prop :=
+  Guarded (NewArenaPre s storage internal) (newArenaEff s storage internal)
 
 /-- `arena.issue` on the entry `i` of the state (MM-03.3 §6; A10; D3): the step `IssueStep` of the
 recorded arena, whose new logical state is written back; a missing entry is rejected. An entry
@@ -6712,9 +6669,9 @@ def resetAtEff (s : S3) (i : Nat) : S3 :=
 def ResetAtStep (k : K) (i via : Nat) (s : S3) : Outcome3 S3 → Prop :=
   Guarded (ResetAtPre k s i via) (resetAtEff s i)
 
-/-- Determinism of `newArena` (D3). -/
-theorem newArena_det {st : Nat} {s : S3} {o₁ o₂ : Outcome3 S3} (h₁ : NewArenaStep st s o₁)
-    (h₂ : NewArenaStep st s o₂) : o₁ = o₂ := Guarded.det h₁ h₂
+/-- Determinism of `newArena` (D3; F1). -/
+theorem newArena_det {st i : Nat} {s : S3} {o₁ o₂ : Outcome3 S3} (h₁ : NewArenaStep st i s o₁)
+    (h₂ : NewArenaStep st i s o₂) : o₁ = o₂ := Guarded.det h₁ h₂
 
 /-- Determinism of `arena.reset` on an entry of the state (D3). -/
 theorem resetAt_det {k : K} {i via : Nat} {s : S3} {o₁ o₂ : Outcome3 S3}
@@ -6847,52 +6804,43 @@ theorem kstep_preserves_arenas {k : K} {s s' : S3} (hwf : WF3 s) (hinv : Inv3bas
   · rw [h.arenas] at har
     exact arena_inv_preserved hwf hinv (hai ar har (hact _ (hw ar har) ha)) h ha
 
-/-- `newArena` preserves `WF3`, `Inv3` and the arena invariants (D3): it only adds an entry, which
-satisfies `ArenaInv` by its preconditions. -/
-theorem newArena_preserves {s s' : S3} {st : Nat} (hwf : WF3 s) (hinv : Inv3 s)
-    (hw : ArenasWF s) (hai : ArenasInv s) (h : NewArenaStep st s (.ok s')) :
+/-- `newArena` preserves `WF3`, `Inv3` and the arena invariants (D3; F1): it only adds an entry,
+which satisfies `ArenaInv` by its preconditions. -/
+theorem newArena_preserves {s s' : S3} {st i : Nat} (hwf : WF3 s) (hinv : Inv3 s)
+    (hw : ArenasWF s) (hai : ArenasInv s) (h : NewArenaStep st i s (.ok s')) :
     WF3 s' ∧ Inv3 s' ∧ ArenasWF s' ∧ ArenasInv s' := by
-  obtain ⟨⟨-, -, hown, -, hne⟩, rfl⟩ := Guarded.ok_iff.1 h
-  unfold newArenaEff
-  cases hint : arenaInternal s st with
-  | none => exact absurd hint hne
-  | some i =>
-    have hil : i < s.A.length := List.mem_range.1 (List.mem_of_find?_eq_some hint)
-    have hfor : IsInternalFor s st i := by simpa using List.find?_some hint
-    unfold IsInternalFor at hfor
-    obtain ⟨y, hy⟩ : ∃ y, s.A[i]? = some y := ⟨_, List.getElem?_eq_some_iff.2 ⟨hil, rfl⟩⟩
-    rw [hy] at hfor; simp only [OptP] at hfor
-    obtain ⟨-, hm, hh, h1, h2, -⟩ := hfor
-    obtain ⟨pl, hpl⟩ : ∃ pl, s.P[st]? = some pl := by
-      unfold OwnedStorage OptP at hown; split at hown
-      · exact ⟨_, ‹_›⟩
-      · exact hown.elim
-    rw [hpl] at hh; simp only at hh
-    refine ⟨hwf.arenas _, hinv.arenas _, fun ar har => ?_, fun ar har ha => ?_⟩
-    · rcases List.mem_append.1 har with har | har
-      · exact hw ar har
-      · rw [List.mem_singleton.1 har]; exact hil
-    · rcases List.mem_append.1 har with har | har
-      · exact (hai ar har ha).arenas _
-      · rw [List.mem_singleton.1 har]
-        refine ⟨fun l hl => hl, fun _ he => (by cases he), List.Pairwise.nil, fun _ he => (by cases he),
-          fun _ he => (by cases he), hown, ⟨y, pl, hy, hpl, hm, hh⟩, fun l => ?_⟩
-        show l ∈ s.afp i ↔ l ∈ footprint s.P st
-        simp only [S3.afp, hy]
-        exact ⟨h1 l, h2 l⟩
+  obtain ⟨⟨-, hu, hint, -, h1, h2, -⟩, rfl⟩ := Guarded.ok_iff.1 h
+  obtain ⟨y, hy⟩ : ∃ y, s.A[i]? = some y := by
+    unfold OptP at hint; split at hint
+    · exact ⟨_, ‹_›⟩
+    · exact hint.elim
+  rw [hy] at hint; obtain ⟨-, hm, hpl⟩ := hint
+  obtain ⟨v, hv⟩ : ∃ v, y.holder = .place v := by
+    cases hh : y.holder with
+    | place v => exact ⟨v, rfl⟩
+    | frame f => rw [hh] at hpl; cases hpl
+  refine ⟨hwf.arenas _, hinv.arenas _, fun ar har => ?_, fun ar har ha => ?_⟩
+  · rcases List.mem_append.1 har with har | har
+    · exact hw ar har
+    · rw [List.mem_singleton.1 har]; exact lt_of_getElem? hy
+  · rcases List.mem_append.1 har with har | har
+    · exact (hai ar har ha).arenas _
+    · rw [List.mem_singleton.1 har]
+      exact ⟨fun l hl => hl, fun _ he => (by cases he), List.Pairwise.nil, fun _ he => (by cases he),
+        fun _ he => (by cases he), hu.lt, ⟨y, v, hy, hm, hv⟩, fun l => ⟨h1 l, h2 l⟩⟩
 
 /-- The arena invariant of another arena carries over to `issue` (D3): `issue` adds an authority
 and writes the metadata, and changes no place. -/
 theorem arenaInv_issue {s : S3} {ar ar₂ : Arena} {region : List Nat} {dst : Nat}
     (hai : ArenaInv s ar₂) : ArenaInv (issueEff s ar region dst).1 ar₂ := by
-  obtain ⟨yi, pli, hyi, hpli, -, hhi⟩ := hai.2.2.2.2.2.2.1
+  obtain ⟨yi, vi, hyi, -, hhi⟩ := hai.2.2.2.2.2.2.1
   have hi := lt_of_getElem? hyi
   exact arenaInv_transport hai (fun j y hy => ⟨y, by
       show (s.addAuth _).A[j]? = _; rw [addAuth_lt (lt_of_getElem? hy)]; exact hy,
-      rfl, rfl, id, id, id⟩) hai.2.2.2.2.2.1
-    (fun y y' pl h1 h2 h3 h4 => ⟨pl, h3, by
+      rfl, rfl, id, id⟩) (Nat.le_refl _)
+    (fun y y' v h1 h2 h3 => ⟨v, by
       have h2' : (s.addAuth _).A[ar₂.internal]? = some y' := h2
-      rw [addAuth_lt hi, h1] at h2'; cases h2'; exact h4⟩) (fun _ => Iff.rfl)
+      rw [addAuth_lt hi, h1] at h2'; cases h2'; exact h3⟩) (fun _ => Iff.rfl)
 
 /-- `arena.issue` on an entry of the state preserves `WF3`, `Inv3` and the arena invariants
 (MM-03.3 §6; A10; D3). -/
@@ -6957,9 +6905,9 @@ theorem resetAt_preserves {k : K} {s s' : S3} {i via : Nat}
       · exact hai ar₂ har₂ ha
       · exact hai₁.arenas _
 
-/-- `arena_entry_follows_transfer` (D3; A5): when the value that owns the storage of a live arena
-is transferred, the entry stays live and satisfies `ArenaInv`, and the destination becomes its
-arena value. -/
+/-- `arena_entry_follows_transfer` (D3; A4; F1): when the arena value, the place that holds
+`internal`, is transferred, the entry stays live and satisfies `ArenaInv`, and the destination
+becomes its arena value. -/
 theorem arena_entry_follows_transfer {k : K} {s s' : S3} {ar : Arena} {v dst : Nat}
     (hwf : WF3 s) (hinv : Inv3base s) (hai : ArenaInv s ar) (hlive : s.Active ar.internal)
     (hv : arenaValue s ar = some v) (h : TransferStep k v dst s (.ok s')) :
@@ -6972,36 +6920,84 @@ theorem arena_entry_follows_transfer {k : K} {s s' : S3} {ar : Arena} {v dst : N
       by rw [transfer_A_get, hy]; rfl, ?_⟩
     split <;> exact ya
   refine ⟨hlive', arena_inv_preserved hwf hinv hai hk hlive', ?_⟩
-  obtain ⟨pl, hpl, hown⟩ : ∃ pl, s.P[ar.storage]? = some pl ∧ pl.owner = .place v := by
+  obtain ⟨y, hy, hhv⟩ : ∃ y, s.A[ar.internal]? = some y ∧ y.holder = .place v := by
     unfold arenaValue at hv
-    cases hpl : s.P[ar.storage]? with
-    | none => rw [hpl] at hv; cases hv
-    | some pl =>
-      rw [hpl] at hv; simp only at hv
+    cases hy : s.A[ar.internal]? with
+    | none => rw [hy] at hv; cases hv
+    | some y =>
+      rw [hy] at hv; simp only at hv
       split at hv
-      · rename_i w hw; cases hv; exact ⟨pl, rfl, hw⟩
+      · rename_i w hw; cases hv; exact ⟨y, rfl, hw⟩
       · cases hv
-  have hh : heldIn s.P v pl.owner := by rw [hown]; exact ⟨hsrc.lt, .inl rfl⟩
+  have hh : heldIn s.P v y.holder := by rw [hhv]; exact ⟨hsrc.lt, .inl rfl⟩
   unfold arenaValue
-  rw [transfer_P_get, hpl]
+  rw [transfer_A_get, hy]
   simp [hh]
 
-/-- `arena_dies_with_internal` (D3; A6): after `endUse` of the value that owns the storage of an
-arena, its `internal`, held by that value (`ArenaInv`), is released: the entry is no longer live. -/
+/-- `arena_dies_with_internal` (D3; A6; F1): after `endUse` of the arena value, the place that
+holds `internal`, `internal` is released: the entry is no longer live. -/
 theorem arena_dies_with_internal {k : K} {s s' : S3} {ar : Arena} {v : Nat}
-    (hai : ArenaInv s ar) (hv : arenaValue s ar = some v) (h : EndUseStep k v s (.ok s')) :
+    (hv : arenaValue s ar = some v) (h : EndUseStep k v s (.ok s')) :
     ¬ s'.Active ar.internal := by
   obtain ⟨⟨hu, -⟩, rfl⟩ := Guarded.ok_iff.1 h
-  obtain ⟨yi, pli, hyi, hpli, -, hhi⟩ := hai.2.2.2.2.2.2.1
   rintro ⟨z, hz, za⟩
   obtain ⟨hz₀, hnh, -⟩ := endUse_active hz za
-  rw [hyi] at hz₀; cases hz₀
   apply hnh
   unfold arenaValue at hv
-  rw [hpli] at hv; simp only at hv
+  rw [hz₀] at hv; simp only at hv
   split at hv
-  · rename_i w hw; cases hv; rw [hhi, hw]; exact ⟨hu.lt, .inl rfl⟩
+  · rename_i w hw; cases hv; rw [hw]; exact ⟨hu.lt, .inl rfl⟩
   · cases hv
+
+/-- A chain contains the chain of each of its elements, for a link to smaller indices. -/
+theorem chain_trans {org : Nat → Option Nat} (hlt : ∀ i o, org i = some o → o < i) :
+    ∀ n i, i < n → ∀ r, r ∈ chain org i → ∀ o ∈ chain org r, o ∈ chain org i
+  | 0, _, h, _, _, _, _ => absurd h (Nat.not_lt_zero _)
+  | n + 1, i, hi, r, hr, o, ho => by
+    cases hp : org i with
+    | none => rw [chain_none hp] at hr; simp at hr
+    | some p =>
+      have hpi := hlt i p hp
+      rw [chain_cons hp hpi] at hr ⊢
+      rcases List.mem_cons.1 hr with rfl | hr
+      · exact List.mem_cons_of_mem _ ho
+      · exact List.mem_cons_of_mem _ (chain_trans hlt n p (by omega) r hr o ho)
+
+theorem exists_lt_not_of_not_forall {p : Nat → Prop} [DecidablePred p] :
+    ∀ n, ¬ (∀ r < n, p r) → ∃ r < n, ¬ p r
+  | 0, h => absurd (fun r hr => absurd hr (Nat.not_lt_zero r)) h
+  | n + 1, h => by
+    by_cases hn : p n
+    · obtain ⟨r, hr, hp⟩ := exists_lt_not_of_not_forall n fun h' => h fun r hr => by
+        rcases Nat.lt_succ_iff_lt_or_eq.1 hr with hr | rfl
+        · exact h' r hr
+        · exact hn
+      exact ⟨r, by omega, hp⟩
+    · exact ⟨n, Nat.lt_succ_self n, hn⟩
+
+/-- Every place of a well-formed state has a leaf (MM-03.3.2): its parts have larger indices
+(`WF3`), so the search for a part without part terminates. -/
+theorem exists_mem_footprint {s : S3} (hw : WF3 s) :
+    ∀ n q, s.P.length - q < n → q < s.P.length → ∃ l, l ∈ footprint s.P q
+  | 0, _, h, _ => absurd h (Nat.not_lt_zero _)
+  | n + 1, q, hn, hq => by
+    by_cases hleaf : isLeaf s.P q
+    · exact ⟨q, mem_footprint.2 ⟨hq, hleaf, hq, .inl rfl⟩⟩
+    · obtain ⟨r, hr, hpr⟩ := exists_lt_not_of_not_forall _ hleaf
+      have hpr : parentOf s.P r = some q := Decidable.of_not_not hpr
+      have hlt : ∀ i o, parentOf s.P i = some o → o < i := fun i o h => by
+        simp only [parentOf] at h
+        cases hi : s.P[i]? with
+        | none => rw [hi] at h; cases h
+        | some pl => rw [hi] at h; obtain ⟨-, -, hlt, -⟩ := hw.parts i pl o hi h; exact hlt
+      have hqr := hlt r q hpr
+      obtain ⟨l, hl⟩ := exists_mem_footprint hw n r (by omega) hr
+      obtain ⟨hlP, hleaf', -, hlr⟩ := mem_footprint.1 hl
+      refine ⟨l, mem_footprint.2 ⟨hlP, hleaf', hlP, .inr ?_⟩⟩
+      have hrq : q ∈ chain (parentOf s.P) r := by rw [chain_cons hpr hqr]; exact List.mem_cons_self ..
+      rcases hlr with rfl | hlr
+      · exact hrq
+      · exact chain_trans hlt (l + 1) l (Nat.lt_succ_self l) r hlr q hrq
 
 /-! ## Reachability (MM-03.3 §10) -/
 
@@ -7034,8 +7030,8 @@ inductive Reachable (k : K) (statics : Statics) : S3 → Prop where
       Reachable k statics s → FreeStep k p auth s (.ok s') → Reachable k statics s'
   | alloc {s s' : S3} {pr ow : Nat} {ls : List (Option Nat × Option Nat × Nat)} :
       Reachable k statics s → AllocStep k pr ow ls s (.ok s') → Reachable k statics s'
-  | newArena {s s' : S3} {st : Nat} :
-      Reachable k statics s → NewArenaStep st s (.ok s') → Reachable k statics s'
+  | newArena {s s' : S3} {st i : Nat} :
+      Reachable k statics s → NewArenaStep st i s (.ok s') → Reachable k statics s'
   | issue {s s' : S3} {i via dst : Nat} {region : List Nat} :
       Reachable k statics s → IssueAt k i via region dst s (.ok s') → Reachable k statics s'
   | reset {s s' : S3} {i via : Nat} :
@@ -7126,6 +7122,21 @@ theorem reachable_no_dangling {k : K} (hdd : DDSound k) {statics : Statics} {s :
     (h : Reachable k statics s) :
     NoDangling s :=
   (reachable_access_invariant_underDD hdd h).2.1.nd
+
+/-- `live_arena_storage_usable` (F2): in every reached state, the storage of a live arena is
+usable. A corollary of `NoDangling` (C2): `internal` is active and covers the footprint of the
+storage (`ArenaInv`, F1), which has a leaf. Under `DDSound k` (MM-03.3.8). -/
+theorem live_arena_storage_usable {k : K} (hdd : DDSound k) {statics : Statics} {s : S3}
+    (h : Reachable k statics s) : ∀ ar ∈ s.arenas, s.Active ar.internal → s.Usable ar.storage := by
+  obtain ⟨hwf, hinv, hai⟩ := reachable_access_invariant_underDD hdd h
+  intro ar har ⟨y, hy, ya⟩
+  have hi := hai ar har ⟨y, hy, ya⟩
+  obtain ⟨l, hl⟩ := exists_mem_footprint hwf (s.P.length + 1) ar.storage (by omega)
+    hi.2.2.2.2.2.1
+  have hly : l ∈ y.footprint := by
+    have := (hi.2.2.2.2.2.2.2 l).2 hl
+    simpa [S3.afp, hy] using this
+  exact Decidable.byContradiction fun hu => hinv.nd ar.internal y hy ya ar.storage hu l hl hly
 
 /-- `exitFrame_no_dangling` on reached states (MM-03.3 §4, O7; §10), under `DDSound k`
 (MM-03.3.8). -/
@@ -7234,7 +7245,7 @@ example : IssueStep KA c6b.2 0 [3] 5 c6b.1 (.ok c6c.1 c6c.2) := .ok (by decide) 
 example : IssueStep KA c6b.2 0 [2] 5 c6b.1 (.fail c6b.1 c6b.2) := .fail (by decide) (by decide)
 example : ArenaInv c6a ar6 :=
   ⟨(by decide), (by decide), (by decide), (by decide), fun _ h => (nomatch h), (by decide),
-    ⟨_, _, rfl, rfl, rfl, rfl⟩,
+    ⟨_, _, rfl, rfl, rfl⟩,
     fun _ => by rw [show c6a.afp ar6.internal = footprint c6a.P ar6.storage by decide]⟩
 example : WF3 c6a ∧ Inv3 c6a :=
   let h := reachable_access_invariant_underDD (KT_dd [] [] [] [] [])
@@ -7349,7 +7360,7 @@ example : ∀ q, OwnedByFrame (transferEff c16c.1 5 4).P 2 q → ∀ (j : Nat) (
   obtain ⟨hw, ⟨hi, -⟩, -⟩ := reachable_access_invariant_underDD (KT_dd [0] [] [] [] []) r1
   have hai : ArenaInv c16b ar16 :=
     ⟨(by decide), (by decide), (by decide), (by decide), fun _ h => (nomatch h), (by decide),
-      ⟨_, _, rfl, rfl, rfl, rfl⟩,
+      ⟨_, _, rfl, rfl, rfl⟩,
       fun _ => by rw [show c16b.afp ar16.internal = footprint c16b.P ar16.storage by decide]⟩
   obtain ⟨hw1, hi1, -⟩ := arena_issue_preserves_disjointness hw hi hai
     (show IssueStep KA ar16 3 [2] 5 c16b (.ok c16c.1 c16c.2) from
@@ -8241,7 +8252,7 @@ theorem reachable_base_owns_statics {k : K} {statics : Statics} {s : S3}
           simp only [this, false_and, iff_false]
           simp only [shapeOwner]; split <;> simp
   | newArena _ h ih =>
-    obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h; unfold newArenaEff; split <;> exact ih
+    obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h; exact ih
   | issue _ h ih => cases h with
     | ok _ hst => cases hst; exact ih
   | reset _ h ih =>
@@ -8344,7 +8355,7 @@ buffer; the callee local 6 receives the block 7 on the region `[4]`, then is ret
 def a0 : S3 := enter1 [(none, none, 0), (none, none, 0), (none, none, 0)]
 def a1 : S3 := write3Eff a0 [1]
 def a2 : S3 := allocEff a1 1 0 [(none, none, 0), (some 3, none, 0), (some 3, none, 0)]
-def a3 : S3 := newArenaEff a2 3
+def a3 : S3 := newArenaEff a2 3 3
 def a6 : S3 := enterEff (deriveEff (deriveEff a3 0 0 .observe) 2 2 .modify) [4, 5] [(none, none, 0)]
 def ar7 : Arena := ⟨3, 3, [4, 5], []⟩
 def a7 : S3 := arenaSet (issueEff a6 ar7 [4] 6).1 0 (issueEff a6 ar7 [4] 6).2
@@ -8356,7 +8367,7 @@ def a11 : S3 := resetAtEff a10 0
 example : Write3Step 1 [1] a0 (.ok a1) := .ok (by decide)
 example : AllocStep KA 1 0 [(none, none, 0), (some 3, none, 0), (some 3, none, 0)] a1 (.ok a2) :=
   .ok (by decide) trivial
-example : NewArenaStep 3 a2 (.ok a3) := .ok (by decide)
+example : NewArenaStep 3 3 a2 (.ok a3) := .ok (by decide)
 example : a3.arenas = [ar7] := by decide
 example : DeriveStep 0 0 .observe a3 (.ok (deriveEff a3 0 0 .observe)) := .ok (by decide)
 example : DeriveStep 2 2 .modify (deriveEff a3 0 0 .observe)
@@ -8380,7 +8391,7 @@ theorem case16_reachable :
   have r2 : Reachable KA [] a2 := .alloc r1
     (show AllocStep KA 1 0 [(none, none, 0), (some 3, none, 0), (some 3, none, 0)] a1 (.ok a2) from
       .ok (by decide) trivial)
-  have r3 : Reachable KA [] a3 := .newArena r2 (show NewArenaStep 3 a2 (.ok a3) from .ok (by decide))
+  have r3 : Reachable KA [] a3 := .newArena r2 (show NewArenaStep 3 3 a2 (.ok a3) from .ok (by decide))
   have r4 : Reachable KA [] (deriveEff a3 0 0 .observe) :=
     .derive r3 (show DeriveStep 0 0 .observe a3 (.ok _) from .ok (by decide))
   have r5 : Reachable KA [] (deriveEff (deriveEff a3 0 0 .observe) 2 2 .modify) :=
@@ -8415,14 +8426,14 @@ After `endUse` of the arena value, `issue` is rejected: its `internal` is releas
 def b0 : S3 := enter1 [(none, none, 0), (none, none, 0), (none, none, 0), (none, none, 0)]
 def b1 : S3 := write3Eff (write3Eff b0 [1]) [0]
 def b2 : S3 := allocEff b1 1 0 [(none, none, 0), (some 4, none, 0), (some 4, none, 0)]
-def b3 : S3 := newArenaEff b2 4
+def b3 : S3 := newArenaEff b2 4 4
 def b4 : S3 := transferEff b3 0 2
 def arB : Arena := ⟨4, 4, [5, 6], []⟩
 example : Write3Step 1 [1] b0 (.ok (write3Eff b0 [1])) := .ok (by decide)
 example : Write3Step 0 [0] (write3Eff b0 [1]) (.ok b1) := .ok (by decide)
 example : AllocStep K0 1 0 [(none, none, 0), (some 4, none, 0), (some 4, none, 0)] b1 (.ok b2) :=
   .ok (by decide) trivial
-example : NewArenaStep 4 b2 (.ok b3) := .ok (by decide)
+example : NewArenaStep 4 4 b2 (.ok b3) := .ok (by decide)
 example : b3.arenas = [arB] ∧ arenaValue b3 arB = some 0 := by decide
 example : TransferStep K0 0 2 b3 (.ok b4) := .ok (by decide)
 example : b4.arenas = [arB] ∧ arenaValue b4 arB = some 2 ∧ b4.Active 4 := by decide
@@ -8436,25 +8447,25 @@ example : IssueAt K0 0 2 [5] 3 (endUseEff b4 2) .reject :=
 
 /-! ### Nested arena (D3) -/
 
-/-- An arena nested in a block of another arena, the only form that the model realises: the
-`internal` of the child must be held by the owner of its storage (D3), and a block region is
-always storage owned by the parent arena value, so the block must be issued to the parent arena
-value itself. Frame 1: 0 arena value, 1 allocator value; storage 2 with parts 3 and 4, of root
+/-- An arena nested in a block of another arena, with the block issued to the parent arena value
+itself, the only form that D3 realised (pass-5 report, (d) 2); still legal under F1, where the
+arena value is the holder of `internal`. The form of pass 6, with a child arena value distinct
+from the parent's, is among the new cases of pass 6. Frame 1: 0 arena value, 1 allocator value; storage 2 with parts 3 and 4, of root
 authority 2; the parent issues the block 3 on `[3]` to 0; `newArena 3` registers the child, of
 `internal` 3, derived from
 the parent's `internal` 2. The `reset` of the parent is rejected while the child lives; after the
 release of the child's `internal`, the child is dead and the `reset` of the parent is accepted. -/
 def nA0 : S3 := enter1 [(none, none, 0), (none, none, 0)]
 def nA2 : S3 := allocEff (write3Eff nA0 [1]) 1 0 [(none, none, 0), (some 2, none, 0), (some 2, none, 0)]
-def nA3 : S3 := newArenaEff nA2 2
+def nA3 : S3 := newArenaEff nA2 2 2
 def arP : Arena := ⟨2, 2, [3, 4], []⟩
 def nA4 : S3 := arenaSet (issueEff nA3 arP [3] 0).1 0 (issueEff nA3 arP [3] 0).2
-def nA5 : S3 := newArenaEff nA4 3
-example : NewArenaStep 2 nA2 (.ok nA3) := .ok (by decide)
+def nA5 : S3 := newArenaEff nA4 3 3
+example : NewArenaStep 2 2 nA2 (.ok nA3) := .ok (by decide)
 example : nA3.arenas = [arP] := by decide
 example : IssueAt K0 0 0 [3] 0 nA3 (.ok nA4) :=
   .ok (ar := arP) (by decide) (.ok (by decide) (by decide) (by decide))
-example : NewArenaStep 3 nA4 (.ok nA5) := .ok (by decide)
+example : NewArenaStep 3 3 nA4 (.ok nA5) := .ok (by decide)
 example : nA5.arenas.map (fun ar => (ar.storage, ar.internal)) = [(2, 2), (3, 3)] ∧
     (nA5.A[3]?).map (·.origin) = some (some 2) := by decide
 example : ResetAtStep K0 0 0 nA5 .reject := .reject (by decide)
@@ -8474,17 +8485,17 @@ theorem nested_reachable : Reachable K0 [] (resetAtEff (releaseEff nA5 3) 0) := 
   have r2 : Reachable K0 [] nA2 := .alloc r1
     (show AllocStep K0 1 0 [(none, none, 0), (some 2, none, 0), (some 2, none, 0)] _ (.ok nA2) from
       .ok (by decide) trivial)
-  have r3 : Reachable K0 [] nA3 := .newArena r2 (show NewArenaStep 2 nA2 (.ok nA3) from .ok (by decide))
+  have r3 : Reachable K0 [] nA3 := .newArena r2 (show NewArenaStep 2 2 nA2 (.ok nA3) from .ok (by decide))
   have r4 : Reachable K0 [] nA4 := .issue r3 (show IssueAt K0 0 0 [3] 0 nA3 (.ok nA4) from
     .ok (ar := arP) (by decide) (.ok (by decide) (by decide) (by decide)))
-  have r5 : Reachable K0 [] nA5 := .newArena r4 (show NewArenaStep 3 nA4 (.ok nA5) from .ok (by decide))
+  have r5 : Reachable K0 [] nA5 := .newArena r4 (show NewArenaStep 3 3 nA4 (.ok nA5) from .ok (by decide))
   have r6 : Reachable K0 [] (releaseEff nA5 3) :=
     .release r5 (show ReleaseStep 3 nA5 (.ok _) from .ok (by decide))
   exact .reset r6 (show ResetAtStep K0 0 0 (releaseEff nA5 3) (.ok _) from .ok (by decide))
 
-/-- Why the task's form is not realised (pass-5 report, (d) 2): parent and child have the same
-arena value 0 (`nested_same_value`), so the `endUse` of the child's value releases both
-`internal` (`arena_dies_with_internal`), and the `reset` of the parent is then rejected. -/
+/-- In this form, parent and child have the same arena value 0, the holder of both `internal`
+(F1), so the `endUse` of the child's value releases both (`arena_dies_with_internal`), and the
+`reset` of the parent is then rejected (pass-5 report, (d) 2). -/
 example : nA5.arenas.map (arenaValue nA5) = [some 0, some 0] ∧
     EndUseStep K0 0 nA5 (.ok (endUseEff nA5 0)) ∧
     ¬ (endUseEff nA5 0).Active 2 ∧ ¬ (endUseEff nA5 0).Active 3 ∧
@@ -8517,23 +8528,22 @@ example : Read3Step 1 [1] dd3 .reject := .reject (by decide)
 
 /-! ## Witnesses of the questions of pass 5 -/
 
-/-- D3 names the `internal` of a nested arena: the block. When the parent storage has a single
-part, the root of the parent and the block cover the same leaves; the kind of `IsInternalFor`
-(an authority without origin for a root place, a derived one for a part) makes the block the
-`internal` of the child. Frame 1: 0 arena value, 1 allocator value, 2 block destination; storage 3 with a
+/-- A nested arena on a storage of a single part (pass-5 report, (c) 10): the root of the parent
+and the block cover the same leaves. Under F1 the caller names `internal`: the root 3 is
+rejected, being the `internal` of a live arena, and the block 4 is accepted. Frame 1: 0 arena value, 1 allocator value, 2 block destination; storage 3 with a
 single part 4; the parent issues the block 4 on `[4]` to 0. -/
 def x0 : S3 := enter1 [(none, none, 0), (none, none, 0), (none, none, 0)]
 def x2 : S3 := allocEff (write3Eff x0 [1]) 1 0 [(none, none, 0), (some 3, none, 0)]
 def arX : Arena := ⟨3, 3, [4], []⟩
-def x3 : S3 := newArenaEff x2 3
+def x3 : S3 := newArenaEff x2 3 3
 def x4 : S3 := arenaSet (issueEff x3 arX [4] 0).1 0 (issueEff x3 arX [4] 0).2
-def x5 : S3 := newArenaEff x4 4
+def x5 : S3 := newArenaEff x4 4 4
 example : footprint x2.P 3 = [4] ∧ footprint x2.P 4 = [4] := by decide
-example : NewArenaStep 3 x2 (.ok x3) ∧ x3.arenas = [arX] := ⟨.ok (by decide), by decide⟩
+example : NewArenaStep 3 3 x2 (.ok x3) ∧ x3.arenas = [arX] := ⟨.ok (by decide), by decide⟩
 example : IssueAt K0 0 0 [4] 0 x3 (.ok x4) :=
   .ok (ar := arX) (by decide) (.ok (by decide) (by decide) (by decide))
-example : ¬ IsInternalFor x4 4 3 ∧ IsInternalFor x4 4 4 ∧ arenaInternal x4 4 = some 4 := by decide
-example : NewArenaStep 4 x4 (.ok x5) ∧
+example : NewArenaStep 4 3 x4 .reject := .reject (by decide)
+example : NewArenaStep 4 4 x4 (.ok x5) ∧
     x5.arenas.map (fun ar => (ar.storage, ar.internal)) = [(3, 3), (4, 4)] :=
   ⟨.ok (by decide), by decide⟩
 example : IssueAt K0 1 0 [4] 2 x5
@@ -8541,21 +8551,21 @@ example : IssueAt K0 1 0 [4] 2 x5
   .ok (by decide) (.ok (by decide) (by decide) (by decide))
 example : ResetAtStep K0 0 0 x5 .reject := .reject (by decide)
 
-/-- The kind of `IsInternalFor` changes a verdict D3 does not settle (pass-5 report, (c) 10 and
-(e) 6): in `x2`, without any arena, the storage 4 is the single part of the root 3, which is
-active, `Modify`, without origin, held by the owner of 4 and covers exactly `[4]`. D3's three
-preconditions and `OwnedStorage` hold, but 4 is a part and no derived authority administers it:
-`newArena 4` is rejected. -/
-example : Reachable K0 [] x2 ∧ HasRight x2 .modify 4 ∧ x2.Usable 4 ∧ OwnedStorage x2 4 ∧
-    x2.arenas = [] ∧
+/-- `x2` (pass-5 report, (e) 6; F1): without any arena, the storage 4 is the single part of the
+root 3, which is active, `Modify`, without origin, held by the place 0 and covers exactly `[4]`.
+Pass 5 rejected `newArena 4` (kind of `IsInternalFor`); F1, which removes that kind, accepts
+`newArena 4 3`, with the root 3 as `internal` (expected: `ok`). A second arena with the same root
+as `internal`, here on the root place 3, is rejected (expected: reject). -/
+example : Reachable K0 [] x2 ∧ HasRight x2 .modify 4 ∧ x2.Usable 4 ∧ x2.arenas = [] ∧
     (x2.A[3]?).map (fun y => (y.origin, y.holder, y.footprint, y.mode, y.active)) =
       some (none, .place 0, [4], .modify, true) ∧
     (x2.P[4]?).map (·.owner) = some (.place 0) ∧ footprint x2.P 4 = [4] ∧
-    ¬ IsInternalFor x2 4 3 ∧ arenaInternal x2 4 = none ∧ NewArenaStep 4 x2 .reject :=
+    NewArenaStep 4 3 x2 (.ok (newArenaEff x2 4 3)) ∧
+    NewArenaStep 3 3 (newArenaEff x2 4 3) .reject :=
   ⟨.alloc (.write (.enter (.init (by decide)) (.ok (by decide)))
       (show Write3Step 1 [1] x0 (.ok _) from .ok (by decide)))
     (show AllocStep K0 1 0 [(none, none, 0), (some 3, none, 0)] _ (.ok x2) from .ok (by decide) trivial),
-   by decide, by decide, by decide, by decide, by decide, by decide, by decide, by decide, by decide,
+   by decide, by decide, by decide, by decide, by decide, by decide, .ok (by decide),
    .reject (by decide)⟩
 
 /-- Two places that share a leaf have the same owner (A5, `WF3`). -/
@@ -8566,17 +8576,6 @@ theorem shared_leaf_same_owner {s : S3} (hw : WF3 s) {q₁ q₂ l : Nat}
   obtain ⟨pl', pr', hl', hr', he'⟩ := hw.ownerOf (mem_footprint.1 h₂).2.2
   rw [hl] at hl'; cases hl'
   rw [hr, hr']; simp [← he, he']
-
-/-- A nested arena has the arena value of its parent (D3; A5; pass-5 report, (e) 2): its storage
-shares a leaf with the parent storage, and places that share a leaf have the same owner. The end
-of the child's value is then the end of the parent's. -/
-theorem nested_same_value {s : S3} (hw : WF3 s) {par child : Arena} {l : Nat}
-    (h₁ : l ∈ footprint s.P par.storage) (h₂ : l ∈ footprint s.P child.storage) :
-    arenaValue s par = arenaValue s child := by
-  have := shared_leaf_same_owner hw h₁ h₂
-  unfold arenaValue
-  cases hp : s.P[par.storage]? <;> cases hc : s.P[child.storage]? <;> rw [hp, hc] at this <;>
-    simp at this <;> simp [this]
 
 /-- A static owned by another static (pass-5 report, (c) 2 and (e) 1): a callee holding a derived
 `Modify` parameter on static 0 exercises the root of static 1, held by 0 (A2), and transfers 1 to
@@ -8623,15 +8622,14 @@ theorem staticPinnedBottom_not_invariant :
         (.frame (pl := ⟨none, .frame 1, 0⟩) (by decide) rfl)
     exact absurd (hob.unique h1) (by decide)
 
-/-- Why `newArena` asks the storage owned by a place (A10; pass-5 report, (c) 9 and (e) 4). The part 1
-of a local of frame 1 is administered by the authority 1, derived by frame 1 on it; without the
-owner condition, `newArena 1` would take it as `internal`. `enterFrame` may then pass it as a
-parameter (A3): it becomes held by frame 2 while the storage stays owned by frame 1, and
-`ArenaInv` (internal held by the owner of the storage) fails while the entry is live. -/
+/-- Why `newArena` asked, in pass 5, a storage owned by a place (pass-5 report, (c) 9 and (e) 4),
+and why F1 asks `internal` held by a place. The part 1 of a local of frame 1 is administered by
+the authority 1, derived by frame 1 on it and held by frame 1. `enterFrame` may pass it as a
+parameter (A3), which changes its holder to frame 2. F1 rejects `newArena 1 1`: the authority 1
+is held by a frame, not by a place. -/
 def ow0 : S3 := deriveEff (enter1 [(none, none, 0), (some 0, none, 0), (some 0, none, 0)]) 0 1 .modify
-example : HasRight ow0 .modify 1 ∧ ow0.Usable 1 ∧ arenaInternal ow0 1 = some 1 ∧
-    ¬ OwnedStorage ow0 1 ∧ NewArenaStep 1 ow0 .reject := ⟨by decide, by decide, by decide,
-  by decide, .reject (by decide)⟩
+example : HasRight ow0 .modify 1 ∧ ow0.Usable 1 ∧ ((ow0.A[1]?).map (·.holder) = some (.frame 1)) ∧
+    NewArenaStep 1 1 ow0 .reject := ⟨by decide, by decide, by decide, .reject (by decide)⟩
 example : EnterStep [1] [] ow0 (.ok (enterEff ow0 [1] [])) ∧ (enterEff ow0 [1] []).Active 1 ∧
     ((enterEff ow0 [1] []).A[1]?).map (·.holder) = some (.frame 2) ∧
     ((enterEff ow0 [1] []).P[1]?).map (·.owner) = some (.frame 1) :=
