@@ -1015,6 +1015,43 @@ def ReleaseStep (a : Nat) (s : S3) : Outcome3 S3 → Prop :=
 
 /-! ## O4 `transfer` (MM-03.3 §3, A4, A5) -/
 
+/-! ## Shape of a value (J1) -/
+
+/-- Children of the place `x` (MM-03.3.2), in index order. -/
+def kids (P : List Place) (x : Nat) : List Nat :=
+  (List.range P.length).filter fun r => decide (parentOf P r = some x)
+
+/-- Position of `r` in a list (its length if absent). -/
+def posIn (r : Nat) : List Nat → Nat
+  | [] => 0
+  | a :: l => if a = r then 0 else posIn r l + 1
+
+/-- The part of `dst` that corresponds to the part `r` of `src` (J1), searched within `n` steps:
+`dst` for `src`; for another part, the child, at the same position among the children ordered by
+index, of the place that corresponds to its parent. -/
+def corrF (P : List Place) (src dst : Nat) : Nat → Nat → Option Nat
+  | 0, r => if r = src then some dst else none
+  | n + 1, r => if r = src then some dst else
+      match parentOf P r with
+      | some p => if p < r then
+          (corrF P src dst n p).bind fun p' => (kids P p')[posIn r (kids P p)]? else none
+      | none => none
+
+/-- The part of `dst` that corresponds to the part `r` of `src` (J1). -/
+def corr (P : List Place) (src dst r : Nat) : Option Nat := corrF P src dst r r
+
+/-- J1, « `dst` a la même forme que `src` (sous-arbres isomorphes) »: every part of `src` has a
+corresponding part of `dst` with as many children, and every part of `dst` corresponds to a part
+of `src`. Children are matched in index order (ordered isomorphism). -/
+def SameShape (P : List Place) (src dst : Nat) : Prop :=
+  (∀ r ∈ List.range P.length, partOf P r src →
+    OptP (corr P src dst r) (fun r' => (kids P r').length = (kids P r).length) False) ∧
+  ∀ z ∈ List.range P.length, partOf P z dst →
+    ∃ r ∈ List.range P.length, partOf P r src ∧ corr P src dst r = some z
+
+instance (P : List Place) (src dst : Nat) : Decidable (SameShape P src dst) := by
+  unfold SameShape; infer_instance
+
 /-- Holder within the value at `q` (A4): a place that is `q` or one of its parts. -/
 def heldIn (P : List Place) (q : Nat) : Holder → Prop
   | .place r => partOf P r q
@@ -1023,19 +1060,29 @@ def heldIn (P : List Place) (q : Nat) : Holder → Prop
 instance (P : List Place) (q : Nat) (h : Holder) : Decidable (heldIn P q h) := by
   cases h <;> unfold heldIn <;> infer_instance
 
-/-- Effect of `transfer(source, destination)` (MM-03.3 §3, O4; A4; A5): the destination becomes
-`Init`, the source `Moved`; the anchors of the source, inherited ones included, join those of
-the destination and leave the source and its parts; every authority held by the source or one
-of its parts is now held by the destination (A4); every place owned by the source or one of its
-parts is now owned by the destination, without moving (A5). -/
+/-- The holder `h` after the transfer of `src` to `dst` (J1): a place, part of `src`, becomes the
+corresponding part of `dst` (`corr`, `dst` itself for `src`). Applied to the holders within the
+value only. -/
+def mvTo (P : List Place) (src dst : Nat) : Holder → Holder
+  | .place r => .place ((corr P src dst r).getD dst)
+  | .frame f => .frame f
+
+/-- Effect of `transfer(source, destination)` (MM-03.3 §3, O4; A4; A5; J1): every leaf of the
+destination becomes `Init`, every leaf of the source `Moved`; the anchors of the source, inherited
+ones included, join those of the destination and leave the source and its parts; every authority
+held by a part of the source (the source included) is now held by the corresponding part of the
+destination (A4, J1); every place owned by a part of the source is now owned by the corresponding
+part of the destination, without moving, and its root follows (A5, J1, `RootHeld`). -/
 def transferEff (s : S3) (src dst : Nat) : S3 :=
   { s with
-    P := s.P.map fun pl => if heldIn s.P src pl.owner then { pl with owner := .place dst } else pl
+    P := s.P.map fun pl =>
+      if heldIn s.P src pl.owner then { pl with owner := mvTo s.P src dst pl.owner } else pl
     I := fun l => if l ∈ footprint s.P dst then .init
       else if l ∈ footprint s.P src then .moved else s.I l
     D := fun q => if q = dst then s.D dst ++ depsOf s src
       else if partOf s.P q src then [] else s.D q
-    A := s.A.map fun y => if heldIn s.P src y.holder then { y with holder := .place dst } else y }
+    A := s.A.map fun y =>
+      if heldIn s.P src y.holder then { y with holder := mvTo s.P src dst y.holder } else y }
 
 /-- Active derived access covering a leaf of the source and not moved with it
 (MM-03.3 §3, O4.4; A4). -/
@@ -1191,7 +1238,8 @@ usable after the transfer, if its effective anchor moves with the value, or if t
 itself moves (the destination, or a place the value owns), the frame of the effective anchor is
 the dependent's frame or an ancestor of it, both frames read after the transfer
 (`EffAnchorOK`); G4: `AnchorOrderHeld` in the arrival state, the whole predicate, for every held
-authority. O4.3 holds by construction. -/
+authority; J1: the destination has the shape of the source (`SameShape`). O4.3 holds by
+construction. -/
 def TransferPre (k : K) (s : S3) (src dst : Nat) : Prop :=
   s.Usable src ∧ (∀ l ∈ footprint s.P src, s.I l = .init) ∧
   s.Usable dst ∧ (∀ l ∈ footprint s.P dst, s.I l ≠ .init) ∧ ¬ overlap s.P src dst ∧
@@ -1206,7 +1254,7 @@ def TransferPre (k : K) (s : S3) (src dst : Nat) : Prop :=
     ∀ x ∈ (transferEff s src dst).D q,
       (AnchorMoves s src (s.effAnchor x) ∨ q = dst ∨ OwnedWithin s src q) →
       EffAnchorOK (transferEff s src dst) x ((transferEff s src dst).pframe q)) ∧
-  AnchorOrderHeld (transferEff s src dst)
+  AnchorOrderHeld (transferEff s src dst) ∧ SameShape s.P src dst
 
 instance (k : K) [DecidablePred k.Pinned] (s : S3) (src dst : Nat) :
     Decidable (TransferPre k s src dst) := by
@@ -1920,6 +1968,63 @@ theorem WF3.rootHeld : RootHeld s := h.2.2.2.2.2.2.2.2.2.2
 
 end WF3proj
 
+theorem WF3.ownerOf_aux {s : S3} (hw : WF3 s) :
+    ∀ n l r, l < n → partOf s.P l r →
+      ∃ pl pr, s.P[l]? = some pl ∧ s.P[r]? = some pr ∧ pl.owner = pr.owner
+  | 0, _, _, h, _ => absurd h (Nat.not_lt_zero _)
+  | n + 1, l, r, hl, ⟨hlen, hlr⟩ => by
+    obtain ⟨pl, hpl⟩ : ∃ pl, s.P[l]? = some pl := ⟨_, List.getElem?_eq_some_iff.2 ⟨hlen, rfl⟩⟩
+    rcases hlr with rfl | hc
+    · exact ⟨pl, pl, hpl, hpl, rfl⟩
+    cases hpo : parentOf s.P l with
+    | none => rw [chain_none hpo] at hc; simp at hc
+    | some p =>
+      have hpar : pl.parent = some p := by simp [parentOf, hpl] at hpo; exact hpo
+      obtain ⟨pr, hpr, hlt, ho, -⟩ := hw.parts l pl p hpl hpar
+      rw [chain_cons hpo hlt] at hc
+      rcases List.mem_cons.1 hc with rfl | hc
+      · exact ⟨pl, pr, hpl, hpr, ho.symm⟩
+      · obtain ⟨pl', pr', hpl', hpr', he⟩ :=
+          WF3.ownerOf_aux hw n p r (by omega) ⟨lt_of_getElem? hpr, .inr hc⟩
+        rw [hpr] at hpl'; cases hpl'
+        exact ⟨pl, pr', hpl, hpr', ho.symm.trans he⟩
+
+/-- A part has the owner of the place it belongs to (A5, `WF3`). -/
+theorem WF3.ownerOf {s : S3} (hw : WF3 s) {l r : Nat} (h : partOf s.P l r) :
+    ∃ pl pr, s.P[l]? = some pl ∧ s.P[r]? = some pr ∧ pl.owner = pr.owner :=
+  hw.ownerOf_aux (l + 1) l r (Nat.lt_succ_self l) h
+
+theorem WF3.deadOf_aux {s : S3} (hw : WF3 s) :
+    ∀ n l r, l < n → partOf s.P l r → s.dead l = s.dead r
+  | 0, _, _, h, _ => absurd h (Nat.not_lt_zero _)
+  | n + 1, l, r, hl, ⟨hlen, hlr⟩ => by
+    rcases hlr with rfl | hc
+    · rfl
+    cases hpo : parentOf s.P l with
+    | none => rw [chain_none hpo] at hc; simp at hc
+    | some p =>
+      obtain ⟨pl, hpl⟩ : ∃ pl, s.P[l]? = some pl := ⟨_, List.getElem?_eq_some_iff.2 ⟨hlen, rfl⟩⟩
+      have hpar : pl.parent = some p := by simp [parentOf, hpl] at hpo; exact hpo
+      obtain ⟨pr, hpr, hlt, -, hd⟩ := hw.parts l pl p hpl hpar
+      rw [chain_cons hpo hlt] at hc
+      rcases List.mem_cons.1 hc with rfl | hc
+      · exact hd.symm
+      · exact hd.symm.trans (WF3.deadOf_aux hw n p r (by omega) ⟨lt_of_getElem? hpr, .inr hc⟩)
+
+/-- A part has the `dead` flag of the place it belongs to (A5, `WF3`). -/
+theorem WF3.deadOf {s : S3} (hw : WF3 s) {l r : Nat} (h : partOf s.P l r) : s.dead l = s.dead r :=
+  hw.deadOf_aux (l + 1) l r (Nat.lt_succ_self l) h
+
+theorem WF3.parent_lt {s : S3} (hw : WF3 s) {i o : Nat} (h : parentOf s.P i = some o) :
+    o < i ∧ o < s.P.length := by
+  simp only [parentOf] at h
+  cases hp : s.P[i]? with
+  | none => rw [hp] at h; cases h
+  | some pl =>
+    rw [hp] at h
+    obtain ⟨pr, hpr, hlt, -⟩ := hw.parts i pl o hp h
+    exact ⟨hlt, lt_of_getElem? hpr⟩
+
 theorem top_mem {s : S3} (h : s.F ≠ []) : s.top ∈ s.F := by
   unfold S3.top; cases hF : s.F with
   | nil => exact absurd hF h
@@ -2279,12 +2384,12 @@ theorem SameSkel.rootChain {s s' : S3} (h : SameSkel s s') (hc : RootChain s)
 
 theorem transfer_P_get (s : S3) (src dst q : Nat) :
     (transferEff s src dst).P[q]? = (s.P[q]?).map fun pl =>
-      if heldIn s.P src pl.owner then { pl with owner := .place dst } else pl := by
+      if heldIn s.P src pl.owner then { pl with owner := mvTo s.P src dst pl.owner } else pl := by
   simp [transferEff]
 
 theorem transfer_A_get (s : S3) (src dst j : Nat) :
     (transferEff s src dst).A[j]? = (s.A[j]?).map fun y =>
-      if heldIn s.P src y.holder then { y with holder := .place dst } else y := by
+      if heldIn s.P src y.holder then { y with holder := mvTo s.P src dst y.holder } else y := by
   simp [transferEff]
 
 theorem transfer_len (s : S3) (src dst : Nat) :
@@ -2305,6 +2410,140 @@ theorem transfer_partOf (s : S3) (src dst r q : Nat) :
     partOf (transferEff s src dst).P r q ↔ partOf s.P r q := by
   simp only [partOf, transfer_parentOf, transfer_len]
 
+theorem mem_kids {P : List Place} {x r : Nat} :
+    r ∈ kids P x ↔ r < P.length ∧ parentOf P r = some x := by
+  simp [kids, List.mem_filter, List.mem_range]
+
+theorem kids_nil_iff {P : List Place} {l : Nat} : kids P l = [] ↔ isLeaf P l := by
+  constructor
+  · intro h r hr hp
+    have : r ∈ kids P l := mem_kids.2 ⟨hr, hp⟩
+    rw [h] at this; simp at this
+  · intro h
+    exact nil_of_forall_not_mem fun r hr => by
+      obtain ⟨hr, hp⟩ := mem_kids.1 hr; exact h r hr hp
+
+theorem corrF_fuel (P : List Place) (src dst : Nat) :
+    ∀ n m r, r ≤ n → r ≤ m → corrF P src dst n r = corrF P src dst m r
+  | 0, 0, _, _, _ => rfl
+  | 0, m + 1, r, h, _ => by
+    obtain rfl : r = 0 := by omega
+    simp only [corrF]; split
+    · rfl
+    · split
+      · split
+        · omega
+        · rfl
+      · rfl
+  | n + 1, 0, r, _, h => by
+    obtain rfl : r = 0 := by omega
+    simp only [corrF]; split
+    · rfl
+    · split
+      · split
+        · omega
+        · rfl
+      · rfl
+  | n + 1, m + 1, r, h₁, h₂ => by
+    simp only [corrF]; split
+    · rfl
+    · split
+      · split
+        · rw [corrF_fuel P src dst n m _ (by omega) (by omega)]
+        · rfl
+      · rfl
+
+theorem corr_src (P : List Place) (src dst : Nat) : corr P src dst src = some dst := by
+  unfold corr; cases src <;> simp [corrF]
+
+theorem corr_step {P : List Place} {src dst r p : Nat} (hr : r ≠ src)
+    (hp : parentOf P r = some p) (hlt : p < r) :
+    corr P src dst r = (corr P src dst p).bind fun p' => (kids P p')[posIn r (kids P p)]? := by
+  obtain ⟨n, rfl⟩ : ∃ n, r = n + 1 := ⟨r - 1, by omega⟩
+  unfold corr
+  simp only [corrF, hr, ↓reduceIte, hp, hlt]
+  rw [corrF_fuel P src dst n p _ (by omega) (Nat.le_refl p)]
+
+theorem getElem?_mem {l : List Nat} {i x : Nat} (h : l[i]? = some x) : x ∈ l :=
+  List.mem_of_getElem? h
+
+/-- The place corresponding to a part of `src` is a part of `dst` (J1). -/
+theorem corr_partOf {s : S3} (hw : WF3 s) {src dst : Nat} (hd : dst < s.P.length) :
+    ∀ n r r', r < n → corr s.P src dst r = some r' → partOf s.P r' dst
+  | 0, _, _, h, _ => absurd h (Nat.not_lt_zero _)
+  | n + 1, r, r', hr, h => by
+    by_cases e : r = src
+    · subst e; rw [corr_src] at h; cases h; exact ⟨hd, .inl rfl⟩
+    cases hp : parentOf s.P r with
+    | none =>
+      unfold corr at h
+      cases r with
+      | zero => simp [corrF, e] at h
+      | succ m => simp [corrF, e, hp] at h
+    | some p =>
+      have hlt := (hw.parent_lt hp).1
+      rw [corr_step e hp hlt] at h
+      cases hc : corr s.P src dst p with
+      | none => rw [hc] at h; cases h
+      | some p' =>
+        rw [hc] at h; simp only [Option.bind_some] at h
+        have ih := corr_partOf hw hd n p p' (by omega) hc
+        obtain ⟨hr'l, hr'p⟩ := mem_kids.1 (getElem?_mem h)
+        have hlt' := (hw.parent_lt hr'p).1
+        refine ⟨hr'l, .inr ?_⟩
+        rw [chain_cons hr'p hlt']
+        rcases ih.2 with rfl | hc'
+        · exact List.mem_cons_self ..
+        · exact List.mem_cons_of_mem _ hc'
+
+/-- A holder within the source moves to a part of the destination (J1, A4, A5). -/
+theorem mvTo_part {s : S3} (hw : WF3 s) {src dst : Nat} (hsh : SameShape s.P src dst)
+    (hd : dst < s.P.length) {h : Holder} (hh : heldIn s.P src h) :
+    ∃ r', mvTo s.P src dst h = .place r' ∧ partOf s.P r' dst := by
+  cases h with
+  | frame f => exact hh.elim
+  | place r =>
+    have h1 := hsh.1 r (List.mem_range.2 hh.1) hh
+    unfold OptP at h1; split at h1
+    · rename_i r' hc
+      exact ⟨r', by simp [mvTo, hc], corr_partOf hw hd (r + 1) r r' (Nat.lt_succ_self r) hc⟩
+    · exact h1.elim
+
+theorem mvTo_place {P : List Place} {src dst : Nat} {h : Holder} (hh : heldIn P src h) :
+    ∃ r', mvTo P src dst h = .place r' := by
+  cases h with
+  | frame _ => exact hh.elim
+  | place r => exact ⟨_, rfl⟩
+
+/-- Places with the same owner have the same frame (A5). -/
+theorem pframe_eq_of_owner {s : S3} {q r : Nat} {pq pr : Place} (hq : s.P[q]? = some pq)
+    (hr : s.P[r]? = some pr) (h : pr.owner = pq.owner) : s.pframe r = s.pframe q := by
+  simp only [S3.pframe, pframeF, hq, hr, h]
+
+/-- In the arrival state of a transfer, a part of the destination has the owner of the
+destination (A5, J1): their owners were equal before (`WF3`) and change under the same rule. -/
+theorem transfer_owner_part {s : S3} (hw : WF3 s) {src dst r' : Nat} (hr' : partOf s.P r' dst) :
+    ∃ pd pr, (transferEff s src dst).P[dst]? = some pd ∧ (transferEff s src dst).P[r']? = some pr ∧
+      pr.owner = pd.owner := by
+  obtain ⟨pl, pd, hpl, hpd, ho⟩ := hw.ownerOf hr'
+  refine ⟨_, _, by rw [transfer_P_get, hpd]; rfl, by rw [transfer_P_get, hpl]; rfl, ?_⟩
+  show (if heldIn s.P src pl.owner then _ else pl).owner = (if heldIn s.P src pd.owner then _ else pd).owner
+  rw [ho]; split
+  · rfl
+  · exact ho
+
+/-- A part of the destination is usable after the transfer when the destination is (A5, J1). -/
+theorem transfer_usable_part {s : S3} (hw : WF3 s) {src dst r' : Nat} (hr' : partOf s.P r' dst)
+    (hd' : (transferEff s src dst).Usable dst) : (transferEff s src dst).Usable r' := by
+  obtain ⟨pd, pr, hpd, hpr, ho⟩ := transfer_owner_part (src := src) hw hr'
+  exact hd'.of_same hpd hpr ho (by show s.dead r' = s.dead dst; exact hw.deadOf hr')
+
+/-- A part of the destination has the frame of the destination after the transfer (A5, J1). -/
+theorem transfer_pframe_part {s : S3} (hw : WF3 s) {src dst r' : Nat} (hr' : partOf s.P r' dst) :
+    (transferEff s src dst).pframe r' = (transferEff s src dst).pframe dst := by
+  obtain ⟨pd, pr, hpd, hpr, ho⟩ := transfer_owner_part (src := src) hw hr'
+  exact pframe_eq_of_owner hpd hpr ho
+
 /-- `transfer` changes no skeleton: it creates and duplicates no authority (O4.3). -/
 theorem transfer_skel (s : S3) (src dst : Nat) : SameSkel s (transferEff s src dst) := by
   refine ⟨by simp [transferEff], fun j => ?_⟩
@@ -2324,7 +2563,9 @@ theorem transfer_usable_back {s : S3} {src dst : Nat} (hwf : WF3 s) (hsrc : s.Us
     | some pl =>
       rw [h'] at hpl; simp only [Option.map_some, Option.some.injEq] at hpl; subst hpl
       split at ho
-      · cases ho
+      · rename_i hh
+        obtain ⟨r', e⟩ := mvTo_place (dst := dst) hh
+        simp [e] at ho
       · exact .frame h' hd ho hf
   | @place q o pl hpl hd ho _ ih =>
     rw [transfer_P_get] at hpl
@@ -2342,15 +2583,19 @@ theorem transfer_usable_back {s : S3} {src dst : Nat} (hwf : WF3 s) (hsrc : s.Us
       · exact .place h' hd ho ih
 
 /-- A place usable before the transfer stays usable when the destination is usable after it
-(A5). -/
-theorem transfer_usable_fwd {s : S3} {src dst : Nat} (hd' : (transferEff s src dst).Usable dst)
-    {q : Nat} (h : s.Usable q) : (transferEff s src dst).Usable q := by
+(A5; J1: the places owned by a part of the source are owned by a part of the destination). -/
+theorem transfer_usable_fwd {s : S3} {src dst : Nat} (hw : WF3 s) (hsh : SameShape s.P src dst)
+    (hd' : (transferEff s src dst).Usable dst) {q : Nat} (h : s.Usable q) :
+    (transferEff s src dst).Usable q := by
+  have hdl : dst < s.P.length := by have := hd'.lt; rwa [transfer_len] at this
   induction h with
   | @frame q f pl hpl hd ho hf =>
     exact .frame (by rw [transfer_P_get, hpl]; rfl) hd (by simp [ho, heldIn]) hf
   | @place q o pl hpl hd ho _ ih =>
     by_cases hh : heldIn s.P src (.place o)
-    · exact .place (by rw [transfer_P_get, hpl]; rfl) hd (by simp [ho, hh]) hd'
+    · obtain ⟨r', e, hr'⟩ := mvTo_part hw hsh hdl hh
+      exact .place (by rw [transfer_P_get, hpl]; rfl) hd (by simp [ho, hh, e])
+        (transfer_usable_part hw hr' hd')
     · exact .place (by rw [transfer_P_get, hpl]; rfl) hd (by simp [ho, hh]) ih
 
 /-- `transfer` preserves `RootHeld` (A4): the holder of a root and the owner of its root place
@@ -2371,7 +2616,7 @@ theorem transfer_rootHeld {s : S3} {src dst : Nat} (hr : RootHeld s) :
 /-- `transfer` preserves `WF3` and `Inv3base` (MM-03.3 §3, O4; §10; A4; A5). -/
 theorem transfer_preserves {k : K} {s s' : S3} {src dst : Nat} (hwf : WF3 s) (hinv : Inv3base s)
     (h : TransferStep k src dst s (.ok s')) : WF3 s' ∧ Inv3base s' := by
-  obtain ⟨⟨hsrc, -, hdst, -, -, -, -, hd', -, h5, -, -, -⟩, rfl⟩ := Guarded.ok_iff.1 h
+  obtain ⟨⟨hsrc, -, hdst, -, -, -, -, hd', -, h5, -, -, -, -, hsh⟩, rfl⟩ := Guarded.ok_iff.1 h
   have sk := transfer_skel s src dst
   obtain ⟨i1, i2, i3, -⟩ := hinv
   refine ⟨⟨sk.origin hwf.origin, ?_, hwf.ne, hwf.nodup, hwf.frames, ?_, ?_, ?_, ?_,
@@ -2386,7 +2631,9 @@ theorem transfer_preserves {k : K} {s s' : S3} {src dst : Nat} (hwf : WF3 s) (hi
     | some pl₀ =>
       rw [h'] at hq; simp only [Option.map_some, Option.some.injEq] at hq; subst hq
       split at ho
-      · cases ho
+      · rename_i hh
+        obtain ⟨r', e⟩ := mvTo_place (dst := dst) hh
+        simp [e] at ho
       · exact hwf.ownerFrame q pl₀ f h' ho
   · intro q pl o hq ho
     rw [transfer_len]; rw [transfer_P_get] at hq
@@ -2395,7 +2642,9 @@ theorem transfer_preserves {k : K} {s s' : S3} {src dst : Nat} (hwf : WF3 s) (hi
     | some pl₀ =>
       rw [h'] at hq; simp only [Option.map_some, Option.some.injEq] at hq; subst hq
       split at ho
-      · cases ho; exact hdst.lt
+      · rename_i hh
+        obtain ⟨r', e, hr'⟩ := mvTo_part hwf hsh hdst.lt hh
+        simp only [e, Holder.place.injEq] at ho; subst ho; exact hr'.1
       · exact hwf.ownerPlace q pl₀ o h' ho
   · intro q pl r hq hp
     rw [transfer_P_get] at hq
@@ -2416,10 +2665,13 @@ theorem transfer_preserves {k : K} {s s' : S3} {src dst : Nat} (hwf : WF3 s) (hi
       have ya₀ : y₀.active = true := by split at ya <;> exact ya
       have hl := hwf.poss a y₀ h' ya₀
       split
-      · exact hd'
+      · rename_i hh
+        obtain ⟨r', e, hr'⟩ := mvTo_part hwf hsh hdst.lt hh
+        show HolderLive _ (mvTo s.P src dst y₀.holder)
+        rw [e]; exact transfer_usable_part hwf hr' hd'
       · cases hh : y₀.holder with
         | frame f => rw [hh] at hl; exact hl
-        | place p => rw [hh] at hl; exact transfer_usable_fwd hd' hl
+        | place p => rw [hh] at hl; exact transfer_usable_fwd hwf hsh hd' hl
   · have hq' := transfer_usable_back hwf hsrc hq
     refine sk.active.2 ?_
     simp only [transferEff] at hx
@@ -2438,18 +2690,41 @@ so a root held by a frame never moves. -/
 theorem transfer_no_duplicate_authority {k : K} {s s' : S3} {src dst : Nat}
     (h : TransferStep k src dst s (.ok s')) :
     SameSkel s s' ∧ ∀ (b : Nat) (y : Authority), s.A[b]? = some y →
-      s'.A[b]? = some (if heldIn s.P src y.holder then { y with holder := .place dst } else y) := by
+      s'.A[b]? = some (if heldIn s.P src y.holder then
+        { y with holder := mvTo s.P src dst y.holder } else y) := by
   obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
   exact ⟨transfer_skel s src dst, fun b y hy => by rw [transfer_A_get, hy]; rfl⟩
 
-/-- Ownership moves with the value (A5): every place owned by the source or one of its parts is
-now owned by the destination, and keeps its parent (it does not move). -/
+/-- Ownership moves with the value (A5; J1): every place owned by the source or one of its parts is
+now owned by the corresponding part of the destination, and keeps its parent (it does not move). -/
 theorem transfer_moves_ownership {k : K} {s s' : S3} {src dst : Nat}
     (h : TransferStep k src dst s (.ok s')) :
     ∀ (q : Nat) (pl : Place), s.P[q]? = some pl →
-      s'.P[q]? = some (if heldIn s.P src pl.owner then { pl with owner := .place dst } else pl) := by
+      s'.P[q]? = some (if heldIn s.P src pl.owner then
+        { pl with owner := mvTo s.P src dst pl.owner } else pl) := by
   obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
   exact fun q pl hq => by rw [transfer_P_get, hq]; rfl
+
+/-- J1: after an accepted transfer, an authority held by a part `r` of the source is held by the
+corresponding part of the destination, which exists and is a part of `dst`; so is a place owned by
+`r`, whose root, held by `r` (`RootHeld`), follows with it. -/
+theorem transfer_to_corresponding_parts {k : K} {s s' : S3} {src dst : Nat} (hwf : WF3 s)
+    (h : TransferStep k src dst s (.ok s')) {r : Nat} (hr : partOf s.P r src) :
+    ∃ r', corr s.P src dst r = some r' ∧ partOf s.P r' dst ∧
+      (∀ (b : Nat) (y : Authority), s.A[b]? = some y → y.holder = .place r →
+        s'.A[b]? = some { y with holder := .place r' }) ∧
+      (∀ (q : Nat) (pl : Place), s.P[q]? = some pl → pl.owner = .place r →
+        s'.P[q]? = some { pl with owner := .place r' }) := by
+  obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
+  have hsh := hpre.2.2.2.2.2.2.2.2.2.2.2.2.2.2
+  have h1 := hsh.1 r (List.mem_range.2 hr.1) hr
+  unfold OptP at h1; split at h1
+  · rename_i r' hc
+    refine ⟨r', hc, corr_partOf hwf hpre.2.2.1.lt (r + 1) r r' (Nat.lt_succ_self r) hc,
+      fun b y hy hh => ?_, fun q pl hq ho => ?_⟩
+    · rw [transfer_A_get, hy]; simp [hh, heldIn, hr, mvTo, hc]
+    · rw [transfer_P_get, hq]; simp [ho, heldIn, hr, mvTo, hc]
+  · exact h1.elim
 
 /-- `transfer_invalidates_source` (MM-03.3 §3, O4; §2, I4): after a transfer, every leaf of the
 source is `Moved` and readable by no authority. -/
@@ -4934,7 +5209,8 @@ theorem transfer_frameOf_fwd {s : S3} {src dst q f : Nat} (h : FrameOf s q f)
 
 theorem transfer_frameOf_back {s : S3} {src dst q f : Nat} (h : FrameOf (transferEff s src dst) q f) :
     (FrameOf s q f ∧ ¬ OwnedIn s.P src q) ∨
-      (OwnedIn s.P src q ∧ FrameOf (transferEff s src dst) dst f) := by
+      (OwnedIn s.P src q ∧ ∃ r, partOf s.P r src ∧
+        FrameOf (transferEff s src dst) ((corr s.P src dst r).getD dst) f) := by
   induction h with
   | @frame q f pl hpl ho =>
     rw [transfer_P_get] at hpl
@@ -4943,7 +5219,9 @@ theorem transfer_frameOf_back {s : S3} {src dst q f : Nat} (h : FrameOf (transfe
     | some pl₀ =>
       rw [h'] at hpl; simp only [Option.map_some, Option.some.injEq] at hpl; subst hpl
       split at ho
-      · cases ho
+      · rename_i hh
+        obtain ⟨r', e⟩ := mvTo_place (dst := dst) hh
+        simp [e] at ho
       · left; refine ⟨.frame h' ho, fun hn => ?_⟩
         cases hn with
         | direct h1 h2 _ => rw [h'] at h1; cases h1; rw [ho] at h2; cases h2
@@ -4956,10 +5234,12 @@ theorem transfer_frameOf_back {s : S3} {src dst q f : Nat} (h : FrameOf (transfe
       rw [h'] at hpl; simp only [Option.map_some, Option.some.injEq] at hpl; subst hpl
       split at ho
       · rename_i hh
-        cases ho
         cases hpo : pl₀.owner with
         | frame g => rw [hpo] at hh; exact hh.elim
-        | place r => rw [hpo] at hh; exact .inr ⟨.direct h' hpo hh, hf⟩
+        | place r =>
+          rw [hpo] at hh ho
+          simp only [mvTo, Holder.place.injEq] at ho
+          exact .inr ⟨.direct h' hpo hh, r, hh, ho ▸ hf⟩
       · rename_i hh
         rcases ih with ⟨hf0, hn⟩ | ⟨ho', hd⟩
         · left; refine ⟨.place h' ho hf0, fun hq => ?_⟩
@@ -4969,9 +5249,16 @@ theorem transfer_frameOf_back {s : S3} {src dst q f : Nat} (h : FrameOf (transfe
           | step h1 h2 h3 => rw [h'] at h1; cases h1; rw [ho] at h2; cases h2; exact hn h3
         · exact .inr ⟨.step h' ho ho', hd⟩
 
+theorem OwnedIn.of_owner {P : List Place} {src q r : Nat} {pq pr : Place} (hq : P[q]? = some pq)
+    (hr : P[r]? = some pr) (ho : pr.owner = pq.owner) (h : OwnedIn P src q) : OwnedIn P src r := by
+  cases h with
+  | direct h1 h2 h3 => rw [hq] at h1; cases h1; exact .direct hr (ho.trans h2) h3
+  | step h1 h2 h3 => rw [hq] at h1; cases h1; exact .step hr (ho.trans h2) h3
+
 /-- The destination of an accepted transfer is not owned by the source: its owner chain would
-come back to it (A5). -/
-theorem transfer_dst_not_owned {s : S3} {src dst f : Nat} :
+come back to it (A5; J1: through the part of the destination that corresponds to the owner). -/
+theorem transfer_dst_not_owned {s : S3} {src dst f : Nat} (hw : WF3 s)
+    (hsh : SameShape s.P src dst) (hdl : dst < s.P.length) :
     ∀ {q}, FrameOf (transferEff s src dst) q f → OwnedIn s.P src q → ¬ OwnedIn s.P src dst := by
   intro q h
   induction h with
@@ -4983,7 +5270,9 @@ theorem transfer_dst_not_owned {s : S3} {src dst f : Nat} :
     | some pl₀ =>
       rw [h'] at hpl; simp only [Option.map_some, Option.some.injEq] at hpl; subst hpl
       split at ho
-      · cases ho
+      · rename_i hh
+        obtain ⟨r', e⟩ := mvTo_place (dst := dst) hh
+        simp [e] at ho
       · cases hq with
         | direct h1 h2 _ => rw [h'] at h1; cases h1; rw [ho] at h2; cases h2
         | step h1 h2 _ => rw [h'] at h1; cases h1; rw [ho] at h2; cases h2
@@ -4995,7 +5284,11 @@ theorem transfer_dst_not_owned {s : S3} {src dst f : Nat} :
     | some pl₀ =>
       rw [h'] at hpl; simp only [Option.map_some, Option.some.injEq] at hpl; subst hpl
       split at ho
-      · cases ho; exact ih hd hd
+      · rename_i hh
+        obtain ⟨r', e, hr'⟩ := mvTo_part hw hsh hdl hh
+        simp only [e, Holder.place.injEq] at ho; subst ho
+        obtain ⟨pl', pd, hpl', hpd, ho'⟩ := hw.ownerOf hr'
+        exact ih (hd.of_owner hpd hpl' ho') hd
       · rename_i hh
         cases hq with
         | direct h1 h2 h3 =>
@@ -5341,32 +5634,6 @@ theorem exit_keeps_restrictions {k : K} {s s' : S3} {f : Nat} {F₀ : Frames} (h
 
 /-! ## Closure of the exit (MM-03.3 §4, O7; A4; B1) -/
 
-theorem WF3.ownerOf_aux {s : S3} (hw : WF3 s) :
-    ∀ n l r, l < n → partOf s.P l r →
-      ∃ pl pr, s.P[l]? = some pl ∧ s.P[r]? = some pr ∧ pl.owner = pr.owner
-  | 0, _, _, h, _ => absurd h (Nat.not_lt_zero _)
-  | n + 1, l, r, hl, ⟨hlen, hlr⟩ => by
-    obtain ⟨pl, hpl⟩ : ∃ pl, s.P[l]? = some pl := ⟨_, List.getElem?_eq_some_iff.2 ⟨hlen, rfl⟩⟩
-    rcases hlr with rfl | hc
-    · exact ⟨pl, pl, hpl, hpl, rfl⟩
-    cases hpo : parentOf s.P l with
-    | none => rw [chain_none hpo] at hc; simp at hc
-    | some p =>
-      have hpar : pl.parent = some p := by simp [parentOf, hpl] at hpo; exact hpo
-      obtain ⟨pr, hpr, hlt, ho, -⟩ := hw.parts l pl p hpl hpar
-      rw [chain_cons hpo hlt] at hc
-      rcases List.mem_cons.1 hc with rfl | hc
-      · exact ⟨pl, pr, hpl, hpr, ho.symm⟩
-      · obtain ⟨pl', pr', hpl', hpr', he⟩ :=
-          WF3.ownerOf_aux hw n p r (by omega) ⟨lt_of_getElem? hpr, .inr hc⟩
-        rw [hpr] at hpl'; cases hpl'
-        exact ⟨pl, pr', hpl, hpr', ho.symm.trans he⟩
-
-/-- A part has the owner of the place it belongs to (A5, `WF3`). -/
-theorem WF3.ownerOf {s : S3} (hw : WF3 s) {l r : Nat} (h : partOf s.P l r) :
-    ∃ pl pr, s.P[l]? = some pl ∧ s.P[r]? = some pr ∧ pl.owner = pr.owner :=
-  hw.ownerOf_aux (l + 1) l r (Nat.lt_succ_self l) h
-
 /-- Under `ExitPre` (MM-03.3 §4, O7; A7), the root of the chain of a surviving authority
 survives. -/
 theorem exit_root_survives {s : S3} {F₀ : Frames}
@@ -5465,27 +5732,6 @@ theorem S3.Usable.of_owner {s : S3} {q : Nat} {pl : Place} (hpl : s.P[q]? = some
   | frame f => rw [ho] at h; exact .frame hpl hd ho h
   | place o => rw [ho] at h; exact .place hpl hd ho h
 
-theorem WF3.deadOf_aux {s : S3} (hw : WF3 s) :
-    ∀ n l r, l < n → partOf s.P l r → s.dead l = s.dead r
-  | 0, _, _, h, _ => absurd h (Nat.not_lt_zero _)
-  | n + 1, l, r, hl, ⟨hlen, hlr⟩ => by
-    rcases hlr with rfl | hc
-    · rfl
-    cases hpo : parentOf s.P l with
-    | none => rw [chain_none hpo] at hc; simp at hc
-    | some p =>
-      obtain ⟨pl, hpl⟩ : ∃ pl, s.P[l]? = some pl := ⟨_, List.getElem?_eq_some_iff.2 ⟨hlen, rfl⟩⟩
-      have hpar : pl.parent = some p := by simp [parentOf, hpl] at hpo; exact hpo
-      obtain ⟨pr, hpr, hlt, -, hd⟩ := hw.parts l pl p hpl hpar
-      rw [chain_cons hpo hlt] at hc
-      rcases List.mem_cons.1 hc with rfl | hc
-      · exact hd.symm
-      · exact hd.symm.trans (WF3.deadOf_aux hw n p r (by omega) ⟨lt_of_getElem? hpr, .inr hc⟩)
-
-/-- A part has the `dead` flag of the place it belongs to (A5, `WF3`). -/
-theorem WF3.deadOf {s : S3} (hw : WF3 s) {l r : Nat} (h : partOf s.P l r) : s.dead l = s.dead r :=
-  hw.deadOf_aux (l + 1) l r (Nat.lt_succ_self l) h
-
 /-- A place with a usable part is usable (A5, `WF3`). -/
 theorem usable_of_part {s : S3} (hw : WF3 s) {l r : Nat} (h : partOf s.P l r) (hu : s.Usable l) :
     s.Usable r := by
@@ -5563,11 +5809,11 @@ theorem pinEff_preserves_noDangling {s : S3} (p : Nat) (b : Bool) (hnd : NoDangl
 
 /-- `transfer` preserves `NoDangling` (C2; MM-03.3 §3, O4): footprints are unchanged, every usable
 place stays usable, and authorities only change holder. -/
-theorem transfer_preserves_noDangling {k : K} {s s' : S3} {src dst : Nat} (hnd : NoDangling s)
-    (h : TransferStep k src dst s (.ok s')) : NoDangling s' := by
-  obtain ⟨⟨-, -, -, -, -, -, -, hd', -, -, -, -, -⟩, rfl⟩ := Guarded.ok_iff.1 h
+theorem transfer_preserves_noDangling {k : K} {s s' : S3} {src dst : Nat} (hwf : WF3 s)
+    (hnd : NoDangling s) (h : TransferStep k src dst s (.ok s')) : NoDangling s' := by
+  obtain ⟨⟨-, -, -, -, -, -, -, hd', -, -, -, -, -, -, hsh⟩, rfl⟩ := Guarded.ok_iff.1 h
   refine hnd.of (fun q l h => by rw [transfer_footprint] at h; exact h)
-    (fun _ h => transfer_usable_fwd hd' h) fun j z hz za => ?_
+    (fun _ h => transfer_usable_fwd hwf hsh hd' h) fun j z hz za => ?_
   rw [transfer_A_get] at hz
   obtain ⟨y, hy, rfl⟩ := Option.map_eq_some_iff.1 hz
   exact fun l hl => ⟨j, y, hy, by split at za <;> exact za, by split at hl <;> exact hl⟩
@@ -6034,10 +6280,12 @@ theorem store_escape_rejected_at_transfer {k : K} {s : S3} {src dst a f g : Nat}
     TransferStep k src dst s .reject := by
   refine .reject fun hpre => ?_
   have hdst : (transferEff s src dst).Usable dst := hpre.2.2.2.2.2.2.2.1
-  have ha' : (transferEff s src dst).A[a]? = some { y with holder := .place dst } := by
-    rw [transfer_A_get, ha]; simp [hh]
-  have hok := hpre.2.2.2.2.2.2.2.2.2.2.2.2.2 dst hdst a _ ha' ya rfl
-  rw [transfer_effAnchorOK_unmoved hz hm, hg] at hok
+  have hsh := hpre.2.2.2.2.2.2.2.2.2.2.2.2.2.2
+  obtain ⟨r', e, hr'⟩ := mvTo_part hwf hsh hpre.2.2.1.lt hh
+  have ha' : (transferEff s src dst).A[a]? = some { y with holder := .place r' } := by
+    rw [transfer_A_get, ha]; simp [hh, e]
+  have hok := hpre.2.2.2.2.2.2.2.2.2.2.2.2.2.1 r' (transfer_usable_part hwf hr' hdst) a _ ha' ya rfl
+  rw [transfer_pframe_part hwf hr', transfer_effAnchorOK_unmoved hz hm, hg] at hok
   unfold EffAnchorOK at hok
   rw [hz] at hok
   simp only [OptP, hzf] at hok
@@ -6222,16 +6470,6 @@ def RootLive (s : S3) : Prop :=
   ∀ r, RootPlace s.P r → s.Usable r → ∃ (i : Nat) (z : Authority) (pr : Place), s.A[i]? = some z ∧
     z.active = true ∧ z.origin = none ∧ s.P[r]? = some pr ∧ z.holder = pr.owner ∧
     ∀ l, l ∈ z.footprint ↔ l ∈ footprint s.P r
-
-theorem WF3.parent_lt {s : S3} (hw : WF3 s) {i o : Nat} (h : parentOf s.P i = some o) :
-    o < i ∧ o < s.P.length := by
-  simp only [parentOf] at h
-  cases hp : s.P[i]? with
-  | none => rw [hp] at h; cases h
-  | some pl =>
-    rw [hp] at h
-    obtain ⟨pr, hpr, hlt, -⟩ := hw.parts i pl o hp h
-    exact ⟨hlt, lt_of_getElem? hpr⟩
 
 /-- Every place of a well-formed state is a part of a root place (MM-03.3.2). -/
 theorem exists_rootPlace {s : S3} (hw : WF3 s) : ∀ n q, q < n → q < s.P.length →
@@ -6501,9 +6739,10 @@ theorem transfer_rootLive {s : S3} {src dst : Nat} (hw : WF3 s) (hsrc : s.Usable
     rw [transfer_footprint]; exact hzf l
   by_cases hc : heldIn s.P src z.holder
   · have hc' : heldIn s.P src pr.owner := hzh ▸ hc
-    exact ⟨i, { z with holder := .place dst }, { pr with owner := .place dst },
-      by rw [transfer_A_get, hz]; simp [hc], za, zo, by rw [transfer_P_get, hpr]; simp [hc'], rfl,
-      hf⟩
+    exact ⟨i, { z with holder := mvTo s.P src dst z.holder },
+      { pr with owner := mvTo s.P src dst pr.owner },
+      by rw [transfer_A_get, hz]; simp [hc], za, zo, by rw [transfer_P_get, hpr]; simp [hc'],
+      by simp [hzh], hf⟩
   · have hc' : ¬ heldIn s.P src pr.owner := hzh ▸ hc
     exact ⟨i, z, pr, by rw [transfer_A_get, hz]; simp [hc], za, zo,
       by rw [transfer_P_get, hpr]; simp [hc'], hzh, hf⟩
@@ -6810,23 +7049,28 @@ instance (k : K) [DecidablePred k.SharedMutable] (s : S3) (ar : Arena) (via : Na
     Decidable (MetaRight k s ar via) := by
   unfold MetaRight; infer_instance
 
-/-- Effect of `arena.issue(region)` (MM-03.3 §6; A10): a `Modify` block derived from `internal`
-on the region, held by the destination value; the destination and the metadata become `Init`;
-the region leaves `available` and joins `issued`. -/
+/-- Effect of `arena.issue(region)` (MM-03.3 §6; A10; J1): a `Modify` block derived from `internal`
+on the region, held by the destination leaf; that leaf, and it only, becomes `Init` (J1: the
+initialisation of the arena value is unchanged); the region leaves `available` and joins
+`issued`. -/
 def issueEff (s : S3) (ar : Arena) (region : List Nat) (dst : Nat) : S3 × Arena :=
   ({ s.addAuth ⟨.modify, some ar.internal, region, .place dst, true⟩ with
-      I := fun l => if l ∈ footprint s.P dst ∨ l ∈ metaLeaves s ar then .init else s.I l },
+      I := fun l => if l = dst then .init else s.I l },
    { ar with
       available := ar.available.filter fun l => decide (l ∉ region)
       issued := (region, s.A.length) :: ar.issued })
 
 /-- Static preconditions of `arena.issue(region)` (MM-03.3 §6; A10): metadata right (A10); the
 region lies in the storage administered by `internal`; the destination `dst` of the block is
-usable, exercisable in `Modify` (A2) and holds no initialised value. -/
+usable, exercisable in `Modify` (A2) and holds no initialised value; J1: `dst` is a leaf
+(`isLeaf`) that holds no active authority. -/
 def IssueStatic (k : K) (s : S3) (ar : Arena) (via : Nat) (region : List Nat) (dst : Nat) :
     Prop :=
   MetaRight k s ar via ∧ s.Active ar.internal ∧ (∀ l ∈ region, l ∈ s.afp ar.internal) ∧
-  s.Usable dst ∧ HasRight s .modify dst ∧ (∀ l ∈ footprint s.P dst, s.I l ≠ .init)
+  s.Usable dst ∧ HasRight s .modify dst ∧ (∀ l ∈ footprint s.P dst, s.I l ≠ .init) ∧
+  isLeaf s.P dst ∧
+  ∀ j ∈ List.range s.A.length, OptP (s.A[j]?) (fun z => z.active = true → z.holder ≠ .place dst)
+    True
 
 instance (k : K) [DecidablePred k.SharedMutable] (s : S3) (ar : Arena) (via : Nat)
     (region : List Nat) (dst : Nat) : Decidable (IssueStatic k s ar via region dst) := by
@@ -6904,11 +7148,10 @@ instance (k : K) [DecidablePred k.SharedMutable] (s : S3) (ar : Arena) (via : Na
     Decidable (ResetPre k s ar via) := by
   unfold ResetPre; infer_instance
 
-/-- Effect of `arena.reset()` (MM-03.3 §6; A10): the whole storage becomes available, the past
-emissions are forgotten, the metadata become `Init`. -/
+/-- Effect of `arena.reset()` (MM-03.3 §6; A10; J1): the whole storage becomes available, the past
+emissions are forgotten; the initialisation of the arena value is unchanged (J1). -/
 def resetEff (s : S3) (ar : Arena) : S3 × Arena :=
-  ({ s with I := fun l => if l ∈ metaLeaves s ar then .init else s.I l },
-   { ar with available := s.afp ar.internal, issued := [] })
+  (s, { ar with available := s.afp ar.internal, issued := [] })
 
 /-- `arena.reset` as a relation (MM-03.3 §6; A10). -/
 def ResetStep (k : K) (ar : Arena) (via : Nat) (s : S3) : Outcome3 (S3 × Arena) → Prop :=
@@ -7057,10 +7300,7 @@ theorem arena_reset_preserves_wf {k : K} {s s' : S3} {ar ar' : Arena} {via : Nat
     (hinv : Inv3base s) (h : ResetStep k ar via s (.ok (s', ar'))) : WF3 s' ∧ Inv3base s' := by
   obtain ⟨-, e⟩ := Guarded.ok_iff.1 h
   have e1 := congrArg Prod.fst e; simp only [resetEff] at e1; subst e1
-  exact ⟨hwf.of_eq rfl rfl rfl rfl rfl, ⟨hinv.1, hinv.2.1, fun q hq y hy =>
-    hinv.2.2.1 q ((S3.Usable.congr (s := s)
-      (s' := { s with I := fun l => if l ∈ metaLeaves s ar then .init else s.I l })
-      rfl rfl rfl).1 hq) y hy, i4_always _⟩⟩
+  exact ⟨hwf, hinv⟩
 
 /-- `arena_reuse_safe` (MM-03.3 §6; A10): after `reset`, issuing again, a region already issued
 included, preserves `WF3`, `Inv3base` and the arena invariant, and leaves every past emission
@@ -7075,15 +7315,16 @@ theorem arena_reuse_safe {k : K} {s s₁ s₂ : S3} {ar ar₁ ar₂ : Arena} {vi
   obtain ⟨hwf₂, hinv₂, hai₂⟩ := arena_issue_preserves_disjointness hwf₁ hinv₁ hai₁ hi
   refine ⟨hwf₂, hinv₂, hai₂, fun e he ha => ?_⟩
   obtain ⟨⟨-, hno, -⟩, e'⟩ := Guarded.ok_iff.1 hr
-  have e1 := congrArg Prod.fst e'; simp only [resetEff] at e1; subst e1
+  have e1 : s₁ = s := by have := congrArg Prod.fst e'; simpa [resetEff] using this
+  rw [e1] at hi
   obtain ⟨y, hy, ho, -⟩ := hai.2.2.2.2.1 e he
   have hlt := hwf.origin e.2 y ar.internal hy ho
   have hanc : ar.internal ∈ s.ancs e.2 := by
     unfold S3.ancs; rw [chain_cons (by simp [S3.org, hy, ho]) hlt]; exact List.mem_cons_self ..
   cases hi with
-  | ok _ _ _ =>
+  | ok _ _ _ _ =>
     have hl := lt_of_getElem? hy
-    have : ({ s with I := fun l => if l ∈ metaLeaves s ar then .init else s.I l } : S3).Active e.2 :=
+    have : s.Active e.2 :=
       (active_addAuth_iff (y₀ := ⟨.modify, some ar₁.internal, region, .place dst, true⟩) hl).1 ha
     exact hno e.2 (List.mem_range.2 hl) hanc this
 
@@ -7186,14 +7427,15 @@ theorem arena_inv_preserved {k : K} {s s' : S3} {ar : Arena} (hwf : WF3 s) (hinv
     rename_i src dst
     obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs
     refine arenaInv_transport hai (fun j y hy =>
-      ⟨if heldIn s.P src y.holder then { y with holder := .place dst } else y,
+      ⟨if heldIn s.P src y.holder then { y with holder := mvTo s.P src dst y.holder } else y,
         by rw [transfer_A_get, hy]; rfl, ?_⟩) (by simp [transferEff]) ?_
         (fun l => by rw [transfer_footprint])
     · by_cases hc : heldIn s.P src y.holder <;> simp [hc]
     · intro y y' v h1 h2 h3
       rw [transfer_A_get, h1] at h2; cases h2
       by_cases hc : heldIn s.P src y.holder
-      · exact ⟨dst, by simp only [hc, ↓reduceIte]⟩
+      · obtain ⟨r', e⟩ := mvTo_place (dst := dst) hc
+        exact ⟨r', by simp only [hc, ↓reduceIte, e]⟩
       · exact ⟨v, by simp only [hc, ↓reduceIte]; exact h3⟩
   | depend hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact same _ rfl rfl
   | read hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact same _ rfl rfl
@@ -7674,12 +7916,21 @@ theorem enter_not_inv3_preserving :
 /-- The state with the entry `i` of `arenas` replaced by `ar` (D3). -/
 def arenaSet (s : S3) (i : Nat) (ar : Arena) : S3 := { s with arenas := s.arenas.set i ar }
 
-/-- Preconditions of `newArena storage internal` (D3, F1, F2), in order. Kept from D3: exercisable
+/-- J1: the leaves of the holder `h`, if it is a place, are all `Init`. -/
+def LeavesInit (s : S3) : Holder → Prop
+  | .place v => ∀ l ∈ footprint s.P v, s.I l = .init
+  | .frame _ => True
+
+instance (s : S3) (h : Holder) : Decidable (LeavesInit s h) := by
+  cases h <;> unfold LeavesInit <;> infer_instance
+
+/-- Preconditions of `newArena storage internal` (D3, F1, F2, J1), in order. Kept from D3: exercisable
 `Modify` on `storage`; `storage` usable. F1: `internal`, named by the caller, is active, `Modify`,
 exercisable at `Modify` (B2), and held by a place, the arena value; the footprint of `internal` is
 the footprint of `storage`; no live arena already has `internal` as `internal`. F1 removes the
 guard by place index of D3 and the kind of `internal`; F2 removes the ownership of the storage
-(A10): the storage may be a local, a static, an allocated root or a block. -/
+(A10): the storage may be a local, a static, an allocated root or a block. J1: the leaves of the
+arena value, the holder of `internal`, are all `Init` (`LeavesInit`). -/
 def NewArenaPre (s : S3) (storage internal : Nat) : Prop :=
   HasRight s .modify storage ∧ s.Usable storage ∧
     OptP (s.A[internal]?) (fun y => y.active = true ∧ y.mode = .modify ∧ y.holder.isPlace = true)
@@ -7687,7 +7938,8 @@ def NewArenaPre (s : S3) (storage internal : Nat) : Prop :=
     s.ExercisableAt internal .modify ∧
     (∀ l ∈ s.afp internal, l ∈ footprint s.P storage) ∧
     (∀ l ∈ footprint s.P storage, l ∈ s.afp internal) ∧
-    (∀ ar ∈ s.arenas, s.Active ar.internal → ar.internal ≠ internal)
+    (∀ ar ∈ s.arenas, s.Active ar.internal → ar.internal ≠ internal) ∧
+    OptP (s.A[internal]?) (fun y => LeavesInit s y.holder) True
 
 instance (s : S3) (storage internal : Nat) : Decidable (NewArenaPre s storage internal) := by
   unfold NewArenaPre; infer_instance
@@ -7988,7 +8240,7 @@ theorem arena_entry_follows_transfer {k : K} {s s' : S3} {ar : Arena} {v dst : N
   obtain ⟨⟨hsrc, -⟩, rfl⟩ := Guarded.ok_iff.1 h
   have hlive' : (transferEff s v dst).Active ar.internal := by
     obtain ⟨y, hy, ya⟩ := hlive
-    refine ⟨if heldIn s.P v y.holder then { y with holder := .place dst } else y,
+    refine ⟨if heldIn s.P v y.holder then { y with holder := mvTo s.P v dst y.holder } else y,
       by rw [transfer_A_get, hy]; rfl, ?_⟩
     split <;> exact ya
   refine ⟨hlive', arena_inv_preserved hwf hinv hai hk hlive', ?_⟩
@@ -8004,7 +8256,8 @@ theorem arena_entry_follows_transfer {k : K} {s s' : S3} {ar : Arena} {v dst : N
   have hh : heldIn s.P v y.holder := by rw [hhv]; exact ⟨hsrc.lt, .inl rfl⟩
   unfold arenaValue
   rw [transfer_A_get, hy]
-  simp [hh]
+  have hh' : heldIn s.P v (.place v) := by rw [← hhv]; exact hh
+  simp [hhv, mvTo, corr_src, hh']
 
 /-- `arena_dies_with_internal` (D3; A6; F1): after `endUse` of the arena value, the place that
 holds `internal`, `internal` is released: the entry is no longer live. -/
@@ -8123,7 +8376,7 @@ theorem reachable_invariants {k : K} (hdd : DDSound k) {statics : Statics} {s : 
       (release_preserves_anchorOrder ih.2.1.ao hs) (release_preserves_noDangling ih.2.1.nd hs)
   | transfer _ hs ih =>
     exact mk (.transfer hs) ih (transfer_preserves ih.1 ih.2.1.base hs)
-      (transfer_preserves_anchorOrder ih.1 ih.2.1.ao hs) (transfer_preserves_noDangling ih.2.1.nd hs)
+      (transfer_preserves_anchorOrder ih.1 ih.2.1.ao hs) (transfer_preserves_noDangling ih.1 ih.2.1.nd hs)
   | depend _ hs ih =>
     exact mk (.depend hs) ih (depend_preserves ih.1 ih.2.1.base hs)
       (depend_preserves_anchorOrder ih.2.1.ao hs) (depend_preserves_noDangling ih.2.1.nd hs)
@@ -8263,7 +8516,7 @@ theorem reachable_anchorOrderHeld {k : K} (hdd : DDSound k) {statics : Statics} 
   | split _ hs ih => exact split_preserves_anchorOrderHeld ih hs
   | release _ hs ih => exact release_preserves_anchorOrderHeld ih hs
   | transfer _ hs ih =>
-    obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 hs; exact hpre.2.2.2.2.2.2.2.2.2.2.2.2.2
+    obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 hs; exact hpre.2.2.2.2.2.2.2.2.2.2.2.2.2.1
   | depend _ hs ih =>
     obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact sameA_preserves_anchorOrderHeld ih rfl rfl rfl rfl
   | enter _ hs ih => obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 hs; exact hpre.2.2
@@ -8307,6 +8560,133 @@ theorem reachable_access_invariant_ext {k : K} (hdd : DDSound k) {statics : Stat
       ∀ ar ∈ s.arenas, s.Active ar.internal → ArenaInv s ar :=
   let h' := reachable_access_invariant_underDD hdd h
   ⟨h'.1, h'.2.1, reachable_anchorOrderHeld hdd h, reachable_no_orphan hdd h, h'.2.2⟩
+
+/-! ## Initialisation only by writes (J1) -/
+
+/-- One step of `Reachable` (MM-03.3 §10; D3; F4): a kernel step or an arena step. -/
+inductive Step (k : K) : S3 → S3 → Prop where
+  | kernel {s s' : S3} : KStep k s s' → Step k s s'
+  | newArena {s s' : S3} {st i : Nat} : NewArenaStep st i s (.ok s') → Step k s s'
+  | issue {s s' : S3} {i via dst : Nat} {region : List Nat} :
+      IssueAt k i via region dst s (.ok s') → Step k s s'
+  | reset {s s' : S3} {i via : Nat} : ResetAtStep k i via s (.ok s') → Step k s s'
+
+/-- J1: the step from `s` to `s'` writes the leaf `l`: a `write3` or a `writeShared` of a list
+containing `l`, a `store` into `l`, an `issue` to `l`, or a `transfer` of which `l` is a leaf of the
+destination corresponding to a leaf of the source `Init` before the step. -/
+def WrittenBy (k : K) (s s' : S3) (l : Nat) : Prop :=
+  (∃ a ls, Write3Step a ls s (.ok s') ∧ l ∈ ls) ∨
+  (∃ a ls, WriteSharedStep k a ls s (.ok s') ∧ l ∈ ls) ∨
+  (∃ a, StoreStep a l s (.ok s')) ∨
+  (∃ i via region, IssueAt k i via region l s (.ok s')) ∨
+  (∃ src dst l', TransferStep k src dst s (.ok s') ∧ l ∈ footprint s.P dst ∧
+    l' ∈ footprint s.P src ∧ corr s.P src dst l' = some l ∧ s.I l' = .init)
+
+/-- `init_only_by_writes` (J1): in every `ok` step, a leaf that is not `Init` before and is
+`Init` after is written by the step (`WrittenBy`). -/
+theorem init_only_by_writes {k : K} {s s' : S3} (h : Step k s s') {l : Nat}
+    (hl : s.I l ≠ .init) (hl' : s'.I l = .init) : WrittenBy k s s' l := by
+  cases h with
+  | kernel hk =>
+    cases hk with
+    | derive hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact absurd hl' hl
+    | split hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact absurd hl' hl
+    | release hs =>
+      rename_i a
+      obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs
+      unfold releaseEff at hl'; split at hl' <;> exact absurd hl' hl
+    | transfer hs =>
+      rename_i src dst
+      have hs' := hs
+      obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 hs
+      simp only [transferEff] at hl'
+      split at hl'
+      · rename_i hld
+        have hsh := hpre.2.2.2.2.2.2.2.2.2.2.2.2.2.2
+        obtain ⟨hlP, hleaf, hlp⟩ := mem_footprint.1 hld
+        obtain ⟨r, hr, hrs, hc⟩ := hsh.2 l (List.mem_range.2 hlP) hlp
+        have h1 := hsh.1 r hr hrs
+        rw [hc] at h1
+        have hkr : kids s.P r = [] := by
+          have : (kids s.P l).length = 0 := by rw [kids_nil_iff.2 hleaf]; rfl
+          exact List.eq_nil_of_length_eq_zero (by simp only [OptP] at h1; omega)
+        have hrf : r ∈ footprint s.P src :=
+          mem_footprint.2 ⟨List.mem_range.1 hr, kids_nil_iff.1 hkr, hrs⟩
+        exact .inr (.inr (.inr (.inr ⟨src, dst, r, hs', hld, hrf, hc, hpre.2.1 r hrf⟩)))
+      · split at hl'
+        · cases hl'
+        · exact absurd hl' hl
+    | depend hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact absurd hl' hl
+    | enter hs =>
+      obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs
+      simp only [enterEff] at hl'; split at hl'
+      · cases hl'
+      · exact absurd hl' hl
+    | exit hs =>
+      obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs
+      unfold exitEff at hl'; split at hl' <;> exact absurd hl' hl
+    | read hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact absurd hl' hl
+    | write hs =>
+      rename_i a ls
+      have hs' := hs
+      obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs
+      simp only [write3Eff] at hl'; split at hl'
+      · exact .inl ⟨a, ls, hs', ‹_›⟩
+      · exact absurd hl' hl
+    | writeShared hs =>
+      rename_i a ls
+      have hs' := hs
+      obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs
+      simp only [write3Eff] at hl'; split at hl'
+      · exact .inr (.inl ⟨a, ls, hs', ‹_›⟩)
+      · exact absurd hl' hl
+    | pin hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact absurd hl' hl
+    | unpin hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact absurd hl' hl
+    | endUse hs =>
+      obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs
+      simp only [endUseEff, cleanup, endUseS] at hl'; split at hl'
+      · cases hl'
+      · exact absurd hl' hl
+    | free hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact absurd hl' hl
+    | alloc hs =>
+      cases hs with
+      | ok hsa _ =>
+        simp only [allocEff] at hl'; split at hl'
+        · cases hl'
+        · split at hl'
+          · exact absurd (hsa.2.2.2.2.1 l ‹_›) hl
+          · exact absurd hl' hl
+    | store hs =>
+      rename_i a p
+      have hs' := hs
+      obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 hs
+      obtain ⟨y, hy, -⟩ := store_pre_auth hpre.1
+      rw [storeEff_eq hy] at hl'; simp only at hl'; split at hl'
+      · rename_i e; subst e; exact .inr (.inr (.inl ⟨a, hs'⟩))
+      · exact absurd hl' hl
+  | newArena hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact absurd hl' hl
+  | issue hs =>
+    rename_i i via dst region
+    have hs' := hs
+    cases hs with
+    | ok har hst =>
+      cases hst with
+      | ok _ _ _ _ =>
+        simp only [arenaSet, issueEff, S3.addAuth] at hl'; split at hl'
+        · rename_i e; subst e; exact .inr (.inr (.inr (.inl ⟨i, via, region, hs'⟩)))
+        · exact absurd hl' hl
+  | reset hs =>
+    obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs
+    unfold resetAtEff at hl'; split at hl' <;> exact absurd hl' hl
+
+/-- `init_statics` (J1; D1): in the initial state, a leaf is `Init` exactly when it is a static
+element declared `Init`. -/
+theorem init_statics (statics : Statics) (l : Nat) :
+    (S3.init statics).I l = .init ↔ ∃ e, statics[l]? = some e ∧ e.2 = true := by
+  simp only [S3.init]
+  cases h : statics[l]? with
+  | none => simp
+  | some e => cases he : e.2 <;> simp [he]
 
 /-- `exitFrame_no_dangling` on reached states (MM-03.3 §4, O7; §10), under `DDSound k`
 (MM-03.3.8). -/
@@ -8473,7 +8853,13 @@ example : ExitStep K0 c10c .reject := .reject (by decide)
 def c11a : S3 := write3Eff (enter1 [(none, none, 0), (some 0, none, 0), (some 0, none, 0),
   (none, none, 0)]) [1, 2]
 example : TransferStep K0 0 3 (deriveEff c11a 0 1 .observe) .reject := .reject (by decide)
-example : TransferStep K0 0 3 c11a (.ok (transferEff c11a 0 3)) := .ok (by decide)
+/-- J1: the twin of pass 1 transferred the structure 0 into the leaf 3, now rejected (shape); the
+twin is a structure 3 of the same shape. -/
+example : TransferStep K0 0 3 c11a .reject ∧ ¬ SameShape c11a.P 0 3 := ⟨.reject (by decide), by decide⟩
+def c11s : S3 := write3Eff (enter1 [(none, none, 0), (some 0, none, 0), (some 0, none, 0),
+  (none, none, 0), (some 3, none, 0), (some 3, none, 0)]) [1, 2]
+example : TransferStep K0 0 3 (deriveEff c11s 0 1 .observe) .reject := .reject (by decide)
+example : TransferStep K0 0 3 c11s (.ok (transferEff c11s 0 3)) := .ok (by decide)
 
 /-! ### Case 13: pinned storage for DMA (expected: no physical move while registered) -/
 
@@ -8698,14 +9084,17 @@ def xferCex : S3 := ⟨[1, 0], 6, [⟨some 1, .frame 1, 0⟩, ⟨some 0, .frame 
 
 /-- `transfer` (MM-03.3 §3, O4; A5) does not preserve `Inv3` without `WF3` (A1; C2): a part with
 another owner than its parent (excluded by `WF3`) is not usable while its parent is; a place owned
-by that part is not usable either and keeps an invalid anchor. The transfer gives that place to
-the destination: it becomes usable with an invalid anchor. -/
+by that part is not usable either and keeps an invalid anchor. The effect of the transfer gives
+that place to the destination: it becomes usable with an invalid anchor. Until pass 7 the transfer
+was accepted; J1 rejects it, the source, through its parent links that `chain` ignores, having no
+shape a destination can match (`¬ SameShape`). The non-preservation without `WF3` keeps a
+witness among accepted transfers for `Inv3base ∧ AnchorOrder` (the example on `xferNd`). -/
 theorem transfer_not_inv3_preserving :
-    Inv3 xferCex ∧ TransferStep K0 0 3 xferCex (.ok (transferEff xferCex 0 3)) ∧
+    Inv3 xferCex ∧ TransferStep K0 0 3 xferCex .reject ∧ ¬ SameShape xferCex.P 0 3 ∧
       ¬ I3 (transferEff xferCex 0 3) := by
   refine ⟨⟨⟨fun a b x y p hab ha hb _ _ xp yp _ _ => ?_, fun b y a hb ho => ?_,
     fun q hq z hz => ?_, i4_always _⟩, fun q hq z hz => ?_, noDangling_iff.2 (by decide)⟩,
-    .ok (by decide), fun h => ?_⟩
+    .reject (by decide), by decide, fun h => ?_⟩
   · have h1 := lt_of_getElem? ha; have h2 := lt_of_getElem? hb
     simp [xferCex] at h1 h2
     obtain rfl | rfl : a = 0 ∨ a = 1 := by omega
@@ -8782,14 +9171,15 @@ with another owner, a frame not on the stack; place 2 is owned by place 1 and an
 released root 2 of frame 1 (anchored on a missing authority 5 before C1); place 3 is the
 destination. -/
 def xferNd : S3 := ⟨[1, 0], 6, [⟨none, .frame 1, 0⟩, ⟨some 0, .frame 5, 0⟩, ⟨none, .place 1, 0⟩,
-  ⟨none, .frame 1, 0⟩], fun l => if l = 1 then .init else .uninit,
-  [⟨.modify, none, [1], .frame 1, true⟩, ⟨.modify, none, [3], .frame 1, true⟩,
+  ⟨none, .frame 1, 0⟩, ⟨some 3, .frame 1, 0⟩], fun l => if l = 1 then .init else .uninit,
+  [⟨.modify, none, [1], .frame 1, true⟩, ⟨.modify, none, [4], .frame 1, true⟩,
     ⟨.modify, none, [], .frame 1, false⟩],
   fun q => if q = 2 then [2] else [], fun _ => false, fun _ => false, fun _ => false, [], fun _ => []⟩
 
 /-- `transfer` (MM-03.3 §3, O4; A5) does not preserve `Inv3base ∧ AnchorOrder`, the `Inv3` of
-pass 3, without `WF3` (A1): the transfer gives place 2 to the destination, where it becomes usable
-with an invalid anchor. The state breaks `NoDangling` (C2): the authority on the source covers the
+pass 3, without `WF3` (A1): the transfer gives place 2 to the part 4 of the destination that
+corresponds to the part 1 of the source (J1; pass 7: the destination was the leaf 3, of another
+shape), where it becomes usable with an invalid anchor. The state breaks `NoDangling` (C2): the authority on the source covers the
 leaf of the part 1, which is not usable. -/
 example :
     (Inv3base xferNd ∧ AnchorOrder xferNd) ∧ ¬ NoDangling xferNd ∧
@@ -9358,7 +9748,8 @@ theorem reachable_base_owns_statics {k : K} {statics : Statics} {s : S3}
     split
     · rename_i hh
       have hp : pl₀.owner ≠ .frame 0 := fun e' => by rw [e'] at hh; exact hh
-      simp only [reduceCtorEq, false_iff]
+      obtain ⟨r', e'⟩ := mvTo_place (dst := dst) hh
+      simp only [e', reduceCtorEq, false_iff]
       exact fun h' => hp (e.2 h')
     · exact e
   | depend _ h ih =>
@@ -9525,7 +9916,9 @@ buffer; the callee local 6 receives the block 7 on the region `[4]`, then is ret
 def a0 : S3 := enter1 [(none, none, 0), (none, none, 0), (none, none, 0)]
 def a1 : S3 := write3Eff a0 [1]
 def a2 : S3 := allocEff a1 1 0 [(none, none, 0), (some 3, none, 0), (some 3, none, 0)]
-def a3 : S3 := newArenaEff a2 3 3
+/-- J1: the arena value is written before `newArena`. -/
+def a2w : S3 := write3Eff a2 [0]
+def a3 : S3 := newArenaEff a2w 3 3
 def a6 : S3 := enterEff (deriveEff (deriveEff a3 0 0 .observe) 2 2 .modify) [4, 5] [(none, none, 0)]
 def ar7 : Arena := ⟨3, 3, [4, 5], []⟩
 def a7 : S3 := arenaSet (issueEff a6 ar7 [4] 6).1 0 (issueEff a6 ar7 [4] 6).2
@@ -9537,7 +9930,7 @@ def a11 : S3 := resetAtEff a10 0
 example : Write3Step 1 [1] a0 (.ok a1) := .ok (by decide)
 example : AllocStep KA 1 0 [(none, none, 0), (some 3, none, 0), (some 3, none, 0)] a1 (.ok a2) :=
   .ok (by decide) trivial
-example : NewArenaStep 3 3 a2 (.ok a3) := .ok (by decide)
+example : NewArenaStep 3 3 a2w (.ok a3) := .ok (by decide)
 example : a3.arenas = [ar7] := by decide
 example : DeriveStep 0 0 .observe a3 (.ok (deriveEff a3 0 0 .observe)) := .ok (by decide)
 example : DeriveStep 2 2 .modify (deriveEff a3 0 0 .observe)
@@ -9561,7 +9954,8 @@ theorem case16_reachable :
   have r2 : Reachable KA [] a2 := .alloc r1
     (show AllocStep KA 1 0 [(none, none, 0), (some 3, none, 0), (some 3, none, 0)] a1 (.ok a2) from
       .ok (by decide) trivial)
-  have r3 : Reachable KA [] a3 := .newArena r2 (show NewArenaStep 3 3 a2 (.ok a3) from .ok (by decide))
+  have r3 : Reachable KA [] a3 := .newArena (.write r2 (show Write3Step 0 [0] a2 (.ok a2w) from
+    .ok (by decide))) (show NewArenaStep 3 3 a2w (.ok a3) from .ok (by decide))
   have r4 : Reachable KA [] (deriveEff a3 0 0 .observe) :=
     .derive r3 (show DeriveStep 0 0 .observe a3 (.ok _) from .ok (by decide))
   have r5 : Reachable KA [] (deriveEff (deriveEff a3 0 0 .observe) 2 2 .modify) :=
@@ -9619,59 +10013,30 @@ example : IssueAt K0 0 2 [5] 3 (endUseEff b4 2) .reject :=
 /-! ### Nested arena (D3) -/
 
 /-- An arena nested in a block of another arena, with the block issued to the parent arena value
-itself, the only form that D3 realised (pass-5 report, (d) 2); still legal under F1, where the
-arena value is the holder of `internal`. The form of pass 6, with a child arena value distinct
-from the parent's, is among the new cases of pass 6. Frame 1: 0 arena value, 1 allocator value; storage 2 with parts 3 and 4, of root
-authority 2; the parent issues the block 3 on `[3]` to 0; `newArena 3` registers the child, of
-`internal` 3, derived from
-the parent's `internal` 2. The `reset` of the parent is rejected while the child lives; after the
-release of the child's `internal`, the child is dead and the `reset` of the parent is accepted. -/
+itself, the only form that D3 realised (pass-5 report, (d) 2), legal until pass 7. J1 rejects it:
+the destination of a block is a leaf that holds no active authority, and the parent arena value
+holds the parent's `internal`. Frame 1: 0 arena value, 1 allocator value; storage 2 with parts 3
+and 4, of root authority 2; the arena value is written and `newArena 2 2` registers the parent
+(`ok`); the `issue` of the block on `[3]` to 0 is rejected. The form with a child arena value
+distinct from the parent's is the case `na` of pass 6. -/
 def nA0 : S3 := enter1 [(none, none, 0), (none, none, 0)]
 def nA2 : S3 := allocEff (write3Eff nA0 [1]) 1 0 [(none, none, 0), (some 2, none, 0), (some 2, none, 0)]
-def nA3 : S3 := newArenaEff nA2 2 2
+/-- J1: the arena value is written before `newArena`. -/
+def nA2w : S3 := write3Eff nA2 [0]
+def nA3 : S3 := newArenaEff nA2w 2 2
 def arP : Arena := ⟨2, 2, [3, 4], []⟩
-def nA4 : S3 := arenaSet (issueEff nA3 arP [3] 0).1 0 (issueEff nA3 arP [3] 0).2
-def nA5 : S3 := newArenaEff nA4 3 3
-example : NewArenaStep 2 2 nA2 (.ok nA3) := .ok (by decide)
-example : nA3.arenas = [arP] := by decide
-example : IssueAt K0 0 0 [3] 0 nA3 (.ok nA4) :=
-  .ok (ar := arP) (by decide) (.ok (by decide) (by decide) (by decide) (by decide))
-example : NewArenaStep 3 3 nA4 (.ok nA5) := .ok (by decide)
-example : nA5.arenas.map (fun ar => (ar.storage, ar.internal)) = [(2, 2), (3, 3)] ∧
-    (nA5.A[3]?).map (·.origin) = some (some 2) := by decide
-example : ResetAtStep K0 0 0 nA5 .reject := .reject (by decide)
-example : ReleaseStep 3 nA5 (.ok (releaseEff nA5 3)) := .ok (by decide)
-example : IssueAt K0 1 0 [3] 4 nA5
-    (.ok (arenaSet (issueEff nA5 ⟨3, 3, [3], []⟩ [3] 4).1 1 (issueEff nA5 ⟨3, 3, [3], []⟩ [3] 4).2)) :=
-  .ok (by decide) (.ok (by decide) (by decide) (by decide) (by decide))
-example : IssueAt K0 1 0 [3] 4 (releaseEff nA5 3) .reject :=
-  .reject (ar := ⟨3, 3, [3], []⟩) (by decide) (.reject (by decide))
-example : (releaseEff nA5 3).arenas = nA5.arenas ∧ ¬ (releaseEff nA5 3).Active 3 := by decide
-example : ResetAtStep K0 0 0 (releaseEff nA5 3) (.ok (resetAtEff (releaseEff nA5 3) 0)) :=
-  .ok (by decide)
-theorem nested_reachable : Reachable K0 [] (resetAtEff (releaseEff nA5 3) 0) := by
+theorem nested_same_value_rejected :
+    Reachable K0 [] nA3 ∧ nA3.arenas = [arP] ∧ IssueAt K0 0 0 [3] 0 nA3 .reject ∧
+      (nA3.A[2]?).map (fun y => (y.active, y.holder)) = some (true, .place 0) := by
   have r0 : Reachable K0 [] nA0 := .enter (.init (by decide)) (.ok (by decide))
   have r1 : Reachable K0 [] (write3Eff nA0 [1]) :=
     .write r0 (show Write3Step 1 [1] nA0 (.ok _) from .ok (by decide))
   have r2 : Reachable K0 [] nA2 := .alloc r1
     (show AllocStep K0 1 0 [(none, none, 0), (some 2, none, 0), (some 2, none, 0)] _ (.ok nA2) from
       .ok (by decide) trivial)
-  have r3 : Reachable K0 [] nA3 := .newArena r2 (show NewArenaStep 2 2 nA2 (.ok nA3) from .ok (by decide))
-  have r4 : Reachable K0 [] nA4 := .issue r3 (show IssueAt K0 0 0 [3] 0 nA3 (.ok nA4) from
-    .ok (ar := arP) (by decide) (.ok (by decide) (by decide) (by decide) (by decide)))
-  have r5 : Reachable K0 [] nA5 := .newArena r4 (show NewArenaStep 3 3 nA4 (.ok nA5) from .ok (by decide))
-  have r6 : Reachable K0 [] (releaseEff nA5 3) :=
-    .release r5 (show ReleaseStep 3 nA5 (.ok _) from .ok (by decide))
-  exact .reset r6 (show ResetAtStep K0 0 0 (releaseEff nA5 3) (.ok _) from .ok (by decide))
-
-/-- In this form, parent and child have the same arena value 0, the holder of both `internal`
-(F1), so the `endUse` of the child's value releases both (`arena_dies_with_internal`), and the
-`reset` of the parent is then rejected (pass-5 report, (d) 2). -/
-example : nA5.arenas.map (arenaValue nA5) = [some 0, some 0] ∧
-    EndUseStep K0 0 nA5 (.ok (endUseEff nA5 0)) ∧
-    ¬ (endUseEff nA5 0).Active 2 ∧ ¬ (endUseEff nA5 0).Active 3 ∧
-    ResetAtStep K0 0 0 (endUseEff nA5 0) .reject :=
-  ⟨by decide, .ok (by decide), by decide, by decide, .reject (by decide)⟩
+  have r3 : Reachable K0 [] nA3 := .newArena (.write r2 (show Write3Step 0 [0] nA2 (.ok nA2w) from
+    .ok (by decide))) (show NewArenaStep 2 2 nA2w (.ok nA3) from .ok (by decide))
+  exact ⟨r3, by decide, .reject (ar := arP) (by decide) (.reject (by decide)), by decide⟩
 
 /-! ### Dependency without access -/
 
@@ -9701,25 +10066,30 @@ example : Read3Step 1 [1] dd3 .reject := .reject (by decide)
 
 /-- A nested arena on a storage of a single part (pass-5 report, (c) 10): the root of the parent
 and the block cover the same leaves. Under F1 the caller names `internal`: the root 3 is
-rejected, being the `internal` of a live arena, and the block 4 is accepted. Frame 1: 0 arena value, 1 allocator value, 2 block destination; storage 3 with a
-single part 4; the parent issues the block 4 on `[4]` to 0. -/
+rejected, being the `internal` of a live arena, and the block 4 is accepted. Frame 1: 0 arena value,
+1 allocator value, 2 block destination; storage 3 with a single part 4; the parent issues the block
+4 on `[4]` to 2. Pass 6 issued it to the arena value 0; J1 rejects that `issue`, 0 holding
+`internal` 3 (`x_issue_to_value_rejected`). -/
 def x0 : S3 := enter1 [(none, none, 0), (none, none, 0), (none, none, 0)]
 def x2 : S3 := allocEff (write3Eff x0 [1]) 1 0 [(none, none, 0), (some 3, none, 0)]
 def arX : Arena := ⟨3, 3, [4], []⟩
-def x3 : S3 := newArenaEff x2 3 3
-def x4 : S3 := arenaSet (issueEff x3 arX [4] 0).1 0 (issueEff x3 arX [4] 0).2
+/-- J1: the arena value is written before `newArena`. -/
+def x2w : S3 := write3Eff x2 [0]
+def x3 : S3 := newArenaEff x2w 3 3
+def x4 : S3 := arenaSet (issueEff x3 arX [4] 2).1 0 (issueEff x3 arX [4] 2).2
 def x5 : S3 := newArenaEff x4 4 4
 example : footprint x2.P 3 = [4] ∧ footprint x2.P 4 = [4] := by decide
-example : NewArenaStep 3 3 x2 (.ok x3) ∧ x3.arenas = [arX] := ⟨.ok (by decide), by decide⟩
-example : IssueAt K0 0 0 [4] 0 x3 (.ok x4) :=
+example : NewArenaStep 3 3 x2w (.ok x3) ∧ x3.arenas = [arX] := ⟨.ok (by decide), by decide⟩
+example : IssueAt K0 0 0 [4] 2 x3 (.ok x4) :=
   .ok (ar := arX) (by decide) (.ok (by decide) (by decide) (by decide) (by decide))
 example : NewArenaStep 4 3 x4 .reject := .reject (by decide)
 example : NewArenaStep 4 4 x4 (.ok x5) ∧
     x5.arenas.map (fun ar => (ar.storage, ar.internal)) = [(3, 3), (4, 4)] :=
   ⟨.ok (by decide), by decide⟩
-example : IssueAt K0 1 0 [4] 2 x5
-    (.ok (arenaSet (issueEff x5 ⟨4, 4, [4], []⟩ [4] 2).1 1 (issueEff x5 ⟨4, 4, [4], []⟩ [4] 2).2)) :=
-  .ok (by decide) (.ok (by decide) (by decide) (by decide) (by decide))
+/-- J1: pass 6 issued the block of `x` to the arena value 0, which holds `internal` 3: rejected. -/
+theorem x_issue_to_value_rejected : IssueAt K0 0 0 [4] 0 x3 .reject ∧ IssueStatic K0 x3 arX 0 [4] 2 ∧
+    ¬ IssueStatic K0 x3 arX 0 [4] 0 :=
+  ⟨.reject (ar := arX) (by decide) (.reject (by decide)), by decide, by decide⟩
 example : ResetAtStep K0 0 0 x5 .reject := .reject (by decide)
 
 /-- `x2` (pass-5 report, (e) 6; F1): without any arena, the storage 4 is the single part of the
@@ -9731,13 +10101,13 @@ example : Reachable K0 [] x2 ∧ HasRight x2 .modify 4 ∧ x2.Usable 4 ∧ x2.ar
     (x2.A[3]?).map (fun y => (y.origin, y.holder, y.footprint, y.mode, y.active)) =
       some (none, .place 0, [4], .modify, true) ∧
     (x2.P[4]?).map (·.owner) = some (.place 0) ∧ footprint x2.P 4 = [4] ∧
-    NewArenaStep 4 3 x2 (.ok (newArenaEff x2 4 3)) ∧
-    NewArenaStep 3 3 (newArenaEff x2 4 3) .reject :=
+    NewArenaStep 4 3 x2 .reject ∧ NewArenaStep 4 3 x2w (.ok (newArenaEff x2w 4 3)) ∧
+    NewArenaStep 3 3 (newArenaEff x2w 4 3) .reject :=
   ⟨.alloc (.write (.enter (.init (by decide)) (.ok (by decide)))
       (show Write3Step 1 [1] x0 (.ok _) from .ok (by decide)))
     (show AllocStep K0 1 0 [(none, none, 0), (some 3, none, 0)] _ (.ok x2) from .ok (by decide) trivial),
-   by decide, by decide, by decide, by decide, by decide, by decide, .ok (by decide),
-   .reject (by decide)⟩
+   by decide, by decide, by decide, by decide, by decide, by decide, .reject (by decide),
+   .ok (by decide), .reject (by decide)⟩
 
 /-- Two places that share a leaf have the same owner (A5, `WF3`). -/
 theorem shared_leaf_same_owner {s : S3} (hw : WF3 s) {q₁ q₂ l : Nat}
@@ -9935,76 +10305,67 @@ theorem call_protects_params_safe_fails_grand :
 origin of a parameter, exercisable at no mode at the entry, becomes exercisable once the callee
 releases two authorities that blocked another parameter, here after the release of the parameter
 itself, which only the final write needs (G1, targeted search; the same without releasing the
-parameter: `call_protects_params_safe_fails_unblock_active`).
-Frame 1: `L` (0), `src` (1), a structure `q` (2) with the fields 3 and 4, a structure `w` (5) with
-the fields 6 and 7; roots 0, 1, 2 (on 3 and 4) and 3 (on 6 and 7). The caller derives 4, `Modify` on
-`L`, stores it into `src` (F4) and transfers `src` into `q`: 4 is held by `q`. It derives 5 from 4
-on `L`, 6 from the root 2 on `q`, 7 and 8 from 6 on the fields 3 and 4, 9 from the root 3 on `w`,
-stores 7 into 6 and 8 into 7, and calls with `[5, 6, 9]`. At the entry, 4 is exercisable at no
-mode: 6 has no effective mode on `q`, and 7 and 8, exercisable through 9, each cover one field of
-`q`; the call is accepted (G1) and `CallProtects` holds. The callee releases 5: 4 is still hidden.
-It releases 7 and 8, held by the fields of `w` on which 9 gives `Modify` (C4): 6 regains effective
-`Modify` on `q`, so 4 is exercisable, covers the leaf 0 of 5, and is its ancestor. The callee then
-writes the leaf 0 through 4. -/
-def ub0 : S3 := enter1 [(none, none, 0), (none, none, 0), (none, none, 0), (some 2, none, 0),
-  (some 2, none, 0), (none, none, 0), (some 5, none, 0), (some 5, none, 0)]
-def ub1 : S3 := deriveEff ub0 0 0 .modify
-def ub2 : S3 := storeEff ub1 4 1
-def ub3 : S3 := transferEff ub2 1 2
-def ub4 : S3 := deriveEff ub3 4 0 .modify
-def ub5 : S3 := deriveEff ub4 2 2 .modify
-def ub6 : S3 := deriveEff ub5 6 3 .modify
-def ub7 : S3 := deriveEff ub6 6 4 .modify
-def ub8 : S3 := deriveEff ub7 3 5 .modify
-def ub9 : S3 := storeEff ub8 7 6
-def ub10 : S3 := storeEff ub9 8 7
-def ub11 : S3 := enterEff ub10 [5, 6, 9] []
-def ub12 : S3 := releaseEff ub11 5
-def ub13 : S3 := releaseEff ub12 7
-def ub14 : S3 := releaseEff ub13 8
+parameter: `call_protects_params_safe_fails_unblock_active`). Frame 1: a structure `q` (0) with the
+fields 1 and 2; the place `S` (3), owned by `q`, of root 1 held by `q` (A4, A5); a structure `w` (4)
+with the fields 5 and 6; roots 0 (on 1 and 2) and 2 (on 5 and 6). The caller derives 3, `Modify` on
+`S`, from the root 1, then 4 from the root 0 on `q`, 5 and 6 from 4 on the fields 1 and 2, 7 from
+the root 2 on `w`, stores 5 into 5 and 6 into 6, and calls with `[3, 4, 7]`. At the entry, the
+root 1 is exercisable at no mode: 4 has no effective mode on `q`, and 5 and 6, exercisable through
+7, each cover one field of `q`; the call is accepted (G1) and `CallProtects` holds. The callee
+releases 3: 1 is still hidden. It releases 5 and 6, held by the fields of `w` on which 7 gives
+`Modify` (C4): 4 regains effective `Modify` on `q`, so the root 1 is exercisable, covers the leaf 3
+of 3, and is its origin. The callee then writes the leaf 3 through 1. Pass 7 built the same
+situation with a transfer of a leaf into the structure `q`, which J1 rejects. -/
+def ub0 : S3 := enter1 [(none, none, 0), (some 0, none, 0), (some 0, none, 0), (none, some 0, 0),
+  (none, none, 0), (some 4, none, 0), (some 4, none, 0)]
+def ub1 : S3 := deriveEff ub0 1 3 .modify
+def ub2 : S3 := deriveEff ub1 0 0 .modify
+def ub3 : S3 := deriveEff ub2 4 1 .modify
+def ub4 : S3 := deriveEff ub3 4 2 .modify
+def ub5 : S3 := deriveEff ub4 2 4 .modify
+def ub6 : S3 := storeEff ub5 5 5
+def ub7 : S3 := storeEff ub6 6 6
+def ub8 : S3 := enterEff ub7 [3, 4, 7] []
+def ub9 : S3 := releaseEff ub8 3
+def ub10 : S3 := releaseEff ub9 5
+def ub11 : S3 := releaseEff ub10 6
 theorem call_protects_params_safe_fails_unblock :
-    Reachable K0 [] ub14 ∧ EnterStep [5, 6, 9] [] ub10 (.ok ub11) ∧ CallProtects ub11 ∧
-      ¬ ub11.ExercisableAt 4 .observe ∧ ¬ ub12.ExercisableAt 4 .observe ∧
-      ub14.ExercisableAt 4 .modify ∧ ¬ CallProtects ub14 ∧
-      Write3Step 4 [0] ub14 (.ok (write3Eff ub14 [0])) := by
+    Reachable K0 [] ub11 ∧ EnterStep [3, 4, 7] [] ub7 (.ok ub8) ∧ CallProtects ub8 ∧
+      ¬ ub8.ExercisableAt 1 .observe ∧ ¬ ub9.ExercisableAt 1 .observe ∧
+      ub11.ExercisableAt 1 .modify ∧ ¬ CallProtects ub11 ∧
+      Write3Step 1 [3] ub11 (.ok (write3Eff ub11 [3])) := by
   have r0 : Reachable K0 [] ub0 := .enter (.init (by decide)) (.ok (by decide))
-  have r1 : Reachable K0 [] ub1 := .derive r0 (show DeriveStep 0 0 .modify ub0 (.ok ub1) from
+  have r1 : Reachable K0 [] ub1 := .derive r0 (show DeriveStep 1 3 .modify ub0 (.ok ub1) from
     .ok (by decide))
-  have r2 : Reachable K0 [] ub2 := .store r1 (show StoreStep 4 1 ub1 (.ok ub2) from .ok (by decide))
-  have r3 : Reachable K0 [] ub3 := .transfer r2 (show TransferStep K0 1 2 ub2 (.ok ub3) from
+  have r2 : Reachable K0 [] ub2 := .derive r1 (show DeriveStep 0 0 .modify ub1 (.ok ub2) from
     .ok (by decide))
-  have r4 : Reachable K0 [] ub4 := .derive r3 (show DeriveStep 4 0 .modify ub3 (.ok ub4) from
+  have r3 : Reachable K0 [] ub3 := .derive r2 (show DeriveStep 4 1 .modify ub2 (.ok ub3) from
     .ok (by decide))
-  have r5 : Reachable K0 [] ub5 := .derive r4 (show DeriveStep 2 2 .modify ub4 (.ok ub5) from
+  have r4 : Reachable K0 [] ub4 := .derive r3 (show DeriveStep 4 2 .modify ub3 (.ok ub4) from
     .ok (by decide))
-  have r6 : Reachable K0 [] ub6 := .derive r5 (show DeriveStep 6 3 .modify ub5 (.ok ub6) from
+  have r5 : Reachable K0 [] ub5 := .derive r4 (show DeriveStep 2 4 .modify ub4 (.ok ub5) from
     .ok (by decide))
-  have r7 : Reachable K0 [] ub7 := .derive r6 (show DeriveStep 6 4 .modify ub6 (.ok ub7) from
+  have r6 : Reachable K0 [] ub6 := .store r5 (show StoreStep 5 5 ub5 (.ok ub6) from .ok (by decide))
+  have r7 : Reachable K0 [] ub7 := .store r6 (show StoreStep 6 6 ub6 (.ok ub7) from .ok (by decide))
+  have he : EnterStep [3, 4, 7] [] ub7 (.ok ub8) := .ok (by decide)
+  have r9 : Reachable K0 [] ub9 := .release (.enter r7 he)
+    (show ReleaseStep 3 ub8 (.ok ub9) from .ok (by decide))
+  have r10 : Reachable K0 [] ub10 := .release r9 (show ReleaseStep 5 ub9 (.ok ub10) from
     .ok (by decide))
-  have r8 : Reachable K0 [] ub8 := .derive r7 (show DeriveStep 3 5 .modify ub7 (.ok ub8) from
+  have r11 : Reachable K0 [] ub11 := .release r10 (show ReleaseStep 6 ub10 (.ok ub11) from
     .ok (by decide))
-  have r9 : Reachable K0 [] ub9 := .store r8 (show StoreStep 7 6 ub8 (.ok ub9) from .ok (by decide))
-  have r10 : Reachable K0 [] ub10 := .store r9 (show StoreStep 8 7 ub9 (.ok ub10) from
-    .ok (by decide))
-  have he : EnterStep [5, 6, 9] [] ub10 (.ok ub11) := .ok (by decide)
-  have r12 : Reachable K0 [] ub12 := .release (.enter r10 he)
-    (show ReleaseStep 5 ub11 (.ok ub12) from .ok (by decide))
-  have r13 : Reachable K0 [] ub13 := .release r12 (show ReleaseStep 7 ub12 (.ok ub13) from
-    .ok (by decide))
-  have r14 : Reachable K0 [] ub14 := .release r13 (show ReleaseStep 8 ub13 (.ok ub14) from
-    .ok (by decide))
-  exact ⟨r14, he, callProtects_of_check (by decide), by decide, by decide, by decide,
-    not_callProtects (f := 2) (F₀ := [1, 0]) (p := 5) (b := 4) (l := 0) (m := .modify)
+  exact ⟨r11, he, callProtects_of_check (by decide), by decide, by decide, by decide,
+    not_callProtects (f := 2) (F₀ := [1, 0]) (p := 3) (b := 1) (l := 3) (m := .modify)
       (by decide) (by decide) (by decide) (by decide) (by decide) (by decide) (by decide)
       (by decide), .ok (by decide)⟩
 
 /-- `call_protects_params_safe` (F6, kept by G1) is false on the reached states, in its transitive
-form and in its direct form: the witness is `ub14` (`call_protects_params_safe_fails_unblock`). -/
+form and in its direct form: the witness is `ub11` (`call_protects_params_safe_fails_unblock`). -/
 theorem call_protects_params_safe_false :
     ¬ (∀ s, Reachable K0 [] s → CallProtects s) ∧
       ¬ (∀ s, Reachable K0 [] s → CallProtectsDirect s) := by
-  have hd : ¬ CallProtectsDirect ub14 := not_callProtectsDirect (f := 2) (F₀ := [1, 0]) (p := 5)
-    (b := 4) (l := 0) (m := .modify) (by decide) (by decide) (by decide) (by decide) (by decide)
+  have hd : ¬ CallProtectsDirect ub11 := not_callProtectsDirect (f := 2) (F₀ := [1, 0]) (p := 3)
+    (b := 1) (l := 3) (m := .modify) (by decide) (by decide) (by decide) (by decide) (by decide)
     (by decide) (by decide) (by decide)
   have hr := call_protects_params_safe_fails_unblock.1
   exact ⟨fun h => hd (h _ hr).direct, fun h => hd (h _ hr)⟩
@@ -10131,38 +10492,32 @@ theorem release_keeps_origin_hidden {s s' : S3} {p o : Nat} {y : Authority} {m :
     | held hz za _ _ _ _ => rw [hxo] at hz; cases hz; exact xa za
 
 /-- The witness `ub` without the release of the parameter (G1, targeted search): from the entry
-`ub11`, the callee releases only 7 and 8; the parameter 5 is still active, and its direct origin 4
-is exercisable at `Modify`, without effective mode on the leaf 0 while 5 is active. -/
-def ua1 : S3 := releaseEff ub11 7
-def ua2 : S3 := releaseEff ua1 8
+`ub8`, the callee releases only 5 and 6; the parameter 3 is still active, and its direct origin, the
+root 1, is exercisable at `Modify`, without effective mode on the leaf 3 while 3 is active. -/
+def ua1 : S3 := releaseEff ub8 5
+def ua2 : S3 := releaseEff ua1 6
 theorem call_protects_params_safe_fails_unblock_active :
-    Reachable K0 [] ua2 ∧ ReleaseStep 7 ub11 (.ok ua1) ∧ ReleaseStep 8 ua1 (.ok ua2) ∧
-      ua2.Active 5 ∧ ua2.ExercisableAt 4 .modify ∧ effective ua2 4 0 = none ∧
-      ¬ CallProtects ua2 ∧ ua2.callParams 2 = [5, 6, 9] ∧ ua2.org 5 = some 4 := by
+    Reachable K0 [] ua2 ∧ ReleaseStep 5 ub8 (.ok ua1) ∧ ReleaseStep 6 ua1 (.ok ua2) ∧
+      ua2.Active 3 ∧ ua2.ExercisableAt 1 .modify ∧ effective ua2 1 3 = none ∧
+      ¬ CallProtects ua2 ∧ ua2.callParams 2 = [3, 4, 7] ∧ ua2.org 3 = some 1 := by
   have r0 : Reachable K0 [] ub0 := .enter (.init (by decide)) (.ok (by decide))
-  have r1 : Reachable K0 [] ub1 := .derive r0 (show DeriveStep 0 0 .modify ub0 (.ok ub1) from
+  have r1 : Reachable K0 [] ub1 := .derive r0 (show DeriveStep 1 3 .modify ub0 (.ok ub1) from
     .ok (by decide))
-  have r2 : Reachable K0 [] ub2 := .store r1 (show StoreStep 4 1 ub1 (.ok ub2) from .ok (by decide))
-  have r3 : Reachable K0 [] ub3 := .transfer r2 (show TransferStep K0 1 2 ub2 (.ok ub3) from
+  have r2 : Reachable K0 [] ub2 := .derive r1 (show DeriveStep 0 0 .modify ub1 (.ok ub2) from
     .ok (by decide))
-  have r4 : Reachable K0 [] ub4 := .derive r3 (show DeriveStep 4 0 .modify ub3 (.ok ub4) from
+  have r3 : Reachable K0 [] ub3 := .derive r2 (show DeriveStep 4 1 .modify ub2 (.ok ub3) from
     .ok (by decide))
-  have r5 : Reachable K0 [] ub5 := .derive r4 (show DeriveStep 2 2 .modify ub4 (.ok ub5) from
+  have r4 : Reachable K0 [] ub4 := .derive r3 (show DeriveStep 4 2 .modify ub3 (.ok ub4) from
     .ok (by decide))
-  have r6 : Reachable K0 [] ub6 := .derive r5 (show DeriveStep 6 3 .modify ub5 (.ok ub6) from
+  have r5 : Reachable K0 [] ub5 := .derive r4 (show DeriveStep 2 4 .modify ub4 (.ok ub5) from
     .ok (by decide))
-  have r7 : Reachable K0 [] ub7 := .derive r6 (show DeriveStep 6 4 .modify ub6 (.ok ub7) from
-    .ok (by decide))
-  have r8 : Reachable K0 [] ub8 := .derive r7 (show DeriveStep 3 5 .modify ub7 (.ok ub8) from
-    .ok (by decide))
-  have r9 : Reachable K0 [] ub9 := .store r8 (show StoreStep 7 6 ub8 (.ok ub9) from .ok (by decide))
-  have r10 : Reachable K0 [] ub10 := .store r9 (show StoreStep 8 7 ub9 (.ok ub10) from
-    .ok (by decide))
-  have he : EnterStep [5, 6, 9] [] ub10 (.ok ub11) := .ok (by decide)
-  have h1 : ReleaseStep 7 ub11 (.ok ua1) := .ok (by decide)
-  have h2 : ReleaseStep 8 ua1 (.ok ua2) := .ok (by decide)
-  exact ⟨.release (.release (.enter r10 he) h1) h2, h1, h2, by decide, by decide, by decide,
-    not_callProtects (f := 2) (F₀ := [1, 0]) (p := 5) (b := 4) (l := 0) (m := .modify)
+  have r6 : Reachable K0 [] ub6 := .store r5 (show StoreStep 5 5 ub5 (.ok ub6) from .ok (by decide))
+  have r7 : Reachable K0 [] ub7 := .store r6 (show StoreStep 6 6 ub6 (.ok ub7) from .ok (by decide))
+  have he : EnterStep [3, 4, 7] [] ub7 (.ok ub8) := .ok (by decide)
+  have h1 : ReleaseStep 5 ub8 (.ok ua1) := .ok (by decide)
+  have h2 : ReleaseStep 6 ua1 (.ok ua2) := .ok (by decide)
+  exact ⟨.release (.release (.enter r7 he) h1) h2, h1, h2, by decide, by decide, by decide,
+    not_callProtects (f := 2) (F₀ := [1, 0]) (p := 3) (b := 1) (l := 3) (m := .modify)
       (by decide) (by decide) (by decide) (by decide) (by decide) (by decide) (by decide)
       (by decide), by decide, by decide⟩
 
@@ -10313,11 +10668,13 @@ the child value, which releases the block, it is accepted (expected: `ok`). -/
 def na0 : S3 := enter1 [(none, none, 0), (none, none, 0), (none, none, 0)]
 def na1 : S3 :=
   allocEff (write3Eff na0 [1]) 1 0 [(none, none, 0), (some 3, none, 0), (some 3, none, 0)]
-def na2 : S3 := newArenaEff na1 3 3
+/-- J1: the arena value is written before `newArena`. -/
+def na1w : S3 := write3Eff na1 [0]
+def na2 : S3 := newArenaEff na1w 3 3
 def arNa : Arena := ⟨3, 3, [4, 5], []⟩
 def na3 : S3 := arenaSet (issueEff na2 arNa [4] 2).1 0 (issueEff na2 arNa [4] 2).2
 def na4 : S3 := newArenaEff na3 4 4
-example : NewArenaStep 3 3 na1 (.ok na2) := .ok (by decide)
+example : NewArenaStep 3 3 na1w (.ok na2) := .ok (by decide)
 example : IssueAt K0 0 0 [4] 2 na2 (.ok na3) :=
   .ok (ar := arNa) (by decide) (.ok (by decide) (by decide) (by decide) (by decide))
 example : NewArenaStep 4 4 na3 (.ok na4) := .ok (by decide)
@@ -10445,12 +10802,13 @@ theorem vw3_escape_rejected : Reachable K0 [] vw3 ∧ TransferStep K0 2 0 vw3 .r
     (by decide) (by decide) rfl (by decide) (by decide)⟩
 
 /-- A view stored into a field of a structure (F4; MM-03.3.6): frame 2 has 1 array, 2 structure
-with the field 3, 4 another local. The view 5 on the array is stored into the field 3 (expected:
-`ok`); it is an anchor of the field, not of the structure. The transfer of the structure to the
-caller's result is rejected (expected: reject), the dependency of the field following the value
-(`depsOf`); to the other local 4, accepted (expected: `ok`). -/
+with the field 3, 4 another structure with the field 5 (pass 6: a leaf 4; J1 asks a destination of
+the same shape). The view 5 on the array is stored into the field 3 (expected: `ok`); it is an
+anchor of the field, not of the structure. The transfer of the structure to the caller's result
+is rejected (expected: reject), the dependency of the field following the value (`depsOf`); to
+the other local 4, accepted (expected: `ok`), the view passing to the field 5 (J1). -/
 def fw0 : S3 := enterEff (deriveEff (enter1 [(none, none, 0)]) 0 0 .modify) [1]
-  [(none, none, 0), (none, none, 0), (some 2, none, 0), (none, none, 0)]
+  [(none, none, 0), (none, none, 0), (some 2, none, 0), (none, none, 0), (some 4, none, 0)]
 def fw1 : S3 := write3Eff fw0 [1]
 def fw2 : S3 := deriveEff fw1 2 1 .observe
 def fw3 : S3 := storeEff fw2 5 3
@@ -10497,15 +10855,15 @@ theorem hw3_escape_rejected : Reachable K0 [] hw3 ∧ TransferStep K0 3 0 hw3 .r
 rejected) is in the witnesses of pass 5. F1 guards by `internal` only: once the frame derives
 4, `Modify` on the root place 3, from the root 3 and stores it into the place 2, a second arena
 on the root place 3 with `internal` 4 is accepted while the first lives (pass-6 report, (e)). -/
-def y1 : S3 := deriveEff (newArenaEff x2 4 3) 3 3 .modify
+def y1 : S3 := deriveEff (newArenaEff x2w 4 3) 3 3 .modify
 def y3 : S3 := storeEff y1 4 2
-example : DeriveStep 3 3 .modify (newArenaEff x2 4 3) (.ok y1) := .ok (by decide)
+example : DeriveStep 3 3 .modify (newArenaEff x2w 4 3) (.ok y1) := .ok (by decide)
 example : StoreStep 4 2 y1 (.ok y3) := .ok (by decide)
 example : y3.Active 3 ∧ NewArenaStep 3 4 y3 (.ok (newArenaEff y3 3 4)) := ⟨by decide, .ok (by decide)⟩
 /-- In the state of the case `x2`, before that derivation, every second arena on the root place 3
 or its part 4 is rejected, whatever its `internal` (an index beyond `A` fails `NewArenaPre`). -/
-example : ∀ st ∈ [3, 4], ∀ i ∈ List.range (newArenaEff x2 4 3).A.length,
-    ¬ NewArenaPre (newArenaEff x2 4 3) st i := by decide
+example : ∀ st ∈ [3, 4], ∀ i ∈ List.range (newArenaEff x2w 4 3).A.length,
+    ¬ NewArenaPre (newArenaEff x2w 4 3) st i := by decide
 
 /-! ### `store` of a root (F4) -/
 
@@ -10540,12 +10898,14 @@ example : EndUseStep K0 0 (releaseEff se2 3) (.ok (endUseEff (releaseEff se2 3) 
 
 /-- Frame 1: 0 value `x` with the field 1, 2 a local `tmp`; the field is written. `transfer(x,
 x.f)` is rejected (expected: reject): the footprints overlap (F5), and the destination is
-initialised. Twin: `transfer(x.f, tmp)` then `transfer(tmp, x)` (expected: `ok`, `ok`). -/
+initialised. Twin of pass 6: `transfer(x.f, tmp)` then `transfer(tmp, x)` (`ok`, `ok` in pass 6);
+J1 rejects the second, `tmp` being a leaf and `x` a structure; `transfer(tmp, x.f)` is accepted. -/
 def tx0 : S3 := write3Eff (enter1 [(none, none, 0), (some 0, none, 0), (none, none, 0)]) [1]
 example : TransferStep K0 0 1 tx0 .reject := .reject (by decide)
 example : overlap tx0.P 0 1 ∧ tx0.I 1 = .init := by decide
 example : TransferStep K0 1 2 tx0 (.ok (transferEff tx0 1 2)) := .ok (by decide)
-example : TransferStep K0 2 0 (transferEff tx0 1 2) (.ok (transferEff (transferEff tx0 1 2) 2 0)) :=
+example : TransferStep K0 2 0 (transferEff tx0 1 2) .reject := .reject (by decide)
+example : TransferStep K0 2 1 (transferEff tx0 1 2) (.ok (transferEff (transferEff tx0 1 2) 2 1)) :=
   .ok (by decide)
 
 /-! ### Non-vacuity of F6 -/
@@ -10620,7 +10980,9 @@ from `S3.init []`; the list of arenas is non-empty from `fa2` on. -/
 def fa0 : S3 := enter1 [(none, none, 0), (none, none, 0), (none, none, 0), (none, none, 0)]
 def fa1 : S3 :=
   allocEff (write3Eff fa0 [1]) 1 0 [(none, none, 0), (some 4, none, 0), (some 4, none, 0)]
-def fa2 : S3 := newArenaEff fa1 4 4
+/-- J1: the arena value is written before `newArena`. -/
+def fa1w : S3 := write3Eff fa1 [0]
+def fa2 : S3 := newArenaEff fa1w 4 4
 def arFa : Arena := ⟨4, 4, [5, 6], []⟩
 def fa3 : S3 := arenaSet (issueEff fa2 arFa [5] 2).1 0 (issueEff fa2 arFa [5] 2).2
 def arFa' : Arena := ⟨4, 4, [6], [([5], 5)]⟩
@@ -10647,7 +11009,8 @@ theorem progress_cycle_whole_nodes :
   have r1 : Reachable K0 [] fa1 := .alloc (.write r0 (show Write3Step 1 [1] fa0 (.ok _) from
     .ok (by decide))) (show AllocStep K0 1 0 [(none, none, 0), (some 4, none, 0), (some 4, none, 0)]
       _ (.ok fa1) from .ok (by decide) trivial)
-  have r2 : Reachable K0 [] fa2 := .newArena r1 (show NewArenaStep 4 4 fa1 (.ok fa2) from .ok (by decide))
+  have r2 : Reachable K0 [] fa2 := .newArena (.write r1 (show Write3Step 0 [0] fa1 (.ok fa1w) from
+    .ok (by decide))) (show NewArenaStep 4 4 fa1w (.ok fa2) from .ok (by decide))
   have r3 : Reachable K0 [] fa3 := .issue r2 (show IssueAt K0 0 0 [5] 2 fa2 (.ok fa3) from
     .ok (ar := arFa) (by decide) (.ok (by decide) (by decide) (by decide) (by decide)))
   have r4 : Reachable K0 [] fa4 := .issue r3 (show IssueAt K0 0 0 [6] 3 fa3 (.ok fa4) from
@@ -10675,7 +11038,9 @@ obtained: `ok`). Teardown: `release` of 7 and 8 (F4: each leaves the anchors of 
 (expected and obtained: `ok` at each step). Each state is reached from `S3.init []`. -/
 def fb1 : S3 := allocEff (write3Eff fa0 [1]) 1 0 [(none, none, 0), (some 4, none, 0),
   (some 5, none, 0), (some 5, none, 0), (some 4, none, 0), (some 8, none, 0), (some 8, none, 0)]
-def fb2 : S3 := newArenaEff fb1 4 4
+/-- J1: the arena value is written before `newArena`. -/
+def fb1w : S3 := write3Eff fb1 [0]
+def fb2 : S3 := newArenaEff fb1w 4 4
 def arFb : Arena := ⟨4, 4, [6, 7, 9, 10], []⟩
 def fb3 : S3 := arenaSet (issueEff fb2 arFb [6, 7] 2).1 0 (issueEff fb2 arFb [6, 7] 2).2
 def arFb' : Arena := ⟨4, 4, [9, 10], [([6, 7], 5)]⟩
@@ -10697,7 +11062,8 @@ theorem progress_cycle_disjoint_fields :
     .ok (by decide))) (show AllocStep K0 1 0 [(none, none, 0), (some 4, none, 0), (some 5, none, 0),
       (some 5, none, 0), (some 4, none, 0), (some 8, none, 0), (some 8, none, 0)] _ (.ok fb1) from
       .ok (by decide) trivial)
-  have r2 : Reachable K0 [] fb2 := .newArena r1 (show NewArenaStep 4 4 fb1 (.ok fb2) from .ok (by decide))
+  have r2 : Reachable K0 [] fb2 := .newArena (.write r1 (show Write3Step 0 [0] fb1 (.ok fb1w) from
+    .ok (by decide))) (show NewArenaStep 4 4 fb1w (.ok fb2) from .ok (by decide))
   have r3 : Reachable K0 [] fb3 := .issue r2 (show IssueAt K0 0 0 [6, 7] 2 fb2 (.ok fb3) from
     .ok (ar := arFb) (by decide) (.ok (by decide) (by decide) (by decide) (by decide)))
   have r4 : Reachable K0 [] fb4 := .issue r3 (show IssueAt K0 0 0 [9, 10] 3 fb3 (.ok fb4) from
@@ -10755,7 +11121,8 @@ theorem call_arena_observe_block_param :
     have r1 : Reachable K0 [] fa1 := .alloc (.write r0 (show Write3Step 1 [1] fa0 (.ok _) from
       .ok (by decide))) (show AllocStep K0 1 0 [(none, none, 0), (some 4, none, 0), (some 4, none, 0)]
         _ (.ok fa1) from .ok (by decide) trivial)
-    have r2 : Reachable K0 [] fa2 := .newArena r1 (show NewArenaStep 4 4 fa1 (.ok fa2) from
+    have r2 : Reachable K0 [] fa2 := .newArena (.write r1 (show Write3Step 0 [0] fa1 (.ok fa1w) from
+    .ok (by decide))) (show NewArenaStep 4 4 fa1w (.ok fa2) from
       .ok (by decide))
     exact .issue r2 (show IssueAt K0 0 0 [5] 2 fa2 (.ok fa3) from
       .ok (ar := arFa) (by decide) (.ok (by decide) (by decide) (by decide) (by decide)))
@@ -10820,7 +11187,9 @@ def tc0 : S3 := enter1 [(none, none, 0), (none, none, 0), (none, none, 0), (none
   (none, none, 0)]
 def tc1 : S3 := allocEff (write3Eff tc0 [1]) 1 0
   [(none, none, 0), (some 5, none, 0), (some 5, none, 0), (some 5, none, 0)]
-def tc2 : S3 := newArenaEff tc1 5 5
+/-- J1: the arena value is written before `newArena`. -/
+def tc1w : S3 := write3Eff tc1 [0]
+def tc2 : S3 := newArenaEff tc1w 5 5
 def arTc : Arena := ⟨5, 5, [6, 7, 8], []⟩
 def tc3 : S3 := arenaSet (issueEff tc2 arTc [6] 2).1 0 (issueEff tc2 arTc [6] 2).2
 def arTc' : Arena := ⟨5, 5, [7, 8], [([6], 6)]⟩
@@ -10839,7 +11208,8 @@ theorem progress_cycle_three_nodes :
     .ok (by decide))) (show AllocStep K0 1 0
       [(none, none, 0), (some 5, none, 0), (some 5, none, 0), (some 5, none, 0)] _ (.ok tc1) from
       .ok (by decide) trivial)
-  have r2 : Reachable K0 [] tc2 := .newArena r1 (show NewArenaStep 5 5 tc1 (.ok tc2) from
+  have r2 : Reachable K0 [] tc2 := .newArena (.write r1 (show Write3Step 0 [0] tc1 (.ok tc1w) from
+    .ok (by decide))) (show NewArenaStep 5 5 tc1w (.ok tc2) from
     .ok (by decide))
   have r3 : Reachable K0 [] tc3 := .issue r2 (show IssueAt K0 0 0 [6] 2 tc2 (.ok tc3) from
     .ok (ar := arTc) (by decide) (.ok (by decide) (by decide) (by decide) (by decide)))
@@ -10871,7 +11241,9 @@ accepted (twin, `ok`). -/
 def ci0 : S3 := enterEff (deriveEff (enter1 [(none, none, 0)]) 0 0 .modify) [1]
   [(none, none, 0), (none, none, 0), (none, none, 0)]
 def ci1 : S3 := allocEff (write3Eff ci0 [2]) 2 1 [(none, none, 0), (some 4, none, 0)]
-def ci2 : S3 := newArenaEff ci1 4 5
+/-- J1: the arena value is written before `newArena`. -/
+def ci1w : S3 := write3Eff ci1 [1]
+def ci2 : S3 := newArenaEff ci1w 4 5
 def arCi : Arena := ⟨4, 5, [5], []⟩
 theorem callee_issue_to_caller :
     Reachable K0 [] ci2 ∧ ci2.arenas = [arCi] ∧ IssueAt K0 0 0 [5] 0 ci2 .reject ∧
@@ -10884,7 +11256,8 @@ theorem callee_issue_to_caller :
   have r1 : Reachable K0 [] ci1 := .alloc (.write r0 (show Write3Step 3 [2] ci0 (.ok _) from
     .ok (by decide))) (show AllocStep K0 2 1 [(none, none, 0), (some 4, none, 0)] _ (.ok ci1) from
       .ok (by decide) trivial)
-  have r2 : Reachable K0 [] ci2 := .newArena r1 (show NewArenaStep 4 5 ci1 (.ok ci2) from
+  have r2 : Reachable K0 [] ci2 := .newArena (.write r1 (show Write3Step 2 [1] ci1 (.ok ci1w) from
+    .ok (by decide))) (show NewArenaStep 4 5 ci1w (.ok ci2) from
     .ok (by decide))
   exact ⟨r2, by decide, .reject (ar := arCi) (by decide)
     (.noAnchor (by decide) (by decide) (by decide) (by decide)), by decide, by decide, by decide,
@@ -10914,23 +11287,25 @@ instance (s : S3) : Decidable (NothingAtFrame0 s) := by unfold NothingAtFrame0; 
 
 /-- `NoOrphan` (G3) holds on every reached state, but it does not make a held authority
 exercisable: `transfer` builds an active authority held by the place it covers, which no frame
-can exercise. Frame 1: structure 0 with the field 1, leaf 2; roots 0 (on 1) and 1 (on 2). The frame
-derives 2, `Modify` on 2, stores it into the field 1 (`ok`), then transfers 0 into 2 (`ok`): 2 is
-now held by the place 2 that it covers. Its origin, the root 1, has no effective mode on 2, so
-2 is exercisable at no mode, the frame has no `Modify` on the place 2, and `release` of 2 and
-`endUse` of 2 are rejected; the exit of frame 1 releases 2. The chain of G3 is the root 1, held by
-frame 1, then 2. -/
-def hu0 : S3 := storeEff (deriveEff (enter1 [(none, none, 0), (some 0, none, 0), (none, none, 0)])
-  1 2 .modify) 2 1
+can exercise. Frame 1: structure 0 with the field 1, structure 2 with the field 3; roots 0 (on 1)
+and 1 (on 3). The frame derives 2, `Modify` on 3, stores it into the field 1 (`ok`), then transfers
+0 into 2 (`ok`): by J1, 2 passes to the corresponding field 3, which it covers. Its origin, the root
+1, has no effective mode on 3, so 2 is exercisable at no mode, the frame has no `Modify` on the
+structure 2 nor on its field 3, and `release` of 2 and `endUse` of 2 are rejected; the exit of
+frame 1 releases 2. The chain of G3 is the root 1, held by frame 1, then 2. Pass 7 transferred into
+a leaf, which J1 rejects (shape). -/
+def hu0 : S3 := storeEff (deriveEff (enter1 [(none, none, 0), (some 0, none, 0), (none, none, 0),
+  (some 2, none, 0)]) 1 2 .modify) 2 1
 def hu1 : S3 := transferEff hu0 0 2
 theorem held_unexercisable_by_transfer :
     Reachable K0 [] hu1 ∧ (hu1.A[2]?).map (fun y => (y.active, y.holder, y.footprint)) =
-      some (true, .place 2, [2]) ∧ ¬ hu1.ExercisableAt 2 .observe ∧ ¬ HasRight hu1 .modify 2 ∧
+      some (true, .place 3, [3]) ∧ ¬ hu1.ExercisableAt 2 .observe ∧ ¬ HasRight hu1 .modify 2 ∧
+      ¬ HasRight hu1 .modify 3 ∧
       ReleaseStep 2 hu1 .reject ∧ EndUseStep K0 2 hu1 .reject ∧ NoOrphan hu1 ∧
       ExitStep K0 hu1 (.ok (exitEff hu1)) ∧ ¬ (exitEff hu1).Active 2 ∧ NothingAtFrame0 hu1 := by
   have r : Reachable K0 [] hu1 := .transfer (.store (.derive (.enter (.init (by decide))
     (.ok (by decide))) (.ok (by decide))) (.ok (by decide))) (.ok (by decide))
-  exact ⟨r, by decide, by decide, by decide, .reject (by decide), .reject (by decide),
+  exact ⟨r, by decide, by decide, by decide, by decide, .reject (by decide), .reject (by decide),
     reachable_no_orphan (KT_dd [] [] [] [] []) r, .ok (by decide), by decide, by decide⟩
 
 /-- The same through `issue` (G3; A10): from `fa2` (arena value 0, storage 4 with the nodes 5 and
@@ -10946,78 +11321,90 @@ theorem held_unexercisable_by_issue :
   have r1 : Reachable K0 [] fa1 := .alloc (.write r0 (show Write3Step 1 [1] fa0 (.ok _) from
     .ok (by decide))) (show AllocStep K0 1 0 [(none, none, 0), (some 4, none, 0), (some 4, none, 0)]
       _ (.ok fa1) from .ok (by decide) trivial)
-  have r2 : Reachable K0 [] fa2 := .newArena r1 (show NewArenaStep 4 4 fa1 (.ok fa2) from
+  have r2 : Reachable K0 [] fa2 := .newArena (.write r1 (show Write3Step 0 [0] fa1 (.ok fa1w) from
+    .ok (by decide))) (show NewArenaStep 4 4 fa1w (.ok fa2) from
     .ok (by decide))
   have r : Reachable K0 [] iu1 := .issue r2 (show IssueAt K0 0 0 [5] 5 fa2 (.ok iu1) from
     .ok (ar := arFa) (by decide) (.ok (by decide) (by decide) (by decide) (by decide)))
   exact ⟨r, by decide, by decide, reachable_no_orphan (KT_dd [] [] [] [] []) r, by decide⟩
 
-/-! ### Leaves made `Init` without a write (G2; review of pass 7) -/
+/-! ### Leaves made `Init` without a write (G2; review of pass 7; J1) -/
 
-/-- G2 rejects a `store` into a whole structure, but `transfer` reaches the same configuration
-(MM-03.3 §3, O4.2: « La destination peut recevoir la valeur et ses autorités » is read since pass 1
-as a usable destination without `Init` leaf, disjoint from the source; nothing relates the shapes
-of source and destination). Frame 1: structure 0 with the fields 1 (`ptr`) and 2 (`length`), the
-buffer 3, a leaf 4. The frame derives 3, `Modify` on 3, stores it into the leaf 4, then transfers
-4 into the structure 0: every leaf of 0 becomes `Init`, `length` included, never written, and 3
-is held by the whole structure. -/
+/-- Pass 7 reached, through `transfer`, the configuration G2 rejects for `store`: a reference held
+by a whole structure, whose `length` field becomes `Init` without a write. J1 rejects that
+transfer: the destination has another shape than the source. Frame 1: structure 0 with the fields
+1 (`ptr`) and 2 (`length`), the buffer 3, the leaves 4 and 5. The frame derives 4, `Modify` on 3,
+and stores it into the leaf 4. The transfer of 4 into the structure 0 is rejected (J1, shape).
+Twin: the transfer of 4 into the leaf 5, of the same shape, is accepted, 4 passing to 5, which is
+then read. -/
 def tw0 : S3 := enter1 [(none, none, 0), (some 0, none, 0), (some 0, none, 0), (none, none, 0),
-  (none, none, 0)]
+  (none, none, 0), (none, none, 0)]
 def tw1 : S3 := deriveEff tw0 1 3 .modify
-def tw2 : S3 := storeEff tw1 3 4
-def tw3 : S3 := transferEff tw2 4 0
+def tw2 : S3 := storeEff tw1 4 4
+def tw3 : S3 := transferEff tw2 4 5
 theorem transfer_inits_unwritten_after_store :
-    Reachable K0 [] tw3 ∧ StoreStep 3 0 tw1 .reject ∧ tw2.I 2 = .uninit ∧ tw3.I 2 = .init ∧
-      Read3Step 0 [2] tw3 (.ok tw3) ∧ (tw3.A[3]?).map (·.holder) = some (.place 0) ∧
-      footprint tw3.P 0 = [1, 2] ∧ tw3.I 1 = .init := by
+    Reachable K0 [] tw2 ∧ StoreStep 4 0 tw1 .reject ∧ TransferStep K0 4 0 tw2 .reject ∧
+      ¬ SameShape tw2.P 4 0 ∧ tw2.I 2 = .uninit ∧
+      TransferStep K0 4 5 tw2 (.ok tw3) ∧ (tw3.A[4]?).map (·.holder) = some (.place 5) ∧
+      Read3Step 3 [5] tw3 (.ok tw3) := by
   have r1 : Reachable K0 [] tw1 := .derive (.enter (.init (by decide)) (.ok (by decide)))
     (.ok (by decide))
-  have r2 : Reachable K0 [] tw2 := .store r1 (show StoreStep 3 4 tw1 (.ok tw2) from .ok (by decide))
-  have r3 : Reachable K0 [] tw3 := .transfer r2 (show TransferStep K0 4 0 tw2 (.ok tw3) from
-    .ok (by decide))
-  exact ⟨r3, .reject (by decide), by decide, by decide, .ok (by decide), by decide, by decide,
-    by decide⟩
+  have r2 : Reachable K0 [] tw2 := .store r1 (show StoreStep 4 4 tw1 (.ok tw2) from .ok (by decide))
+  exact ⟨r2, .reject (by decide), .reject (by decide), by decide, by decide, .ok (by decide),
+    by decide, .ok (by decide)⟩
 
-/-- The same without `store` (MM-03.3 §3, O4.2; MM-03.3.3): frame 1 has the leaf 0 and the
-structure 1 with the fields 2 and 3. The frame writes 0 and transfers it into 1: the field 3,
-never written, becomes `Init` and is read. -/
-def vt0 : S3 := enter1 [(none, none, 0), (none, none, 0), (some 1, none, 0), (some 1, none, 0)]
+/-- The same without `store` (MM-03.3 §3, O4.2; MM-03.3.3; J1): frame 1 has the leaf 0, the
+structure 1 with the fields 2 and 3, and the structure 4 with the fields 5 and 6. The frame writes
+0; its transfer into 1, which made the field 3, never written, `Init` in pass 7, is rejected (J1,
+shape), and 3 stays unreadable. Twin: the frame writes the fields 2 and 3 and transfers 1 into 4, of
+the same shape: accepted, and the field 6 is read. -/
+def vt0 : S3 := enter1 [(none, none, 0), (none, none, 0), (some 1, none, 0), (some 1, none, 0),
+  (none, none, 0), (some 4, none, 0), (some 4, none, 0)]
 def vt1 : S3 := write3Eff vt0 [0]
-def vt2 : S3 := transferEff vt1 0 1
+def vt2 : S3 := write3Eff vt1 [2, 3]
+def vt3 : S3 := transferEff vt2 1 4
 theorem transfer_inits_unwritten :
-    Reachable K0 [] vt2 ∧ vt1.I 3 = .uninit ∧ Read3Step 1 [3] vt1 .reject ∧
-      Read3Step 1 [3] vt2 (.ok vt2) := by
+    Reachable K0 [] vt3 ∧ vt1.I 3 = .uninit ∧ TransferStep K0 0 1 vt1 .reject ∧
+      ¬ SameShape vt1.P 0 1 ∧ Read3Step 1 [3] vt1 .reject ∧
+      TransferStep K0 1 4 vt2 (.ok vt3) ∧ Read3Step 2 [6] vt3 (.ok vt3) := by
   have r1 : Reachable K0 [] vt1 := .write (.enter (.init (by decide)) (.ok (by decide)))
     (show Write3Step 0 [0] vt0 (.ok vt1) from .ok (by decide))
-  exact ⟨.transfer r1 (.ok (by decide)), by decide, .reject (by decide), .ok (by decide)⟩
+  have r2 : Reachable K0 [] vt2 := .write r1 (show Write3Step 1 [2, 3] vt1 (.ok vt2) from
+    .ok (by decide))
+  have ht : TransferStep K0 1 4 vt2 (.ok vt3) := .ok (by decide)
+  exact ⟨.transfer r2 ht, by decide, .reject (by decide), by decide, .reject (by decide), ht,
+    .ok (by decide)⟩
 
-/-- `issue` into a whole structure (MM-03.3 §6; A10): the block is held by the structure, all its
-leaves become `Init`, `length` included, never written, and so does the arena value, whose
-metadata `issue` updates (A10). Frame 1: 0 arena value, 1 allocator value, 2 a structure with the
-fields 3 (`ptr`) and 4 (`length`); `alloc` gives the storage 5 with the part 6, owned by 0, of root
-3; `newArena 5 3`; the block on `[6]` is issued to 2. -/
+/-- `issue` into a whole structure (MM-03.3 §6; A10; J1), which pass 7 accepted, making the
+`length` field and the arena value `Init` without a write: J1 rejects it, the destination not being
+a leaf. Frame 1: 0 arena value, 1 allocator value, 2 a structure with the fields 3 (`ptr`) and 4
+(`length`); `alloc` gives the storage 5 with the part 6, owned by 0, of root 3. `newArena 5 3` is
+rejected while the arena value 0 is unwritten (J1), accepted once it is written. The `issue` of
+`[6]` to the structure 2 is rejected; to its field 3 (twin), accepted: only the leaf 3 becomes
+`Init`, `length` stays unreadable, and the initialisation of the arena value is unchanged. -/
 def it0 : S3 := enter1 [(none, none, 0), (none, none, 0), (none, none, 0), (some 2, none, 0),
   (some 2, none, 0)]
 def it1 : S3 := allocEff (write3Eff it0 [1]) 1 0 [(none, none, 0), (some 5, none, 0)]
-def it2 : S3 := newArenaEff it1 5 3
+/-- J1: the arena value is written before `newArena`. -/
+def it1w : S3 := write3Eff it1 [0]
+def it2 : S3 := newArenaEff it1w 5 3
 def arIt : Arena := ⟨5, 3, [6], []⟩
-def it3 : S3 := arenaSet (issueEff it2 arIt [6] 2).1 0 (issueEff it2 arIt [6] 2).2
+def it3 : S3 := arenaSet (issueEff it2 arIt [6] 3).1 0 (issueEff it2 arIt [6] 3).2
 theorem issue_inits_unwritten :
-    Reachable K0 [] it3 ∧ it2.I 4 = .uninit ∧ it2.I 0 = .uninit ∧
-      Read3Step 2 [4] it2 .reject ∧ Read3Step 2 [4] it3 (.ok it3) ∧
-      Read3Step 0 [0] it2 .reject ∧ Read3Step 0 [0] it3 (.ok it3) ∧
-      (it3.A[4]?).map (·.holder) = some (.place 2) ∧ footprint it3.P 2 = [3, 4] ∧
-      it3.I 3 = .init := by
+    Reachable K0 [] it3 ∧ NewArenaStep 5 3 it1 .reject ∧ IssueAt K0 0 0 [6] 2 it2 .reject ∧
+      ¬ isLeaf it2.P 2 ∧ IssueAt K0 0 0 [6] 3 it2 (.ok it3) ∧ it3.I 3 = .init ∧ it3.I 4 = .uninit ∧
+      Read3Step 2 [4] it3 .reject ∧ it3.I 0 = it2.I 0 ∧ (it3.A[4]?).map (·.holder) = some (.place 3) := by
   have r0 : Reachable K0 [] it0 := .enter (.init (by decide)) (.ok (by decide))
   have r1 : Reachable K0 [] it1 := .alloc (.write r0 (show Write3Step 1 [1] it0 (.ok _) from
     .ok (by decide))) (show AllocStep K0 1 0 [(none, none, 0), (some 5, none, 0)] _ (.ok it1) from
       .ok (by decide) trivial)
-  have r2 : Reachable K0 [] it2 := .newArena r1 (show NewArenaStep 5 3 it1 (.ok it2) from
+  have r2 : Reachable K0 [] it2 := .newArena (.write r1 (show Write3Step 0 [0] it1 (.ok it1w) from
+    .ok (by decide))) (show NewArenaStep 5 3 it1w (.ok it2) from
     .ok (by decide))
-  have r3 : Reachable K0 [] it3 := .issue r2 (show IssueAt K0 0 0 [6] 2 it2 (.ok it3) from
-    .ok (ar := arIt) (by decide) (.ok (by decide) (by decide) (by decide) (by decide)))
-  exact ⟨r3, by decide, by decide, .reject (by decide), .ok (by decide), .reject (by decide),
-    .ok (by decide), by decide, by decide, by decide⟩
+  have hi : IssueAt K0 0 0 [6] 3 it2 (.ok it3) :=
+    .ok (ar := arIt) (by decide) (.ok (by decide) (by decide) (by decide) (by decide))
+  exact ⟨.issue r2 hi, .reject (by decide), .reject (ar := arIt) (by decide) (.reject (by decide)),
+    by decide, hi, by decide, by decide, .reject (by decide), by decide, by decide⟩
 
 /-! ### Cycles of holders closed after the stores (G2, G3; review of pass 7) -/
 
@@ -11251,10 +11638,10 @@ theorem not_noOrphanEff (s : S3) (S : List Nat)
 theorem noOrphanEff_fails :
     Reachable K0 [] hu1 ∧ NoOrphan hu1 ∧ ¬ NoOrphanEff hu1 ∧
       Reachable K0 [] iu1 ∧ NoOrphan iu1 ∧ ¬ NoOrphanEff iu1 := by
-  obtain ⟨r, -, -, -, -, -, hn, -⟩ := held_unexercisable_by_transfer
+  obtain ⟨r, -, -, -, -, -, -, hn, -⟩ := held_unexercisable_by_transfer
   obtain ⟨r', -, -, hn', -⟩ := held_unexercisable_by_issue
   exact ⟨r, hn, not_noOrphanEff hu1 [0, 1] (by decide) (by decide) 2
-    ⟨.modify, some 1, [2], .place 2, true⟩ 2 (by decide) rfl rfl (by decide), r', hn',
+    ⟨.modify, some 1, [3], .place 3, true⟩ 3 (by decide) rfl rfl (by decide), r', hn',
     not_noOrphanEff iu1 [0, 1, 2, 3, 4] (by decide) (by decide) 5
     ⟨.modify, some 4, [5], .place 5, true⟩ 5 (by decide) rfl rfl (by decide)⟩
 
