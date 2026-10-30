@@ -245,7 +245,8 @@ deriving DecidableEq
 anchors of place `q`, each an authority identity (pass-1 arbitrage 2). `dead q`: the place is
 logically dead (A6, `endUse` and `free`); `freed q`: its storage was released by `free` (A6);
 `pin l`: leaf `l` is dynamically pinned (A8). `arenas`: the arena entries registered by
-`newArena` (D3). -/
+`newArena` (D3). `callParams f`: the parameters given to frame `f` by `enterFrame`, a ghost record
+(F6): set by `enterFrame`, never modified, read by no operation. -/
 structure S3 where
   F : Frames
   nF : Nat
@@ -257,6 +258,7 @@ structure S3 where
   freed : Nat → Bool
   pin : Nat → Bool
   arenas : List Arena
+  callParams : Nat → List Nat
 
 /-- Contracts `K` (MM-03.3.8) for an execution. Types are a representation choice: regions as
 lists of leaves; `SharedMutable`, `Pinned` and `ExternalDone` on leaves; `Deallocable p` and
@@ -1152,7 +1154,8 @@ def movedDeps (s : S3) (src : Nat) : List Nat :=
     decide (partOf s.P q src ∨ (OwnedWithin s src q ∧ s.Usable q))).flatMap s.D
 
 /-- Preconditions of `transfer` (MM-03.3 §3, O4), in order: source usable (MM-03.3.1) and
-1 initialised; 2 destination usable, without an `Init` leaf, sharing no leaf with the source,
+1 initialised; 2 destination usable, without an `Init` leaf, sharing no leaf with the source (F5:
+the footprints of source and destination are disjoint, the clause `¬ overlap`),
 and still usable once it owns the source's storage (no ownership cycle); exercisable `Modify`
 on the source and on the destination (B2); 4 no active derived
 access on the source other than those it holds; 5 anchors of the value valid; 6 non-escape
@@ -1263,7 +1266,7 @@ def rootIdx (ls : List (Option Nat × Option Nat × Nat)) : List Nat :=
 `nF` pushed; the parameters, derived by the caller, are now held by the new frame (A3); locals
 appended, uninitialised, without dependency, alive and unpinned; one active root `Modify`
 authority per root local on its footprint, held by the owner of the local (pass-1
-arbitrage 2; A4). -/
+arbitrage 2; A4); the ghost record `callParams` of the new frame is `ps` (F6). -/
 def enterEff (s : S3) (ps : List Nat) (ls : List (Option Nat × Option Nat × Nat)) : S3 :=
   { F := s.nF :: s.F, nF := s.nF + 1, P := enterP s ls
     I := fun l => if s.P.length ≤ l then .uninit else s.I l
@@ -1274,7 +1277,8 @@ def enterEff (s : S3) (ps : List Nat) (ls : List (Option Nat × Option Nat × Na
     dead := fun q => if s.P.length ≤ q then false else s.dead q
     freed := fun q => if s.P.length ≤ q then false else s.freed q
     pin := fun q => if s.P.length ≤ q then false else s.pin q
-    arenas := s.arenas }
+    arenas := s.arenas
+    callParams := fun f => if f = s.nF then ps else s.callParams f }
 
 /-- Preconditions of `enterFrame` (MM-03.3 §4, O6): the calling frame is active (non-empty
 stack); each parameter is an active authority derived by the caller and held by it (A3); the
@@ -2409,6 +2413,12 @@ theorem transfer_moves_deps {k : K} {s s' : S3} {src dst : Nat}
     (∀ x ∈ depsOf s src, x ∈ s'.D dst) ∧ ∀ r, r ≠ dst → partOf s.P r src → s'.D r = [] := by
   obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
   exact ⟨fun x hx => by simp [transferEff, hx], fun r hr hp => by simp [transferEff, hr, hp]⟩
+
+/-- F5: an accepted `transfer` has disjoint footprints of source and destination. The clause is
+the explicit precondition `¬ overlap s.P src dst` of `TransferPre`. -/
+theorem transfer_footprints_disjoint {k : K} {s s' : S3} {src dst : Nat}
+    (h : TransferStep k src dst s (.ok s')) : ∀ l ∈ footprint s.P src, l ∉ footprint s.P dst :=
+  fun l hl hl' => (Guarded.ok_iff.1 h).1.2.2.2.2.1 ⟨l, hl, hl'⟩
 
 /-! ## Preservation by `depend`, `read3`, `write3` -/
 
@@ -5085,7 +5095,8 @@ def S3.init (statics : Statics) : S3 :=
     dead := fun _ => false
     freed := fun _ => false
     pin := fun _ => false
-    arenas := [] }
+    arenas := []
+    callParams := fun _ => [] }
 
 section Init
 variable {statics : Statics}
@@ -6825,7 +6836,7 @@ it too in `Modify`. I1 fails in its structural form (A1) and in the effective fo
 §2 (pass 1). `WF3` (footprints made of existing places) excludes this state. -/
 theorem enter_not_inv3_preserving :
     let s : S3 := ⟨[0], 1, [], fun _ => .uninit, [⟨.modify, none, [0], .frame 0, true⟩],
-      fun _ => [], fun _ => false, fun _ => false, fun _ => false, []⟩
+      fun _ => [], fun _ => false, fun _ => false, fun _ => false, [], fun _ => []⟩
     Inv3 s ∧ EnterStep [] [(none, none, 0)] s (.ok (enterEff s [] [(none, none, 0)])) ∧
       ¬ I1 (enterEff s [] [(none, none, 0)]) ∧
       ¬ ∀ a b p m₁ m₂, a ≠ b → effective (enterEff s [] [(none, none, 0)]) a p = some m₁ →
@@ -7776,7 +7787,7 @@ is owned by place 1 and anchored on the released root 1 of frame 1; place 3 is t
 def xferCex : S3 := ⟨[1, 0], 6, [⟨some 1, .frame 1, 0⟩, ⟨some 0, .frame 5, 0⟩, ⟨none, .place 1, 0⟩,
   ⟨none, .frame 1, 0⟩], fun _ => .uninit,
   [⟨.modify, none, [3], .frame 1, true⟩, ⟨.modify, none, [], .frame 1, false⟩],
-  fun q => if q = 2 then [1] else [], fun _ => false, fun _ => false, fun _ => false, []⟩
+  fun q => if q = 2 then [1] else [], fun _ => false, fun _ => false, fun _ => false, [], fun _ => []⟩
 
 /-- `transfer` (MM-03.3 §3, O4; A5) does not preserve `Inv3` without `WF3` (A1; C2): a part with
 another owner than its parent (excluded by `WF3`) is not usable while its parent is; a place owned
@@ -7867,7 +7878,7 @@ def xferNd : S3 := ⟨[1, 0], 6, [⟨none, .frame 1, 0⟩, ⟨some 0, .frame 5, 
   ⟨none, .frame 1, 0⟩], fun l => if l = 1 then .init else .uninit,
   [⟨.modify, none, [1], .frame 1, true⟩, ⟨.modify, none, [3], .frame 1, true⟩,
     ⟨.modify, none, [], .frame 1, false⟩],
-  fun q => if q = 2 then [2] else [], fun _ => false, fun _ => false, fun _ => false, []⟩
+  fun q => if q = 2 then [2] else [], fun _ => false, fun _ => false, fun _ => false, [], fun _ => []⟩
 
 /-- `transfer` (MM-03.3 §3, O4; A5) does not preserve `Inv3base ∧ AnchorOrder`, the `Inv3` of
 pass 3, without `WF3` (A1): the transfer gives place 2 to the destination, where it becomes usable
@@ -8030,7 +8041,7 @@ example : ¬ (∀ {s : S3}, I1 s → ∀ {a : Nat} {ls : List Nat},
 /-- The pass-1 statement `SameSkel.inv3` is false on the pass-2 model: without equal `dead` flags
 (A6), a place dead in `sk0` is usable in `sk1` with an anchor that does not exist. -/
 def sk0 : S3 := ⟨[0], 1, [⟨none, .frame 0, 0⟩], fun _ => .uninit, [],
-  fun q => if q = 0 then [5] else [], fun _ => true, fun _ => false, fun _ => false, []⟩
+  fun q => if q = 0 then [5] else [], fun _ => true, fun _ => false, fun _ => false, [], fun _ => []⟩
 def sk1 : S3 := { sk0 with dead := fun _ => false }
 example : SameSkel sk0 sk1 ∧ sk1.P = sk0.P ∧ sk1.F = sk0.F ∧ Inv3base sk0 ∧
     (∀ q, sk0.Usable q → ∀ x ∈ sk1.D q, sk0.Active x) ∧ ¬ Inv3base sk1 := by
@@ -8075,7 +8086,7 @@ example : AnchorMoves ma1 1 2 ∧ (transferEff ma1 1 4).Usable 3 ∧ 2 ∈ (tran
 place 0, whose root authority 0 is held by frame 0. -/
 def nd0 : S3 := ⟨[1, 0], 2, [⟨none, .frame 1, 0⟩], fun _ => .uninit,
   [⟨.modify, none, [0], .frame 0, true⟩], fun _ => [], fun _ => false, fun _ => false,
-  fun _ => false, []⟩
+  fun _ => false, [], fun _ => []⟩
 
 /-- The clause `RootHeld` of `WF3` (A4) is needed by `exitFrame_no_dangling` (MM-03.3 §4, O7): this
 state satisfies every other clause of `WF3`, and `Inv3`, but the root authority 0 of the local 0
@@ -8230,7 +8241,7 @@ provider 0 is `Init` (C6). -/
 theorem alloc_not_inv3_preserving :
     let s : S3 := ⟨[0], 1, [⟨none, .frame 0, 0⟩], fun _ => .init,
       [⟨.modify, none, [0], .frame 0, true⟩, ⟨.modify, none, [1], .frame 0, true⟩],
-      fun _ => [], fun _ => false, fun _ => false, fun _ => false, []⟩
+      fun _ => [], fun _ => false, fun _ => false, fun _ => false, [], fun _ => []⟩
     Inv3 s ∧ AllocStep K0 0 0 [(none, none, 0)] s (.ok (allocEff s 0 0 [(none, none, 0)])) ∧
       ¬ I1 (allocEff s 0 0 [(none, none, 0)]) := by
   intro s
@@ -8875,5 +8886,106 @@ example : EnterStep [1] [] ow0 (.ok (enterEff ow0 [1] [])) ∧ (enterEff ow0 [1]
     ((enterEff ow0 [1] []).A[1]?).map (·.holder) = some (.frame 2) ∧
     ((enterEff ow0 [1] []).P[1]?).map (·.owner) = some (.frame 1) :=
   ⟨.ok (by decide), by decide, by decide, by decide⟩
+
+/-! ## Protection of the parameters of a call (F6) -/
+
+/-- `call_protects_params_safe` as stated by F6, transitive form, as a predicate on a state: for a
+stack `G ++ f :: F₀`, the current frame being `f` or a frame called by `f` transitively, every
+authority exercisable by the current frame (A2, B2) that covers a leaf of the footprint of a
+`Modify` authority of `callParams f` is that authority or one of its descendants, whether the
+parameter is active or not. It concerns safe accesses only: neither raw pointers nor suspension
+are represented. -/
+def CallProtects (s : S3) : Prop :=
+  ∀ (G : Frames) (f : Nat) (F₀ : Frames), s.F = G ++ f :: F₀ →
+    ∀ p ∈ s.callParams f, ∀ y : Authority, s.A[p]? = some y → y.mode = .modify →
+      ∀ (b : Nat) (m : Mode), s.ExercisableAt b m → ∀ l ∈ y.footprint, l ∈ s.afp b →
+        b = p ∨ p ∈ s.ancs b
+
+/-- The direct form of `CallProtects` (F6): the current frame is `f`. -/
+def CallProtectsDirect (s : S3) : Prop :=
+  ∀ (f : Nat) (F₀ : Frames), s.F = f :: F₀ →
+    ∀ p ∈ s.callParams f, ∀ y : Authority, s.A[p]? = some y → y.mode = .modify →
+      ∀ (b : Nat) (m : Mode), s.ExercisableAt b m → ∀ l ∈ y.footprint, l ∈ s.afp b →
+        b = p ∨ p ∈ s.ancs b
+
+theorem CallProtects.direct {s : S3} (h : CallProtects s) : CallProtectsDirect s :=
+  fun f F₀ hF => h [] f F₀ hF
+
+/-- The part of F6 that holds without hypothesis on the call (MM-03.3.5; I1): while an active
+`Modify` authority `p` covers a leaf `l`, every authority with a present effective mode on `l` is
+`p` or one of its descendants. It says nothing once `p` is released, nor of authorities that are
+exercisable without an effective mode on `l`. -/
+theorem call_params_effective_protected {s : S3} (h1 : I1 s) {p b l : Nat} {y : Authority}
+    (hp : s.A[p]? = some y) (ya : y.active = true) (hm : y.mode = .modify) (hl : l ∈ y.footprint)
+    (hb : effective s b l ≠ none) : b = p ∨ p ∈ s.ancs b := by
+  by_cases e : b = p
+  · exact .inl e
+  by_cases hpb : p ∈ s.ancs b
+  · exact .inr hpb
+  cases he : effective s b l with
+  | none => exact absurd he hb
+  | some mb =>
+    obtain ⟨x, hx, xa, xl, ex⟩ := effective_some he
+    by_cases hbp : b ∈ s.ancs p
+    · have hd : Mode.modify ∈ descModes s b l := mem_descModes.2 ⟨p, y, hp, ya, hl, hbp, hm⟩
+      rcases effOf_cases ex with ⟨h0, -⟩ | ⟨-, hn, -⟩
+      · simp [h0] at hd
+      · exact absurd hd hn
+    · have := (h1 b p x y l e hx hp xa ya xl hl hbp hpb).2
+      rw [hm] at this; cases this
+
+/-- F6 is not provable as stated: a counterexample on a reached state, where the caller passes an
+authority and one of its descendants. Frame 1: local 0, of root 0; the caller derives 1, `Modify`
+on 0, then 2, `Modify` on 0 from 1, and calls with `[1, 2]`. In frame 2, the parameter 1 is
+exercisable, covers the leaf 0 of the parameter 2, and is its ancestor, not a descendant. After
+the callee releases 2, it writes the leaf 0 through 1. -/
+def cp0 : S3 := deriveEff (deriveEff (enter1 [(none, none, 0)]) 0 0 .modify) 1 0 .modify
+def cp1 : S3 := enterEff cp0 [1, 2] []
+theorem call_protects_params_safe_fails_param :
+    Reachable K0 [] cp1 ∧ ¬ CallProtects cp1 ∧
+      ReleaseStep 2 cp1 (.ok (releaseEff cp1 2)) ∧ ¬ CallProtects (releaseEff cp1 2) ∧
+      Write3Step 1 [0] (releaseEff cp1 2) (.ok (write3Eff (releaseEff cp1 2) [0])) := by
+  have hr : Reachable K0 [] cp1 := .enter (.derive (.derive (.enter (.init (by decide))
+    (.ok (by decide))) (.ok (by decide))) (.ok (by decide))) (.ok (by decide))
+  have key : ∀ s : S3, s.F = [2, 1, 0] → s.callParams 2 = [1, 2] → s.ExercisableAt 1 .modify →
+      (s.A[2]?).map (fun y => (y.mode, y.footprint)) = some (.modify, [0]) → s.afp 1 = [0] →
+      s.ancs 1 = [0] → ¬ CallProtects s := by
+    intro s hF hc hex h2 h1 ha h
+    obtain ⟨y, hy, e⟩ := Option.map_eq_some_iff.1 h2
+    simp only [Prod.mk.injEq] at e
+    have := h.direct 2 [1, 0] hF 2 (by rw [hc]; decide) y hy e.1 1 .modify hex 0 (by rw [e.2]; decide)
+      (by rw [h1]; decide)
+    rw [ha] at this; simp at this
+  exact ⟨hr, key _ (by decide) (by decide) (by decide) (by decide) (by decide) (by decide),
+    .ok (by decide), key _ (by decide) (by decide) (by decide) (by decide) (by decide) (by decide),
+    .ok (by decide)⟩
+
+/-- F6 is not provable as stated: a counterexample on a reached state, through owned storage
+(A5; A2, held authorities). Frame 1: value 0, of root 0 held by frame 1, which owns the storage
+1, of root 1 held by the place 0. The caller derives 2, `Modify` on 1 from the root 1, and 3,
+`Modify` on 0, and calls with `[2, 3]`. In frame 2, the root 1, held by the place 0 on which the
+parameter 3 has effective `Modify`, is exercisable and covers the leaf 1 of the parameter 2, of
+which it is the origin. After the callee releases 2, it writes the leaf 1 through the root 1. -/
+def co0 : S3 :=
+  deriveEff (deriveEff (enter1 [(none, none, 0), (none, some 0, 0)]) 1 1 .modify) 0 0 .modify
+def co1 : S3 := enterEff co0 [2, 3] []
+theorem call_protects_params_safe_fails_owned :
+    Reachable K0 [] co1 ∧ ¬ CallProtects co1 ∧
+      ReleaseStep 2 co1 (.ok (releaseEff co1 2)) ∧ ¬ CallProtects (releaseEff co1 2) ∧
+      Write3Step 1 [1] (releaseEff co1 2) (.ok (write3Eff (releaseEff co1 2) [1])) := by
+  have hr : Reachable K0 [] co1 := .enter (.derive (.derive (.enter (.init (by decide))
+    (.ok (by decide))) (.ok (by decide))) (.ok (by decide))) (.ok (by decide))
+  have key : ∀ s : S3, s.F = [2, 1, 0] → s.callParams 2 = [2, 3] → s.ExercisableAt 1 .modify →
+      (s.A[2]?).map (fun y => (y.mode, y.footprint)) = some (.modify, [1]) → s.afp 1 = [1] →
+      s.ancs 1 = [] → ¬ CallProtects s := by
+    intro s hF hc hex h2 h1 ha h
+    obtain ⟨y, hy, e⟩ := Option.map_eq_some_iff.1 h2
+    simp only [Prod.mk.injEq] at e
+    have := h.direct 2 [1, 0] hF 2 (by rw [hc]; decide) y hy e.1 1 .modify hex 1 (by rw [e.2]; decide)
+      (by rw [h1]; decide)
+    rw [ha] at this; simp at this
+  exact ⟨hr, key _ (by decide) (by decide) (by decide) (by decide) (by decide) (by decide),
+    .ok (by decide), key _ (by decide) (by decide) (by decide) (by decide) (by decide) (by decide),
+    .ok (by decide)⟩
 
 end Ern.MM03
