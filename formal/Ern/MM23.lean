@@ -2454,8 +2454,8 @@ def PtrEncAt (pe : PtrEnc) (addr : Nat) (prov : Option Nat) : Prop :=
   pe.decode (pe.enc addr prov) = addr ∧ ∀ i, (pe.enc addr prov i).2 = prov
 
 /-- L6 ("base + off of first leaf"): address of the pointer to the region `rg`: base of the
-allocation of the first leaf of the list plus the offset of that leaf. It is the first byte of the
-region when that leaf has the lowest offset; K1 fixes no order of fields (pass-2 report,
+allocation of the first leaf of the list plus the offset of that leaf. It need not be the first
+byte of the region: K1 fixes no order of fields, and a leaf may have size zero (pass-2 report,
 (e) 3). -/
 def regionAddr (s2 : MM02.State) (L : Layout) (rg : List Nat) : Nat :=
   match rg.head? with
@@ -2540,10 +2540,11 @@ theorem r6_store {C : Nat → Nat → Prop} {ObR : MM02.ReadOblSpec} {ObW : MM02
   · rename_i e; subst e; exact .inr (write_leaf_init hex)
   · exact .inl hi
 
-/-- R6 for `issue` (MM-03.3 §9.2, O18; L6: `WriteStep` of the range of the destination with
-`ptrBytes` of the block; `available` and `issued` are abstract state of the arena entry): under
-`WF3`, `dec` and `stat` (K5), the write has the outcome `ok`, the arrival states are in `Repr`, and
-the range of the destination holds the bytes of the pointer. -/
+/-- R6 for `issue` (MM-03.3 §9.2, O18; L6: `WriteStep` of the range of the destination with the
+bytes of the pointer to the block, `issueBytes`: the address of the region and the provenance of the
+arena storage; `available` and `issued` are abstract state of the arena entry): under `WF3`, `dec`
+and `stat` (K5), the write has the outcome `ok`, the arrival states are in `Repr`, and the range of
+the destination holds the first `(L dst).len` bytes of the pointer. -/
 theorem r6_issue {C : Nat → Nat → Prop} {ObR : MM02.ReadOblSpec} {ObW : MM02.WriteOblSpec}
     {k : K} {tok ptok : Nat → Nat} {provOf : Nat → Option Nat} {L : Layout} {s3 s3' : S3}
     {s2 : MM02.State} {pe : PtrEnc} {i via dst : Nat} {region : List Nat} (hwf : WF3 s3)
