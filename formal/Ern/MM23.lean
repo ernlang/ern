@@ -2550,6 +2550,60 @@ theorem r6_issue {C : Nat → Nat → Prop} {ObR : MM02.ReadOblSpec} {ObW : MM02
       · rename_i e; subst e; exact .inr (write_leaf_init hex)
       · exact .inl hi
 
+/-! ## Real `DDSound` (L7) -/
+
+/-- L7: instantiation of `K.DeclaredDisjoint` by the disjointness of the byte ranges of the leaves of
+the two regions: every leaf of `r` and every leaf of `r'` are in different allocations or in
+disjoint ranges (MM-02.2, `RangeDisjoint`). -/
+def ByteDisjoint (L : Layout) (r r' : List Nat) : Prop :=
+  ∀ l ∈ r, ∀ l' ∈ r', (L l).alloc ≠ (L l').alloc ∨
+    MM02.RangeDisjoint (L l).off (L l).len (L l').off (L l').len
+
+/-- `ddSound_of_layout` (L7; MM-03.3.8, `DDSound`): when every declaration of disjointness of `K`
+implies the byte disjointness of the leaves of the two regions (an obligation of the library that
+declares it), and the leaves of a declared region have non-empty ranges, `DDSound` holds. The
+non-empty ranges are needed: a leaf of size zero (K1 (d)) is byte-disjoint from itself
+(`ddSound_of_layout_needs_size`). -/
+theorem ddSound_of_layout {k : K} {L : Layout}
+    (h : ∀ r r', k.DeclaredDisjoint r r' → ByteDisjoint L r r')
+    (hpos : ∀ r r', k.DeclaredDisjoint r r' → ∀ l ∈ r, 0 < (L l).len) : DDSound k := by
+  intro r r' hd l hl hl'
+  rcases h r r' hd l hl l hl' with e | e
+  · exact e rfl
+  · exact e (L l).off (Nat.le_refl _) (by have := hpos r r' hd l hl; omega) (Nat.le_refl _)
+      (by have := hpos r r' hd l hl; omega)
+
+/-- L7: the instantiation itself, `K.DeclaredDisjoint := ByteDisjoint L`, satisfies `DDSound` when
+every range is non-empty. -/
+theorem ddSound_instance (k : K) {L : Layout} (hpos : ∀ l, 0 < (L l).len) :
+    DDSound { k with DeclaredDisjoint := ByteDisjoint L } :=
+  ddSound_of_layout (fun _ _ h => h) fun _ _ _ l _ => hpos l
+
+/-- Counterexample kept (report, (e)): with a leaf of size zero, allowed by K1 (d), the
+instantiation of L7 declares a region disjoint from itself, and `DDSound` fails. -/
+theorem ddSound_of_layout_needs_size (k : K) :
+    ¬ DDSound { k with DeclaredDisjoint := ByteDisjoint fun _ => ⟨0, 0, 0⟩ } := fun h =>
+  h [0] [0] (fun _ _ _ _ => .inr fun _ h1 h2 _ _ => by simp only at h1 h2; omega) 0
+    (List.mem_singleton_self _) (List.mem_singleton_self _)
+
+/-- The layout of the counterexample satisfies `LayoutWF` on a state with one static leaf and an
+allocation of size zero: the failure is under `LayoutWF`, as L7 states it. -/
+example : LayoutWF (fun _ => ⟨0, 0, 0⟩) (S3.init [((none, none, 0), false)])
+    (MM02.State.empty.alloc 0 0 0 1 none) := by decide
+
+/-- L7, exactness of the instantiation under `LayoutWF` (K1 (b)): two lists of leaves without
+common leaf are byte-disjoint, so an abstraction can declare every pair of regions that share no
+leaf. -/
+theorem byteDisjoint_of_leaves {L : Layout} {s3 : S3} {s2 : MM02.State} (hlw : LayoutWF L s3 s2)
+    {r r' : List Nat} (hr : ∀ l ∈ r, l < s3.P.length ∧ isLeaf s3.P l)
+    (hr' : ∀ l ∈ r', l < s3.P.length ∧ isLeaf s3.P l) (hd : ∀ l ∈ r, l ∉ r') :
+    ByteDisjoint L r r' := by
+  intro l hl l' hl'
+  by_cases e : (L l).alloc = (L l').alloc
+  · exact .inr (hlw.disjoint l (hr l hl).1 l' (hr' l' hl').1 (hr l hl).2 (hr' l' hl').2
+      (fun h => hd l hl (h ▸ hl')) e)
+  · exact .inl e
+
 /-! ## R4 (MM-03.3 §9.2) -/
 
 /-- R4 (MM-03.3 §9.2, from `NoDangling`, §2.6): on a reached state of MM-03 in `Repr` with an MM-02
