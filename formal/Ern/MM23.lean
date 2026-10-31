@@ -2442,10 +2442,12 @@ structure PtrEnc where
   enc : Nat → Option Nat → Nat → UInt8 × Option Nat
   decode : (Nat → UInt8 × Option Nat) → Nat
 
-/-- L6, obligation of the encoding: `decode (enc addr prov)` is `addr`, and every byte carries the
-provenance `prov`. -/
-def PtrEncOK (pe : PtrEnc) : Prop :=
-  ∀ addr prov, pe.decode (pe.enc addr prov) = addr ∧ ∀ i, (pe.enc addr prov i).2 = prov
+/-- L6, obligation of the encoding for a pointer to the address `addr` with provenance `prov`:
+`decode (enc addr prov)` is `addr`, and every byte carries the provenance `prov`. Stated per
+pointer: a `decode` that reads finitely many bytes cannot invert every natural address (finite
+addresses, spec 11). -/
+def PtrEncAt (pe : PtrEnc) (addr : Nat) (prov : Option Nat) : Prop :=
+  pe.decode (pe.enc addr prov) = addr ∧ ∀ i, (pe.enc addr prov i).2 = prov
 
 /-- L6: address of the first byte of the region `rg`: base of the allocation of its first leaf plus
 the offset of that leaf. -/
@@ -2549,6 +2551,64 @@ theorem r6_issue {C : Nat → Nat → Prop} {ObR : MM02.ReadOblSpec} {ObW : MM02
       split at hi
       · rename_i e; subst e; exact .inr (write_leaf_init hex)
       · exact .inl hi
+
+/-- L6, `pointer_sound` for `store a p`: under the obligation of the encoding for the pointer
+written, the range of `p` holds bytes that decode to the address of the first leaf `l` of the
+region of `a` (base + offset) and that carry, each, the provenance of the allocation of `l`, which
+is live and contains the range of `l`: no address or provenance is lost or fabricated. -/
+theorem pointer_sound_store {C : Nat → Nat → Prop} {ObR : MM02.ReadOblSpec}
+    {ObW : MM02.WriteOblSpec} {tok ptok : Nat → Nat} {provOf : Nat → Option Nat} {L : Layout}
+    {s3 s3' : S3} {s2 : MM02.State} {pe : PtrEnc} {a p : Nat} (hwf : WF3 s3)
+    (hnd : NoDangling s3) (hfl : FpLeaves s3) (hR : Repr tok ptok provOf L s3 s2)
+    (h : StoreStep a p s3 (.ok s3')) (hstatW : ∀ s ac w, ObW.stat s ac w)
+    (hdec : ObW.dec s2 (leafAcc s2 L .write p) (ptrBytes pe s2 L (s3.afp a)))
+    {l : Nat} (hl : (s3.afp a).head? = some l)
+    (hpe : PtrEncAt pe (regionAddr s2 L (s3.afp a)) (regionProv L (s3.afp a))) :
+    pe.decode (ptrBytes pe s2 L (s3.afp a)) = regionAddr s2 L (s3.afp a) ∧
+      (∀ i, (ptrBytes pe s2 L (s3.afp a) i).2 = some (L l).alloc) ∧
+      (∃ al, s2.allocs (L l).alloc = some al ∧ al.live = true ∧
+        regionAddr s2 L (s3.afp a) = al.base + (L l).off ∧ (L l).off + (L l).len ≤ al.size) ∧
+      rangeBytes (exec s2 (storeOps pe s2 L s3 a p)) L p = some ((List.range (L p).len).map
+        fun i => .init (ptrBytes pe s2 L (s3.afp a) i).1 (ptrBytes pe s2 L (s3.afp a) i).2) := by
+  have hst := (r6_store (C := C) (ObR := ObR) hwf hR h hstatW hdec).2.2
+  obtain ⟨hpre, -⟩ := Guarded.ok_iff.1 h
+  obtain ⟨y, hy, ya, -, -⟩ := store_pre_auth hpre.1
+  have hrg : ∀ x ∈ s3.afp a, x ∈ y.footprint := fun x hx => by simpa [S3.afp, hy] using hx
+  obtain ⟨hprov, hta⟩ := ptr_target hwf hnd hfl hR.toReprB hy ya hrg hl
+  refine ⟨hpe.1, fun i => ?_, hta, hst⟩
+  rw [← hprov]; exact hpe.2 i
+
+/-- L6, `pointer_sound` for `issue`: under the obligation of the encoding for the pointer written,
+the range of the destination holds bytes that decode to the address of the first leaf `l` of the
+block and carry, each, the provenance of the allocation of `l` (the allocation of the storage of the
+arena), which is live and contains the range of `l`. -/
+theorem pointer_sound_issue {C : Nat → Nat → Prop} {ObR : MM02.ReadOblSpec}
+    {ObW : MM02.WriteOblSpec} {k : K} {tok ptok : Nat → Nat} {provOf : Nat → Option Nat}
+    {L : Layout} {s3 s3' : S3} {s2 : MM02.State} {pe : PtrEnc} {i via dst : Nat}
+    {region : List Nat} (hwf : WF3 s3) (hnd : NoDangling s3) (hfl : FpLeaves s3)
+    (hR : Repr tok ptok provOf L s3 s2) (h : IssueAt k i via region dst s3 (.ok s3'))
+    (hstatW : ∀ s ac w, ObW.stat s ac w)
+    (hdec : ObW.dec s2 (leafAcc s2 L .write dst) (ptrBytes pe s2 L region))
+    {l : Nat} (hl : region.head? = some l)
+    (hpe : PtrEncAt pe (regionAddr s2 L region) (regionProv L region)) :
+    pe.decode (ptrBytes pe s2 L region) = regionAddr s2 L region ∧
+      (∀ i, (ptrBytes pe s2 L region i).2 = some (L l).alloc) ∧
+      (∃ al, s2.allocs (L l).alloc = some al ∧ al.live = true ∧
+        regionAddr s2 L region = al.base + (L l).off ∧ (L l).off + (L l).len ≤ al.size) ∧
+      rangeBytes (exec s2 (issueOps pe s2 L region dst)) L dst = some ((List.range (L dst).len).map
+        fun i => .init (ptrBytes pe s2 L region i).1 (ptrBytes pe s2 L region i).2) := by
+  have hst := (r6_issue (C := C) (ObR := ObR) hwf hR h hstatW hdec).2.2
+  cases h with
+  | ok har hstep =>
+    cases hstep with
+    | ok hstat _ _ _ =>
+      have hact := hstat.2.1
+      obtain ⟨y, hy, ya⟩ := hact
+      have hrg : ∀ x ∈ region, x ∈ y.footprint := fun x hx => by
+        have := hstat.2.2.1 x hx; simpa [S3.afp, hy] using this
+      obtain ⟨hprov, hta⟩ := ptr_target hwf hnd hfl hR.toReprB hy ya hrg hl
+      refine ⟨hpe.1, fun i => ?_, hta, hst⟩
+      rw [← hprov]; exact hpe.2 i
 
 /-! ## Real `DDSound` (L7) -/
 
@@ -3021,6 +3081,9 @@ inductive Op3 where
 def NoOwner (ls : List (Option Nat × Option Nat × Nat)) : Prop :=
   ∀ i < ls.length, (ls[i]?).bind (·.2.1) = none
 
+instance (ls : List (Option Nat × Option Nat × Nat)) : Decidable (NoOwner ls) := by
+  unfold NoOwner; infer_instance
+
 /-- An `ok` step of MM-03 labelled by its operation, within the envelope of L1 (an `enterFrame`
 whose shape has an owning element is outside the language) and L2 (the shape of `alloc` has exactly
 one root). -/
@@ -3150,6 +3213,10 @@ def LayoutObl (π : Params) : Op3 → S3 → S3 → MM02.State → Prop
   | .alloc _ _ ls, s3, s3', s2 =>
     NewLayout π.L s3'.P s3.P.length s2.next (fun i => π.geom (s3.P.length + i)) (rootIdx ls)
   | _, _, _, _ => True
+
+instance (π : Params) (op : Op3) (s3 s3' : S3) (s2 : MM02.State) :
+    Decidable (LayoutObl π op s3 s3' s2) := by
+  cases op <;> unfold LayoutObl <;> infer_instance
 
 theorem ReprB.provOf_congr {tok ptok : Nat → Nat} {pv pv' : Nat → Option Nat} {L : Layout}
     {s3 : S3} {s2 : MM02.State} (hR : ReprB tok ptok pv L s3 s2)
@@ -3800,5 +3867,252 @@ example : sCyc.P[0]? = some ⟨none, .place 1, 0⟩ ∧ sCyc.P[1]? = some ⟨non
   decide
 
 end DraftGaps
+
+namespace CaseSim
+
+/-- Step 6 of the task: a full execution translated step by step through `simulation`. Contracts:
+leaf 0 (the metadata of the arena) `SharedMutable`; `ExternalDone` for 1; the storage 4
+deallocable with the authority 7. Frame 1 has the locals 0 (arena value), 1 (allocator value), 2
+(destination of the block) and 3. `alloc` gives the storage 4, parts 5 and 6, owned by 0, of root
+authority 4 (L2: one root); `newArena 4 4` registers it. The caller derives 5 (`Observe` on 0) and
+6 (`Modify` on 2), pins 1, and calls with `[5, 6]`; the callee has the locals 7 and 8. `issue` gives
+the block 9 on the region `[5]`, held by 7; `store 5 8` writes a pointer to 0 into 8; `transfer 7 2`
+moves the block to the caller; `exitFrame`; `endUse 2`; `reset`; `unpin 1`; `free 4 7`;
+`exitFrame`. -/
+abbrev KS : K := KT [0] [] [1] [4] [(4, 7)]
+def lsC : List (Option Nat × Option Nat × Nat) :=
+  [(none, none, 0), (none, none, 0), (none, none, 0), (none, none, 0)]
+def lsA : List (Option Nat × Option Nat × Nat) :=
+  [(none, none, 0), (some 4, none, 0), (some 4, none, 0)]
+def lsE : List (Option Nat × Option Nat × Nat) := [(none, none, 0), (none, none, 0)]
+def arS : Arena := ⟨4, 4, [5, 6], []⟩
+
+def x0 : S3 := S3.init []
+def x1 : S3 := enterEff x0 [] lsC
+def x2 : S3 := write3Eff x1 [1]
+def x3 : S3 := allocEff x2 1 0 lsA
+def x4 : S3 := write3Eff x3 [0]
+def x5 : S3 := newArenaEff x4 4 4
+def x6 : S3 := deriveEff x5 0 0 .observe
+def x7 : S3 := deriveEff x6 2 2 .modify
+def x8 : S3 := pinEff x7 1 true
+def x9 : S3 := enterEff x8 [5, 6] lsE
+def x10 : S3 := arenaSet (issueEff x9 arS [5] 7).1 0 (issueEff x9 arS [5] 7).2
+def x11 : S3 := storeEff x10 5 8
+def x12 : S3 := transferEff x11 7 2
+def x13 : S3 := exitEff x12
+def x14 : S3 := endUseEff x13 2
+def x15 : S3 := resetAtEff x14 0
+def x16 : S3 := pinEff x15 1 false
+def x17 : S3 := freeEff x16 4
+def x18 : S3 := exitEff x17
+
+/-- MM-02 parameters fixed once for the run (`Params`): compatibility by equality of tokens (so
+`TokCompat`); frame token `100 + f`, provider token `6 + pr` (the allocator at place 1 has the
+token 7); geometry of 16 bytes aligned on 8 for every root; layout: one allocation per root, leaves
+of 8 bytes, the parts 5 and 6 at offsets 0 and 8 of the allocation of 4; pointers of 8 bytes, little
+endian, each byte carrying the provenance; the bytes written in leaf `l` are `10 l + i`. -/
+def C : Nat → Nat → Prop := fun a d => a = d
+def L : Layout := fun q => match q with
+  | 0 => ⟨0, 0, 8⟩ | 1 => ⟨1, 0, 8⟩ | 2 => ⟨2, 0, 8⟩ | 3 => ⟨3, 0, 8⟩
+  | 4 => ⟨4, 0, 16⟩ | 5 => ⟨4, 0, 8⟩ | 6 => ⟨4, 8, 8⟩ | 7 => ⟨5, 0, 8⟩
+  | 8 => ⟨6, 0, 8⟩ | _ => ⟨99, 0, 0⟩
+def pe : PtrEnc :=
+  ⟨fun addr prov i => ((addr >>> (8 * i)).toUInt8, prov),
+   fun f => (List.range 8).foldl (fun acc i => acc ||| ((f i).1.toNat <<< (8 * i))) 0⟩
+def w : Nat → Nat → UInt8 × Option Nat := fun l i => ((10 * l + i).toUInt8, none)
+def π : Params :=
+  ⟨L, fun f => 100 + f, fun pr => 6 + pr, topPlacement, fun _ => ⟨0, 16, 8⟩, pe, w⟩
+/-- Test obligations (K5): `dec`, an access aligned on 4 bytes; `stat`, true. -/
+def obR : MM02.ReadOblSpec := ⟨fun _ ac => ac.addr % 4 = 0, fun _ _ => True⟩
+def obW : MM02.WriteOblSpec := ⟨fun _ ac _ => ac.addr % 4 = 0, fun _ _ _ => True⟩
+instance : ∀ s o, Decidable (Op2.Dec obR obW s o) := fun s o => by
+  cases o <;> simp only [Op2.Dec, obR, obW] <;> infer_instance
+
+/-- The ghost `provOf` (L4): empty, then the places 4, 5, 6 allocated from the provider 1. -/
+def pv0 : Nat → Option Nat := fun _ => none
+def pvA : Nat → Option Nat := provStep (.alloc 1 0 lsA) x2 pv0
+
+/-- The MM-02 states of the translation: the run of `repr_init` (no static), then the sequence
+associated with each step (`assoc`); the steps without MM-02 operation keep the state. -/
+def n0 : MM02.State := exec MM02.State.empty (initOpsOf π [])
+def n1 : MM02.State := exec n0 (assoc π (.enter [] lsC) x0 n0)
+def n2 : MM02.State := exec n1 (assoc π (.write 1 [1] w) x1 n1)
+def n3 : MM02.State := exec n2 (assoc π (.alloc 1 0 lsA) x2 n2)
+def n4 : MM02.State := exec n3 (assoc π (.write 0 [0] w) x3 n3)
+def n9 : MM02.State := exec n4 (assoc π (.enter [5, 6] lsE) x8 n4)
+def n10 : MM02.State := exec n9 (assoc π (.issue 0 5 [5] 7) x9 n9)
+def n11 : MM02.State := exec n10 (assoc π (.store 5 8) x10 n10)
+def n12 : MM02.State := exec n11 (assoc π (.transfer 7 2) x11 n11)
+def n13 : MM02.State := exec n12 (assoc π .exit x12 n12)
+def n17 : MM02.State := exec n13 (assoc π (.free 4 7) x16 n13)
+def n18 : MM02.State := exec n17 (assoc π .exit x17 n17)
+
+/-- A prefix of the execution with its translation, the ghost and the MM-02 state named. -/
+abbrev Run (s3 : S3) (pv : Nat → Option Nat) (s2 : MM02.State) : Prop :=
+  ∃ ops os, SimRun KS C obR obW [] π ops s3 pv os s2
+
+/-- The execution, step by step: each `ok` step of MM-03 (`Step3`, checked by `decide`) with its
+obligations (`Oblig`: `NewLayout` for `enterFrame` and `alloc`, `dec` along its sequence, and
+`FreeOblig` for `free 4 7`, met by the provider 1 of 4 and `ptok 1 = 7`). -/
+theorem run0 : Run x0 pv0 n0 := ⟨_, _, .init (by decide) (by decide) trivial⟩
+theorem run1 : Run x1 pv0 n1 := by
+  obtain ⟨_, _, h⟩ := run0
+  exact ⟨_, _, h.step (op := .enter [] lsC) ⟨by decide, .ok (by decide)⟩
+    ⟨by decide, by decide, trivial⟩⟩
+theorem run2 : Run x2 pv0 n2 := by
+  obtain ⟨_, _, h⟩ := run1
+  exact ⟨_, _, h.step (op := .write 1 [1] w) (.ok (by decide)) ⟨by decide, by decide, trivial⟩⟩
+theorem run3 : Run x3 pvA n3 := by
+  obtain ⟨_, _, h⟩ := run2
+  exact ⟨_, _, h.step (op := .alloc 1 0 lsA) ⟨⟨0, by decide⟩, .ok (by decide) trivial⟩
+    ⟨by decide, by decide, trivial⟩⟩
+theorem run4 : Run x4 pvA n4 := by
+  obtain ⟨_, _, h⟩ := run3
+  exact ⟨_, _, h.step (op := .write 0 [0] w) (.ok (by decide)) ⟨by decide, by decide, trivial⟩⟩
+theorem run5 : Run x5 pvA n4 := by
+  obtain ⟨_, _, h⟩ := run4
+  exact ⟨_, _, h.step (op := .newArena 4 4) (.ok (by decide)) ⟨by decide, by decide, trivial⟩⟩
+theorem run6 : Run x6 pvA n4 := by
+  obtain ⟨_, _, h⟩ := run5
+  exact ⟨_, _, h.step (op := .derive 0 0 .observe) (.ok (by decide))
+    ⟨by decide, by decide, trivial⟩⟩
+theorem run7 : Run x7 pvA n4 := by
+  obtain ⟨_, _, h⟩ := run6
+  exact ⟨_, _, h.step (op := .derive 2 2 .modify) (.ok (by decide)) ⟨by decide, by decide, trivial⟩⟩
+theorem run8 : Run x8 pvA n4 := by
+  obtain ⟨_, _, h⟩ := run7
+  exact ⟨_, _, h.step (op := .pin 1) (.ok (by decide)) ⟨by decide, by decide, trivial⟩⟩
+theorem run9 : Run x9 pvA n9 := by
+  obtain ⟨_, _, h⟩ := run8
+  exact ⟨_, _, h.step (op := .enter [5, 6] lsE) ⟨by decide, .ok (by decide)⟩
+    ⟨by decide, by decide, trivial⟩⟩
+theorem step10 : Step3 KS (.issue 0 5 [5] 7) x9 x10 :=
+  IssueAt.ok (ar := arS) (by decide) (.ok (by decide) (by decide) (by decide) (by decide))
+theorem run10 : Run x10 pvA n10 := by
+  obtain ⟨_, _, h⟩ := run9
+  exact ⟨_, _, h.step step10 ⟨by decide, by decide, trivial⟩⟩
+theorem run11 : Run x11 pvA n11 := by
+  obtain ⟨_, _, h⟩ := run10
+  exact ⟨_, _, h.step (op := .store 5 8) (.ok (by decide)) ⟨by decide, by decide, trivial⟩⟩
+theorem step12 : Step3 KS (.transfer 7 2) x11 x12 := .ok (by decide)
+theorem ob12 : Oblig KS C obR obW π (.transfer 7 2) x11 x12 pvA n11 :=
+  ⟨trivial, by decide, trivial⟩
+theorem run12 : Run x12 pvA n12 := by
+  obtain ⟨_, _, h⟩ := run11
+  exact ⟨_, _, h.step step12 ob12⟩
+theorem run13 : Run x13 pvA n13 := by
+  obtain ⟨_, _, h⟩ := run12
+  exact ⟨_, _, h.step (op := .exit) (.ok (by decide)) ⟨by decide, by decide, trivial⟩⟩
+theorem run14 : Run x14 pvA n13 := by
+  obtain ⟨_, _, h⟩ := run13
+  exact ⟨_, _, h.step (op := .endUse 2) (.ok (by decide)) ⟨by decide, by decide, trivial⟩⟩
+theorem run15 : Run x15 pvA n13 := by
+  obtain ⟨_, _, h⟩ := run14
+  exact ⟨_, _, h.step (op := .reset 0 0) (.ok (by decide)) ⟨by decide, by decide, trivial⟩⟩
+theorem run16 : Run x16 pvA n13 := by
+  obtain ⟨_, _, h⟩ := run15
+  exact ⟨_, _, h.step (op := .unpin 1) (.ok (by decide)) ⟨by decide, by decide, trivial⟩⟩
+theorem run17 : Run x17 pvA n17 := by
+  obtain ⟨_, _, h⟩ := run16
+  exact ⟨_, _, h.step (op := .free 4 7) (.ok (by decide))
+    ⟨trivial, by decide, fun _ => ⟨1, by decide, rfl⟩⟩⟩
+theorem run18 : Run x18 pvA n18 := by
+  obtain ⟨_, _, h⟩ := run17
+  exact ⟨_, _, h.step (op := .exit) (.ok (by decide)) ⟨by decide, by decide, trivial⟩⟩
+
+/-- `simulation` on every prefix of the run: an MM-02 run from `State.empty` with only `ok`
+outcomes, reaching the state of the translation, in `Repr`. -/
+theorem sim {s3 : S3} {pv : Nat → Option Nat} {s2 : MM02.State} (h : Run s3 pv s2) :
+    ∃ os, AllOk C obR obW MM02.State.empty os ∧ exec MM02.State.empty os = s2 ∧
+      Repr π.tok π.ptok pv π.L s3 s2 ∧ Reachable KS [] s3 := by
+  obtain ⟨_, os, h⟩ := h
+  have := simulation (KT_dd _ _ _ _ _) (fun _ _ => trivial) (fun _ _ _ => trivial) topPlacement_ok
+    (fun _ => ⟨(by decide : 0 < 8), (by decide : MM02.Pow2 8)⟩) (fun _ => rfl) h
+  exact ⟨os, this.1, this.2.1, this.2.2.1, this.2.2.2.1⟩
+
+/-- The whole execution: every MM-02 operation `ok`, `Repr` at the end; every allocation is dead at
+the end (the storage 4 freed with the token 7, the locals deallocated at the exits). -/
+example : ∃ os, AllOk C obR obW MM02.State.empty os ∧ exec MM02.State.empty os = n18 ∧
+    Repr π.tok π.ptok pvA L x18 n18 := (sim run18).imp fun _ h => ⟨h.1, h.2.1, h.2.2.1⟩
+example : ∀ i < 7, DeadAlloc n18 i := by decide
+example : (n18.allocs 4).map (·.freeAuth) = some (some 7) := by decide
+
+
+/-- The invariants of MM-03 and `Repr` on a prefix of the run. -/
+theorem inv {s3 : S3} {pv : Nat → Option Nat} {s2 : MM02.State} (h : Run s3 pv s2) :
+    Repr π.tok π.ptok pv L s3 s2 ∧ WF3 s3 ∧ NoDangling s3 ∧ FpLeaves s3 ∧
+      Reachable KS [] s3 := by
+  obtain ⟨_, _, -, hR, hr⟩ := sim h
+  exact ⟨hR, (reachable_invariants (KT_dd _ _ _ _ _) hr).1,
+    (reachable_invariants (KT_dd _ _ _ _ _) hr).2.1.nd,
+    (reachable_fpLeaves_frameOwnedLive (KT_dd _ _ _ _ _) hr).1, hr⟩
+
+/-- `issue` (L6): R6 on the step of the run, and `pointer_sound_issue`: the bytes written in the
+destination 7 decode to the address 104 of the leaf 5 (base of the allocation 4 of the storage, plus
+offset 0), and each carries the provenance 4, a live allocation. -/
+example : AllOk C obR obW n9 (issueOps pe n9 L [5] 7) ∧ Repr π.tok π.ptok pvA L x10 n10 := by
+  obtain ⟨hR, hwf, -⟩ := inv run9
+  have := r6_issue (C := C) (ObR := obR) (ObW := obW) (pe := pe) hwf hR step10
+    (fun _ _ _ => trivial)
+    (by show (leafAcc n9 L .write 7).addr % 4 = 0; decide)
+  exact ⟨this.1, this.2.1⟩
+example : pe.decode (ptrBytes pe n9 L [5]) = 104 ∧
+    (∀ i, (ptrBytes pe n9 L [5] i).2 = some 4) ∧
+    (∃ al, n9.allocs 4 = some al ∧ al.live = true ∧ regionAddr n9 L [5] = al.base + 0) := by
+  obtain ⟨hR, hwf, hnd, hfl, -⟩ := inv run9
+  obtain ⟨h1, h2, ⟨al, h3, h4, h5, -⟩, -⟩ := pointer_sound_issue (C := C) (ObR := obR)
+    (ObW := obW) (pe := pe)
+    hwf hnd hfl hR step10 (fun _ _ _ => trivial)
+    (by show (leafAcc n9 L .write 7).addr % 4 = 0; decide) (l := 5) rfl
+    ⟨by decide, fun _ => rfl⟩
+  exact ⟨h1.trans (by decide), h2, al, h3, h4, h5⟩
+example : rangeBytes n10 L 7 = some ([104, 0, 0, 0, 0, 0, 0, 0].map fun v => .init v (some 4)) := by
+  decide
+
+/-- `store` (L6), `pointer_sound_store`: the bytes written in 8 decode to the address 8 of the
+leaf 0 covered by the authority 5, and each carries the provenance 0, the allocation of 0. -/
+example : pe.decode (ptrBytes pe n10 L (x10.afp 5)) = 8 ∧
+    (∀ i, (ptrBytes pe n10 L (x10.afp 5) i).2 = some 0) := by
+  obtain ⟨hR, hwf, hnd, hfl, -⟩ := inv run10
+  obtain ⟨h1, h2, -⟩ := pointer_sound_store (C := C) (ObR := obR) (ObW := obW) (pe := pe) hwf hnd
+    hfl hR
+    (.ok (by decide) : StoreStep 5 8 x10 (.ok x11)) (fun _ _ _ => trivial)
+    (by show (leafAcc n10 L .write 8).addr % 4 = 0; decide) (l := 0) (by decide)
+    ⟨by decide, fun _ => rfl⟩
+  exact ⟨h1.trans (by decide), h2⟩
+
+/-- `transfer` to the caller (L6), `transfer_copies`: the range of the destination 2 holds the bytes
+of the source 7, the pointer to the block with its provenance 4; the source range is unchanged. -/
+example : rangeBytes n12 L 2 = rangeBytes n11 L 7 ∧ rangeBytes n12 L 7 = rangeBytes n11 L 7 := by
+  obtain ⟨hR, hwf, -⟩ := inv run11
+  refine transfer_copies hwf hR step12 (fun l l' hm => ?_) 7 2 (by decide)
+  rw [show transferPairs x11.P 7 2 = [(7, 2)] by decide, List.mem_singleton] at hm
+  cases hm; rfl
+example : rangeBytes n12 L 2 = some ([104, 0, 0, 0, 0, 0, 0, 0].map fun v => .init v (some 4)) := by
+  decide
+
+/-- `reset` (L6): no MM-02 step; only the library state of the arena entry (`available`, `issued`)
+changes. -/
+example : AllOk C obR obW n13 [] ∧ Repr π.tok π.ptok pvA L x15 (exec n13 []) := by
+  obtain ⟨hR, -⟩ := inv run14
+  exact r6_noStep (k := KS) hR (.reset (.ok (by decide) : ResetAtStep KS 0 0 x14 (.ok x15)))
+example : x14.arenas = [⟨4, 4, [6], [([5], 9)]⟩] ∧ x15.arenas = [arS] := by decide
+/-- After `transfer`, the block 9 is held by the leaf 2 of the caller (J1). -/
+example : (x12.A[9]?).map (·.holder) = some (.place 2) ∧ x12.F = [2, 1, 0] := by decide
+/-- Without the write of `issue` or of `transfer`, `Repr` fails (K3: an `Init` leaf has its bytes
+initialised). -/
+example : ¬ ReprB π.tok π.ptok pvA L x10 n9 ∧ ¬ ReprB π.tok π.ptok pvA L x12 n11 := by
+  decide
+
+/-- L8 along the run (`simulation_pinned`): the leaf 1, pinned before the transfer, keeps a live
+allocation and its address across the reads and writes of the step. -/
+example : LiveAlloc n11 1 ∧ LiveAlloc n12 1 ∧ leafAddr n12 L 1 = leafAddr n11 L 1 := by
+  obtain ⟨_, _, h⟩ := run11
+  exact simulation_pinned (KT_dd _ _ _ _ _) (fun _ _ => trivial) (fun _ _ _ => trivial)
+    topPlacement_ok (fun _ => ⟨(by decide : 0 < 8), (by decide : MM02.Pow2 8)⟩) (fun _ => rfl)
+    h step12 ob12 (l := 1) (by decide) (by decide) (.inl (by decide))
+
+end CaseSim
 
 end Ern.MM23
