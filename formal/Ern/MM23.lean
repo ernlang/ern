@@ -2930,9 +2930,9 @@ allocation before and after, and the same address (base + offset). The content i
 MM-02 models no physical move of an allocation, and the theorem claims nothing about moves. Under
 `DDSound k`. -/
 theorem pinned_address_stable {k : K} {statics : Statics} {tok ptok : Nat → Nat}
-    {provOf : Nat → Option Nat} {L : Layout} {s3 s3' : S3} {s2 : MM02.State} {ops : List Op2}
-    (hdd : DDSound k) (hr : Reachable k statics s3) (hs : Step k s3 s3')
-    (hR : Repr tok ptok provOf L s3 s2) (hR' : Repr tok ptok provOf L s3' (exec s2 ops)) {l : Nat}
+    {provOf provOf' : Nat → Option Nat} {L : Layout} {s3 s3' : S3} {s2 : MM02.State}
+    {ops : List Op2} (hdd : DDSound k) (hr : Reachable k statics s3) (hs : Step k s3 s3')
+    (hR : Repr tok ptok provOf L s3 s2) (hR' : Repr tok ptok provOf' L s3' (exec s2 ops)) {l : Nat}
     (hl : l < s3.P.length) (hlf : isLeaf s3.P l) (hpin : s3.pin l = true ∨ k.Pinned l) :
     LiveAlloc s2 (L l).alloc ∧ LiveAlloc (exec s2 ops) (L l).alloc ∧
       leafAddr (exec s2 ops) L l = leafAddr s2 L l := by
@@ -2991,6 +2991,327 @@ theorem exclusive_bytes {L : Layout} {s3 : S3} {s2 : MM02.State} (hlw : LayoutWF
   by_cases e : l = l'
   · subst e; exact effective_exclusive hI1 hab ha
   · exact absurd (hlw.disjoint l hl l' hl' hlf hlf' e hsame) hover
+
+/-! ## Simulation (step 5 of the task) -/
+
+/-- An operation of MM-03 with its arguments (MM-03.3 §3–6), the bytes written by `write3` and
+`writeShared` included: they are data of the program, not a choice of the refinement. -/
+inductive Op3 where
+  | derive (src q : Nat) (m : Mode)
+  | split (src : Nat) (rs : List (List Nat))
+  | release (a : Nat)
+  | transfer (src dst : Nat)
+  | depend (q x : Nat)
+  | enter (ps : List Nat) (ls : List (Option Nat × Option Nat × Nat))
+  | exit
+  | read (a : Nat) (ls : List Nat)
+  | write (a : Nat) (ls : List Nat) (w : Nat → Nat → UInt8 × Option Nat)
+  | writeShared (a : Nat) (ls : List Nat) (w : Nat → Nat → UInt8 × Option Nat)
+  | pin (p : Nat)
+  | unpin (p : Nat)
+  | endUse (p : Nat)
+  | free (p auth : Nat)
+  | alloc (pr ow : Nat) (ls : List (Option Nat × Option Nat × Nat))
+  | newArena (st i : Nat)
+  | issue (i via : Nat) (region : List Nat) (dst : Nat)
+  | reset (i via : Nat)
+  | store (a p : Nat)
+
+/-- L1: the shape of an `enterFrame` has no owning element: its locals are owned by the frame. -/
+def NoOwner (ls : List (Option Nat × Option Nat × Nat)) : Prop :=
+  ∀ i < ls.length, (ls[i]?).bind (·.2.1) = none
+
+/-- An `ok` step of MM-03 labelled by its operation, within the envelope of L1 (an `enterFrame`
+whose shape has an owning element is outside the language) and L2 (the shape of `alloc` has exactly
+one root). -/
+def Step3 (k : K) : Op3 → S3 → S3 → Prop
+  | .derive src q m, s, s' => DeriveStep src q m s (.ok s')
+  | .split src rs, s, s' => SplitStep k src rs s (.ok s')
+  | .release a, s, s' => ReleaseStep a s (.ok s')
+  | .transfer src dst, s, s' => TransferStep k src dst s (.ok s')
+  | .depend q x, s, s' => DependStep q x s (.ok s')
+  | .enter ps ls, s, s' => NoOwner ls ∧ EnterStep ps ls s (.ok s')
+  | .exit, s, s' => ExitStep k s (.ok s')
+  | .read a ls, s, s' => Read3Step a ls s (.ok s')
+  | .write a ls _, s, s' => Write3Step a ls s (.ok s')
+  | .writeShared a ls _, s, s' => WriteSharedStep k a ls s (.ok s')
+  | .pin p, s, s' => PinStep p s (.ok s')
+  | .unpin p, s, s' => UnpinStep k p s (.ok s')
+  | .endUse p, s, s' => EndUseStep k p s (.ok s')
+  | .free p auth, s, s' => FreeStep k p auth s (.ok s')
+  | .alloc pr ow ls, s, s' => (∃ i, rootIdx ls = [i]) ∧ AllocStep k pr ow ls s (.ok s')
+  | .newArena st i, s, s' => NewArenaStep st i s (.ok s')
+  | .issue i via region dst, s, s' => IssueAt k i via region dst s (.ok s')
+  | .reset i via, s, s' => ResetAtStep k i via s (.ok s')
+  | .store a p, s, s' => StoreStep a p s (.ok s')
+
+/-- A labelled step is a step of `Reachable` (MM-03.3 §10). -/
+theorem Step3.step {k : K} {op : Op3} {s s' : S3} (h : Step3 k op s s') : Step k s s' := by
+  cases op with
+  | derive => exact .kernel (.derive h)
+  | split => exact .kernel (.split h)
+  | release => exact .kernel (.release h)
+  | transfer => exact .kernel (.transfer h)
+  | depend => exact .kernel (.depend h)
+  | enter => exact .kernel (.enter h.2)
+  | exit => exact .kernel (.exit h)
+  | read => exact .kernel (.read h)
+  | write => exact .kernel (.write h)
+  | writeShared => exact .kernel (.writeShared h)
+  | pin => exact .kernel (.pin h)
+  | unpin => exact .kernel (.unpin h)
+  | endUse => exact .kernel (.endUse h)
+  | free => exact .kernel (.free h)
+  | alloc => exact .kernel (.alloc h.2)
+  | newArena => exact .newArena h
+  | issue => exact .issue h
+  | reset => exact .reset h
+  | store => exact .kernel (.store h)
+
+/-- An execution of MM-03 from `S3.init statics` within the envelope of L1 and L2: the operations,
+most recent first, and the state reached. -/
+inductive Exec3 (k : K) (statics : Statics) : List Op3 → S3 → Prop where
+  | init : ShapeOK 0 (statics.map (·.1)) → Exec3 k statics [] (S3.init statics)
+  | step {ops : List Op3} {s s' : S3} {op : Op3} : Exec3 k statics ops s → Step3 k op s s' →
+      Exec3 k statics (op :: ops) s'
+
+theorem Exec3.reachable {k : K} {statics : Statics} {ops : List Op3} {s : S3}
+    (h : Exec3 k statics ops s) : Reachable k statics s := by
+  induction h with
+  | init hsh => exact .init hsh
+  | step _ hs ih => exact Reachable.ofStep ih hs.step
+
+/-- Parameters of the refinement fixed once for a whole execution (step 5): the layout, the frame
+and provider tokens (K2, L4), the placement (K2), the geometry of the allocation of each root place,
+read on its index, the encoding of pointers (L6), the initial bytes of the statics (K3). -/
+structure Params where
+  L : Layout
+  tok : Nat → Nat
+  ptok : Nat → Nat
+  pl : Placement
+  geom : Nat → Geom
+  pe : PtrEnc
+  w0 : Nat → Nat → UInt8 × Option Nat
+
+/-- K4, L6: the MM-02 sequence associated with an MM-03 operation from the states `s3`, `s2`. -/
+def assoc (π : Params) : Op3 → S3 → MM02.State → List Op2
+  | .read _ ls, _, s2 => readOps s2 π.L ls
+  | .write _ ls w, _, s2 => writeOps s2 π.L w ls
+  | .writeShared _ ls w, _, s2 => writeOps s2 π.L w ls
+  | .transfer src dst, s3, s2 => transferOps s2 π.L s3.P src dst
+  | .store a p, s3, s2 => storeOps π.pe s2 π.L s3 a p
+  | .issue _ _ region dst, _, s2 => issueOps π.pe s2 π.L region dst
+  | .alloc pr _ ls, s3, s2 =>
+    allocOps π.pl (fun i => π.geom (s3.P.length + i)) (some (π.ptok pr)) s2 (rootIdx ls)
+  | .enter _ ls, s3, s2 =>
+    allocOps π.pl (fun i => π.geom (s3.P.length + i)) (some (π.tok s3.nF)) s2 (rootIdx ls)
+  | .free p auth, s3, _ => deallocOps [rootAlloc π.L s3.P p] auth
+  | .exit, s3, _ => exitOps π.L π.tok s3
+  | _, _, _ => []
+
+/-- L4: the ghost `provOf` after an operation: `alloc pr _ ls` maps the places it creates to the
+provider `pr`; no other operation changes it. -/
+def provStep : Op3 → S3 → (Nat → Option Nat) → Nat → Option Nat
+  | .alloc pr _ ls, s3, pv => fun r =>
+    if s3.P.length ≤ r ∧ r < s3.P.length + ls.length then some pr else pv r
+  | _, _, pv => pv
+
+/-- K3: the MM-02 operations of the initial state with the parameters `π`. -/
+def initOpsOf (π : Params) (statics : Statics) : List Op2 :=
+  initOps π.pl π.geom π.tok π.L π.w0 statics
+
+/-- The lock-step translation of an MM-03 execution: the operations (most recent first), the MM-03
+state, the ghost `provOf`, the MM-02 operations (in the order of execution) and the MM-02 state.
+It starts with the MM-02 run of `repr_init`; each MM-03 step appends its associated sequence. It is
+determined by the execution and the parameters. -/
+inductive Trans (k : K) (statics : Statics) (π : Params) :
+    List Op3 → S3 → (Nat → Option Nat) → List Op2 → MM02.State → Prop where
+  | init : ShapeOK 0 (statics.map (·.1)) →
+      Trans k statics π [] (S3.init statics) (fun _ => none) (initOpsOf π statics)
+        (exec MM02.State.empty (initOpsOf π statics))
+  | step {ops : List Op3} {s3 s3' : S3} {pv : Nat → Option Nat} {os : List Op2}
+      {s2 : MM02.State} {op : Op3} :
+      Trans k statics π ops s3 pv os s2 → Step3 k op s3 s3' →
+      Trans k statics π (op :: ops) s3' (provStep op s3 pv) (os ++ assoc π op s3 s2)
+        (exec s2 (assoc π op s3 s2))
+
+/-- Every MM-03 execution has a translation. -/
+theorem Trans.of_exec {k : K} {statics : Statics} (π : Params) {ops : List Op3} {s3 : S3}
+    (h : Exec3 k statics ops s3) : ∃ pv os s2, Trans k statics π ops s3 pv os s2 := by
+  induction h with
+  | init hsh => exact ⟨_, _, _, .init hsh⟩
+  | step _ hs ih => obtain ⟨pv, os, s2, ht⟩ := ih; exact ⟨_, _, _, ht.step hs⟩
+
+/-- K1, K2: the layout obligation of an operation that creates root places: the new roots are laid
+out in fresh allocations, within their geometry (`NewLayout`). -/
+def LayoutObl (π : Params) : Op3 → S3 → S3 → MM02.State → Prop
+  | .enter _ ls, s3, s3', s2 =>
+    NewLayout π.L s3'.P s3.P.length s2.next (fun i => π.geom (s3.P.length + i)) (rootIdx ls)
+  | .alloc _ _ ls, s3, s3', s2 =>
+    NewLayout π.L s3'.P s3.P.length s2.next (fun i => π.geom (s3.P.length + i)) (rootIdx ls)
+  | _, _, _, _ => True
+
+theorem ReprB.provOf_congr {tok ptok : Nat → Nat} {pv pv' : Nat → Option Nat} {L : Layout}
+    {s3 : S3} {s2 : MM02.State} (hR : ReprB tok ptok pv L s3 s2)
+    (h : ∀ r < s3.P.length, pv' r = pv r) : ReprB tok ptok pv' L s3 s2 :=
+  { hR with provTokens := fun r hr hrt => by rw [h r hr]; exact hR.provTokens r hr hrt }
+
+theorem decAlong_readOps {ObR : MM02.ReadOblSpec} {ObW : MM02.WriteOblSpec} {s2 s2' : MM02.State}
+    {L : Layout} : ∀ {ls : List Nat}, DecAlong ObR ObW s2 (readOps s2' L ls) →
+      ∀ l ∈ ls, ObR.dec s2 (leafAcc s2' L .read l)
+  | [], _, _, h => by cases h
+  | _ :: _, ⟨h0, h⟩, _, hl => by
+    rcases List.mem_cons.1 hl with rfl | hl
+    · exact h0
+    · exact decAlong_readOps h _ hl
+
+/-- L4: the obligation of the contracts at a `free` of the run: `FreeCompat` is instantiated by
+the token of the provider recorded by the ghost `provOf` (`FreeCompatInst`). -/
+def FreeOblig (k : K) (C : Nat → Nat → Prop) (π : Params) : Op3 → (Nat → Option Nat) → Prop
+  | .free p auth, pv => k.FreeCompat p auth → FreeCompatInst C π.ptok pv p auth
+  | _, _ => True
+
+/-- The obligations of one step of the run, on the states where it runs: the layout of the new
+roots (`LayoutObl`, K1, K2), `dec` along its MM-02 sequence (K5), and `FreeOblig` (L4). -/
+def Oblig (k : K) (C : Nat → Nat → Prop) (ObR : MM02.ReadOblSpec) (ObW : MM02.WriteOblSpec)
+    (π : Params) (op : Op3) (s3 s3' : S3) (pv : Nat → Option Nat) (s2 : MM02.State) : Prop :=
+  LayoutObl π op s3 s3' s2 ∧ DecAlong ObR ObW s2 (assoc π op s3 s2) ∧ FreeOblig k C π op pv
+
+/-- An execution of MM-03 with its translation (`Trans`) whose every step meets its obligations
+(`Oblig`), and whose initial run meets the layout of the statics and `dec`. The obligations bear on
+the states of this execution and its run only. -/
+inductive SimRun (k : K) (C : Nat → Nat → Prop) (ObR : MM02.ReadOblSpec)
+    (ObW : MM02.WriteOblSpec) (statics : Statics) (π : Params) :
+    List Op3 → S3 → (Nat → Option Nat) → List Op2 → MM02.State → Prop where
+  | init : ShapeOK 0 (statics.map (·.1)) →
+      NewLayout π.L (S3.init statics).P 0 0 π.geom (rootIdx (statics.map (·.1))) →
+      DecAlong ObR ObW MM02.State.empty (initOpsOf π statics) →
+      SimRun k C ObR ObW statics π [] (S3.init statics) (fun _ => none) (initOpsOf π statics)
+        (exec MM02.State.empty (initOpsOf π statics))
+  | step {ops : List Op3} {s3 s3' : S3} {pv : Nat → Option Nat} {os : List Op2}
+      {s2 : MM02.State} {op : Op3} :
+      SimRun k C ObR ObW statics π ops s3 pv os s2 → Step3 k op s3 s3' →
+      Oblig k C ObR ObW π op s3 s3' pv s2 →
+      SimRun k C ObR ObW statics π (op :: ops) s3' (provStep op s3 pv) (os ++ assoc π op s3 s2)
+        (exec s2 (assoc π op s3 s2))
+
+/-- A `SimRun` is the canonical translation of its execution. -/
+theorem SimRun.trans {k : K} {C : Nat → Nat → Prop} {ObR : MM02.ReadOblSpec}
+    {ObW : MM02.WriteOblSpec} {statics : Statics} {π : Params} {ops : List Op3} {s3 : S3}
+    {pv : Nat → Option Nat} {os : List Op2} {s2 : MM02.State}
+    (h : SimRun k C ObR ObW statics π ops s3 pv os s2) : Trans k statics π ops s3 pv os s2 := by
+  induction h with
+  | init hsh _ _ => exact .init hsh
+  | step _ hs _ ih => exact ih.step hs
+
+/-- A `SimRun` is an execution of MM-03. -/
+theorem SimRun.exec3 {k : K} {C : Nat → Nat → Prop} {ObR : MM02.ReadOblSpec}
+    {ObW : MM02.WriteOblSpec} {statics : Statics} {π : Params} {ops : List Op3} {s3 : S3}
+    {pv : Nat → Option Nat} {os : List Op2} {s2 : MM02.State}
+    (h : SimRun k C ObR ObW statics π ops s3 pv os s2) : Exec3 k statics ops s3 := by
+  induction h with
+  | init hsh _ _ => exact .init hsh
+  | step _ hs _ ih => exact ih.step hs
+
+/-- `simulation` (step 5): along every execution of MM-03 from `S3.init statics` within the
+envelope of L1 and L2, translated with parameters `π` fixed once for the whole execution, whose
+steps meet their obligations (`SimRun`), the MM-02 run starts with the run of `repr_init`, appends
+at each step the sequence associated by K4 and L6, has only `ok` outcomes, reaches the state `s2`,
+and is in `Repr` with the MM-03 state; the MM-03 state is reached, and the ghost `provOf` is empty
+beyond the places. Since every prefix of a `SimRun` is a `SimRun`, this holds at each step. The
+remaining hypotheses: `DDSound k` (L7: `ddSound_of_layout`); `stat` (K5); the obligation of the
+placement and valid alignments (K2); the compatibility of the frame tokens (K2). -/
+theorem simulation {C : Nat → Nat → Prop} {ObR : MM02.ReadOblSpec} {ObW : MM02.WriteOblSpec}
+    {k : K} {statics : Statics} {π : Params} (hdd : DDSound k)
+    (hstatR : ∀ s ac, ObR.stat s ac) (hstatW : ∀ s ac w, ObW.stat s ac w)
+    (hpl : PlacementOK π.pl) (hg : ∀ r, 0 < (π.geom r).align ∧ MM02.Pow2 (π.geom r).align)
+    (htc : TokCompat C π.tok) :
+    ∀ {ops s3 pv os s2}, SimRun k C ObR ObW statics π ops s3 pv os s2 →
+      AllOk C ObR ObW MM02.State.empty os ∧ exec MM02.State.empty os = s2 ∧
+      Repr π.tok π.ptok pv π.L s3 s2 ∧ Reachable k statics s3 ∧
+      ∀ r, s3.P.length ≤ r → pv r = none := by
+  intro ops s3 pv os s2 ht
+  induction ht with
+  | init hsh hlay0 hdec0 =>
+    have := repr_init (C := C) (ObR := ObR) (ObW := ObW) (tok := π.tok) (ptok := π.ptok)
+      (provOf := fun _ => none) hsh hpl (fun i _ => hg i) hlay0 (fun _ _ => rfl) hstatW hdec0
+    exact ⟨this.1, rfl, this.2, .init hsh, fun _ _ => rfl⟩
+  | @step ops s3 s3' pv os s2 op _ hs hob ih =>
+    obtain ⟨hok, hex, hR, hr, hpv⟩ := ih
+    obtain ⟨hly, hdc, hfc⟩ := hob
+    have hwf := (reachable_invariants hdd hr).1
+    have hnd := (reachable_invariants hdd hr).2.1.nd
+    have hfl := (reachable_fpLeaves_frameOwnedLive hdd hr).1
+    have hfo := (reachable_fpLeaves_frameOwnedLive hdd hr).2
+    have hr' : Reachable k statics s3' := Reachable.ofStep hr hs.step
+    -- the MM-02 side of the step
+    have key : AllOk C ObR ObW s2 (assoc π op s3 s2) ∧
+        Repr π.tok π.ptok (provStep op s3 pv) π.L s3' (exec s2 (assoc π op s3 s2)) := by
+      cases op with
+      | derive => exact r6_noStep (k := k) hR (.derive hs)
+      | split => exact r6_noStep (k := k) hR (.split hs)
+      | release => exact r6_noStep (k := k) hR (.release hs)
+      | transfer => exact r6_transfer hwf hR hs hstatR hstatW hdc
+      | depend => exact r6_noStep (k := k) hR (.depend hs)
+      | enter ps ls =>
+        exact r6_enter hwf hR hpl (fun i _ => hg _) hs.2 (fun i _ => hpv _ (Nat.le_add_right _ _))
+          hly
+      | exit => exact r6_exit hwf hfo hR htc hs
+      | read => exact r6_read3 hwf hnd hfl hR hs hstatR (decAlong_readOps hdc)
+      | write => exact r2_write3 hwf hnd hfl hR hs hstatW hdc
+      | writeShared => exact r2_writeShared hwf hnd hfl hR hs hstatW hdc
+      | pin => exact r6_noStep (k := k) hR (.pin hs)
+      | unpin => exact r6_noStep (k := k) hR (.unpin hs)
+      | endUse => exact r6_noStep (k := k) hR (.endUse hs)
+      | free p auth => exact r6_free hwf hR hfc hs
+      | alloc pr ow ls =>
+        obtain ⟨⟨i, hone⟩, hs'⟩ := hs
+        have hi : i < ls.length := (rootIdx_mem (k := 0) (by rw [hone]; rfl)).1
+        have hR₁ : Repr π.tok π.ptok (provStep (.alloc pr ow ls) s3 pv) π.L s3 s2 :=
+          ⟨hR.toReprB.provOf_congr fun r hr => by
+            simp only [provStep, show ¬ (s3.P.length ≤ r ∧ r < s3.P.length + ls.length) from
+              fun h => absurd h.1 (Nat.not_le.2 hr), ↓reduceIte], hR.wf2⟩
+        have := r6_alloc (C := C) (ObR := ObR) (ObW := ObW) (pl := π.pl)
+          (g := fun i => π.geom (s3.P.length + i)) (i := i) hwf hR₁ hpl (hg _) hs' hone
+          (by simp only [provStep, show s3.P.length ≤ s3.P.length + i ∧
+              s3.P.length + i < s3.P.length + ls.length from ⟨Nat.le_add_right _ _, by omega⟩,
+              and_self, ↓reduceIte])
+          (by simp only [LayoutObl] at hly; rw [hone] at hly; exact hly)
+        simp only [assoc, hone]
+        exact this
+      | newArena => exact r6_noStep (k := k) hR (.newArena hs)
+      | issue => exact (r6_issue hwf hR hs hstatW hdc.1).imp id fun h => h.1
+      | reset => exact r6_noStep (k := k) hR (.reset hs)
+      | store => exact (r6_store hwf hR hs hstatW hdc.1).imp id fun h => h.1
+    refine ⟨along_append.2 ⟨hok, hex ▸ key.1⟩, by rw [exec_append, hex], key.2, hr', fun r hr => ?_⟩
+    have hlen := (step_extends hwf hs.step).1
+    cases op with
+    | alloc pr ow ls =>
+      have hP : s3'.P.length = s3.P.length + ls.length := by
+        obtain ⟨-, hs'⟩ := hs
+        cases hs' with
+        | ok _ _ => exact allocP_len s3 ow ls
+      simp only [provStep, show ¬ (s3.P.length ≤ r ∧ r < s3.P.length + ls.length) from
+        fun h => by omega, ↓reduceIte]
+      exact hpv r (by omega)
+    | _ => exact hpv r (by omega)
+
+/-- L8 along the simulation: at every step of a `SimRun`, a leaf pinned before the step has a live
+allocation before and after it, and the same address. -/
+theorem simulation_pinned {C : Nat → Nat → Prop} {ObR : MM02.ReadOblSpec}
+    {ObW : MM02.WriteOblSpec} {k : K} {statics : Statics} {π : Params} (hdd : DDSound k)
+    (hstatR : ∀ s ac, ObR.stat s ac) (hstatW : ∀ s ac w, ObW.stat s ac w)
+    (hpl : PlacementOK π.pl) (hg : ∀ r, 0 < (π.geom r).align ∧ MM02.Pow2 (π.geom r).align)
+    (htc : TokCompat C π.tok) {ops : List Op3} {s3 s3' : S3} {pv : Nat → Option Nat}
+    {os : List Op2} {s2 : MM02.State} {op : Op3}
+    (ht : SimRun k C ObR ObW statics π ops s3 pv os s2) (hs : Step3 k op s3 s3')
+    (hob : Oblig k C ObR ObW π op s3 s3' pv s2) {l : Nat} (hl : l < s3.P.length)
+    (hlf : isLeaf s3.P l) (hpin : s3.pin l = true ∨ k.Pinned l) :
+    LiveAlloc s2 (π.L l).alloc ∧ LiveAlloc (exec s2 (assoc π op s3 s2)) (π.L l).alloc ∧
+      leafAddr (exec s2 (assoc π op s3 s2)) π.L l = leafAddr s2 π.L l := by
+  have h₁ := simulation hdd hstatR hstatW hpl hg htc ht
+  have h₂ := simulation hdd hstatR hstatW hpl hg htc (ht.step hs hob)
+  exact pinned_address_stable hdd h₁.2.2.2.1 hs.step h₁.2.2.1 h₂.2.2.1 hl hlf hpin
 
 /-! ## Cases (step 6 of the task)
 
