@@ -1515,6 +1515,153 @@ theorem repr_deallocs {tok ptok : Nat → Nat} {provOf : Nat → Option Nat}
       · exact hR.leaked r hr hrt hu' (h.resolve_left hu') ho l hl
     exact hkeep _ _ hl' (hn l hl)
 
+/-! ## Leaves of a transfer under `SameShape` (MM-03.3 O4.2, J1 ordered isomorphism) -/
+
+theorem posIn_cons_eq {a r : Nat} {l : List Nat} (h : a = r) : posIn r (a :: l) = 0 := by
+  simp only [posIn, h, ↓reduceIte]
+
+theorem posIn_cons_ne {a r : Nat} {l : List Nat} (h : ¬ a = r) :
+    posIn r (a :: l) = posIn r l + 1 := by
+  simp only [posIn, h, ↓reduceIte]
+
+/-- A position in a list determines the member it was computed for (MM-03.3 O4.2: the identity
+of a structural field is its position). -/
+theorem posIn_inj : ∀ {l : List Nat} {r₁ r₂ : Nat}, r₁ ∈ l → r₂ ∈ l →
+    posIn r₁ l = posIn r₂ l → r₁ = r₂
+  | [], _, _, h, _, _ => absurd h List.not_mem_nil
+  | a :: l, r₁, r₂, h₁, h₂, e => by
+    by_cases e₁ : a = r₁ <;> by_cases e₂ : a = r₂
+    · exact e₁.symm.trans e₂
+    · rw [posIn_cons_eq e₁, posIn_cons_ne e₂] at e; exact absurd e.symm (Nat.succ_ne_zero _)
+    · rw [posIn_cons_ne e₁, posIn_cons_eq e₂] at e; exact absurd e (Nat.succ_ne_zero _)
+    · rw [posIn_cons_ne e₁, posIn_cons_ne e₂] at e
+      have h₁' : r₁ ∈ l := (List.mem_cons.1 h₁).resolve_left (Ne.symm e₁)
+      have h₂' : r₂ ∈ l := (List.mem_cons.1 h₂).resolve_left (Ne.symm e₂)
+      exact posIn_inj h₁' h₂' (Nat.succ.inj e)
+
+/-- In a strictly increasing list, a value occurs at one index only. -/
+theorem index_inj_of_lt : ∀ {l : List Nat}, l.Pairwise (· < ·) → ∀ {i j x : Nat},
+    l[i]? = some x → l[j]? = some x → i = j
+  | [], _, _, _, _, h, _ => by simp at h
+  | _ :: _, hp, 0, 0, _, _, _ => rfl
+  | a :: l, hp, 0, j + 1, x, h₁, h₂ => by
+    simp only [List.getElem?_cons_zero, Option.some.injEq] at h₁; subst h₁
+    simp only [List.getElem?_cons_succ] at h₂
+    exact absurd ((List.pairwise_cons.1 hp).1 _ (List.mem_of_getElem? h₂)) (Nat.lt_irrefl a)
+  | a :: l, hp, i + 1, 0, x, h₁, h₂ => by
+    simp only [List.getElem?_cons_zero, Option.some.injEq] at h₂; subst h₂
+    simp only [List.getElem?_cons_succ] at h₁
+    exact absurd ((List.pairwise_cons.1 hp).1 _ (List.mem_of_getElem? h₁)) (Nat.lt_irrefl a)
+  | _ :: _, hp, i + 1, j + 1, _, h₁, h₂ => by
+    simp only [List.getElem?_cons_succ] at h₁ h₂
+    exact congrArg (· + 1) (index_inj_of_lt (List.pairwise_cons.1 hp).2 h₁ h₂)
+
+/-- The children of a place are in strictly increasing index order (J1: children are ordered by
+index). -/
+theorem kids_lt (P : List Place) (x : Nat) : (kids P x).Pairwise (· < ·) :=
+  (pairwise_lt_range P.length).filter _
+
+/-- A strict part of `src` has a parent that is a part of `src` (MM-03.3.2, composition). -/
+theorem partOf_parent_of_ne {P : List Place} {r src p : Nat} (hr : partOf P r src)
+    (hne : r ≠ src) (hp : parentOf P r = some p) (hlt : p < r) : partOf P p src := by
+  have hc := hr.2.resolve_left hne
+  rw [chain_cons hp hlt] at hc
+  refine ⟨Nat.lt_trans hlt hr.1, ?_⟩
+  rcases List.mem_cons.1 hc with h | h
+  · exact .inl h.symm
+  · exact .inr h
+
+/-- One step of `corr` on a strict part `r` of `src` (J1): `r` has a parent `p`, a part of `src`,
+and the image of `r` is the child, at the position of `r`, of the image of `p`. -/
+theorem corr_parent {s : S3} (hw : WF3 s) {src dst r x : Nat} (hr : partOf s.P r src)
+    (hne : r ≠ src) (h : corr s.P src dst r = some x) :
+    ∃ p p', parentOf s.P r = some p ∧ partOf s.P p src ∧ corr s.P src dst p = some p' ∧
+      (kids s.P p')[posIn r (kids s.P p)]? = some x ∧ parentOf s.P x = some p' := by
+  cases hp : parentOf s.P r with
+  | none =>
+    have hc := hr.2.resolve_left hne
+    rw [chain_none hp] at hc; exact absurd hc List.not_mem_nil
+  | some p =>
+    have hlt := (hw.parent_lt hp).1
+    rw [corr_step hne hp hlt] at h
+    cases hc : corr s.P src dst p with
+    | none => rw [hc] at h; cases h
+    | some p' =>
+      rw [hc] at h; simp only [Option.bind_some] at h
+      exact ⟨p, p', rfl, partOf_parent_of_ne hr hne hp hlt, hc, h,
+        (mem_kids.1 (getElem?_mem h)).2⟩
+
+/-- `dst` is the image of no strict part of `src` (J1): the image of a strict part has as parent
+a part of `dst`, which cannot be a parent of `dst`. -/
+theorem corr_ne_dst {s : S3} (hw : WF3 s) {src dst r : Nat} (hd : dst < s.P.length)
+    (hr : partOf s.P r src) (hne : r ≠ src) : corr s.P src dst r ≠ some dst := by
+  intro h
+  obtain ⟨p, p', -, -, hc, -, hx⟩ := corr_parent hw hr hne h
+  have hlt := (hw.parent_lt hx).1
+  rcases (corr_partOf hw hd (p + 1) p p' (Nat.lt_succ_self p) hc).2 with rfl | hch
+  · exact Nat.lt_irrefl _ hlt
+  · exact Nat.lt_asymm hlt (chain_lt hch)
+
+/-- `corr` is injective on the parts of `src` (MM-03.3 O4.2, J1: all nodes are matched by
+position, so two parts of `src` have the same image only if they are equal). -/
+theorem corr_inj_aux {s : S3} (hw : WF3 s) {src dst : Nat} (hd : dst < s.P.length) :
+    ∀ n r₁ r₂ x, r₁ + r₂ < n → partOf s.P r₁ src → partOf s.P r₂ src →
+      corr s.P src dst r₁ = some x → corr s.P src dst r₂ = some x → r₁ = r₂
+  | 0, _, _, _, h, _, _, _, _ => absurd h (Nat.not_lt_zero _)
+  | n + 1, r₁, r₂, x, hn, h₁, h₂, e₁, e₂ => by
+    by_cases s₁ : r₁ = src <;> by_cases s₂ : r₂ = src
+    · exact s₁.trans s₂.symm
+    · subst s₁; rw [corr_src] at e₁; cases e₁
+      exact absurd e₂ (corr_ne_dst hw hd h₂ s₂)
+    · subst s₂; rw [corr_src] at e₂; cases e₂
+      exact absurd e₁ (corr_ne_dst hw hd h₁ s₁)
+    · obtain ⟨p₁, p₁', hp₁, hq₁, hc₁, hk₁, hx₁⟩ := corr_parent hw h₁ s₁ e₁
+      obtain ⟨p₂, p₂', hp₂, hq₂, hc₂, hk₂, hx₂⟩ := corr_parent hw h₂ s₂ e₂
+      rw [hx₁] at hx₂; cases hx₂
+      have l₁ := (hw.parent_lt hp₁).1
+      have l₂ := (hw.parent_lt hp₂).1
+      obtain rfl := corr_inj_aux hw hd n p₁ p₂ p₁' (by omega) hq₁ hq₂ hc₁ hc₂
+      exact posIn_inj (mem_kids.2 ⟨h₁.1, hp₁⟩) (mem_kids.2 ⟨h₂.1, hp₂⟩)
+        (index_inj_of_lt (kids_lt _ _) hk₁ hk₂)
+
+/-- The leaves of the source of a transfer correspond to leaves of the destination
+(MM-03.3 O4.2, J1 ordered isomorphism `SameShape`). -/
+theorem corr_leaf_fwd {s : S3} (hw : WF3 s) {src dst : Nat} (hd : dst < s.P.length)
+    (hsh : SameShape s.P src dst) {l : Nat} (hl : l ∈ footprint s.P src) :
+    ∃ l', corr s.P src dst l = some l' ∧ l' ∈ footprint s.P dst := by
+  obtain ⟨hlt, hleaf, hpart⟩ := mem_footprint.1 hl
+  have h1 := hsh.1 l (List.mem_range.2 hlt) hpart
+  cases hc : corr s.P src dst l with
+  | none => rw [hc] at h1; exact (h1 : False).elim
+  | some l' =>
+    rw [hc] at h1
+    have h1 : (kids s.P l').length = (kids s.P l).length := h1
+    rw [kids_nil_iff.2 hleaf] at h1
+    have hp := corr_partOf hw hd (l + 1) l l' (Nat.lt_succ_self l) hc
+    exact ⟨l', rfl,
+      mem_footprint.2 ⟨hp.1, kids_nil_iff.1 (List.eq_nil_of_length_eq_zero h1), hp⟩⟩
+
+/-- Every leaf of the destination of a transfer is the image of a leaf of the source
+(MM-03.3 O4.2, J1 ordered isomorphism `SameShape`: all nodes are matched). -/
+theorem corr_leaf_back {s : S3} {src dst : Nat} (hsh : SameShape s.P src dst)
+    {l' : Nat} (hl' : l' ∈ footprint s.P dst) :
+    ∃ l ∈ footprint s.P src, corr s.P src dst l = some l' := by
+  obtain ⟨hlt', hleaf', hpart'⟩ := mem_footprint.1 hl'
+  obtain ⟨r, hr, hrs, hc⟩ := hsh.2 l' (List.mem_range.2 hlt') hpart'
+  have h1 := hsh.1 r hr hrs
+  rw [hc] at h1
+  have h1 : (kids s.P l').length = (kids s.P r).length := h1
+  rw [kids_nil_iff.2 hleaf'] at h1
+  exact ⟨r, mem_footprint.2 ⟨List.mem_range.1 hr,
+    kids_nil_iff.1 (List.eq_nil_of_length_eq_zero h1.symm), hrs⟩, hc⟩
+
+/-- `corr` is injective on the parts of the source of a transfer (MM-03.3 O4.2, J1 ordered
+isomorphism: the `i`-th child corresponds to the `i`-th child). -/
+theorem corr_inj {s : S3} (hw : WF3 s) {src dst : Nat} (hd : dst < s.P.length)
+    {r₁ r₂ x : Nat} (h₁ : partOf s.P r₁ src) (h₂ : partOf s.P r₂ src)
+    (e₁ : corr s.P src dst r₁ = some x) (e₂ : corr s.P src dst r₂ = some x) : r₁ = r₂ :=
+  corr_inj_aux hw hd (r₁ + r₂ + 1) r₁ r₂ x (Nat.lt_succ_self _) h₁ h₂ e₁ e₂
+
 /-! ## R6 (MM-03.3 §9.2; K4) -/
 
 /-- MM-03.3.8 (`Deallocable`, `FreeCompat`) and K4 ("`free` ↦ `DeallocStep`, autorité
@@ -1864,6 +2011,544 @@ theorem r6_exit_reachable {k : K} {statics : Statics} {C : Nat → Nat → Prop}
     AllOk C ObR ObW s2 (exitOps L tok s3) ∧
       Repr tok ptok provOf L s3' (exec s2 (exitOps L tok s3)) :=
   r6_exit (reachable_invariants hdd hr).1 (reachable_fpLeaves_frameOwnedLive hdd hr).2 hR htc h
+
+/-! ## Copies and pointers (L6: `transfer`, `store`, `issue`) -/
+
+/-- The bytes of the range of the leaf `l` in `s2`, if its allocation is registered. -/
+def rangeBytes (s2 : MM02.State) (L : Layout) (l : Nat) : Option (List MM02.AByte) :=
+  (s2.allocs (L l).alloc).map fun a => a.bytesAt (L l).off (L l).len
+
+/-- L6: the bytes of the range of the leaf `l` in `s2` as the argument of a write, value and
+provenance of each initialised byte ("avec les octets lus, provenance comprise"). -/
+def bytesOf (s2 : MM02.State) (L : Layout) (l : Nat) : Nat → UInt8 × Option Nat := fun i =>
+  match (s2.allocs (L l).alloc).map fun a => a.bytes ((L l).off + i) with
+  | some (MM02.AByte.init v p) => (v, p)
+  | _ => (0, none)
+
+/-- L6: the pairs of corresponding leaves of `transfer src dst` (`corr`, the ordered isomorphism
+of O4.2), in the order of the leaves of the source. -/
+def transferPairs (P : List Place) (src dst : Nat) : List (Nat × Nat) :=
+  (footprint P src).filterMap fun l => (corr P src dst l).map fun l' => (l, l')
+
+/-- L6 (`transfer`): for each pair `(l, l')`, a read of the range of `l` (`ReadStep`), then a write
+of the range of `l'` (`WriteStep`) with the bytes of the range of `l`. Held authorities and owned
+storage give no step. -/
+def copyOps (s2 : MM02.State) (L : Layout) : List (Nat × Nat) → List Op2
+  | [] => []
+  | (l, l') :: ps => .read (leafAcc s2 L .read l) :: .write (leafAcc s2 L .write l') (bytesOf s2 L l) ::
+      copyOps s2 L ps
+
+/-- L6 (`transfer src dst`): the copy of the corresponding leaves. -/
+def transferOps (s2 : MM02.State) (L : Layout) (P : List Place) (src dst : Nat) : List Op2 :=
+  copyOps s2 L (transferPairs P src dst)
+
+/-- L6, hypothesis `SameSizeAlong` (types, spec 4): two corresponding leaves have the same size. -/
+def SameSizeAlong (L : Layout) (P : List Place) (src dst : Nat) : Prop :=
+  ∀ l l', (l, l') ∈ transferPairs P src dst → (L l).len = (L l').len
+
+theorem mem_transferPairs {P : List Place} {src dst l l' : Nat} :
+    (l, l') ∈ transferPairs P src dst ↔ l ∈ footprint P src ∧ corr P src dst l = some l' := by
+  simp only [transferPairs, List.mem_filterMap]
+  constructor
+  · rintro ⟨x, hx, e⟩
+    cases hc : corr P src dst x with
+    | none => rw [hc] at e; cases e
+    | some y => rw [hc] at e; cases e; exact ⟨hx, hc⟩
+  · rintro ⟨h, e⟩; exact ⟨l, h, by rw [e]; rfl⟩
+
+/-- L6: after the write of the range of a leaf in a state that keeps the allocations of `s2`, the
+range holds the bytes written, all initialised. -/
+theorem rangeBytes_write {s2 t : MM02.State} (hd : Dom s2 t) {L : Layout} {l : Nat}
+    {w : Nat → UInt8 × Option Nat} (h : AllocP s2 (L l).alloc fun _ => True) :
+    rangeBytes (t.write (leafAcc s2 L .write l) w) L l =
+      some ((List.range (L l).len).map fun i => .init (w i).1 (w i).2) := by
+  obtain ⟨a, ha, -⟩ := h
+  obtain ⟨b, hb, -, e, -⟩ := hd _ a ha
+  have hacc : leafAcc s2 L .write l = leafAcc t L .write l := by rw [leafAcc_of ha, leafAcc_of hb, e]
+  rw [hacc, rangeBytes, write_allocs, leafAcc_of hb]
+  simp only [↓reduceIte, hb, Option.map_some, Nat.add_sub_cancel_left, Option.some.injEq,
+    MM02.Alloc.bytesAt, MM02.Alloc.write, List.map_inj_left, List.mem_range]
+  intro i hi
+  have hr : (L l).off ≤ (L l).off + i ∧ (L l).off + i < (L l).off + (L l).len :=
+    ⟨Nat.le_add_right _ _, by omega⟩
+  simp only [hr, and_self, ↓reduceIte]
+
+/-- L6: the run of the copies of a transfer, from a state `t` that keeps the allocations of the
+state `s2` where the sequence was computed: every read and write has the outcome `ok` when the
+source ranges are live and initialised and the destination ranges live, under `dec` along the run
+and `stat` (K5); the run keeps the allocations; every destination range ends initialised. -/
+theorem copyOps_run {C : Nat → Nat → Prop} {ObR : MM02.ReadOblSpec} {ObW : MM02.WriteOblSpec}
+    {s2 : MM02.State} {L : Layout} (hstatR : ∀ s ac, ObR.stat s ac)
+    (hstatW : ∀ s ac w, ObW.stat s ac w) :
+    ∀ (ps : List (Nat × Nat)) (t : MM02.State), Dom s2 t →
+      (∀ l l', (l, l') ∈ ps →
+        (AllocP s2 (L l).alloc fun a => a.live = true ∧ (L l).off + (L l).len ≤ a.size ∧
+          a.InitRange (L l).off (L l).len) ∧
+        AllocP s2 (L l').alloc fun a => a.live = true ∧ (L l').off + (L l').len ≤ a.size) →
+      DecAlong ObR ObW t (copyOps s2 L ps) →
+      AllOk C ObR ObW t (copyOps s2 L ps) ∧ Dom t (exec t (copyOps s2 L ps)) ∧
+        ∀ l l', (l, l') ∈ ps →
+          AllocP (exec t (copyOps s2 L ps)) (L l').alloc fun a => a.InitRange (L l').off (L l').len
+  | [], t, _, _, _ => ⟨trivial, Dom.refl _, fun _ _ h => by cases h⟩
+  | (l, l') :: ps, t, hd, hps, hdec => by
+    obtain ⟨hsrc, hdst⟩ := hps l l' (List.mem_cons_self ..)
+    -- the source and destination in `t`
+    have hsrc' : AllocP t (L l).alloc fun a => a.live = true ∧ (L l).off + (L l).len ≤ a.size ∧
+        a.InitRange (L l).off (L l).len :=
+      hsrc.of_dom hd fun a a' _ e2 e3 _ hb ⟨h1, h2, h3⟩ =>
+        ⟨e3 ▸ h1, e2 ▸ h2, fun i hi => hb _ (h3 i hi)⟩
+    have hdst' : AllocP t (L l').alloc fun a => a.live = true ∧ (L l').off + (L l').len ≤ a.size :=
+      hdst.of_dom hd fun a a' _ e2 e3 _ _ ⟨h1, h2⟩ => ⟨e3 ▸ h1, e2 ▸ h2⟩
+    have eR : leafAcc s2 L .read l = leafAcc t L .read l :=
+      (leafAcc_dom hd (hsrc.mono fun _ _ => trivial)).symm
+    have eW : leafAcc s2 L .write l' = leafAcc t L .write l' :=
+      (leafAcc_dom hd (hdst.mono fun _ _ => trivial)).symm
+    obtain ⟨hdecR, hdecW, hdec⟩ := hdec
+    -- the read
+    obtain ⟨a, ha, hla, hsz, hin⟩ := hsrc'
+    have hread : MM02.Read t (leafAcc s2 L .read l) := by
+      rw [eR, leafAcc_of ha]
+      have e : a.base + (L l).off - a.base = (L l).off := Nat.add_sub_cancel_left _ _
+      exact ⟨a, ha, hla, ⟨Nat.le_add_right _ _, by simp only; omega⟩, by simp only [e]; exact hin,
+        .inl rfl⟩
+    have hok := MM02.ReadStep.ok (ObR := ObR) (by rw [eR, leafAcc_of ha]; exact ha)
+      ⟨hread, hdecR, hstatR _ _⟩
+    -- the write
+    have hw := write_leaf_ok (ObW := ObW) (w := bytesOf s2 L l) hstatW hdst' (by rw [← eW]; exact hdecW)
+    rw [← eW] at hw
+    have hd₁ : Dom t (t.write (leafAcc s2 L .write l') (bytesOf s2 L l)) := Dom.write _ _ _
+    have ih := copyOps_run (C := C) hstatR hstatW ps _ (hd.trans hd₁)
+      (fun m m' hm => hps m m' (List.mem_cons_of_mem _ hm)) hdec
+    refine ⟨⟨⟨_, hok⟩, hw, ih.1⟩, hd₁.trans ih.2.1, fun m m' hm => ?_⟩
+    rcases List.mem_cons.1 hm with e | hm
+    · cases e
+      have := rangeBytes_write (w := bytesOf s2 L l) (hd.trans (Dom.refl _))
+        (L := L) (l := l') (hdst.mono fun _ _ => trivial)
+      obtain ⟨b, hb, -⟩ := hdst'
+      have hinit : AllocP (t.write (leafAcc s2 L .write l') (bytesOf s2 L l)) (L l').alloc
+          fun a => a.InitRange (L l').off (L l').len := by
+        rw [eW]; exact write_leaf_init ⟨b, hb, trivial⟩
+      exact hinit.of_dom ih.2.1 fun _ _ _ _ _ _ hb h i hi => hb _ (h i hi)
+    · exact ih.2.2 m m' hm
+
+/-- A leaf of a usable place has its allocation live and its range within it (K1 (c), K3). -/
+theorem live_of_usable_part {tok ptok : Nat → Nat} {provOf : Nat → Option Nat} {L : Layout}
+    {s3 : S3} {s2 : MM02.State} (hwf : WF3 s3) (hR : ReprB tok ptok provOf L s3 s2) {q l : Nat}
+    (hu : s3.Usable q) (hl : l ∈ footprint s3.P q) :
+    AllocP s2 (L l).alloc fun a => a.live = true ∧ (L l).off + (L l).len ≤ a.size := by
+  obtain ⟨hlP, hlf, hlq⟩ := mem_footprint.1 hl
+  have hul : s3.Usable l := usable_of_partOf hwf (l + 1) l q (Nat.lt_succ_self l) hlq hu
+  obtain ⟨r, hr, hlr⟩ := exists_rootPlace hwf (l + 1) l (Nat.lt_succ_self l) hlP
+  exact (hR.live r hr.1 hr (usable_of_part hwf hlr hul) l (mem_footprint.2 ⟨hlP, hlf, hlr⟩)).and
+    (hR.lwf.within l hlP hlf)
+
+/-- `ReprB` carries over when the places keep their parents and only change owners between places,
+the MM-02 state keeps its allocations, usability, stack and `freed` marks are unchanged, and every
+leaf that becomes `Init` has its range initialised (L6: `transfer` moves the owners of the owned
+storage, A5). -/
+theorem ReprB.transport {tok ptok : Nat → Nat} {provOf : Nat → Option Nat} {L : Layout}
+    {s3 s3' : S3} {s2 s2' : MM02.State} (hR : ReprB tok ptok provOf L s3 s2) (hd : Dom s2 s2')
+    (hlen : s3'.P.length = s3.P.length) (hpar : parentOf s3'.P = parentOf s3.P)
+    (hown : ∀ (q : Nat) (pl' : Place), s3'.P[q]? = some pl' → ∃ pl : Place, s3.P[q]? = some pl ∧
+      (pl'.owner = pl.owner ∨ (pl'.owner.isPlace = true ∧ pl.owner.isPlace = true)))
+    (hF : s3'.F = s3.F) (hfr : s3'.freed = s3.freed) (hU : ∀ q, s3'.Usable q ↔ s3.Usable q)
+    (hI : ∀ l < s3.P.length, isLeaf s3.P l → s3'.I l = .init →
+      s3.I l = .init ∨ AllocP s2' (L l).alloc fun a => a.InitRange (L l).off (L l).len) :
+    ReprB tok ptok provOf L s3' s2' := by
+  have hfp : ∀ q, footprint s3'.P q = footprint s3.P q := footprint_congr hlen hpar
+  have hleaf : ∀ l, isLeaf s3'.P l ↔ isLeaf s3.P l := fun l => by simp only [isLeaf, hlen, hpar]
+  have hroot : ∀ r, RootPlace s3'.P r ↔ RootPlace s3.P r := fun r => by
+    simp only [RootPlace, hlen, hpar]
+  -- the owner of a root, read in `s3'`
+  have hfr' : ∀ r (pl' : Place), s3'.P[r]? = some pl' → ∃ pl : Place, s3.P[r]? = some pl ∧
+      (∀ f, pl'.owner = .frame f → pl.owner = .frame f) ∧
+      (pl'.owner.isPlace = true → pl.owner.isPlace = true) := fun r pl' h => by
+    obtain ⟨pl, hpl, e⟩ := hown r pl' h
+    refine ⟨pl, hpl, fun f hf => ?_, fun hp => ?_⟩
+    · rcases e with e | ⟨h1, -⟩
+      · rw [← e, hf]
+      · rw [hf] at h1; cases h1
+    · rcases e with e | ⟨-, h2⟩
+      · rw [← e]; exact hp
+      · exact h2
+  refine ⟨⟨?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;>
+    simp only [hlen, hfp, hleaf, hroot, hF, hfr, hU]
+  · exact hR.lwf.sameAlloc
+  · exact hR.lwf.disjoint
+  · exact fun l hl hlf => (hR.lwf.within l hl hlf).of_dom hd fun a a' _ e _ _ _ h => e ▸ h
+  · exact hR.inj
+  · intro r hr hrt
+    cases hpl' : s3'.P[r]? with
+    | none => trivial
+    | some pl' =>
+      obtain ⟨pl, hpl, hfrm, -⟩ := hfr' r pl' hpl'
+      have := hR.tokens r hr hrt
+      rw [hpl] at this
+      show OptP (tokOf tok pl'.owner) _ True
+      cases ho' : pl'.owner with
+      | place _ => trivial
+      | frame f =>
+        have e := hfrm f ho'
+        simp only [OptP, e, tokOf] at this
+        exact fun l hl => (this l hl).of_dom hd fun _ _ _ _ _ e _ h => e ▸ h
+  · exact fun r hr hrt => OptP.imp (hR.provTokens r hr hrt) (fun _ h l hl =>
+      (h l hl).of_dom hd fun _ _ _ _ _ e _ h => e ▸ h) id
+  · exact fun r hr hrt hu l hl => (hR.live r hr hrt hu l hl).of_dom hd fun a a' _ _ e _ _ h => e ▸ h
+  · intro l hl hlf hi
+    rcases hI l hl hlf hi with h | h
+    · exact (hR.init l hl hlf h).of_dom hd fun a a' _ _ _ _ hb h i hi => hb _ (h i hi)
+    · exact h
+  · exact fun r hr hrt hf l hl => (hR.freed r hr hrt hf l hl).of_dom hd fun a a' _ _ e _ _ h => e ▸ h
+  · intro r hr hrt hg l hl
+    have hg' : OptP (s3.P[r]?) (fun pl => FrameGone s3.F pl.owner) False := by
+      cases hpl' : s3'.P[r]? with
+      | none => rw [hpl'] at hg; exact hg.elim
+      | some pl' =>
+        rw [hpl'] at hg
+        obtain ⟨pl, hpl, hfrm, -⟩ := hfr' r pl' hpl'
+        rw [hpl]
+        show FrameGone s3.F pl.owner
+        have hg2 : FrameGone s3.F pl'.owner := hg
+        cases ho' : pl'.owner with
+        | place _ => rw [ho'] at hg2; exact hg2.elim
+        | frame f => rw [ho'] at hg2; rw [hfrm f ho']; exact hg2
+    exact (hR.exited r hr hrt hg' l hl).of_dom hd fun a a' _ _ e _ _ h => e ▸ h
+  · intro r hr hrt hu hf ho l hl
+    have ho' : OptP (s3.P[r]?) (fun pl => pl.owner.isPlace = true) False := by
+      cases hpl' : s3'.P[r]? with
+      | none => rw [hpl'] at ho; exact ho.elim
+      | some pl' =>
+        rw [hpl'] at ho
+        obtain ⟨pl, hpl, -, hplc⟩ := hfr' r pl' hpl'
+        rw [hpl]; exact hplc ho
+    exact (hR.leaked r hr hrt hu hf ho' l hl).of_dom hd fun a a' _ _ e _ _ h => e ▸ h
+
+/-- R6 for `transfer` (MM-03.3 §9.2, O4; L6: for each pair of corresponding leaves, a `ReadStep` of
+the source range then a `WriteStep` of the destination range with the bytes read, provenance
+included; held authorities and owned storage give no step): under `WF3`, `SameSizeAlong` (spec 4),
+`dec` along the run and `stat` (K5), every read and write has the outcome `ok` and the arrival
+states are in `Repr`. The source ranges stay initialised in MM-02; MM-03 makes them unreadable
+(`Moved`). -/
+theorem r6_transfer {C : Nat → Nat → Prop} {ObR : MM02.ReadOblSpec} {ObW : MM02.WriteOblSpec}
+    {k : K} {tok ptok : Nat → Nat} {provOf : Nat → Option Nat} {L : Layout} {s3 s3' : S3}
+    {s2 : MM02.State} {src dst : Nat} (hwf : WF3 s3) (hR : Repr tok ptok provOf L s3 s2)
+    (h : TransferStep k src dst s3 (.ok s3')) (hstatR : ∀ s ac, ObR.stat s ac)
+    (hstatW : ∀ s ac w, ObW.stat s ac w)
+    (hdec : DecAlong ObR ObW s2 (transferOps s2 L s3.P src dst)) :
+    AllOk C ObR ObW s2 (transferOps s2 L s3.P src dst) ∧
+      Repr tok ptok provOf L s3' (exec s2 (transferOps s2 L s3.P src dst)) := by
+  obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
+  have hsu := hpre.1
+  have hinit := hpre.2.1
+  have hdu := hpre.2.2.1
+  have hdu' := hpre.2.2.2.2.2.2.2.1
+  have hsh := hpre.2.2.2.2.2.2.2.2.2.2.2.2.2.2
+  have hdl : dst < s3.P.length := hdu.lt
+  have hrun := copyOps_run (C := C) (L := L) (s2 := s2) hstatR hstatW (transferPairs s3.P src dst)
+    s2 (Dom.refl _) (fun l l' hm => by
+      obtain ⟨hl, hc⟩ := mem_transferPairs.1 hm
+      obtain ⟨l'', hc', hl''⟩ := corr_leaf_fwd hwf hdl hsh hl
+      rw [hc] at hc'; cases hc'
+      obtain ⟨hlP, hlf, -⟩ := mem_footprint.1 hl
+      exact ⟨(live_of_usable_part hwf hR.toReprB hsu hl).and (hR.init l hlP hlf (hinit l hl)) |>.mono
+        fun _ ⟨⟨h1, h2⟩, h3⟩ => ⟨h1, h2, h3⟩, live_of_usable_part hwf hR.toReprB hdu hl''⟩) hdec
+  refine ⟨hrun.1, ReprB.transport hR.toReprB hrun.2.1 (by simp [transferEff]) ?_ ?_ rfl rfl
+    (fun q => ⟨transfer_usable_back hwf hsu, transfer_usable_fwd hwf hdu'⟩) ?_,
+    exec_wf _ _ hR.wf2⟩
+  · funext i; simp only [parentOf, transferEff, List.getElem?_map]
+    cases s3.P[i]? with
+    | none => rfl
+    | some pl => simp only [Option.map_some, Option.bind_some]; split <;> rfl
+  · intro q pl' hq
+    simp only [transferEff, List.getElem?_map] at hq
+    cases hp : s3.P[q]? with
+    | none => rw [hp] at hq; cases hq
+    | some pl =>
+      rw [hp] at hq; simp only [Option.map_some, Option.some.injEq] at hq
+      refine ⟨pl, rfl, ?_⟩
+      split at hq
+      · rename_i hh
+        subst hq
+        right
+        cases ho : pl.owner with
+        | frame _ => rw [ho] at hh; exact hh.elim
+        | place r => exact ⟨by simp only [mvTo]; rfl, rfl⟩
+      · subst hq; exact .inl rfl
+  · intro l _ _ hi
+    simp only [transferEff] at hi
+    split at hi
+    · rename_i hld
+      obtain ⟨m, hm, hc⟩ := corr_leaf_back hsh hld
+      exact .inr (hrun.2.2 m l (mem_transferPairs.2 ⟨hm, hc⟩))
+    · split at hi
+      · cases hi
+      · exact .inl hi
+
+/-- A write of the range of the leaf `l'` leaves the range of a leaf `x` in another allocation, or
+disjoint from it, unchanged (MM-02.C, non-interference). -/
+theorem rangeBytes_write_other {s2 t : MM02.State} (hd : Dom s2 t) {L : Layout} {l' x : Nat}
+    {w : Nat → UInt8 × Option Nat} (h : AllocP s2 (L l').alloc fun _ => True)
+    (hne : (L x).alloc ≠ (L l').alloc ∨
+      MM02.RangeDisjoint (L x).off (L x).len (L l').off (L l').len) :
+    rangeBytes (t.write (leafAcc s2 L .write l') w) L x = rangeBytes t L x := by
+  obtain ⟨a, ha, -⟩ := h
+  obtain ⟨b, hb, -, e, -⟩ := hd _ a ha
+  have hacc : leafAcc s2 L .write l' = leafAcc t L .write l' := by
+    rw [leafAcc_of ha, leafAcc_of hb, e]
+  rw [hacc, rangeBytes, rangeBytes, write_allocs, leafAcc_of hb]
+  by_cases hx : (L x).alloc = (L l').alloc
+  · simp only [hx, ↓reduceIte, hb, Option.map_some, Nat.add_sub_cancel_left, Option.some.injEq,
+      MM02.Alloc.bytesAt, MM02.Alloc.write, List.map_inj_left, List.mem_range]
+    intro i hi
+    have hd' := hne.resolve_left (by rw [hx]; exact fun h => h rfl)
+    have : ¬ ((L l').off ≤ (L x).off + i ∧ (L x).off + i < (L l').off + (L l').len) :=
+      fun ⟨h1, h2⟩ => hd' _ (Nat.le_add_right _ _) (by omega) h1 h2
+    simp only [this, ↓reduceIte]
+  · simp only [hx, ↓reduceIte]
+
+/-- L6: writing the range of `l'` with the bytes of the range of an initialised leaf `l` of the same
+size copies them, value and provenance. -/
+theorem rangeBytes_copy {s2 t : MM02.State} (hd : Dom s2 t) {L : Layout} {l l' : Nat}
+    (hsrc : AllocP s2 (L l).alloc fun a => a.InitRange (L l).off (L l).len)
+    (hdst : AllocP s2 (L l').alloc fun _ => True) (hsz : (L l).len = (L l').len) :
+    rangeBytes (t.write (leafAcc s2 L .write l') (bytesOf s2 L l)) L l' = rangeBytes s2 L l := by
+  rw [rangeBytes_write hd hdst]
+  obtain ⟨a, ha, hin⟩ := hsrc
+  simp only [rangeBytes, ha, Option.map_some, Option.some.injEq, MM02.Alloc.bytesAt, ← hsz,
+    List.map_inj_left, List.mem_range]
+  intro i hi
+  have hb := hin i hi
+  simp only [bytesOf, ha, Option.map_some]
+  revert hb
+  cases a.bytes ((L l).off + i) with
+  | uninit => exact fun h => absurd rfl h
+  | init v p => exact fun _ => rfl
+
+/-- L6: the run of the copies of a transfer copies each source range into its destination range,
+provenance included, when the sources are initialised, the sizes are equal, the destinations are
+distinct, and the ranges of the destinations are disjoint from those of the sources and of each
+other; a range disjoint from every destination range is unchanged. -/
+theorem copyOps_bytes {s2 : MM02.State} {L : Layout} :
+    ∀ (ps : List (Nat × Nat)) (t : MM02.State), Dom s2 t →
+      (∀ l l', (l, l') ∈ ps → (AllocP s2 (L l).alloc fun a => a.InitRange (L l).off (L l).len) ∧
+        (AllocP s2 (L l').alloc fun _ => True) ∧ (L l).len = (L l').len ∧
+        rangeBytes t L l = rangeBytes s2 L l) →
+      (∀ l l' m m', (l, l') ∈ ps → (m, m') ∈ ps → (L l).alloc ≠ (L m').alloc ∨
+        MM02.RangeDisjoint (L l).off (L l).len (L m').off (L m').len) →
+      (∀ l l' m m', (l, l') ∈ ps → (m, m') ∈ ps → l' ≠ m' → (L l').alloc ≠ (L m').alloc ∨
+        MM02.RangeDisjoint (L l').off (L l').len (L m').off (L m').len) →
+      ps.Pairwise (fun p q => p.2 ≠ q.2) →
+      (∀ x, (∀ m m', (m, m') ∈ ps → (L x).alloc ≠ (L m').alloc ∨
+          MM02.RangeDisjoint (L x).off (L x).len (L m').off (L m').len) →
+        rangeBytes (exec t (copyOps s2 L ps)) L x = rangeBytes t L x) ∧
+      ∀ l l', (l, l') ∈ ps → rangeBytes (exec t (copyOps s2 L ps)) L l' = rangeBytes s2 L l
+  | [], _, _, _, _, _, _ => ⟨fun _ _ => rfl, fun _ _ h => by cases h⟩
+  | (l₀, l₀') :: ps, t, hd, hps, hsd, hdd, hnd => by
+    obtain ⟨hsrc, hdst, hsz, -⟩ := hps l₀ l₀' (List.mem_cons_self ..)
+    obtain ⟨hnd₀, hnd⟩ := List.pairwise_cons.1 hnd
+    have hd₁ : Dom s2 (t.write (leafAcc s2 L .write l₀') (bytesOf s2 L l₀)) :=
+      hd.trans (Dom.write _ _ _)
+    have ih := copyOps_bytes ps (t.write (leafAcc s2 L .write l₀') (bytesOf s2 L l₀)) hd₁
+      (fun l l' hm => by
+        obtain ⟨h1, h2, h3, h4⟩ := hps l l' (List.mem_cons_of_mem _ hm)
+        refine ⟨h1, h2, h3, ?_⟩
+        rw [rangeBytes_write_other hd hdst (hsd l l' l₀ l₀' (List.mem_cons_of_mem _ hm)
+          (List.mem_cons_self ..)), h4])
+      (fun l l' m m' hm hm' => hsd l l' m m' (List.mem_cons_of_mem _ hm)
+        (List.mem_cons_of_mem _ hm'))
+      (fun l l' m m' hm hm' => hdd l l' m m' (List.mem_cons_of_mem _ hm)
+        (List.mem_cons_of_mem _ hm')) hnd
+    refine ⟨fun x hx => ?_, fun l l' hm => ?_⟩
+    · show rangeBytes (exec (t.write (leafAcc s2 L .write l₀') (bytesOf s2 L l₀))
+        (copyOps s2 L ps)) L x = _
+      rw [ih.1 x fun m m' hm => hx m m' (List.mem_cons_of_mem _ hm)]
+      exact rangeBytes_write_other hd hdst (hx l₀ l₀' (List.mem_cons_self ..))
+    · show rangeBytes (exec (t.write (leafAcc s2 L .write l₀') (bytesOf s2 L l₀))
+        (copyOps s2 L ps)) L l' = _
+      rcases List.mem_cons.1 hm with e | hm
+      · cases e
+        rw [ih.1 l₀' fun m m' hm => hdd l₀ l₀' m m' (List.mem_cons_self ..)
+          (List.mem_cons_of_mem _ hm) (hnd₀ (m, m') hm)]
+        exact rangeBytes_copy hd hsrc hdst hsz
+      · exact ih.2 l l' hm
+
+/-- L6, `transfer_copies`: after the run of a transfer, under `WF3` and `SameSizeAlong` (spec 4),
+the range of each destination leaf holds exactly the bytes of the range of the corresponding
+source leaf, value and provenance, and the source ranges are unchanged: the copy loses and
+fabricates no provenance and no address. -/
+theorem transfer_copies {k : K} {tok ptok : Nat → Nat} {provOf : Nat → Option Nat} {L : Layout}
+    {s3 s3' : S3} {s2 : MM02.State} {src dst : Nat} (hwf : WF3 s3)
+    (hR : Repr tok ptok provOf L s3 s2) (h : TransferStep k src dst s3 (.ok s3'))
+    (hsize : SameSizeAlong L s3.P src dst) :
+    ∀ l l', (l, l') ∈ transferPairs s3.P src dst →
+      rangeBytes (exec s2 (transferOps s2 L s3.P src dst)) L l' = rangeBytes s2 L l ∧
+      rangeBytes (exec s2 (transferOps s2 L s3.P src dst)) L l = rangeBytes s2 L l := by
+  obtain ⟨hpre, -⟩ := Guarded.ok_iff.1 h
+  have hinit := hpre.2.1
+  have hdu := hpre.2.2.1
+  have hno := hpre.2.2.2.2.1
+  have hsh := hpre.2.2.2.2.2.2.2.2.2.2.2.2.2.2
+  have hdl : dst < s3.P.length := hdu.lt
+  -- the pairs: a source leaf and its destination leaf
+  have hpair : ∀ l l', (l, l') ∈ transferPairs s3.P src dst →
+      l ∈ footprint s3.P src ∧ l' ∈ footprint s3.P dst := fun l l' hm => by
+    obtain ⟨hl, hc⟩ := mem_transferPairs.1 hm
+    obtain ⟨l'', hc', hl''⟩ := corr_leaf_fwd hwf hdl hsh hl
+    rw [hc] at hc'; cases hc'; exact ⟨hl, hl''⟩
+  -- two distinct leaves have disjoint ranges or distinct allocations
+  have hlw : ∀ x y, x ∈ footprint s3.P src ∨ x ∈ footprint s3.P dst →
+      y ∈ footprint s3.P src ∨ y ∈ footprint s3.P dst → x ≠ y →
+      (L x).alloc ≠ (L y).alloc ∨ MM02.RangeDisjoint (L x).off (L x).len (L y).off (L y).len :=
+    fun x y hx hy hne => by
+      have hx' : x < s3.P.length ∧ isLeaf s3.P x := by
+        rcases hx with hx | hx <;> exact ⟨(mem_footprint.1 hx).1, (mem_footprint.1 hx).2.1⟩
+      have hy' : y < s3.P.length ∧ isLeaf s3.P y := by
+        rcases hy with hy | hy <;> exact ⟨(mem_footprint.1 hy).1, (mem_footprint.1 hy).2.1⟩
+      by_cases e : (L x).alloc = (L y).alloc
+      · exact .inr (hR.lwf.disjoint x hx'.1 y hy'.1 hx'.2 hy'.2 hne e)
+      · exact .inl e
+  have hsrcdst : ∀ l m', l ∈ footprint s3.P src → m' ∈ footprint s3.P dst → l ≠ m' :=
+    fun l m' hl hm' e => hno ⟨l, hl, e ▸ hm'⟩
+  have hnd : (transferPairs s3.P src dst).Pairwise (fun p q => p.2 ≠ q.2) := by
+    unfold transferPairs
+    refine List.Pairwise.filterMap
+      (R := fun a b => a < b ∧ partOf s3.P a src ∧ partOf s3.P b src) _ ?_ ?_
+    · intro a b ⟨hab, ha, hb⟩ x hx y hy e
+      simp only [Option.map_eq_some_iff] at hx hy
+      obtain ⟨a', ha', rfl⟩ := hx
+      obtain ⟨b', hb', rfl⟩ := hy
+      simp only at e; subst e
+      exact absurd (corr_inj hwf hdl ha hb ha' hb') (Nat.ne_of_lt hab)
+    · exact ((pairwise_lt_range _).filter _).imp_of_mem fun ha hb hab =>
+        ⟨hab, (mem_footprint.1 ha).2.2, (mem_footprint.1 hb).2.2⟩
+  have := copyOps_bytes (s2 := s2) (L := L) (transferPairs s3.P src dst) s2 (Dom.refl _)
+    (fun l l' hm => by
+      obtain ⟨hl, hl'⟩ := hpair l l' hm
+      obtain ⟨hlP, hlf, -⟩ := mem_footprint.1 hl
+      obtain ⟨hl'P, hl'f, -⟩ := mem_footprint.1 hl'
+      exact ⟨hR.init l hlP hlf (hinit l hl), (hR.lwf.within l' hl'P hl'f).mono fun _ _ => trivial,
+        hsize l l' hm, rfl⟩)
+    (fun l l' m m' hm hm' => hlw l m' (.inl (hpair l l' hm).1) (.inr (hpair m m' hm').2)
+      (hsrcdst l m' (hpair l l' hm).1 (hpair m m' hm').2))
+    (fun l l' m m' hm hm' hne => hlw l' m' (.inr (hpair l l' hm).2) (.inr (hpair m m' hm').2) hne)
+    hnd
+  exact fun l l' hm => ⟨this.2 l l' hm, this.1 l fun m m' hm' =>
+    hlw l m' (.inl (hpair l l' hm).1) (.inr (hpair m m' hm').2)
+      (hsrcdst l m' (hpair l l' hm).1 (hpair m m' hm').2)⟩
+
+/-- L6: parametric encoding of pointers into bytes (spec 11): `enc addr prov i` is the `i`-th byte
+of a pointer to the address `addr` with provenance `prov`; `decode` reads an address back. -/
+structure PtrEnc where
+  enc : Nat → Option Nat → Nat → UInt8 × Option Nat
+  decode : (Nat → UInt8 × Option Nat) → Nat
+
+/-- L6, obligation of the encoding: `decode (enc addr prov)` is `addr`, and every byte carries the
+provenance `prov`. -/
+def PtrEncOK (pe : PtrEnc) : Prop :=
+  ∀ addr prov, pe.decode (pe.enc addr prov) = addr ∧ ∀ i, (pe.enc addr prov i).2 = prov
+
+/-- L6: address of the first byte of the region `rg`: base of the allocation of its first leaf plus
+the offset of that leaf. -/
+def regionAddr (s2 : MM02.State) (L : Layout) (rg : List Nat) : Nat :=
+  match rg.head? with
+  | some l => (((s2.allocs (L l).alloc).map (·.base)).getD 0) + (L l).off
+  | none => 0
+
+/-- L6: provenance of the region `rg`: the allocation of its first leaf (none for an empty
+region). -/
+def regionProv (L : Layout) (rg : List Nat) : Option Nat := rg.head?.map fun l => (L l).alloc
+
+/-- L6, `ptrBytes`: the bytes of a pointer to the region `rg`. -/
+def ptrBytes (pe : PtrEnc) (s2 : MM02.State) (L : Layout) (rg : List Nat) :
+    Nat → UInt8 × Option Nat :=
+  pe.enc (regionAddr s2 L rg) (regionProv L rg)
+
+/-- L6 (`store a p`): one write of the range of the leaf `p` with the bytes of a pointer to the
+region covered by `a`. -/
+def storeOps (pe : PtrEnc) (s2 : MM02.State) (L : Layout) (s3 : S3) (a p : Nat) : List Op2 :=
+  [.write (leafAcc s2 L .write p) (ptrBytes pe s2 L (s3.afp a))]
+
+/-- L6 (`issue`): one write of the range of the destination with the bytes of a pointer to the
+block; `available` and `issued` are abstract state of the arena entry (library obligation). -/
+def issueOps (pe : PtrEnc) (s2 : MM02.State) (L : Layout) (region : List Nat) (dst : Nat) :
+    List Op2 :=
+  [.write (leafAcc s2 L .write dst) (ptrBytes pe s2 L region)]
+
+/-- L6: the pointer to a region whose first leaf `l` is covered by an active authority is neither
+lost nor fabricated: its provenance is the allocation of `l`, which is live, and its address is
+the address of `l`, within that allocation. -/
+theorem ptr_target {tok ptok : Nat → Nat} {provOf : Nat → Option Nat} {L : Layout} {s3 : S3}
+    {s2 : MM02.State} (hwf : WF3 s3) (hnd : NoDangling s3) (hfl : FpLeaves s3)
+    (hR : ReprB tok ptok provOf L s3 s2) {a : Nat} {y : Authority} (hy : s3.A[a]? = some y)
+    (ya : y.active = true) {rg : List Nat} (hrg : ∀ l ∈ rg, l ∈ y.footprint) {l : Nat}
+    (hl : rg.head? = some l) :
+    regionProv L rg = some (L l).alloc ∧ ∃ al, s2.allocs (L l).alloc = some al ∧ al.live = true ∧
+      regionAddr s2 L rg = al.base + (L l).off ∧ (L l).off + (L l).len ≤ al.size := by
+  have hlr : l ∈ rg := List.mem_of_getElem? (by rw [List.head?_eq_getElem?] at hl; exact hl)
+  obtain ⟨hlP, hlf, hlive⟩ := covered_live hwf hnd hfl hR hy ya (hrg l hlr)
+  obtain ⟨al, hal, hla, hsz⟩ := hlive.and (hR.lwf.within l hlP hlf)
+  refine ⟨by simp [regionProv, hl], al, hal, hla, ?_, hsz⟩
+  simp [regionAddr, hl, hal]
+
+/-- R6 for `store a p` (MM-03.3 §9.2, O8; L6: `WriteStep` of the range of `p` with `ptrBytes` of the
+region of `a`): under `WF3`, `dec` and `stat` (K5), the write has the outcome `ok`, the arrival
+states are in `Repr`, and the range of `p` holds the bytes of the pointer. -/
+theorem r6_store {C : Nat → Nat → Prop} {ObR : MM02.ReadOblSpec} {ObW : MM02.WriteOblSpec}
+    {tok ptok : Nat → Nat} {provOf : Nat → Option Nat} {L : Layout} {s3 s3' : S3}
+    {s2 : MM02.State} {pe : PtrEnc} {a p : Nat} (hwf : WF3 s3) (hR : Repr tok ptok provOf L s3 s2)
+    (h : StoreStep a p s3 (.ok s3')) (hstatW : ∀ s ac w, ObW.stat s ac w)
+    (hdec : ObW.dec s2 (leafAcc s2 L .write p) (ptrBytes pe s2 L (s3.afp a))) :
+    AllOk C ObR ObW s2 (storeOps pe s2 L s3 a p) ∧
+      Repr tok ptok provOf L s3' (exec s2 (storeOps pe s2 L s3 a p)) ∧
+      rangeBytes (exec s2 (storeOps pe s2 L s3 a p)) L p = some ((List.range (L p).len).map
+        fun i => .init (ptrBytes pe s2 L (s3.afp a) i).1 (ptrBytes pe s2 L (s3.afp a) i).2) := by
+  obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
+  obtain ⟨y, hy, -⟩ := store_pre_auth hpre.1
+  have hpu : s3.Usable p := hpre.2.1
+  have hpleaf : isLeaf s3.P p := by
+    have := hpre; unfold StorePre at this; exact this.2.2.2.2.2.1
+  have hpf : p ∈ footprint s3.P p := mem_footprint.2 ⟨hpu.lt, hpleaf, hpu.lt, .inl rfl⟩
+  have hlive := live_of_usable_part hwf hR.toReprB hpu hpf
+  have hex : AllocP s2 (L p).alloc fun _ => True := hlive.mono fun _ _ => trivial
+  refine ⟨⟨write_leaf_ok hstatW hlive hdec, trivial⟩, ⟨?_, exec_wf _ _ hR.wf2⟩,
+    rangeBytes_write (Dom.refl _) hex⟩
+  refine hR.toReprB.change (Dom.write _ _ _) (by rw [storeEff_eq hy]) (by rw [storeEff_eq hy])
+    (by rw [storeEff_eq hy]) (by rw [storeEff_eq hy]) fun l _ _ hi => ?_
+  rw [storeEff_eq hy] at hi; simp only at hi
+  split at hi
+  · rename_i e; subst e; exact .inr (write_leaf_init hex)
+  · exact .inl hi
+
+/-- R6 for `issue` (MM-03.3 §9.2, O18; L6: `WriteStep` of the range of the destination with
+`ptrBytes` of the block; `available` and `issued` are abstract state of the arena entry): under
+`WF3`, `dec` and `stat` (K5), the write has the outcome `ok`, the arrival states are in `Repr`, and
+the range of the destination holds the bytes of the pointer. -/
+theorem r6_issue {C : Nat → Nat → Prop} {ObR : MM02.ReadOblSpec} {ObW : MM02.WriteOblSpec}
+    {k : K} {tok ptok : Nat → Nat} {provOf : Nat → Option Nat} {L : Layout} {s3 s3' : S3}
+    {s2 : MM02.State} {pe : PtrEnc} {i via dst : Nat} {region : List Nat} (hwf : WF3 s3)
+    (hR : Repr tok ptok provOf L s3 s2) (h : IssueAt k i via region dst s3 (.ok s3'))
+    (hstatW : ∀ s ac w, ObW.stat s ac w)
+    (hdec : ObW.dec s2 (leafAcc s2 L .write dst) (ptrBytes pe s2 L region)) :
+    AllOk C ObR ObW s2 (issueOps pe s2 L region dst) ∧
+      Repr tok ptok provOf L s3' (exec s2 (issueOps pe s2 L region dst)) ∧
+      rangeBytes (exec s2 (issueOps pe s2 L region dst)) L dst = some ((List.range (L dst).len).map
+        fun i => .init (ptrBytes pe s2 L region i).1 (ptrBytes pe s2 L region i).2) := by
+  cases h with
+  | ok har hst =>
+    cases hst with
+    | ok hstat _ _ _ =>
+      have hdu : s3.Usable dst := hstat.2.2.2.1
+      have hdleaf : isLeaf s3.P dst := hstat.2.2.2.2.2.2.1
+      have hdf : dst ∈ footprint s3.P dst := mem_footprint.2 ⟨hdu.lt, hdleaf, hdu.lt, .inl rfl⟩
+      have hlive := live_of_usable_part hwf hR.toReprB hdu hdf
+      have hex : AllocP s2 (L dst).alloc fun _ => True := hlive.mono fun _ _ => trivial
+      refine ⟨⟨write_leaf_ok hstatW hlive hdec, trivial⟩, ⟨?_, exec_wf _ _ hR.wf2⟩,
+        rangeBytes_write (Dom.refl _) hex⟩
+      refine hR.toReprB.change (Dom.write _ _ _) rfl rfl rfl rfl fun l _ _ hi => ?_
+      simp only [arenaSet, issueEff, S3.addAuth] at hi
+      split at hi
+      · rename_i e; subst e; exact .inr (write_leaf_init hex)
+      · exact .inl hi
 
 /-! ## R4 (MM-03.3 §9.2) -/
 
