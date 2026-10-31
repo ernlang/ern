@@ -11,6 +11,8 @@ arbitrage K4 of the task. Both modules are imported unchanged; a lemma they lack
 The arbitrages K1–K5 of the task are cited as `K1`…`K5`. The rules of the specifications are cited
 as `MM-02.x` (MM-02 v0.4) and `MM-03.3 …` (MM-03.3 v0.3 révisée). Out of scope: `transfer`,
 `store`, `issue`, concurrency, real `DDSound`, stability of pinned addresses, low-level translation.
+The decisions not dictated by the texts are listed in the report `formal/reports/MM23_v0.1.md`,
+section (c); the gaps between the drafts and their texts, section (f).
 -/
 
 namespace Ern.MM23
@@ -96,8 +98,10 @@ the layout `L` and the frame tokens `tok`:
 - `init`: every `Init` leaf has all its bytes initialised (K3);
 - `freed`: a root dead by `free` has its allocation dead (K3);
 - `exited`: a root dead by the exit of its frame has its allocation dead (K3);
-- `leaked`: a root owned by a place, not usable and not freed keeps its allocation live (K3: dead
-  by `endUse`; K4: owned storage that dies with a frame or with a freed root is not deallocated).
+- `leaked`: a root owned by a place, not usable and not freed keeps its allocation live. K3 says
+  it of a root dead by `endUse`; the clause also covers owned storage that dies with its frame (K4:
+  no `DeallocStep` for it) or with a freed root (K4 read as one `DeallocStep`, of the freed root):
+  report, (c) 4 and (e) 7.
 `Repr` does not read the contracts `K`: no clause of K3 depends on them. -/
 structure Repr (tok : Nat → Nat) (L : Layout) (s3 : S3) (s2 : MM02.State) : Prop where
   lwf : LayoutWF L s3 s2
@@ -1462,11 +1466,12 @@ theorem repr_deallocs {tok : Nat → Nat} {L : Layout} {s3 s3' : S3} {s2 : MM02.
 /-! ## R6 (MM-03.3 §9.2; K4) -/
 
 /-- MM-03.3.8 (`Deallocable`, `FreeCompat`) and K4 ("`free` ↦ `DeallocStep`, autorité
-`Compatible` issue de `FreeCompat`"): obligation of the contracts towards MM-02 in the state `s2`:
-when the contracts permit `free p auth`, every leaf of `p` is in an allocation with a token
+`Compatible` issue de `FreeCompat`"): obligation of the contracts towards MM-02 for `free p auth` in
+the state `s2`: when the contracts permit it, every leaf of `p` is in an allocation with a token
 compatible with `auth` (MM-02.D). -/
-def FreeSound (k : K) (C : Nat → Nat → Prop) (L : Layout) (s3 : S3) (s2 : MM02.State) : Prop :=
-  ∀ p auth, k.Deallocable p → k.FreeCompat p auth → ∀ l ∈ footprint s3.P p,
+def FreeSound (k : K) (C : Nat → Nat → Prop) (L : Layout) (s3 : S3) (s2 : MM02.State)
+    (p auth : Nat) : Prop :=
+  k.Deallocable p → k.FreeCompat p auth → ∀ l ∈ footprint s3.P p,
     AllocP s2 (L l).alloc fun a => ∃ d, a.freeAuth = some d ∧ C auth d
 
 /-- K2: the token proper to each frame is compatible with itself (MM-02.D): the authority that
@@ -1546,7 +1551,7 @@ authority `auth`, compatible by `FreeCompat`): under `WF3` and the obligation `F
 contracts, the deallocation has the outcome `ok` and the arrival states are in `Repr`. -/
 theorem r6_free {C : Nat → Nat → Prop} {ObR : MM02.ReadOblSpec} {ObW : MM02.WriteOblSpec}
     {k : K} {tok : Nat → Nat} {L : Layout} {s3 s3' : S3} {s2 : MM02.State} {p auth : Nat}
-    (hwf : WF3 s3) (hR : Repr tok L s3 s2) (hfs : FreeSound k C L s3 s2)
+    (hwf : WF3 s3) (hR : Repr tok L s3 s2) (hfs : FreeSound k C L s3 s2 p auth)
     (h : FreeStep k p auth s3 (.ok s3')) :
     AllOk C ObR ObW s2 (deallocOps [rootAlloc L s3.P p] auth) ∧
       Repr tok L s3' (exec s2 (deallocOps [rootAlloc L s3.P p] auth)) := by
@@ -1571,7 +1576,7 @@ theorem r6_free {C : Nat → Nat → Prop} {ObR : MM02.ReadOblSpec} {ObW : MM02.
     exact hR.inj r hr.1 p hpr.1 hr hpr hrp l hl _ hl0 hm
   refine ⟨deallocOps_ok _ _ (List.pairwise_singleton _ _) fun i hi => ?_, ?_⟩
   · rw [List.mem_singleton.1 hi]
-    exact (hR.live p hpr.1 hpr hu _ hl0).and (hfs p auth hdl hfc _ hl0)
+    exact (hR.live p hpr.1 hpr hu _ hl0).and (hfs hdl hfc _ hl0)
   · refine repr_deallocs hR _ _ rfl (fun _ h => h) (fun r _ hrt hu' => ⟨hUb r hu',
       hdiff r hrt (hne r hu')⟩) (fun r _ hrt hf => ?_) (fun _ _ _ h => .inl h)
       (fun r _ hrt _ hf _ => ?_)
@@ -1621,7 +1626,8 @@ theorem mem_frameRoots {s3 : S3} {f r : Nat} :
 
 /-- K4 (`exitFrame` ↦ one `DeallocStep` per automatic allocation of the frame, none for the owned
 storage that dies with it): the deallocations of the allocations of the root places owned by the
-current frame, with its token (K2). -/
+current frame, with its token (K2). A local owned by another local is read as owned storage: no
+deallocation (report, (c) 3 and (e) 1; witness `CaseOwnedLocal`). -/
 def exitOps (L : Layout) (tok : Nat → Nat) (s3 : S3) : List Op2 :=
   deallocOps ((frameRoots s3 s3.top).map (rootAlloc L s3.P)) (tok s3.top)
 
@@ -1802,8 +1808,8 @@ theorem exclusive_bytes {L : Layout} {s3 : S3} {s2 : MM02.State} (hlw : LayoutWF
 /-! ## Cases (step 6 of the task)
 
 Each verdict is checked by `decide` on the precondition of the MM-03 step and on `Repr`, which is
-decidable; the MM-02 sequences are exhibited by the definitions `opsN` and their effects. Each R6
-theorem is applied to a step of one scenario reached from `S3.init`. The obligations `dec` of the
+decidable; the MM-02 sequences are exhibited by the definitions `opsN` and their effects. Each
+refinement theorem is applied to a step of one scenario reached from `S3.init`. The obligations `dec` of the
 test cases ask an access aligned on 4 bytes, a non-trivial instance (K5); `stat` is `True`, as K5
 fixes for the sequential fragment. -/
 
@@ -2011,10 +2017,8 @@ example : AllOk C obR obW m12 [] ∧ Repr tk L e12 (exec m12 []) :=
 example : AllOk C obR obW m12 opsF ∧ Repr tk L f13 mF := by
   refine r6_free (k := KC) (auth := 7) (reachable_invariants kc_dd r12).1 (by decide) ?_
     (.ok (by decide))
-  intro p auth hp hc l hl
+  intro _ _ l hl
   have hfp : footprint e12.P 6 = [6] := by decide
-  simp only [KC, List.mem_cons, Prod.mk.injEq, List.not_mem_nil, or_false] at hp hc
-  obtain ⟨rfl, rfl⟩ := hc
   rw [hfp, List.mem_singleton] at hl; subst hl
   exact (show AllocP m12 4 (·.freeAuth = some 7) by decide).mono fun _ h => ⟨7, h, rfl⟩
 example : DeadAlloc mF 4 := by decide
@@ -2089,6 +2093,95 @@ def L2 : Layout := fun q => if q = 7 then ⟨4, 4, 4⟩ else L q
 def m12b : MM02.State := exec m8 [.alloc 0 (topPlacement m8 (g 0)) 8 4 (some 7)]
 example : LayoutWF L2 e12b m12b ∧ ¬ Repr tk L2 e12b m12b := by decide
 
+/-- Witness of question (e) 7 of the report: the storage 7, allocated with owner the storage 6,
+dies with the `free` of 6 (O13); `free` has one `DeallocStep`, of the allocation 4 of 6, and the
+allocation 5 of 7 stays live; deallocating it too breaks `Repr` (clause `leaked`). -/
+def ao13 : S3 := allocEff e12 1 6 [(none, none, 0)]
+def af14 : S3 := freeEff ao13 6
+theorem ra13 : Reachable KC st ao13 :=
+  .alloc r12 (.ok (by decide) (by decide) : AllocStep KC 1 6 [(none, none, 0)] e12 (.ok ao13))
+theorem ra14 : Reachable KC st af14 := .free ra13 (.ok (by decide) : FreeStep KC 6 7 ao13 (.ok af14))
+def La : Layout := fun q => if q = 7 then ⟨5, 0, 4⟩ else L q
+def na13 : MM02.State := exec m12 [.alloc 0 (topPlacement m12 (g 0)) 8 4 (some 7)]
+def na14 : MM02.State := exec na13 (deallocOps [rootAlloc La ao13.P 6] 7)
+example : Repr tk La ao13 na13 ∧ Repr tk La af14 na14 := by decide
+example : ¬ af14.Usable 7 ∧ af14.freed 7 = false ∧ LiveAlloc na14 5 ∧ DeadAlloc na14 4 := by decide
+example : ¬ Repr tk La af14 (na14.dealloc 5) := by decide
+
+/-- Clauses K1 (a) and (c) reject a layout on their own: the field 5 of 3 in a fresh allocation 4
+other than the allocation 3 of the field 4 breaks (a) only; the range of leaf 1 past the size of
+its allocation breaks (c) only. -/
+def m3x : MM02.State := exec m3 [.alloc 0 (topPlacement m3 (g 0)) 8 4 none]
+def Lsa : Layout := fun q => if q = 5 then ⟨4, 0, 4⟩ else L q
+example : ¬ (∀ r < e6.P.length, RootPlace e6.P r → ∀ l ∈ footprint e6.P r,
+    ∀ l' ∈ footprint e6.P r, (Lsa l).alloc = (Lsa l').alloc) := by decide
+set_option synthInstance.maxSize 512 in
+example : (∀ l < e6.P.length, ∀ l' < e6.P.length, isLeaf e6.P l → isLeaf e6.P l' → l ≠ l' →
+    (Lsa l).alloc = (Lsa l').alloc →
+      MM02.RangeDisjoint (Lsa l).off (Lsa l).len (Lsa l').off (Lsa l').len) ∧
+    (∀ l < e6.P.length, isLeaf e6.P l →
+      AllocP m3x (Lsa l).alloc fun a => (Lsa l).off + (Lsa l).len ≤ a.size) := by decide
+def Lwi : Layout := fun q => if q = 1 then ⟨1, 6, 4⟩ else L q
+example : ¬ (∀ l < e1.P.length, isLeaf e1.P l →
+    AllocP m1 (Lwi l).alloc fun a => (Lwi l).off + (Lwi l).len ≤ a.size) := by decide
+set_option synthInstance.maxSize 512 in
+example : (∀ r < e1.P.length, RootPlace e1.P r → ∀ l ∈ footprint e1.P r,
+      ∀ l' ∈ footprint e1.P r, (Lwi l).alloc = (Lwi l').alloc) ∧
+    (∀ l < e1.P.length, ∀ l' < e1.P.length, isLeaf e1.P l → isLeaf e1.P l' → l ≠ l' →
+      (Lwi l).alloc = (Lwi l').alloc →
+        MM02.RangeDisjoint (Lwi l).off (Lwi l).len (Lwi l').off (Lwi l').len) := by decide
+
+/-- R1 applied directly to the read of leaf 1 in `e3`: an allocation, the range initialised, a
+read of outcome `ok` with the bytes of the range, never `ub`. -/
+example : ∃ al, m3.allocs (L 1).alloc = some al ∧ al.InitRange (L 1).off (L 1).len ∧
+    MM02.ReadStep obR (leafAcc m3 L .read 1) m3 (.ok (al.bytesAt (L 1).off (L 1).len)) ∧
+    ¬ MM02.ReadStep obR (leafAcc m3 L .read 1) m3 .ub :=
+  r1_read3 (tok := tk) (reachable_invariants kc_dd r3).1 (reachable_invariants kc_dd r3).2.1.nd
+    (reachable_fpLeaves_frameOwnedLive kc_dd r3).1 (by decide)
+    (.ok (by decide) : Read3Step 1 [1] e3 (.ok e3)) (fun _ _ => trivial) (fun l hl => by
+      rw [List.mem_singleton] at hl; subst hl; show (leafAcc m3 L .read 1).addr % 4 = 0; decide)
+    1 (List.mem_singleton_self _)
+
+/-- Gap kept (report, (f) 4): after `free` of 6, the storage 7 it owns stops being usable but is
+not marked dead, where O13 marks dead "le stockage qui cesse de vivre". -/
+example : af14.dead 7 = false ∧ ¬ af14.Usable 7 := by decide
+
 end Cases
+
+namespace CaseOwnedLocal
+
+/-- Witness of question (e) 1 of the report: frame 1 with a local 0 and a local 1 owned by the
+local 0 (an element of the shape with an owning element). Local 1 is a root local (K4: one
+`AllocStep` at the entry, with the token of the frame, K2) and owned storage (O13: `OwnedRoot`, so
+`free` applies to it). `exitFrame` deallocates the allocations of the roots owned by the frame
+only: after `free` of 1, a second deallocation of its allocation would be `ub` (MM-02.D); without
+`free`, its allocation stays live after the exit. -/
+abbrev KO : K := KT [] [] [] [1] [(1, 101)]
+def lsO : List (Option Nat × Option Nat × Nat) := [(none, none, 0), (none, some 0, 0)]
+def o0 : S3 := S3.init []
+def o1 : S3 := enterEff o0 [] lsO
+def o2 : S3 := freeEff o1 1
+def o3 : S3 := exitEff o2
+def o3' : S3 := exitEff o1
+example : EnterStep [] lsO o0 (.ok o1) := .ok (by decide)
+example : FreeStep KO 1 101 o1 (.ok o2) := .ok (by decide)
+example : ExitStep KO o2 (.ok o3) := .ok (by decide)
+example : ExitStep KO o1 (.ok o3') := .ok (by decide)
+def C : Nat → Nat → Prop := fun a d => a = d
+instance : DecidableRel C := fun a d => inferInstanceAs (Decidable (a = d))
+def tk : Nat → Nat := fun f => 100 + f
+def g : Nat → Geom := fun _ => ⟨0, 4, 4⟩
+def L : Layout := fun q => ⟨q, 0, 4⟩
+def n1 : MM02.State :=
+  exec MM02.State.empty (allocOps topPlacement g (some (tk o0.nF)) MM02.State.empty (rootIdx lsO))
+def n2 : MM02.State := exec n1 (deallocOps [rootAlloc L o1.P 1] 101)
+example : Repr tk L o1 n1 ∧ Repr tk L o2 n2 := by decide
+example : (frameRoots o2 o2.top).map (rootAlloc L o2.P) = [0] := by decide
+example : Repr tk L o3 (exec n2 (exitOps L tk o2)) ∧ Repr tk L o3' (exec n1 (exitOps L tk o1)) := by
+  decide
+example : LiveAlloc (exec n1 (exitOps L tk o1)) 1 := by decide
+example : MM02.DeallocStep C 1 101 (exec n2 (exitOps L tk o2)) .ub := .ub (by decide)
+
+end CaseOwnedLocal
 
 end Ern.MM23
