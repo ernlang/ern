@@ -88,28 +88,33 @@ def tokOf (tok : Nat → Nat) : Holder → Option Nat
   | .frame f => some (tok f)
   | .place _ => none
 
-/-- K3, relation of representation `Repr` between an MM-03 state `s3` and an MM-02 state `s2`, for
-the layout `L` and the frame tokens `tok`:
+/-- K3, the decidable part of the relation of representation between an MM-03 state `s3` and an
+MM-02 state `s2`, for the layout `L`, the frame tokens `tok`, the provider tokens `ptok` and the
+ghost `provOf` (L4: a root allocated by `alloc` ↦ its provider):
 - `lwf`: `LayoutWF` (K1);
 - `inj`: two distinct root places are in distinct allocations (K2: a root corresponds to an
   allocation; a part to a sub-range of the allocation of its root, by `LayoutWF.sameAlloc`);
 - `tokens`: the allocation of a root owned by the frame `f` has the token `tok f` (K2);
+- `provTokens`: the allocation of a root allocated from the provider `pr` has the token `ptok pr`
+  (L4);
 - `live`: every usable root has its allocation live (K3);
-- `init`: every `Init` leaf has all its bytes initialised (K3);
+- `init`: every `Init` leaf has all its bytes initialised (K3; L3: a `Moved` or `Uninit` leaf
+  imposes nothing);
 - `freed`: a root dead by `free` has its allocation dead (K3);
 - `exited`: a root dead by the exit of its frame has its allocation dead (K3);
-- `leaked`: a root owned by a place, not usable and not freed keeps its allocation live. K3 says
-  it of a root dead by `endUse`; the clause also covers owned storage that dies with its frame (K4:
-  no `DeallocStep` for it) or with a freed root (K4 read as one `DeallocStep`, of the freed root):
-  report, (c) 4 and (e) 7.
-`Repr` does not read the contracts `K`: no clause of K3 depends on them. -/
-structure Repr (tok : Nat → Nat) (L : Layout) (s3 : S3) (s2 : MM02.State) : Prop where
+- `leaked`: a root owned by a place, not usable and not freed keeps its allocation live (K3 for a
+  root dead by `endUse`; L5 for owned storage that dies with a freed root or with its frame).
+It does not read the contracts `K` (L3). -/
+structure ReprB (tok ptok : Nat → Nat) (provOf : Nat → Option Nat) (L : Layout) (s3 : S3)
+    (s2 : MM02.State) : Prop where
   lwf : LayoutWF L s3 s2
   inj : ∀ r < s3.P.length, ∀ r' < s3.P.length, RootPlace s3.P r → RootPlace s3.P r' → r ≠ r' →
     ∀ l ∈ footprint s3.P r, ∀ l' ∈ footprint s3.P r', (L l).alloc ≠ (L l').alloc
   tokens : ∀ r < s3.P.length, RootPlace s3.P r → OptP (s3.P[r]?) (fun pl =>
     OptP (tokOf tok pl.owner) (fun d => ∀ l ∈ footprint s3.P r,
       AllocP s2 (L l).alloc (·.freeAuth = some d)) True) True
+  provTokens : ∀ r < s3.P.length, RootPlace s3.P r → OptP (provOf r) (fun pr =>
+    ∀ l ∈ footprint s3.P r, AllocP s2 (L l).alloc (·.freeAuth = some (ptok pr))) True
   live : ∀ r < s3.P.length, RootPlace s3.P r → s3.Usable r → ∀ l ∈ footprint s3.P r,
     LiveAlloc s2 (L l).alloc
   init : ∀ l < s3.P.length, isLeaf s3.P l → s3.I l = .init →
@@ -122,9 +127,9 @@ structure Repr (tok : Nat → Nat) (L : Layout) (s3 : S3) (s2 : MM02.State) : Pr
     OptP (s3.P[r]?) (fun pl => pl.owner.isPlace = true) False → ∀ l ∈ footprint s3.P r,
     LiveAlloc s2 (L l).alloc
 
-set_option synthInstance.maxSize 4096 in
-instance (tok : Nat → Nat) (L : Layout) (s3 : S3) (s2 : MM02.State) :
-    Decidable (Repr tok L s3 s2) :=
+set_option synthInstance.maxSize 8192 in
+instance (tok ptok : Nat → Nat) (provOf : Nat → Option Nat) (L : Layout) (s3 : S3)
+    (s2 : MM02.State) : Decidable (ReprB tok ptok provOf L s3 s2) :=
   decidable_of_iff
     (LayoutWF L s3 s2 ∧
      (∀ r < s3.P.length, ∀ r' < s3.P.length, RootPlace s3.P r → RootPlace s3.P r' → r ≠ r' →
@@ -132,6 +137,8 @@ instance (tok : Nat → Nat) (L : Layout) (s3 : S3) (s2 : MM02.State) :
      (∀ r < s3.P.length, RootPlace s3.P r → OptP (s3.P[r]?) (fun pl =>
       OptP (tokOf tok pl.owner) (fun d => ∀ l ∈ footprint s3.P r,
         AllocP s2 (L l).alloc (·.freeAuth = some d)) True) True) ∧
+     (∀ r < s3.P.length, RootPlace s3.P r → OptP (provOf r) (fun pr =>
+      ∀ l ∈ footprint s3.P r, AllocP s2 (L l).alloc (·.freeAuth = some (ptok pr))) True) ∧
      (∀ r < s3.P.length, RootPlace s3.P r → s3.Usable r → ∀ l ∈ footprint s3.P r,
       LiveAlloc s2 (L l).alloc) ∧
      (∀ l < s3.P.length, isLeaf s3.P l → s3.I l = .init →
@@ -144,8 +151,14 @@ instance (tok : Nat → Nat) (L : Layout) (s3 : S3) (s2 : MM02.State) :
      (∀ r < s3.P.length, RootPlace s3.P r → ¬ s3.Usable r → s3.freed r = false →
       OptP (s3.P[r]?) (fun pl => pl.owner.isPlace = true) False → ∀ l ∈ footprint s3.P r,
       LiveAlloc s2 (L l).alloc))
-    ⟨fun ⟨a, b, c, d, e, f, g, h⟩ => ⟨a, b, c, d, e, f, g, h⟩,
-     fun ⟨a, b, c, d, e, f, g, h⟩ => ⟨a, b, c, d, e, f, g, h⟩⟩
+    ⟨fun ⟨a, b, c, c', d, e, f, g, h⟩ => ⟨a, b, c, c', d, e, f, g, h⟩,
+     fun ⟨a, b, c, c', d, e, f, g, h⟩ => ⟨a, b, c, c', d, e, f, g, h⟩⟩
+
+/-- K3, L3: relation of representation `Repr`: `ReprB`, and the MM-02 state has fresh identities
+(`MM02.WF`, MM-02.A). Not decidable (`WF` quantifies over every identity); `ReprB` is. -/
+structure Repr (tok ptok : Nat → Nat) (provOf : Nat → Option Nat) (L : Layout) (s3 : S3)
+    (s2 : MM02.State) : Prop extends ReprB tok ptok provOf L s3 s2 where
+  wf2 : MM02.WF s2
 
 /-! ## Sequences of MM-02 operations (MM-02.H, K4, K5) -/
 
@@ -300,6 +313,15 @@ theorem along_append {p : MM02.State → Op2 → Prop} {s : MM02.State} {os os' 
   | nil => simp [Along, exec]
   | cons o os ih => simp only [List.cons_append, Along, exec, ih, and_assoc]
 
+theorem exec_wf : ∀ (ops : List Op2) (s : MM02.State), MM02.WF s → MM02.WF (exec s ops)
+  | [], _, h => h
+  | o :: os, _, h => exec_wf os _ (by
+      cases o
+      · exact h
+      · exact MM02.write_wf h _ _
+      · exact MM02.dealloc_wf h _
+      · exact MM02.alloc_wf h _ _ _ _ _)
+
 /-! ## Allocations kept by a step of MM-02 -/
 
 /-- `s'` keeps every allocation of `s` with its address space, base, size, alignment, liveness
@@ -374,23 +396,26 @@ theorem OptP.imp {α : Type} {o : Option α} {P Q : α → Prop} {d d' : Prop} (
   | some y => exact hPQ y h
   | none => exact hd h
 
-/-- `Repr` carries over when the MM-02 state only keeps its allocations (`Dom`) and the MM-03 state
+/-- `ReprB` carries over when the MM-02 state only keeps its allocations (`Dom`) and the MM-03 state
 keeps its places, stack, `dead` and `freed` marks, every leaf that becomes `Init` having its range
 initialised (K3). -/
-theorem Repr.change {tok : Nat → Nat} {L : Layout} {s3 s3' : S3} {s2 s2' : MM02.State}
-    (hR : Repr tok L s3 s2) (hd : Dom s2 s2') (hP : s3'.P = s3.P) (hF : s3'.F = s3.F)
+theorem ReprB.change {tok ptok : Nat → Nat} {provOf : Nat → Option Nat}
+    {L : Layout} {s3 s3' : S3} {s2 s2' : MM02.State}
+    (hR : ReprB tok ptok provOf L s3 s2) (hd : Dom s2 s2') (hP : s3'.P = s3.P) (hF : s3'.F = s3.F)
     (hdead : s3'.dead = s3.dead) (hfr : s3'.freed = s3.freed)
     (hI : ∀ l < s3.P.length, isLeaf s3.P l → s3'.I l = .init →
       s3.I l = .init ∨ AllocP s2' (L l).alloc fun a => a.InitRange (L l).off (L l).len) :
-    Repr tok L s3' s2' := by
+    ReprB tok ptok provOf L s3' s2' := by
   have hU : ∀ q, s3'.Usable q ↔ s3.Usable q := fun q => S3.Usable.congr hP hF hdead
-  refine ⟨⟨?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> simp only [hP, hF, hfr, hU]
+  refine ⟨⟨?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> simp only [hP, hF, hfr, hU]
   · exact hR.lwf.sameAlloc
   · exact hR.lwf.disjoint
   · exact fun l hl hlf => (hR.lwf.within l hl hlf).of_dom hd fun a a' _ e _ _ _ h => e ▸ h
   · exact hR.inj
   · exact fun r hr hrt => OptP.imp (hR.tokens r hr hrt) (fun _ h => OptP.imp h (fun _ h l hl =>
       (h l hl).of_dom hd fun _ _ _ _ _ e _ h => e ▸ h) id) id
+  · exact fun r hr hrt => OptP.imp (hR.provTokens r hr hrt) (fun _ h l hl =>
+      (h l hl).of_dom hd fun _ _ _ _ _ e _ h => e ▸ h) id
   · exact fun r hr hrt hu l hl => (hR.live r hr hrt hu l hl).of_dom hd fun a a' _ _ e _ _ h => e ▸ h
   · intro l hl hlf hi
     rcases hI l hl hlf hi with h | h
@@ -450,13 +475,14 @@ theorem write3Eff_cons (s : S3) (l : Nat) (ls : List Nat) :
 `ok`, and the states where those leaves are `Init` stay in `Repr`, under `dec` along the
 sequence and `stat` (K5). -/
 theorem repr_writes {C : Nat → Nat → Prop} {ObR : MM02.ReadOblSpec} {ObW : MM02.WriteOblSpec}
-    {tok : Nat → Nat} {L : Layout} {w : Nat → Nat → UInt8 × Option Nat}
+    {tok ptok : Nat → Nat} {provOf : Nat → Option Nat}
+    {L : Layout} {w : Nat → Nat → UInt8 × Option Nat}
     (hstat : ∀ s ac w, ObW.stat s ac w) :
-    ∀ (ls : List Nat) (s3 : S3) (s2 : MM02.State), Repr tok L s3 s2 →
+    ∀ (ls : List Nat) (s3 : S3) (s2 : MM02.State), ReprB tok ptok provOf L s3 s2 →
       (∀ l ∈ ls, l < s3.P.length ∧ isLeaf s3.P l ∧ LiveAlloc s2 (L l).alloc) →
       DecAlong ObR ObW s2 (writeOps s2 L w ls) →
       AllOk C ObR ObW s2 (writeOps s2 L w ls) ∧
-        Repr tok L (write3Eff s3 ls) (exec s2 (writeOps s2 L w ls))
+        ReprB tok ptok provOf L (write3Eff s3 ls) (exec s2 (writeOps s2 L w ls))
   | [], s3, s2, hR, _, _ => by
     refine ⟨trivial, hR.change (Dom.refl _) rfl rfl rfl rfl fun l _ _ h => .inl ?_⟩
     simpa [write3Eff] using h
@@ -466,7 +492,7 @@ theorem repr_writes {C : Nat → Nat → Prop} {ObR : MM02.ReadOblSpec} {ObW : M
     have hex : AllocP s2 (L l).alloc fun _ => True := hw.mono fun _ _ => trivial
     obtain ⟨s2₁, hs2₁⟩ : ∃ x, x = s2.write (leafAcc s2 L .write l) (w l) := ⟨_, rfl⟩
     have hd₁ : Dom s2 s2₁ := hs2₁ ▸ Dom.write _ _ _
-    have hR₁ : Repr tok L (write3Eff s3 [l]) s2₁ := by
+    have hR₁ : ReprB tok ptok provOf L (write3Eff s3 [l]) s2₁ := by
       refine hR.change hd₁ rfl rfl rfl rfl fun l' _ _ h => ?_
       simp only [write3Eff, List.mem_singleton] at h
       split at h
@@ -488,7 +514,7 @@ theorem repr_writes {C : Nat → Nat → Prop} {ObR : MM02.ReadOblSpec} {ObW : M
     rw [hops, write3Eff_cons] at this
     refine ⟨⟨write_leaf_ok hstat (hlive.and hw) hdec.1, ?_⟩, ?_⟩
     · show AllOk C ObR ObW (Op2.eff _ s2) _; rw [e₁]; exact this.1
-    · show Repr tok L _ (exec (Op2.eff _ s2) _); rw [e₁]; exact this.2
+    · show ReprB tok ptok provOf L _ (exec (Op2.eff _ s2) _); rw [e₁]; exact this.2
 
 /-! ## Allocations (K2, K4: `enterFrame`, `alloc`, static storage) -/
 
@@ -648,13 +674,15 @@ theorem not_frameGone_of_usable {s : S3} {q : Nat} {pl : Place} (hu : s.Usable q
   | frame f => rw [ho] at this; exact fun h => h this
   | place _ => exact fun h => False.elim h
 
-/-- K2, K3: `Repr` carries over when new places, a shape appended after the old ones, receive one
-fresh allocation per new root (`allocOps`), laid out by `NewLayout`: the old places keep their
+/-- K2, K3, L4: `ReprB` carries over when new places, a shape appended after the old ones, receive
+one fresh allocation per new root (`allocOps`), laid out by `NewLayout`: the old places keep their
 usability, `freed` marks and frame; the new places are usable and not freed; no leaf becomes
-`Init`; a new root owned by the frame `f` has the token `tok f`. -/
-theorem repr_extend {tok : Nat → Nat} {L : Layout} {s3 s3' : S3} {s2 : MM02.State} {hd : Holder}
+`Init`; a new root owned by the frame `f` has the token `tok f`; a new root allocated from the
+provider `pr` (`provOf`) has the token `ptok pr`. -/
+theorem repr_extend {tok ptok : Nat → Nat} {provOf : Nat → Option Nat}
+    {L : Layout} {s3 s3' : S3} {s2 : MM02.State} {hd : Holder}
     {ls : List (Option Nat × Option Nat × Nat)} {pl : Placement} {g : Nat → Geom}
-    {fa : Option Nat} (hR : Repr tok L s3 s2) (hwf : MM02.WF s2)
+    {fa : Option Nat} (hR : ReprB tok ptok provOf L s3 s2) (hwf : MM02.WF s2)
     (hP : s3'.P = shapeP s3.P hd ls) (hsh : ShapeOK s3.P.length ls)
     (hUold : ∀ q < s3.P.length, s3'.Usable q → s3.Usable q)
     (hUold' : ∀ q < s3.P.length, s3.Usable q → s3'.Usable q)
@@ -664,8 +692,9 @@ theorem repr_extend {tok : Nat → Nat} {L : Layout} {s3 s3' : S3} {s2 : MM02.St
     (hgone : ∀ q < s3.P.length, ∀ pl : Place, s3.P[q]? = some pl → FrameGone s3'.F pl.owner →
       FrameGone s3.F pl.owner)
     (htok : ∀ f, hd = .frame f → fa = some (tok f))
+    (hprov : ∀ i ∈ rootIdx ls, OptP (provOf (s3.P.length + i)) (fun pr => fa = some (ptok pr)) True)
     (hNL : NewLayout L s3'.P s3.P.length s2.next g (rootIdx ls)) :
-    Repr tok L s3' (exec s2 (allocOps pl g fa s2 (rootIdx ls))) := by
+    ReprB tok ptok provOf L s3' (exec s2 (allocOps pl g fa s2 (rootIdx ls))) := by
   -- notations
   have hlen : s3'.P.length = s3.P.length + ls.length := by rw [hP, shapeP_len]
   have hold := allocOps_old pl g fa (rootIdx ls) s2
@@ -709,7 +738,7 @@ theorem repr_extend {tok : Nat → Nat} {L : Layout} {s3 s3' : S3} {s2 : MM02.St
   -- the new places are not old
   have hroot_lt : ∀ j i, (rootIdx ls)[j]? = some i → i < ls.length := fun j i hj =>
     (rootIdx_mem hj).1
-  refine ⟨⟨?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+  refine ⟨⟨?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
   · -- K1 (a)
     intro r hr hrt l hl l' hl'
     by_cases hro : r < s3.P.length
@@ -774,6 +803,16 @@ theorem repr_extend {tok : Nat → Nat} {L : Layout} {s3 s3' : S3} {s2 : MM02.St
         intro l hl
         obtain ⟨-, -, b, hb⟩ := hna j i hj l (by rw [hP]; exact hl)
         exact ⟨_, hb, htok f hhd⟩
+  · -- L4: provider tokens
+    intro r hr hrt
+    by_cases ho : r < s3.P.length
+    · exact OptP.imp (hR.provTokens r ho ((hroot r ho).1 hrt)) (fun _ h l hl => by
+        have h1 := h l ((hfp r ho l).1 hl)
+        exact h1.of_eq (hold _ (h1.lt hwf))) id
+    · obtain ⟨j, i, hj, rfl⟩ := hnr r hr hrt ho
+      exact OptP.imp (hprov i (List.mem_of_getElem? hj)) (fun _ e l hl => by
+        obtain ⟨-, -, b, hb⟩ := hna j i hj l hl
+        exact ⟨_, hb, e⟩) id
   · -- K3: usable roots
     intro r hr hrt hu l hl
     by_cases ho : r < s3.P.length
@@ -824,11 +863,13 @@ theorem repr_extend {tok : Nat → Nat} {L : Layout} {s3 s3' : S3} {s2 : MM02.St
 /-! ## Initial state (K3) -/
 
 /-- `Repr` holds trivially for a state without places. -/
-theorem repr_of_nil {tok : Nat → Nat} {L : Layout} {s3 : S3} {s2 : MM02.State}
-    (h : s3.P.length = 0) : Repr tok L s3 s2 :=
+theorem repr_of_nil {tok ptok : Nat → Nat} {provOf : Nat → Option Nat}
+    {L : Layout} {s3 : S3} {s2 : MM02.State}
+    (h : s3.P.length = 0) : ReprB tok ptok provOf L s3 s2 :=
   ⟨⟨fun _ hr => absurd hr (by omega), fun _ hr => absurd hr (by omega),
     fun _ hr => absurd hr (by omega)⟩, fun _ hr => absurd hr (by omega),
     fun _ hr => absurd hr (by omega), fun _ hr => absurd hr (by omega),
+    fun _ hr => absurd hr (by omega),
     fun _ hr => absurd hr (by omega), fun _ hr => absurd hr (by omega),
     fun _ hr => absurd hr (by omega), fun _ hr => absurd hr (by omega)⟩
 
@@ -851,17 +892,20 @@ def initOps (pl : Placement) (g : Nat → Geom) (tok : Nat → Nat) (L : Layout)
 from `State.empty` by the allocations of the static roots, then the writes of the leaves declared
 `Init`; every operation of that sequence has the outcome `ok`. Hypotheses: a well-formed static
 storage (`ShapeOK`); the obligation of the placement (K2); valid alignments; a layout of the
-statics in the fresh allocations (`NewLayout`, K1); `dec` along the sequence and `stat` (K5). -/
+statics in the fresh allocations (`NewLayout`, K1); no static root allocated by `alloc` in the
+ghost `provOf` (L4); `dec` along the sequence and `stat` (K5). -/
 theorem repr_init {C : Nat → Nat → Prop} {ObR : MM02.ReadOblSpec} {ObW : MM02.WriteOblSpec}
     {statics : Statics} (hsh : ShapeOK 0 (statics.map (·.1))) {pl : Placement}
     (hpl : PlacementOK pl) {g : Nat → Geom}
     (hg : ∀ i ∈ rootIdx (statics.map (·.1)), 0 < (g i).align ∧ MM02.Pow2 (g i).align)
-    {tok : Nat → Nat} {L : Layout}
+    {tok ptok : Nat → Nat} {provOf : Nat → Option Nat} {L : Layout}
     (hNL : NewLayout L (S3.init statics).P 0 0 g (rootIdx (statics.map (·.1))))
+    (hprov : ∀ i ∈ rootIdx (statics.map (·.1)), provOf i = none)
     {w : Nat → Nat → UInt8 × Option Nat} (hstat : ∀ s ac w, ObW.stat s ac w)
     (hdec : DecAlong ObR ObW MM02.State.empty (initOps pl g tok L w statics)) :
     AllOk C ObR ObW MM02.State.empty (initOps pl g tok L w statics) ∧
-      Repr tok L (S3.init statics) (exec MM02.State.empty (initOps pl g tok L w statics)) := by
+      Repr tok ptok provOf L (S3.init statics)
+        (exec MM02.State.empty (initOps pl g tok L w statics)) := by
   -- the statics with every leaf `Uninit`
   let st0 : Statics := statics.map fun e => (e.1, false)
   have hmap : st0.map (·.1) = statics.map (·.1) := by simp [st0, List.map_map, Function.comp_def]
@@ -869,12 +913,12 @@ theorem repr_init {C : Nat → Nat → Prop} {ObR : MM02.ReadOblSpec} {ObW : MM0
   have hsh0 : ShapeOK 0 (st0.map (·.1)) := hmap ▸ hsh
   have hnil : (S3.init ([] : Statics)).P.length = 0 := rfl
   -- allocations
-  have hR1 : Repr tok L (S3.init st0)
+  have hR1 : ReprB tok ptok provOf L (S3.init st0)
       (exec MM02.State.empty (allocOps pl g (some (tok 0)) MM02.State.empty
         (rootIdx (statics.map (·.1))))) := by
     refine repr_extend (s3 := S3.init []) (hd := .frame 0) (repr_of_nil hnil)
       (fun _ _ => rfl) ?_ (by rw [hnil]; exact hsh) (fun q hq => absurd hq (by omega))
-      (fun q hq => absurd hq (by omega)) ?_ ?_ ?_ (fun q hq => absurd hq (by omega)) ?_ ?_
+      (fun q hq => absurd hq (by omega)) ?_ ?_ ?_ (fun q hq => absurd hq (by omega)) ?_ ?_ ?_
     · rw [hP0]; rfl
     · intro i hi
       rw [hnil, Nat.zero_add]
@@ -885,6 +929,7 @@ theorem repr_init {C : Nat → Nat → Prop} {ObR : MM02.ReadOblSpec} {ObW : MM0
         simp only [st0, List.getElem?_map]; cases statics[l]? <;> rfl
       simp [S3.init, this] at hl
     · intro f e; cases e; rfl
+    · intro i hi; rw [hnil, Nat.zero_add, hprov i (hmap ▸ hi)]; trivial
     · rw [hP0, hnil]; exact hNL
   have hok1 : AllOk C ObR ObW MM02.State.empty
       (allocOps pl g (some (tok 0)) MM02.State.empty (rootIdx (statics.map (·.1)))) :=
@@ -901,7 +946,7 @@ theorem repr_init {C : Nat → Nat → Prop} {ObR : MM02.ReadOblSpec} {ObW : MM0
       have hrlt : r < st0.length := by have := hr.1; rwa [init_len] at this
       exact ⟨hlP, hlf, hR1.live r hr.1 hr (init_usable hsh0 (r + 1) r (Nat.lt_succ_self r) hrlt) l
         (mem_footprint.2 ⟨hlP, hlf, hlr⟩)⟩) hdec2
-  refine ⟨along_append.2 ⟨hok1, hw.1⟩, ?_⟩
+  refine ⟨along_append.2 ⟨hok1, hw.1⟩, ⟨?_, exec_wf _ _ fun _ _ => rfl⟩⟩
   rw [initOps, exec_append]
   refine hw.2.change (Dom.refl _) hP0.symm rfl rfl rfl fun l hl hlf hi => .inl ?_
   have hflag : ((statics[l]?).map (·.2)).getD false = true := by
@@ -924,8 +969,9 @@ def FpLeaves (s : S3) : Prop :=
 
 /-- K3, MM-03.3 §2.6 (`NoDangling`): under `WF3` and `FpLeaves`, a leaf covered by an active
 authority belongs to a usable root, so its allocation is live. -/
-theorem covered_live {tok : Nat → Nat} {L : Layout} {s3 : S3} {s2 : MM02.State} (hwf : WF3 s3)
-    (hnd : NoDangling s3) (hfl : FpLeaves s3) (hR : Repr tok L s3 s2) {a : Nat} {y : Authority}
+theorem covered_live {tok ptok : Nat → Nat} {provOf : Nat → Option Nat}
+    {L : Layout} {s3 : S3} {s2 : MM02.State} (hwf : WF3 s3)
+    (hnd : NoDangling s3) (hfl : FpLeaves s3) (hR : ReprB tok ptok provOf L s3 s2) {a : Nat} {y : Authority}
     (hy : s3.A[a]? = some y) (ya : y.active = true) {l : Nat} (hl : l ∈ y.footprint) :
     l < s3.P.length ∧ isLeaf s3.P l ∧ LiveAlloc s2 (L l).alloc := by
   have hlP := hwf.fp a y hy l hl
@@ -948,9 +994,10 @@ the root, authority `read`): under `Repr`, `WF3`, `NoDangling` and `FpLeaves`, a
 MM-03 gives, for each leaf read, a read of MM-02 of outcome `ok`, never `ub`, whose value is the
 bytes of the range of the leaf, all initialised. Hypotheses on MM-02 (K5): `dec` for each access,
 `stat`. -/
-theorem r1_read3 {ObR : MM02.ReadOblSpec} {tok : Nat → Nat} {L : Layout} {s3 s3' : S3}
+theorem r1_read3 {ObR : MM02.ReadOblSpec} {tok ptok : Nat → Nat} {provOf : Nat → Option Nat}
+    {L : Layout} {s3 s3' : S3}
     {s2 : MM02.State} {a : Nat} {ls : List Nat} (hwf : WF3 s3) (hnd : NoDangling s3)
-    (hfl : FpLeaves s3) (hR : Repr tok L s3 s2) (h : Read3Step a ls s3 (.ok s3'))
+    (hfl : FpLeaves s3) (hR : Repr tok ptok provOf L s3 s2) (h : Read3Step a ls s3 (.ok s3'))
     (hstat : ∀ s ac, ObR.stat s ac) (hdec : ∀ l ∈ ls, ObR.dec s2 (leafAcc s2 L .read l)) :
     ∀ l ∈ ls, ∃ al, s2.allocs (L l).alloc = some al ∧ al.InitRange (L l).off (L l).len ∧
       MM02.ReadStep ObR (leafAcc s2 L .read l) s2 (.ok (al.bytesAt (L l).off (L l).len)) ∧
@@ -959,7 +1006,7 @@ theorem r1_read3 {ObR : MM02.ReadOblSpec} {tok : Nat → Nat} {L : Layout} {s3 s
   intro l hl
   obtain ⟨he, hi, -⟩ := hc l hl
   obtain ⟨y, hy, ya, hly⟩ := covered_of_effective he
-  obtain ⟨hlP, hlf, hlive⟩ := covered_live hwf hnd hfl hR hy ya hly
+  obtain ⟨hlP, hlf, hlive⟩ := covered_live hwf hnd hfl hR.toReprB hy ya hly
   obtain ⟨al, hal, ⟨hla, hsz⟩, hin⟩ :=
     (hlive.and (hR.lwf.within l hlP hlf)).and (hR.init l hlP hlf hi)
   have e : al.base + (L l).off - al.base = (L l).off := Nat.add_sub_cancel_left _ _
@@ -979,28 +1026,35 @@ theorem r1_read3 {ObR : MM02.ReadOblSpec} {tok : Nat → Nat} {L : Layout} {s3 s
 MM-02 of outcome `ok`, and the arrival states are in `Repr`, whatever the bytes `w` written.
 Hypotheses on MM-02 (K5): `dec` along the writes, `stat`. -/
 theorem r2_write3 {C : Nat → Nat → Prop} {ObR : MM02.ReadOblSpec} {ObW : MM02.WriteOblSpec}
-    {tok : Nat → Nat} {L : Layout} {s3 s3' : S3} {s2 : MM02.State} {a : Nat} {ls : List Nat}
+    {tok ptok : Nat → Nat} {provOf : Nat → Option Nat}
+    {L : Layout} {s3 s3' : S3} {s2 : MM02.State} {a : Nat} {ls : List Nat}
     {w : Nat → Nat → UInt8 × Option Nat} (hwf : WF3 s3) (hnd : NoDangling s3) (hfl : FpLeaves s3)
-    (hR : Repr tok L s3 s2) (h : Write3Step a ls s3 (.ok s3')) (hstat : ∀ s ac w, ObW.stat s ac w)
-    (hdec : DecAlong ObR ObW s2 (writeOps s2 L w ls)) :
-    AllOk C ObR ObW s2 (writeOps s2 L w ls) ∧ Repr tok L s3' (exec s2 (writeOps s2 L w ls)) := by
+    (hR : Repr tok ptok provOf L s3 s2) (h : Write3Step a ls s3 (.ok s3'))
+    (hstat : ∀ s ac w, ObW.stat s ac w) (hdec : DecAlong ObR ObW s2 (writeOps s2 L w ls)) :
+    AllOk C ObR ObW s2 (writeOps s2 L w ls) ∧
+      Repr tok ptok provOf L s3' (exec s2 (writeOps s2 L w ls)) := by
   obtain ⟨⟨-, hc⟩, rfl⟩ := Guarded.ok_iff.1 h
-  exact repr_writes hstat ls s3 s2 hR (fun l hl => by
+  have := repr_writes (C := C) (ObR := ObR) hstat ls s3 s2 hR.toReprB (fun l hl => by
     obtain ⟨y, hy, ya, hly⟩ := covered_of_effective (by rw [(hc l hl).1]; exact fun h => by cases h)
-    exact covered_live hwf hnd hfl hR hy ya hly) hdec
+    exact covered_live hwf hnd hfl hR.toReprB hy ya hly) hdec
+  exact ⟨this.1, this.2, exec_wf _ _ hR.wf2⟩
 
 /-- R2 for `writeShared` (MM-03.3 §9.2; O11; K4: `writeShared` ↦ `WriteStep`, authority `write`):
 as `r2_write3`; the effective mode of the access may be `Observe` (O11.2). -/
 theorem r2_writeShared {C : Nat → Nat → Prop} {ObR : MM02.ReadOblSpec} {ObW : MM02.WriteOblSpec}
-    {k : K} {tok : Nat → Nat} {L : Layout} {s3 s3' : S3} {s2 : MM02.State} {a : Nat}
+    {k : K} {tok ptok : Nat → Nat} {provOf : Nat → Option Nat}
+    {L : Layout} {s3 s3' : S3} {s2 : MM02.State} {a : Nat}
     {ls : List Nat} {w : Nat → Nat → UInt8 × Option Nat} (hwf : WF3 s3) (hnd : NoDangling s3)
-    (hfl : FpLeaves s3) (hR : Repr tok L s3 s2) (h : WriteSharedStep k a ls s3 (.ok s3'))
-    (hstat : ∀ s ac w, ObW.stat s ac w) (hdec : DecAlong ObR ObW s2 (writeOps s2 L w ls)) :
-    AllOk C ObR ObW s2 (writeOps s2 L w ls) ∧ Repr tok L s3' (exec s2 (writeOps s2 L w ls)) := by
+    (hfl : FpLeaves s3) (hR : Repr tok ptok provOf L s3 s2)
+    (h : WriteSharedStep k a ls s3 (.ok s3')) (hstat : ∀ s ac w, ObW.stat s ac w)
+    (hdec : DecAlong ObR ObW s2 (writeOps s2 L w ls)) :
+    AllOk C ObR ObW s2 (writeOps s2 L w ls) ∧
+      Repr tok ptok provOf L s3' (exec s2 (writeOps s2 L w ls)) := by
   obtain ⟨⟨-, hc⟩, rfl⟩ := Guarded.ok_iff.1 h
-  exact repr_writes hstat ls s3 s2 hR (fun l hl => by
+  have := repr_writes (C := C) (ObR := ObR) hstat ls s3 s2 hR.toReprB (fun l hl => by
     obtain ⟨y, hy, ya, hly⟩ := covered_of_effective (hc l hl).1
-    exact covered_live hwf hnd hfl hR hy ya hly) hdec
+    exact covered_live hwf hnd hfl hR.toReprB hy ya hly) hdec
+  exact ⟨this.1, this.2, exec_wf _ _ hR.wf2⟩
 
 /-! ## Two invariants of the reached states missing from the draft -/
 
@@ -1264,9 +1318,9 @@ theorem reachable_fpLeaves_frameOwnedLive {k : K} (hdd : DDSound k) {statics : S
 
 /-- R1 on the reached states (MM-03.3 §9.2, §10), under `DDSound k`: `WF3`, `NoDangling` and
 `FpLeaves` hold there. -/
-theorem r1_read3_reachable {k : K} {statics : Statics} {ObR : MM02.ReadOblSpec} {tok : Nat → Nat}
+theorem r1_read3_reachable {k : K} {statics : Statics} {ObR : MM02.ReadOblSpec} {tok ptok : Nat → Nat} {provOf : Nat → Option Nat}
     {L : Layout} {s3 s3' : S3} {s2 : MM02.State} {a : Nat} {ls : List Nat} (hdd : DDSound k)
-    (hr : Reachable k statics s3) (hR : Repr tok L s3 s2) (h : Read3Step a ls s3 (.ok s3'))
+    (hr : Reachable k statics s3) (hR : Repr tok ptok provOf L s3 s2) (h : Read3Step a ls s3 (.ok s3'))
     (hstat : ∀ s ac, ObR.stat s ac) (hdec : ∀ l ∈ ls, ObR.dec s2 (leafAcc s2 L .read l)) :
     ∀ l ∈ ls, ∃ al, s2.allocs (L l).alloc = some al ∧ al.InitRange (L l).off (L l).len ∧
       MM02.ReadStep ObR (leafAcc s2 L .read l) s2 (.ok (al.bytesAt (L l).off (L l).len)) ∧
@@ -1276,23 +1330,25 @@ theorem r1_read3_reachable {k : K} {statics : Statics} {ObR : MM02.ReadOblSpec} 
 
 /-- R2 for `write3` on the reached states (MM-03.3 §9.2, §10), under `DDSound k`. -/
 theorem r2_write3_reachable {k : K} {statics : Statics} {C : Nat → Nat → Prop}
-    {ObR : MM02.ReadOblSpec} {ObW : MM02.WriteOblSpec} {tok : Nat → Nat} {L : Layout}
+    {ObR : MM02.ReadOblSpec} {ObW : MM02.WriteOblSpec} {tok ptok : Nat → Nat} {provOf : Nat → Option Nat}
+    {L : Layout}
     {s3 s3' : S3} {s2 : MM02.State} {a : Nat} {ls : List Nat} {w : Nat → Nat → UInt8 × Option Nat}
-    (hdd : DDSound k) (hr : Reachable k statics s3) (hR : Repr tok L s3 s2)
+    (hdd : DDSound k) (hr : Reachable k statics s3) (hR : Repr tok ptok provOf L s3 s2)
     (h : Write3Step a ls s3 (.ok s3')) (hstat : ∀ s ac w, ObW.stat s ac w)
     (hdec : DecAlong ObR ObW s2 (writeOps s2 L w ls)) :
-    AllOk C ObR ObW s2 (writeOps s2 L w ls) ∧ Repr tok L s3' (exec s2 (writeOps s2 L w ls)) :=
+    AllOk C ObR ObW s2 (writeOps s2 L w ls) ∧ Repr tok ptok provOf L s3' (exec s2 (writeOps s2 L w ls)) :=
   r2_write3 (reachable_invariants hdd hr).1 (reachable_invariants hdd hr).2.1.nd
     (reachable_fpLeaves_frameOwnedLive hdd hr).1 hR h hstat hdec
 
 /-- R2 for `writeShared` on the reached states (MM-03.3 §9.2, §10), under `DDSound k`. -/
 theorem r2_writeShared_reachable {k : K} {statics : Statics} {C : Nat → Nat → Prop}
-    {ObR : MM02.ReadOblSpec} {ObW : MM02.WriteOblSpec} {tok : Nat → Nat} {L : Layout}
+    {ObR : MM02.ReadOblSpec} {ObW : MM02.WriteOblSpec} {tok ptok : Nat → Nat} {provOf : Nat → Option Nat}
+    {L : Layout}
     {s3 s3' : S3} {s2 : MM02.State} {a : Nat} {ls : List Nat} {w : Nat → Nat → UInt8 × Option Nat}
-    (hdd : DDSound k) (hr : Reachable k statics s3) (hR : Repr tok L s3 s2)
+    (hdd : DDSound k) (hr : Reachable k statics s3) (hR : Repr tok ptok provOf L s3 s2)
     (h : WriteSharedStep k a ls s3 (.ok s3')) (hstat : ∀ s ac w, ObW.stat s ac w)
     (hdec : DecAlong ObR ObW s2 (writeOps s2 L w ls)) :
-    AllOk C ObR ObW s2 (writeOps s2 L w ls) ∧ Repr tok L s3' (exec s2 (writeOps s2 L w ls)) :=
+    AllOk C ObR ObW s2 (writeOps s2 L w ls) ∧ Repr tok ptok provOf L s3' (exec s2 (writeOps s2 L w ls)) :=
   r2_writeShared (reachable_invariants hdd hr).1 (reachable_invariants hdd hr).2.1.nd
     (reachable_fpLeaves_frameOwnedLive hdd hr).1 hR h hstat hdec
 
@@ -1328,15 +1384,6 @@ theorem rootAlloc_eq {L : Layout} {s3 : S3} {s2 : MM02.State} (hwf : WF3 s3)
   hlw.sameAlloc r hr.1 hr l hl _ (headD_mem_footprint hwf hr.1)
 
 /-! ## Deallocations (K4: `free`, `exitFrame`) -/
-
-theorem exec_wf : ∀ (ops : List Op2) (s : MM02.State), MM02.WF s → MM02.WF (exec s ops)
-  | [], _, h => h
-  | o :: os, _, h => exec_wf os _ (by
-      cases o
-      · exact h
-      · exact MM02.write_wf h _ _
-      · exact MM02.dealloc_wf h _
-      · exact MM02.alloc_wf h _ _ _ _ _)
 
 /-- K4 (`free`, `exitFrame`): one deallocation of each allocation of `ids`, with the
 deallocation authority `au` (MM-02.D). -/
@@ -1380,18 +1427,20 @@ theorem deallocOps_ok {C : Nat → Nat → Prop} {ObR : MM02.ReadOblSpec} {ObW :
       show (s.dealloc i).allocs j = s.allocs j
       rw [dealloc_allocs]; simp only [hji, ↓reduceIte])
 
-/-- K3: `Repr` carries over when the places, the stack and the `freed` marks do not change, no
+/-- K3: `ReprB` carries over when the places, the stack and the `freed` marks do not change, no
 place becomes usable and no leaf becomes `Init` (`endUse` and the steps without MM-02 step). -/
-theorem Repr.shrink {tok : Nat → Nat} {L : Layout} {s3 s3' : S3} {s2 : MM02.State}
-    (hR : Repr tok L s3 s2) (hP : s3'.P = s3.P) (hF : s3'.F = s3.F) (hfr : s3'.freed = s3.freed)
+theorem ReprB.shrink {tok ptok : Nat → Nat} {provOf : Nat → Option Nat}
+    {L : Layout} {s3 s3' : S3} {s2 : MM02.State}
+    (hR : ReprB tok ptok provOf L s3 s2) (hP : s3'.P = s3.P) (hF : s3'.F = s3.F) (hfr : s3'.freed = s3.freed)
     (hU : ∀ q, s3'.Usable q → s3.Usable q) (hI : ∀ l, s3'.I l = .init → s3.I l = .init) :
-    Repr tok L s3' s2 := by
-  refine ⟨⟨?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> simp only [hP, hF, hfr]
+    ReprB tok ptok provOf L s3' s2 := by
+  refine ⟨⟨?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> simp only [hP, hF, hfr]
   · exact hR.lwf.sameAlloc
   · exact hR.lwf.disjoint
   · exact hR.lwf.within
   · exact hR.inj
   · exact hR.tokens
+  · exact hR.provTokens
   · exact fun r hr hrt hu => hR.live r hr hrt (hU r hu)
   · exact fun l hl hlf hi => hR.init l hl hlf (hI l hi)
   · exact hR.freed
@@ -1405,8 +1454,9 @@ theorem Repr.shrink {tok : Nat → Nat} {L : Layout} {s3 s3' : S3} {s2 : MM02.St
 not change, no leaf becomes `Init`, a root usable after was usable before and keeps its
 allocation, a root freed or exited after was so before or has its allocation deallocated, and a
 leaked root after was usable or not freed before and keeps its allocation. -/
-theorem repr_deallocs {tok : Nat → Nat} {L : Layout} {s3 s3' : S3} {s2 : MM02.State}
-    (hR : Repr tok L s3 s2) (ids : List Nat) (au : Nat) (hP : s3'.P = s3.P)
+theorem repr_deallocs {tok ptok : Nat → Nat} {provOf : Nat → Option Nat}
+    {L : Layout} {s3 s3' : S3} {s2 : MM02.State}
+    (hR : ReprB tok ptok provOf L s3 s2) (ids : List Nat) (au : Nat) (hP : s3'.P = s3.P)
     (hI : ∀ l, s3'.I l = .init → s3.I l = .init)
     (hlive : ∀ r < s3.P.length, RootPlace s3.P r → s3'.Usable r →
       s3.Usable r ∧ ∀ l ∈ footprint s3.P r, (L l).alloc ∉ ids)
@@ -1419,7 +1469,7 @@ theorem repr_deallocs {tok : Nat → Nat} {L : Layout} {s3 s3' : S3} {s2 : MM02.
     (hleak : ∀ r < s3.P.length, RootPlace s3.P r → ¬ s3'.Usable r → s3'.freed r = false →
       OptP (s3.P[r]?) (fun pl => pl.owner.isPlace = true) False →
       (s3.Usable r ∨ s3.freed r = false) ∧ ∀ l ∈ footprint s3.P r, (L l).alloc ∉ ids) :
-    Repr tok L s3' (exec s2 (deallocOps ids au)) := by
+    ReprB tok ptok provOf L s3' (exec s2 (deallocOps ids au)) := by
   have hall := exec_deallocOps au ids s2
   have hkeep : ∀ j (p : MM02.Alloc → Prop), AllocP s2 j p → j ∉ ids →
       AllocP (exec s2 (deallocOps ids au)) j p := fun j p h hj =>
@@ -1436,13 +1486,15 @@ theorem repr_deallocs {tok : Nat → Nat} {L : Layout} {s3 s3' : S3} {s2 : MM02.
     obtain ⟨a, ha, -⟩ := h
     exact ⟨{ a with live := false }, by rw [hall]; simp only [hj, ↓reduceIte, ha, Option.map_some],
       rfl⟩
-  refine ⟨⟨?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> simp only [hP]
+  refine ⟨⟨?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> simp only [hP]
   · exact hR.lwf.sameAlloc
   · exact hR.lwf.disjoint
   · exact fun l hl hlf => hmeta _ _ (hR.lwf.within l hl hlf) fun _ h => h
   · exact hR.inj
   · exact fun r hr hrt => OptP.imp (hR.tokens r hr hrt) (fun _ h => OptP.imp h
       (fun _ h l hl => hmeta _ _ (h l hl) fun _ h => h) id) id
+  · exact fun r hr hrt => OptP.imp (hR.provTokens r hr hrt)
+      (fun _ h l hl => hmeta _ _ (h l hl) fun _ h => h) id
   · intro r hr hrt hu l hl
     obtain ⟨hu', hn⟩ := hlive r hr hrt hu
     exact hkeep _ _ (hR.live r hr hrt hu' l hl) (hn l hl)
@@ -1487,11 +1539,12 @@ theorem exec_readOps (s2 s2' : MM02.State) (L : Layout) :
 /-- R6 for `read3` (MM-03.3 §9.2; K4): the reads of MM-02 have the outcome `ok` and the arrival
 states are in `Repr`; hypotheses of `r1_read3`. -/
 theorem r6_read3 {C : Nat → Nat → Prop} {ObR : MM02.ReadOblSpec} {ObW : MM02.WriteOblSpec}
-    {tok : Nat → Nat} {L : Layout} {s3 s3' : S3} {s2 : MM02.State} {a : Nat} {ls : List Nat}
-    (hwf : WF3 s3) (hnd : NoDangling s3) (hfl : FpLeaves s3) (hR : Repr tok L s3 s2)
+    {tok ptok : Nat → Nat} {provOf : Nat → Option Nat}
+    {L : Layout} {s3 s3' : S3} {s2 : MM02.State} {a : Nat} {ls : List Nat}
+    (hwf : WF3 s3) (hnd : NoDangling s3) (hfl : FpLeaves s3) (hR : Repr tok ptok provOf L s3 s2)
     (h : Read3Step a ls s3 (.ok s3')) (hstat : ∀ s ac, ObR.stat s ac)
     (hdec : ∀ l ∈ ls, ObR.dec s2 (leafAcc s2 L .read l)) :
-    AllOk C ObR ObW s2 (readOps s2 L ls) ∧ Repr tok L s3' (exec s2 (readOps s2 L ls)) := by
+    AllOk C ObR ObW s2 (readOps s2 L ls) ∧ Repr tok ptok provOf L s3' (exec s2 (readOps s2 L ls)) := by
   have h1 := r1_read3 hwf hnd hfl hR h hstat hdec
   obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
   refine ⟨?_, by rw [exec_readOps]; exact hR⟩
@@ -1504,30 +1557,35 @@ theorem r6_read3 {C : Nat → Nat → Prop} {ObR : MM02.ReadOblSpec} {ObW : MM02
       exact ⟨⟨_, hok⟩, ih fun l' hl' => hs l' (List.mem_cons_of_mem _ hl')⟩
   exact this ls fun _ h => h
 
-/-- R6 for `alloc` of outcome `ok` (MM-03.3 §9.2, O14; K4: `alloc` `ok` ↦ `AllocStep`): for a
-shape with one root (O14: "une nouvelle racine"), the allocation of MM-02, at the base chosen by
-the placement, has the outcome `ok`, and the arrival states are in `Repr`, for every geometry of
-valid alignment, every token `fa` and every layout of the new leaves in the fresh allocation
-(`NewLayout`). -/
+/-- R6 for `alloc` of outcome `ok` (MM-03.3 §9.2, O14; K4: `alloc` `ok` ↦ `AllocStep`; L2: the
+shape has one root; L4: the token of the allocation is the token `ptok pr` of the provider, and the
+ghost `provOf` maps the new root to `pr`): the allocation of MM-02, at the base chosen by the
+placement, has the outcome `ok`, and the arrival states are in `Repr`, for every geometry of valid
+alignment and every layout of the new leaves in the fresh allocation (`NewLayout`). -/
 theorem r6_alloc {C : Nat → Nat → Prop} {ObR : MM02.ReadOblSpec} {ObW : MM02.WriteOblSpec}
-    {k : K} {tok : Nat → Nat} {L : Layout} {s3 s3' : S3} {s2 : MM02.State} {pr ow : Nat}
-    {ls : List (Option Nat × Option Nat × Nat)} {pl : Placement} {g : Nat → Geom}
-    {fa : Option Nat} {i : Nat} (hwf : WF3 s3) (hR : Repr tok L s3 s2) (hwf2 : MM02.WF s2)
+    {k : K} {tok ptok : Nat → Nat} {provOf : Nat → Option Nat} {L : Layout} {s3 s3' : S3}
+    {s2 : MM02.State} {pr ow : Nat} {ls : List (Option Nat × Option Nat × Nat)} {pl : Placement}
+    {g : Nat → Geom} {i : Nat} (hwf : WF3 s3) (hR : Repr tok ptok provOf L s3 s2)
     (hpl : PlacementOK pl) (hg : 0 < (g i).align ∧ MM02.Pow2 (g i).align)
     (h : MM03.AllocStep k pr ow ls s3 (.ok s3')) (hone : rootIdx ls = [i])
+    (hprov : provOf (s3.P.length + i) = some pr)
     (hNL : NewLayout L s3'.P s3.P.length s2.next g [i]) :
-    AllOk C ObR ObW s2 [.alloc (g i).space (pl s2 (g i)) (g i).size (g i).align fa] ∧
-      Repr tok L s3' (exec s2 [.alloc (g i).space (pl s2 (g i)) (g i).size (g i).align fa]) := by
+    AllOk C ObR ObW s2 [.alloc (g i).space (pl s2 (g i)) (g i).size (g i).align (some (ptok pr))] ∧
+      Repr tok ptok provOf L s3'
+        (exec s2 [.alloc (g i).space (pl s2 (g i)) (g i).size (g i).align (some (ptok pr))]) := by
   cases h with
   | ok hst _ =>
-    have e : allocOps pl g fa s2 [i] = [.alloc (g i).space (pl s2 (g i)) (g i).size (g i).align fa] :=
-      rfl
+    have e : allocOps pl g (some (ptok pr)) s2 [i] =
+        [.alloc (g i).space (pl s2 (g i)) (g i).size (g i).align (some (ptok pr))] := rfl
     rw [← e, ← hone]
-    refine ⟨allocOps_ok hpl _ _ hwf2 (by rw [hone]; intro j hj; rw [List.mem_singleton.1 hj]; exact hg),
-      repr_extend (hd := .place ow) hR hwf2 rfl hst.2.2.2.2.2.1
+    refine ⟨allocOps_ok hpl _ _ hR.wf2 (by
+        rw [hone]; intro j hj; rw [List.mem_singleton.1 hj]; exact hg),
+      repr_extend (hd := .place ow) hR.toReprB hR.wf2 rfl hst.2.2.2.2.2.1
         (fun q hq hu => alloc_usable_back hwf hu hq) (fun _ _ hu => alloc_usable_old hu)
         (fun i hi => alloc_usable_new hst (i + 1) i (Nat.lt_succ_self i) hi) (fun _ => rfl)
-        (fun l hl => ?_) (fun _ _ _ _ h => h) (fun _ h => by cases h) (by rw [hone]; exact hNL)⟩
+        (fun l hl => ?_) (fun _ _ _ _ h => h) (fun _ h => by cases h)
+        (fun j hj => by rw [hone, List.mem_singleton] at hj; subst hj; rw [hprov]; rfl)
+        (by rw [hone]; exact hNL), exec_wf _ _ hR.wf2⟩
     simp only [allocEff] at hl
     split at hl
     · cases hl
@@ -1540,28 +1598,54 @@ theorem r6_alloc {C : Nat → Nat → Prop} {ObR : MM02.ReadOblSpec} {ObW : MM02
 /-- R6 for `alloc` of outcome `fail` (MM-03.3 §9.2, O14; K4: `alloc` `fail` ↦ no step): the state
 is unchanged and stays in `Repr`. -/
 theorem r6_alloc_fail {C : Nat → Nat → Prop} {ObR : MM02.ReadOblSpec} {ObW : MM02.WriteOblSpec}
-    {k : K} {tok : Nat → Nat} {L : Layout} {s3 s3' : S3} {s2 : MM02.State} {pr ow : Nat}
-    {ls : List (Option Nat × Option Nat × Nat)} (hR : Repr tok L s3 s2)
+    {k : K} {tok ptok : Nat → Nat} {provOf : Nat → Option Nat}
+    {L : Layout} {s3 s3' : S3} {s2 : MM02.State} {pr ow : Nat}
+    {ls : List (Option Nat × Option Nat × Nat)} (hR : Repr tok ptok provOf L s3 s2)
     (h : MM03.AllocStep k pr ow ls s3 (.fail s3')) :
-    AllOk C ObR ObW s2 [] ∧ Repr tok L s3' (exec s2 []) := by
+    AllOk C ObR ObW s2 [] ∧ Repr tok ptok provOf L s3' (exec s2 []) := by
   obtain ⟨rfl, -⟩ := alloc_fail_unchanged h; exact ⟨trivial, hR⟩
 
+/-- L4: `FreeCompat p auth` instantiated by `Compatible auth (ptok (provOf p))`: `p` is a root
+allocated from a provider `pr`, and `auth` is compatible with the token of `pr`. -/
+def FreeCompatInst (C : Nat → Nat → Prop) (ptok : Nat → Nat) (provOf : Nat → Option Nat)
+    (p auth : Nat) : Prop :=
+  ∃ pr, provOf p = some pr ∧ C auth (ptok pr)
+
+/-- `freeSound_derived` (L4, replaces the hypothesis `FreeSound` of pass 1): under `ReprB`, when
+the contracts instantiate `FreeCompat` by `Compatible auth (ptok (provOf p))`, the obligation
+`FreeSound` of `free p auth` holds for the root `p`. The content is the clause `provTokens` of
+`Repr`: the MM-02 allocation of an allocated root keeps the token of its provider, a clause that
+every step preserves (`r6_*`, `simulation`). -/
+theorem freeSound_derived {k : K} {C : Nat → Nat → Prop} {tok ptok : Nat → Nat}
+    {provOf : Nat → Option Nat} {L : Layout} {s3 : S3} {s2 : MM02.State} {p auth : Nat}
+    (hR : ReprB tok ptok provOf L s3 s2) (hp : RootPlace s3.P p)
+    (hfc : k.FreeCompat p auth → FreeCompatInst C ptok provOf p auth) :
+    FreeSound k C L s3 s2 p auth := by
+  intro _ hf l hl
+  obtain ⟨pr, hpr, hc⟩ := hfc hf
+  have := hR.provTokens p hp.1 hp
+  rw [hpr] at this
+  exact (this l hl).mono fun _ h => ⟨_, h, hc⟩
+
 /-- R6 for `free` (MM-03.3 §9.2, O13; K4: `free` ↦ `DeallocStep` of the allocation of the root,
-authority `auth`, compatible by `FreeCompat`): under `WF3` and the obligation `FreeSound` of the
-contracts, the deallocation has the outcome `ok` and the arrival states are in `Repr`. -/
+authority `auth`; L4: `FreeCompat` instantiated by `Compatible auth (ptok (provOf p))`; L5: one
+`DeallocStep`, the storage owned by `p` keeps its allocation live): under `WF3`, the deallocation
+has the outcome `ok` and the arrival states are in `Repr`. -/
 theorem r6_free {C : Nat → Nat → Prop} {ObR : MM02.ReadOblSpec} {ObW : MM02.WriteOblSpec}
-    {k : K} {tok : Nat → Nat} {L : Layout} {s3 s3' : S3} {s2 : MM02.State} {p auth : Nat}
-    (hwf : WF3 s3) (hR : Repr tok L s3 s2) (hfs : FreeSound k C L s3 s2 p auth)
+    {k : K} {tok ptok : Nat → Nat} {provOf : Nat → Option Nat} {L : Layout} {s3 s3' : S3}
+    {s2 : MM02.State} {p auth : Nat} (hwf : WF3 s3) (hR : Repr tok ptok provOf L s3 s2)
+    (hfc : k.FreeCompat p auth → FreeCompatInst C ptok provOf p auth)
     (h : FreeStep k p auth s3 (.ok s3')) :
     AllOk C ObR ObW s2 (deallocOps [rootAlloc L s3.P p] auth) ∧
-      Repr tok L s3' (exec s2 (deallocOps [rootAlloc L s3.P p] auth)) := by
-  obtain ⟨⟨hdl, hfc, hu, hor, -⟩, rfl⟩ := Guarded.ok_iff.1 h
+      Repr tok ptok provOf L s3' (exec s2 (deallocOps [rootAlloc L s3.P p] auth)) := by
+  obtain ⟨⟨hdl, hfc', hu, hor, -⟩, rfl⟩ := Guarded.ok_iff.1 h
   have hpr : RootPlace s3.P p := by
     refine ⟨hu.lt, ?_⟩
     unfold OwnedRoot at hor; unfold parentOf
     cases hpl : s3.P[p]? with
     | none => rw [hpl] at hor; exact hor.elim
     | some pl => rw [hpl] at hor; exact hor.1
+  have hfs := freeSound_derived (k := k) (C := C) hR.toReprB hpr hfc
   have hl0 := headD_mem_footprint hwf hpr.1
   have hnu : ¬ (freeEff s3 p).Usable p := fun h' => by
     have := h'.dead_false
@@ -1576,8 +1660,9 @@ theorem r6_free {C : Nat → Nat → Prop} {ObR : MM02.ReadOblSpec} {ObW : MM02.
     exact hR.inj r hr.1 p hpr.1 hr hpr hrp l hl _ hl0 hm
   refine ⟨deallocOps_ok _ _ (List.pairwise_singleton _ _) fun i hi => ?_, ?_⟩
   · rw [List.mem_singleton.1 hi]
-    exact (hR.live p hpr.1 hpr hu _ hl0).and (hfs hdl hfc _ hl0)
-  · refine repr_deallocs hR _ _ rfl (fun _ h => h) (fun r _ hrt hu' => ⟨hUb r hu',
+    exact (hR.live p hpr.1 hpr hu _ hl0).and (hfs hdl hfc' _ hl0)
+  · refine ⟨?_, exec_wf _ _ hR.wf2⟩
+    refine repr_deallocs hR.toReprB _ _ rfl (fun _ h => h) (fun r _ hrt hu' => ⟨hUb r hu',
       hdiff r hrt (hne r hu')⟩) (fun r _ hrt hf => ?_) (fun _ _ _ h => .inl h)
       (fun r _ hrt _ hf _ => ?_)
     · simp only [freeEff, cleanup, freeS, Bool.or_eq_true, decide_eq_true_eq] at hf
@@ -1590,21 +1675,27 @@ theorem r6_free {C : Nat → Nat → Prop} {ObR : MM02.ReadOblSpec} {ObW : MM02.
 /-- R6 for `enterFrame` (MM-03.3 §9.2, O6; K4: `enterFrame` ↦ one `AllocStep` per root local):
 under `WF3`, the allocations of the root locals, with the token of the new frame (K2), at the bases
 chosen by the placement, have the outcome `ok`, and the arrival states are in `Repr`, for every
-geometry of valid alignment and every layout of the new leaves (`NewLayout`). -/
+geometry of valid alignment and every layout of the new leaves (`NewLayout`); the new roots are not
+allocated roots in the ghost `provOf` (L4). The theorem does not need L1: a local owned by a local
+is covered too. -/
 theorem r6_enter {C : Nat → Nat → Prop} {ObR : MM02.ReadOblSpec} {ObW : MM02.WriteOblSpec}
-    {tok : Nat → Nat} {L : Layout} {s3 s3' : S3} {s2 : MM02.State} {ps : List Nat}
+    {tok ptok : Nat → Nat} {provOf : Nat → Option Nat}
+    {L : Layout} {s3 s3' : S3} {s2 : MM02.State} {ps : List Nat}
     {ls : List (Option Nat × Option Nat × Nat)} {pl : Placement} {g : Nat → Geom}
-    (hwf : WF3 s3) (hR : Repr tok L s3 s2) (hwf2 : MM02.WF s2) (hpl : PlacementOK pl)
+    (hwf : WF3 s3) (hR : Repr tok ptok provOf L s3 s2) (hpl : PlacementOK pl)
     (hg : ∀ i ∈ rootIdx ls, 0 < (g i).align ∧ MM02.Pow2 (g i).align)
-    (h : EnterStep ps ls s3 (.ok s3')) (hNL : NewLayout L s3'.P s3.P.length s2.next g (rootIdx ls)) :
+    (h : EnterStep ps ls s3 (.ok s3'))
+    (hprov : ∀ i ∈ rootIdx ls, provOf (s3.P.length + i) = none)
+    (hNL : NewLayout L s3'.P s3.P.length s2.next g (rootIdx ls)) :
     AllOk C ObR ObW s2 (allocOps pl g (some (tok s3.nF)) s2 (rootIdx ls)) ∧
-      Repr tok L s3' (exec s2 (allocOps pl g (some (tok s3.nF)) s2 (rootIdx ls))) := by
+      Repr tok ptok provOf L s3' (exec s2 (allocOps pl g (some (tok s3.nF)) s2 (rootIdx ls))) := by
   obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
-  refine ⟨allocOps_ok hpl _ _ hwf2 hg, repr_extend (hd := .frame s3.nF) hR hwf2 rfl
+  refine ⟨allocOps_ok hpl _ _ hR.wf2 hg, ⟨repr_extend (hd := .frame s3.nF) hR.toReprB hR.wf2 rfl
     (enterPre_shapeOK hpre.1) (fun q hq hu => enter_usable_back hwf hu hq)
     (fun _ _ hu => enter_usable_old hu)
     (fun i hi => enter_usable_new hpre.1 (i + 1) i (Nat.lt_succ_self i) hi) (fun _ => rfl)
-    (fun l hl => ?_) (fun q _ pl _ hg => ?_) (fun f e => by cases e; rfl) hNL⟩
+    (fun l hl => ?_) (fun q _ pl _ hg => ?_) (fun f e => by cases e; rfl)
+    (fun i hi => by rw [hprov i hi]; trivial) hNL, exec_wf _ _ hR.wf2⟩⟩
   · simp only [enterEff] at hl
     split at hl
     · cases hl
@@ -1636,10 +1727,12 @@ of the frame tokens (K2), the deallocations of the automatic allocations of the 
 the outcome `ok`, and the arrival states are in `Repr`: owned storage that dies with the frame
 keeps its allocation live (leak). -/
 theorem r6_exit {C : Nat → Nat → Prop} {ObR : MM02.ReadOblSpec} {ObW : MM02.WriteOblSpec}
-    {k : K} {tok : Nat → Nat} {L : Layout} {s3 s3' : S3} {s2 : MM02.State} (hwf : WF3 s3)
-    (hfo : FrameOwnedLive s3) (hR : Repr tok L s3 s2) (htc : TokCompat C tok)
+    {k : K} {tok ptok : Nat → Nat} {provOf : Nat → Option Nat}
+    {L : Layout} {s3 s3' : S3} {s2 : MM02.State} (hwf : WF3 s3)
+    (hfo : FrameOwnedLive s3) (hR : Repr tok ptok provOf L s3 s2) (htc : TokCompat C tok)
     (h : ExitStep k s3 (.ok s3')) :
-    AllOk C ObR ObW s2 (exitOps L tok s3) ∧ Repr tok L s3' (exec s2 (exitOps L tok s3)) := by
+    AllOk C ObR ObW s2 (exitOps L tok s3) ∧
+      Repr tok ptok provOf L s3' (exec s2 (exitOps L tok s3)) := by
   obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
   obtain ⟨f, F₀, hF⟩ : ∃ f F₀, s3.F = f :: F₀ := by
     unfold ExitPre at hpre; split at hpre
@@ -1678,7 +1771,8 @@ theorem r6_exit {C : Nat → Nat → Prop} {ObR : MM02.ReadOblSpec} {ObW : MM02.
     rw [hpl] at ht; simp only [OptP] at ht; rw [ho] at ht
     exact ((hR.live r hrt.1 hrt hu _ (hhead r hr)).and (ht _ (hhead r hr))).mono
       fun a ⟨h1, h2⟩ => ⟨h1, _, h2, htc f⟩
-  · refine repr_deallocs hR _ _ (by rw [e]) (fun _ h => by rw [e] at h; exact h)
+  · refine ⟨?_, exec_wf _ _ hR.wf2⟩
+    refine repr_deallocs hR.toReprB _ _ (by rw [e]) (fun _ h => by rw [e] at h; exact h)
       (fun r _ hrt hu => ?_) (fun r _ _ hf => .inl (by rw [e] at hf; exact hf))
       (fun r _ hrt hg => ?_) (fun r _ hrt hu hf ho => ?_)
     · have hu' : ({ s3 with F := F₀ } : S3).Usable r :=
@@ -1726,13 +1820,14 @@ inductive NoStep (k : K) : S3 → S3 → Prop where
 /-- R6 for the steps without MM-02 step (MM-03.3 §9.2; K4): the empty sequence, and the arrival
 states are in `Repr`. -/
 theorem r6_noStep {C : Nat → Nat → Prop} {ObR : MM02.ReadOblSpec} {ObW : MM02.WriteOblSpec}
-    {k : K} {tok : Nat → Nat} {L : Layout} {s3 s3' : S3} {s2 : MM02.State}
-    (hR : Repr tok L s3 s2) (h : NoStep k s3 s3') :
-    AllOk C ObR ObW s2 [] ∧ Repr tok L s3' (exec s2 []) := by
-  refine ⟨trivial, ?_⟩
+    {k : K} {tok ptok : Nat → Nat} {provOf : Nat → Option Nat}
+    {L : Layout} {s3 s3' : S3} {s2 : MM02.State}
+    (hR : Repr tok ptok provOf L s3 s2) (h : NoStep k s3 s3') :
+    AllOk C ObR ObW s2 [] ∧ Repr tok ptok provOf L s3' (exec s2 []) := by
+  refine ⟨trivial, ?_, hR.wf2⟩
   have same : ∀ {s' : S3}, s'.P = s3.P → s'.F = s3.F → s'.dead = s3.dead → s'.freed = s3.freed →
-      s'.I = s3.I → Repr tok L s' s2 := fun hP hF hd hfr hI =>
-    hR.shrink hP hF hfr (fun _ h => h.of_eqs hP hF hd) (fun _ h => by rw [← hI]; exact h)
+      s'.I = s3.I → ReprB tok ptok provOf L s' s2 := fun hP hF hd hfr hI =>
+    hR.toReprB.shrink hP hF hfr (fun _ h => h.of_eqs hP hF hd) (fun _ h => by rw [← hI]; exact h)
   cases h with
   | derive hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact same rfl rfl rfl rfl rfl
   | split hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact same rfl rfl rfl rfl rfl
@@ -1743,7 +1838,7 @@ theorem r6_noStep {C : Nat → Nat → Prop} {ObR : MM02.ReadOblSpec} {ObW : MM0
   | endUse hs =>
     rename_i p
     obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs
-    refine hR.shrink rfl rfl rfl (fun q hq => S3.Usable.mono (s := s3) (s' := endUseEff s3 p) rfl
+    refine hR.toReprB.shrink rfl rfl rfl (fun q hq => S3.Usable.mono (s := s3) (s' := endUseEff s3 p) rfl
       (fun _ h => h) (fun q' hq' => ?_) hq)
       (fun l hl => ?_)
     · simp only [endUseEff, cleanup, endUseS, Bool.or_eq_false_iff] at hq'; exact hq'.1
@@ -1762,10 +1857,12 @@ theorem r6_noStep {C : Nat → Nat → Prop} {ObR : MM02.ReadOblSpec} {ObW : MM0
 /-- R6 for `exitFrame` on the reached states (MM-03.3 §9.2, §10), under `DDSound k`: `WF3` and
 `FrameOwnedLive` hold there. -/
 theorem r6_exit_reachable {k : K} {statics : Statics} {C : Nat → Nat → Prop}
-    {ObR : MM02.ReadOblSpec} {ObW : MM02.WriteOblSpec} {tok : Nat → Nat} {L : Layout}
+    {ObR : MM02.ReadOblSpec} {ObW : MM02.WriteOblSpec} {tok ptok : Nat → Nat} {provOf : Nat → Option Nat}
+    {L : Layout}
     {s3 s3' : S3} {s2 : MM02.State} (hdd : DDSound k) (hr : Reachable k statics s3)
-    (hR : Repr tok L s3 s2) (htc : TokCompat C tok) (h : ExitStep k s3 (.ok s3')) :
-    AllOk C ObR ObW s2 (exitOps L tok s3) ∧ Repr tok L s3' (exec s2 (exitOps L tok s3)) :=
+    (hR : Repr tok ptok provOf L s3 s2) (htc : TokCompat C tok) (h : ExitStep k s3 (.ok s3')) :
+    AllOk C ObR ObW s2 (exitOps L tok s3) ∧
+      Repr tok ptok provOf L s3' (exec s2 (exitOps L tok s3)) :=
   r6_exit (reachable_invariants hdd hr).1 (reachable_fpLeaves_frameOwnedLive hdd hr).2 hR htc h
 
 /-! ## R4 (MM-03.3 §9.2) -/
@@ -1774,13 +1871,16 @@ theorem r6_exit_reachable {k : K} {statics : Statics} {C : Nat → Nat → Prop}
 state, no active authority covers a leaf whose MM-02 allocation is dead; the allocation of every
 leaf it covers is registered and live. Under `DDSound k`, the hypothesis of the invariants of the
 reached states. -/
-theorem r4_no_dead_cover {k : K} {statics : Statics} {tok : Nat → Nat} {L : Layout} {s3 : S3}
-    {s2 : MM02.State} (hdd : DDSound k) (hr : Reachable k statics s3) (hR : Repr tok L s3 s2) :
+theorem r4_no_dead_cover {k : K} {statics : Statics} {tok ptok : Nat → Nat} {provOf : Nat → Option Nat}
+    {L : Layout} {s3 : S3}
+    {s2 : MM02.State} (hdd : DDSound k) (hr : Reachable k statics s3)
+    (hR : Repr tok ptok provOf L s3 s2) :
     ∀ (j : Nat) (y : Authority), s3.A[j]? = some y → y.active = true → ∀ l ∈ y.footprint,
       isLeaf s3.P l ∧ ¬ DeadAlloc s2 (L l).alloc ∧ LiveAlloc s2 (L l).alloc := by
   intro j y hy ya l hl
   obtain ⟨-, hlf, hlive⟩ := covered_live (reachable_invariants hdd hr).1
-    (reachable_invariants hdd hr).2.1.nd (reachable_fpLeaves_frameOwnedLive hdd hr).1 hR hy ya hl
+    (reachable_invariants hdd hr).2.1.nd (reachable_fpLeaves_frameOwnedLive hdd hr).1 hR.toReprB hy ya
+    hl
   refine ⟨hlf, fun hd => ?_, hlive⟩
   obtain ⟨a, ha, hla⟩ := hlive
   obtain ⟨b, hb, hlb⟩ := hd
@@ -1819,6 +1919,9 @@ namespace CaseInit
 def st : Statics := [((none, none, 0), true)]
 def L : Layout := fun _ => ⟨0, 0, 4⟩
 def tk : Nat → Nat := fun f => 100 + f
+/-- Provider tokens (L4) and the ghost `provOf`: no root is allocated by `alloc`. -/
+def ptk : Nat → Nat := fun pr => 6 + pr
+def prov : Nat → Option Nat := fun _ => none
 def g : Nat → Geom := fun _ => ⟨0, 4, 4⟩
 def w : Nat → Nat → UInt8 × Option Nat := fun l i => ((l + i).toUInt8, none)
 /-- Test obligations (K5): `dec`, an access aligned on 4 bytes; `stat`, true. -/
@@ -1830,11 +1933,11 @@ def s2 : MM02.State := exec MM02.State.empty (initOps topPlacement g tk L w st)
 
 /-- `repr_init` on the static storage, and the same verdict by `decide`; without the write of the
 static, `Repr` fails (K3: an `Init` leaf has its bytes initialised). -/
-example : Repr tk L (S3.init st) s2 :=
+example : ReprB tk ptk prov L (S3.init st) s2 :=
   (repr_init (C := fun _ _ => False) (ObR := obR) (ObW := obW) (by decide) topPlacement_ok
-    (by decide) (by decide) (fun _ _ _ => trivial) (by decide)).2
-example : Repr tk L (S3.init st) s2 := by decide
-example : ¬ Repr tk L (S3.init st)
+    (by decide) (by decide) (by decide) (fun _ _ _ => trivial) (by decide)).2.toReprB
+example : ReprB tk ptk prov L (S3.init st) s2 := by decide
+example : ¬ ReprB tk ptk prov L (S3.init st)
     (exec MM02.State.empty (allocOps topPlacement g (some (tk 0)) MM02.State.empty [0])) := by
   decide
 
@@ -1844,7 +1947,7 @@ root authority stays active, `read3` is `ok`, `Repr` holds, and the MM-02 read i
 `NoDangling`. -/
 def cx : S3 := { S3.init st with dead := fun _ => true, freed := fun _ => true }
 def cx2 : MM02.State := s2.dealloc 0
-example : Repr tk L cx cx2 := by decide
+example : ReprB tk ptk prov L cx cx2 := by decide
 example : Read3Step 0 [0] cx (.ok cx) := .ok (by decide)
 example : MM02.ReadStep obR (leafAcc cx2 L .read 0) cx2 .ub :=
   .ub fun ⟨h, _⟩ => absurd h (by decide)
@@ -1923,6 +2026,10 @@ geometry: 8 bytes aligned on 4; layout: one allocation per root, fields 4 and 5 
 of the allocation of 3; the bytes written in leaf `l` are `10 l + i`. -/
 def C : Nat → Nat → Prop := fun a d => a = d
 def tk : Nat → Nat := fun f => 100 + f
+/-- Provider tokens (L4): the allocator at place 1 has the token 7. Ghost `provOf`: the places 6
+and 7 are allocated from the provider 1. -/
+def ptk : Nat → Nat := fun pr => 6 + pr
+def prov : Nat → Option Nat := fun r => if r = 6 ∨ r = 7 then some 1 else none
 def g : Nat → Geom := fun _ => ⟨0, 8, 4⟩
 def L : Layout := fun q => match q with
   | 0 => ⟨0, 0, 4⟩ | 1 => ⟨1, 0, 4⟩ | 2 => ⟨2, 0, 4⟩ | 3 => ⟨3, 0, 8⟩
@@ -1954,10 +2061,15 @@ def m16 : MM02.State := exec m12 ops16
 def opsF : List Op2 := deallocOps [rootAlloc L e12.P 6] 7
 def mF : MM02.State := exec m12 opsF
 
-theorem wf2 (ops : List Op2) : MM02.WF (exec MM02.State.empty ops) := exec_wf ops _ fun _ _ => rfl
-theorem wfm8 : MM02.WF m8 := by
-  unfold m8 m7 m3 m2 m1
-  exact exec_wf _ _ (exec_wf _ _ (exec_wf _ _ (exec_wf _ _ (exec_wf _ _ (wf2 _)))))
+theorem wf_m0 : MM02.WF m0 := exec_wf _ _ fun _ _ => rfl
+theorem wf_m1 : MM02.WF m1 := exec_wf _ _ wf_m0
+theorem wf_m2 : MM02.WF m2 := exec_wf _ _ wf_m1
+theorem wf_m3 : MM02.WF m3 := exec_wf _ _ wf_m2
+theorem wf_m7 : MM02.WF m7 := exec_wf _ _ wf_m3
+theorem wf_m8 : MM02.WF m8 := exec_wf _ _ wf_m7
+theorem wf_m12 : MM02.WF m12 := exec_wf _ _ wf_m8
+theorem wf_m16 : MM02.WF m16 := exec_wf _ _ wf_m12
+theorem wf_mF : MM02.WF mF := exec_wf _ _ wf_m12
 
 /-- The sequences exhibited: the bases chosen by `topPlacement` for the locals (16, 28, 40) and the
 allocated storage (52), with their tokens; the deallocations of `exitFrame`, of the allocations 1,
@@ -1971,35 +2083,38 @@ example : (frameRoots e15 e15.top).map (rootAlloc L e15.P) = [1, 2, 3] ∧ tk e1
   decide
 
 /-- `Repr` at each point, by `decide`. -/
-example : Repr tk L e0 m0 ∧ Repr tk L e1 m1 ∧ Repr tk L e2 m2 ∧ Repr tk L e3 m3 ∧
-    Repr tk L e6 m3 ∧ Repr tk L e8 m8 ∧ Repr tk L e12 m12 ∧ Repr tk L e15 m12 ∧
-    Repr tk L e16 m16 ∧ Repr tk L f13 mF := by decide
+example : ReprB tk ptk prov L e0 m0 ∧ ReprB tk ptk prov L e1 m1 ∧ ReprB tk ptk prov L e2 m2 ∧ ReprB tk ptk prov L e3 m3 ∧
+    ReprB tk ptk prov L e6 m3 ∧ ReprB tk ptk prov L e8 m8 ∧ ReprB tk ptk prov L e12 m12 ∧ ReprB tk ptk prov L e15 m12 ∧
+    ReprB tk ptk prov L e16 m16 ∧ ReprB tk ptk prov L f13 mF := by decide
 
 /-- K3: initial state (`repr_init`). -/
-example : AllOk C obR obW MM02.State.empty (initOps topPlacement g tk L w st) ∧ Repr tk L e0 m0 :=
-  repr_init (by decide) topPlacement_ok (by decide) (by decide) (fun _ _ _ => trivial) (by decide)
+example : AllOk C obR obW MM02.State.empty (initOps topPlacement g tk L w st) ∧
+    Repr tk ptk prov L e0 m0 :=
+  repr_init (by decide) topPlacement_ok (by decide) (by decide) (by decide) (fun _ _ _ => trivial)
+    (by decide)
 /-- R6, `enterFrame`: three allocations, one per root local. -/
-example : AllOk C obR obW m0 ops1 ∧ Repr tk L e1 m1 :=
-  r6_enter (reachable_invariants kc_dd r0).1 (by decide) (wf2 _) topPlacement_ok (by decide)
-    (.ok (by decide)) (by decide)
+example : AllOk C obR obW m0 ops1 ∧ Repr tk ptk prov L e1 m1 :=
+  r6_enter (reachable_invariants kc_dd r0).1 ⟨by decide, wf_m0⟩ topPlacement_ok (by decide)
+    (.ok (by decide)) (by decide) (by decide)
 /-- R2, `write3`. -/
-example : AllOk C obR obW m1 ops2 ∧ Repr tk L e2 m2 :=
-  r2_write3_reachable kc_dd r1 (by decide) (.ok (by decide) : Write3Step 1 [1] e1 (.ok e2))
+example : AllOk C obR obW m1 ops2 ∧ Repr tk ptk prov L e2 m2 :=
+  r2_write3_reachable kc_dd r1 ⟨by decide, wf_m1⟩ (.ok (by decide) : Write3Step 1 [1] e1 (.ok e2))
     (fun _ _ _ => trivial) (by decide)
-example : AllOk C obR obW m2 ops3 ∧ Repr tk L e3 m3 :=
-  r2_write3_reachable kc_dd r2 (by decide) (.ok (by decide) : Write3Step 2 [2] e2 (.ok e3))
+example : AllOk C obR obW m2 ops3 ∧ Repr tk ptk prov L e3 m3 :=
+  r2_write3_reachable kc_dd r2 ⟨by decide, wf_m2⟩ (.ok (by decide) : Write3Step 2 [2] e2 (.ok e3))
     (fun _ _ _ => trivial) (by decide)
-example : AllOk C obR obW m3 ops7 ∧ Repr tk L e7 m7 :=
-  r2_write3_reachable kc_dd r6 (by decide) (.ok (by decide) : Write3Step 5 [4] e6 (.ok e7))
+example : AllOk C obR obW m3 ops7 ∧ Repr tk ptk prov L e7 m7 :=
+  r2_write3_reachable kc_dd r6 ⟨by decide, wf_m3⟩ (.ok (by decide) : Write3Step 5 [4] e6 (.ok e7))
     (fun _ _ _ => trivial) (by decide)
 /-- R2, `writeShared` under an authority of effective mode present. -/
-example : AllOk C obR obW m7 ops8 ∧ Repr tk L e8 m8 :=
-  r2_writeShared_reachable kc_dd r7 (by decide)
+example : AllOk C obR obW m7 ops8 ∧ Repr tk ptk prov L e8 m8 :=
+  r2_writeShared_reachable kc_dd r7 ⟨by decide, wf_m7⟩
     (.ok (by decide) : WriteSharedStep KC 6 [5] e7 (.ok e8)) (fun _ _ _ => trivial) (by decide)
 /-- R1 and R6, `read3`; the value read is the 4 bytes written by `write3` in leaf 1. -/
-example : AllOk C obR obW m3 (readOps m3 L [1]) ∧ Repr tk L e3 (exec m3 (readOps m3 L [1])) :=
+example : AllOk C obR obW m3 (readOps m3 L [1]) ∧
+    Repr tk ptk prov L e3 (exec m3 (readOps m3 L [1])) :=
   r6_read3 (reachable_invariants kc_dd r3).1 (reachable_invariants kc_dd r3).2.1.nd
-    (reachable_fpLeaves_frameOwnedLive kc_dd r3).1 (by decide)
+    (reachable_fpLeaves_frameOwnedLive kc_dd r3).1 ⟨by decide, wf_m3⟩
     (.ok (by decide) : Read3Step 1 [1] e3 (.ok e3)) (fun _ _ => trivial) (fun l hl => by
       rw [List.mem_singleton] at hl; subst hl; show (leafAcc m3 L .read 1).addr % 4 = 0; decide)
 example : ((m3.allocs 1).map fun a => a.bytesAt 0 4) =
@@ -2008,56 +2123,55 @@ example : ((m8.allocs 3).map fun a => a.bytesAt 0 8) = some [.init 40 none, .ini
     .init 42 none, .init 43 none, .init 50 none, .init 51 none, .init 52 none, .init 53 none] := by
   decide
 /-- R6, `alloc` `ok`: one allocation, at base 52, token 7. -/
-example : AllOk C obR obW m8 ops12 ∧ Repr tk L e12 m12 :=
-  r6_alloc (i := 0) (reachable_invariants kc_dd r11).1 (by decide) wfm8 topPlacement_ok
+example : AllOk C obR obW m8 ops12 ∧ Repr tk ptk prov L e12 m12 :=
+  r6_alloc (i := 0) (ptok := ptk) (provOf := prov) (pr := 1) (reachable_invariants kc_dd r11).1
+    ⟨by decide, wf_m8⟩ topPlacement_ok
     (by decide) (.ok (by decide) (by decide) : AllocStep KC 1 2 [(none, none, 0)] e11 (.ok e12)) rfl
-    (by decide)
+    (by decide) (by decide)
 /-- R6, `alloc` `fail`: allocator 2 not satisfiable, no step. -/
-example : AllOk C obR obW m12 [] ∧ Repr tk L e12 (exec m12 []) :=
-  r6_alloc_fail (by decide)
+example : AllOk C obR obW m12 [] ∧ Repr tk ptk prov L e12 (exec m12 []) :=
+  r6_alloc_fail ⟨by decide, wf_m12⟩
     (.fail (by decide) (by decide) : AllocStep KC 2 2 [(none, none, 0)] e12 (.fail e12))
 /-- R6, `free` of 6 with the authority 7: the allocation 4 dies. -/
-example : AllOk C obR obW m12 opsF ∧ Repr tk L f13 mF := by
-  refine r6_free (k := KC) (auth := 7) (reachable_invariants kc_dd r12).1 (by decide) ?_
-    (.ok (by decide))
-  intro _ _ l hl
-  have hfp : footprint e12.P 6 = [6] := by decide
-  rw [hfp, List.mem_singleton] at hl; subst hl
-  exact (show AllocP m12 4 (·.freeAuth = some 7) by decide).mono fun _ h => ⟨7, h, rfl⟩
+example : AllOk C obR obW m12 opsF ∧ Repr tk ptk prov L f13 mF :=
+  r6_free (k := KC) (auth := 7) (reachable_invariants kc_dd r12).1 ⟨by decide, wf_m12⟩
+    (fun _ => ⟨1, rfl, rfl⟩) (.ok (by decide))
 example : DeadAlloc mF 4 := by decide
 /-- R6, `exitFrame`: three deallocations; the storage 6, dead by `endUse` and not freed, keeps
 its allocation 4 live (leak, K3, K4). -/
-example : AllOk C obR obW m12 ops16 ∧ Repr tk L e16 m16 :=
-  r6_exit_reachable kc_dd r15 (by decide) (fun _ => rfl) (.ok (by decide))
+example : AllOk C obR obW m12 ops16 ∧ Repr tk ptk prov L e16 m16 :=
+  r6_exit_reachable kc_dd r15 ⟨by decide, wf_m12⟩ (fun _ => rfl) (.ok (by decide))
 example : DeadAlloc m16 1 ∧ DeadAlloc m16 2 ∧ DeadAlloc m16 3 ∧ LiveAlloc m16 4 ∧
     LiveAlloc m16 0 := by decide
 /-- R6, the steps without MM-02 step (K4). After `endUse` of 2, the storage 6 is not usable and
 not freed, and its allocation stays live. -/
-example : AllOk C obR obW m3 [] ∧ Repr tk L e4 (exec m3 []) :=
-  r6_noStep (k := KC) (by decide) (.derive (.ok (by decide) : DeriveStep 3 4 .observe e3 (.ok e4)))
-example : AllOk C obR obW m3 [] ∧ Repr tk L e5 (exec m3 []) :=
-  r6_noStep (k := KC) (by decide) (.release (.ok (by decide) : ReleaseStep 4 e4 (.ok e5)))
-example : AllOk C obR obW m3 [] ∧ Repr tk L e6 (exec m3 []) :=
-  r6_noStep (by decide) (.split (.ok (by decide) : SplitStep KC 3 [[4], [5]] e5 (.ok e6)))
-example : AllOk C obR obW m8 [] ∧ Repr tk L e9 (exec m8 []) :=
-  r6_noStep (k := KC) (by decide) (.depend (.ok (by decide) : DependStep 2 1 e8 (.ok e9)))
-example : AllOk C obR obW m8 [] ∧ Repr tk L e10 (exec m8 []) :=
-  r6_noStep (k := KC) (by decide) (.pin (.ok (by decide) : PinStep 2 e9 (.ok e10)))
-example : AllOk C obR obW m8 [] ∧ Repr tk L e11 (exec m8 []) :=
-  r6_noStep (by decide) (.unpin (.ok (by decide) : UnpinStep KC 2 e10 (.ok e11)))
-example : AllOk C obR obW m12 [] ∧ Repr tk L e13 (exec m12 []) :=
-  r6_noStep (k := KC) (by decide) (.newArena (.ok (by decide) : NewArenaStep 6 7 e12 (.ok e13)))
-example : AllOk C obR obW m12 [] ∧ Repr tk L e14 (exec m12 []) :=
-  r6_noStep (by decide) (.reset (.ok (by decide) : ResetAtStep KC 0 2 e13 (.ok e14)))
-example : AllOk C obR obW m12 [] ∧ Repr tk L e15 (exec m12 []) :=
-  r6_noStep (by decide) (.endUse (.ok (by decide) : EndUseStep KC 2 e14 (.ok e15)))
+example : AllOk C obR obW m3 [] ∧ Repr tk ptk prov L e4 (exec m3 []) :=
+  r6_noStep (k := KC) ⟨by decide, wf_m3⟩ (.derive (.ok (by decide) : DeriveStep 3 4 .observe e3 (.ok e4)))
+example : AllOk C obR obW m3 [] ∧ Repr tk ptk prov L e5 (exec m3 []) :=
+  r6_noStep (k := KC) ⟨by decide, wf_m3⟩ (.release (.ok (by decide) : ReleaseStep 4 e4 (.ok e5)))
+example : AllOk C obR obW m3 [] ∧ Repr tk ptk prov L e6 (exec m3 []) :=
+  r6_noStep ⟨by decide, wf_m3⟩ (.split (.ok (by decide) : SplitStep KC 3 [[4], [5]] e5 (.ok e6)))
+example : AllOk C obR obW m8 [] ∧ Repr tk ptk prov L e9 (exec m8 []) :=
+  r6_noStep (k := KC) ⟨by decide, wf_m8⟩ (.depend (.ok (by decide) : DependStep 2 1 e8 (.ok e9)))
+example : AllOk C obR obW m8 [] ∧ Repr tk ptk prov L e10 (exec m8 []) :=
+  r6_noStep (k := KC) ⟨by decide, wf_m8⟩ (.pin (.ok (by decide) : PinStep 2 e9 (.ok e10)))
+example : AllOk C obR obW m8 [] ∧ Repr tk ptk prov L e11 (exec m8 []) :=
+  r6_noStep ⟨by decide, wf_m8⟩ (.unpin (.ok (by decide) : UnpinStep KC 2 e10 (.ok e11)))
+example : AllOk C obR obW m12 [] ∧ Repr tk ptk prov L e13 (exec m12 []) :=
+  r6_noStep (k := KC) ⟨by decide, wf_m12⟩ (.newArena (.ok (by decide) : NewArenaStep 6 7 e12 (.ok e13)))
+example : AllOk C obR obW m12 [] ∧ Repr tk ptk prov L e14 (exec m12 []) :=
+  r6_noStep ⟨by decide, wf_m12⟩ (.reset (.ok (by decide) : ResetAtStep KC 0 2 e13 (.ok e14)))
+example : AllOk C obR obW m12 [] ∧ Repr tk ptk prov L e15 (exec m12 []) :=
+  r6_noStep ⟨by decide, wf_m12⟩ (.endUse (.ok (by decide) : EndUseStep KC 2 e14 (.ok e15)))
 example : ¬ e15.Usable 6 ∧ e15.freed 6 = false ∧ LiveAlloc m12 4 := by decide
 
 /-- R4 on the reached state after `exitFrame`: the authorities still active cover only the
 static leaf, in a live allocation. -/
 example : ∀ j < e16.A.length, e16.Active j → e16.afp j = [0] := by decide
 example : LiveAlloc m16 (L 0).alloc :=
-  (r4_no_dead_cover (tok := tk) kc_dd r16 (by decide) 0 _ rfl rfl 0 (List.mem_singleton_self _)).2.2
+  (r4_no_dead_cover (tok := tk) (ptok := ptk) (provOf := prov) kc_dd r16 ⟨by decide, wf_m16⟩ 0 _
+    rfl rfl 0
+    (List.mem_singleton_self _)).2.2
 
 /-- `exclusive_bytes`: after `split`, authority 5 has effective `Modify` on leaf 4; the root 3,
 active and covering 4, has no effective mode there; authority 6 keeps effective `Modify` on the
@@ -2074,17 +2188,17 @@ example : ¬ LayoutWF Lov e6 m3 := by decide
 /-- K1 (d): the storage 6, a shape of one leaf, may have size zero. -/
 def L0 : Layout := fun q => if q = 6 then ⟨4, 0, 0⟩ else L q
 def m12z : MM02.State := exec m8 [.alloc 0 (topPlacement m8 ⟨0, 0, 4⟩) 0 4 (some 7)]
-example : Repr tk L0 e12 m12z := by decide
+example : ReprB tk ptk prov L0 e12 m12z := by decide
 
 /-- Each clause of `Repr` rejects a wrong MM-02 state: a usable root with a dead allocation; a
 leaked root deallocated at `endUse`; two roots in one allocation (`LayoutWF` holds); a wrong frame
 token; an exited root or a freed root whose allocation is still live. -/
-example : ¬ Repr tk L e3 (m3.dealloc 1) := by decide
-example : ¬ Repr tk L e15 (m12.dealloc 4) := by decide
+example : ¬ ReprB tk ptk prov L e3 (m3.dealloc 1) := by decide
+example : ¬ ReprB tk ptk prov L e15 (m12.dealloc 4) := by decide
 def Lsh : Layout := fun q => if q = 2 then ⟨1, 4, 4⟩ else L q
-example : LayoutWF Lsh e1 m1 ∧ ¬ Repr tk Lsh e1 m1 := by decide
-example : ¬ Repr (fun f => 200 + f) L e1 m1 := by decide
-example : ¬ Repr tk L e16 m12 ∧ ¬ Repr tk L f13 m12 := by decide
+example : LayoutWF Lsh e1 m1 ∧ ¬ ReprB tk ptk prov Lsh e1 m1 := by decide
+example : ¬ ReprB (fun f => 200 + f) ptk prov L e1 m1 := by decide
+example : ¬ ReprB tk ptk prov L e16 m12 ∧ ¬ ReprB tk ptk prov L f13 m12 := by decide
 
 /-- Counterexample kept (report, (e), (f)): the draft accepts `alloc` of a shape with two roots,
 where O14 creates one root; with the one `AllocStep` of K4, a layout putting both roots in the
@@ -2094,7 +2208,7 @@ example : AllocStep KC 1 2 [(none, none, 0), (none, none, 0)] e11 (.ok e12b) :=
   .ok (by decide) (by decide)
 def L2 : Layout := fun q => if q = 7 then ⟨4, 4, 4⟩ else L q
 def m12b : MM02.State := exec m8 [.alloc 0 (topPlacement m8 (g 0)) 8 4 (some 7)]
-example : LayoutWF L2 e12b m12b ∧ ¬ Repr tk L2 e12b m12b := by decide
+example : LayoutWF L2 e12b m12b ∧ ¬ ReprB tk ptk prov L2 e12b m12b := by decide
 
 /-- Witness of question (e) 7 of the report: the storage 7, allocated with owner the storage 6,
 dies with the `free` of 6 (O13); `free` has one `DeallocStep`, of the allocation 4 of 6, and the
@@ -2107,9 +2221,9 @@ theorem ra14 : Reachable KC st af14 := .free ra13 (.ok (by decide) : FreeStep KC
 def La : Layout := fun q => if q = 7 then ⟨5, 0, 4⟩ else L q
 def na13 : MM02.State := exec m12 [.alloc 0 (topPlacement m12 (g 0)) 8 4 (some 7)]
 def na14 : MM02.State := exec na13 (deallocOps [rootAlloc La ao13.P 6] 7)
-example : Repr tk La ao13 na13 ∧ Repr tk La af14 na14 := by decide
+example : ReprB tk ptk prov La ao13 na13 ∧ ReprB tk ptk prov La af14 na14 := by decide
 example : ¬ af14.Usable 7 ∧ af14.freed 7 = false ∧ LiveAlloc na14 5 ∧ DeadAlloc na14 4 := by decide
-example : ¬ Repr tk La af14 (na14.dealloc 5) := by decide
+example : ¬ ReprB tk ptk prov La af14 (na14.dealloc 5) := by decide
 
 /-- Clauses K1 (a) and (c) reject a layout on their own among the clauses of `LayoutWF`: the field
 5 of 3 in a fresh allocation 4 (with the token of frame 1) other than the allocation 3 of the field
@@ -2140,7 +2254,7 @@ example : ∃ al, m3.allocs (L 1).alloc = some al ∧ al.InitRange (L 1).off (L 
     MM02.ReadStep obR (leafAcc m3 L .read 1) m3 (.ok (al.bytesAt (L 1).off (L 1).len)) ∧
     ¬ MM02.ReadStep obR (leafAcc m3 L .read 1) m3 .ub :=
   r1_read3 (tok := tk) (reachable_invariants kc_dd r3).1 (reachable_invariants kc_dd r3).2.1.nd
-    (reachable_fpLeaves_frameOwnedLive kc_dd r3).1 (by decide)
+    (reachable_fpLeaves_frameOwnedLive kc_dd r3).1 (ptok := ptk) (provOf := prov) ⟨by decide, wf_m3⟩
     (.ok (by decide) : Read3Step 1 [1] e3 (.ok e3)) (fun _ _ => trivial) (fun l hl => by
       rw [List.mem_singleton] at hl; subst hl; show (leafAcc m3 L .read 1).addr % 4 = 0; decide)
     1 (List.mem_singleton_self _)
@@ -2154,11 +2268,18 @@ example : af14.dead 7 = false ∧ ¬ af14.Usable 7 := by decide
 6 stays live, as the clause `leaked` asks; deallocating it too breaks `Repr` (report, (c) 4). -/
 def eX : S3 := exitEff e12
 theorem rX : Reachable KC st eX := .exit r12 (.ok (by decide) : ExitStep KC e12 (.ok eX))
-example : AllOk C obR obW m12 (exitOps L tk e12) ∧ Repr tk L eX (exec m12 (exitOps L tk e12)) :=
-  r6_exit_reachable kc_dd r12 (by decide) (fun _ => rfl) (.ok (by decide))
+example : AllOk C obR obW m12 (exitOps L tk e12) ∧
+    Repr tk ptk prov L eX (exec m12 (exitOps L tk e12)) :=
+  r6_exit_reachable kc_dd r12 ⟨by decide, wf_m12⟩ (fun _ => rfl) (.ok (by decide))
 example : ¬ eX.Usable 6 ∧ eX.dead 6 = false ∧ LiveAlloc (exec m12 (exitOps L tk e12)) 4 ∧
     DeadAlloc (exec m12 (exitOps L tk e12)) 2 := by decide
-example : ¬ Repr tk L eX ((exec m12 (exitOps L tk e12)).dealloc 4) := by decide
+example : ¬ ReprB tk ptk prov L eX ((exec m12 (exitOps L tk e12)).dealloc 4) := by decide
+
+/-- L4: the clause `provTokens` rejects a wrong provider token: the allocation 4 of the storage 6,
+allocated from the provider 1, has the token `ptk 1 = 7`, not `9 + 1`; before the `alloc`, the
+ghost already maps 6 to the provider 1 and nothing is required (6 does not exist yet). -/
+example : ¬ ReprB tk (fun pr => 9 + pr) prov L e12 m12 := by decide
+example : ReprB tk (fun pr => 9 + pr) prov L e11 m8 ∧ e11.P.length = 6 := by decide
 
 end Cases
 
@@ -2184,14 +2305,16 @@ example : ExitStep KO o1 (.ok o3') := .ok (by decide)
 def C : Nat → Nat → Prop := fun a d => a = d
 instance : DecidableRel C := fun a d => inferInstanceAs (Decidable (a = d))
 def tk : Nat → Nat := fun f => 100 + f
+def ptk : Nat → Nat := fun pr => 6 + pr
+def prov : Nat → Option Nat := fun _ => none
 def g : Nat → Geom := fun _ => ⟨0, 4, 4⟩
 def L : Layout := fun q => ⟨q, 0, 4⟩
 def n1 : MM02.State :=
   exec MM02.State.empty (allocOps topPlacement g (some (tk o0.nF)) MM02.State.empty (rootIdx lsO))
 def n2 : MM02.State := exec n1 (deallocOps [rootAlloc L o1.P 1] 101)
-example : Repr tk L o1 n1 ∧ Repr tk L o2 n2 := by decide
+example : ReprB tk ptk prov L o1 n1 ∧ ReprB tk ptk prov L o2 n2 := by decide
 example : (frameRoots o2 o2.top).map (rootAlloc L o2.P) = [0] := by decide
-example : Repr tk L o3 (exec n2 (exitOps L tk o2)) ∧ Repr tk L o3' (exec n1 (exitOps L tk o1)) := by
+example : ReprB tk ptk prov L o3 (exec n2 (exitOps L tk o2)) ∧ ReprB tk ptk prov L o3' (exec n1 (exitOps L tk o1)) := by
   decide
 example : LiveAlloc (exec n1 (exitOps L tk o1)) 1 := by decide
 example : MM02.DeallocStep C 1 101 (exec n2 (exitOps L tk o2)) .ub := .ub (by decide)
