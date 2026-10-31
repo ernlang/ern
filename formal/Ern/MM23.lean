@@ -1986,6 +1986,9 @@ example : AllOk C obR obW m0 ops1 ∧ Repr tk L e1 m1 :=
 example : AllOk C obR obW m1 ops2 ∧ Repr tk L e2 m2 :=
   r2_write3_reachable kc_dd r1 (by decide) (.ok (by decide) : Write3Step 1 [1] e1 (.ok e2))
     (fun _ _ _ => trivial) (by decide)
+example : AllOk C obR obW m2 ops3 ∧ Repr tk L e3 m3 :=
+  r2_write3_reachable kc_dd r2 (by decide) (.ok (by decide) : Write3Step 2 [2] e2 (.ok e3))
+    (fun _ _ _ => trivial) (by decide)
 example : AllOk C obR obW m3 ops7 ∧ Repr tk L e7 m7 :=
   r2_write3_reachable kc_dd r6 (by decide) (.ok (by decide) : Write3Step 5 [4] e6 (.ok e7))
     (fun _ _ _ => trivial) (by decide)
@@ -2108,10 +2111,10 @@ example : Repr tk La ao13 na13 ∧ Repr tk La af14 na14 := by decide
 example : ¬ af14.Usable 7 ∧ af14.freed 7 = false ∧ LiveAlloc na14 5 ∧ DeadAlloc na14 4 := by decide
 example : ¬ Repr tk La af14 (na14.dealloc 5) := by decide
 
-/-- Clauses K1 (a) and (c) reject a layout on their own: the field 5 of 3 in a fresh allocation 4
-other than the allocation 3 of the field 4 breaks (a) only; the range of leaf 1 past the size of
-its allocation breaks (c) only. -/
-def m3x : MM02.State := exec m3 [.alloc 0 (topPlacement m3 (g 0)) 8 4 none]
+/-- Clauses K1 (a) and (c) reject a layout on their own among the clauses of `LayoutWF`: the field
+5 of 3 in a fresh allocation 4 (with the token of frame 1) other than the allocation 3 of the field
+4 breaks (a) only; the range of leaf 1 past the size of its allocation breaks (c) only. -/
+def m3x : MM02.State := exec m3 [.alloc 0 (topPlacement m3 (g 0)) 8 4 (some (tk 1))]
 def Lsa : Layout := fun q => if q = 5 then ⟨4, 0, 4⟩ else L q
 example : ¬ (∀ r < e6.P.length, RootPlace e6.P r → ∀ l ∈ footprint e6.P r,
     ∀ l' ∈ footprint e6.P r, (Lsa l).alloc = (Lsa l').alloc) := by decide
@@ -2145,6 +2148,17 @@ example : ∃ al, m3.allocs (L 1).alloc = some al ∧ al.InitRange (L 1).off (L 
 /-- Gap kept (report, (f) 4): after `free` of 6, the storage 7 it owns stops being usable but is
 not marked dead, where O13 marks dead "le stockage qui cesse de vivre". -/
 example : af14.dead 7 = false ∧ ¬ af14.Usable 7 := by decide
+
+/-- Owned storage that dies with its frame (K4: no `DeallocStep` for it): `exitFrame` directly from
+`e12`, where the storage 6 is owned by the local 2; the allocations 1, 2, 3 die, the allocation 4 of
+6 stays live, as the clause `leaked` asks; deallocating it too breaks `Repr` (report, (c) 4). -/
+def eX : S3 := exitEff e12
+theorem rX : Reachable KC st eX := .exit r12 (.ok (by decide) : ExitStep KC e12 (.ok eX))
+example : AllOk C obR obW m12 (exitOps L tk e12) ∧ Repr tk L eX (exec m12 (exitOps L tk e12)) :=
+  r6_exit_reachable kc_dd r12 (by decide) (fun _ => rfl) (.ok (by decide))
+example : ¬ eX.Usable 6 ∧ eX.dead 6 = false ∧ LiveAlloc (exec m12 (exitOps L tk e12)) 4 ∧
+    DeadAlloc (exec m12 (exitOps L tk e12)) 2 := by decide
+example : ¬ Repr tk L eX ((exec m12 (exitOps L tk e12)).dealloc 4) := by decide
 
 end Cases
 
@@ -2183,5 +2197,76 @@ example : LiveAlloc (exec n1 (exitOps L tk o1)) 1 := by decide
 example : MM02.DeallocStep C 1 101 (exec n2 (exitOps L tk o2)) .ub := .ub (by decide)
 
 end CaseOwnedLocal
+
+namespace DraftGaps
+
+/-- Gap kept (report, (f) 5): the `WF3` of the draft accepts a usable root place without its
+active root authority (MM-03.3 §2.1, clause 7, `RootHeld`: "chaque emplacement racine utilisable
+possède son autorité racine `Modify` active"); the draft `RootHeld` only constrains the root
+authorities that exist. `RootLive` holds on the reached states (`reachable_rootLive`). -/
+def sNoRoot : S3 :=
+  { F := [0], nF := 1, P := [⟨none, .frame 0, 0⟩], I := fun _ => .uninit, A := [],
+    D := fun _ => [], dead := fun _ => false, freed := fun _ => false, pin := fun _ => false,
+    arenas := [], callParams := fun _ => [] }
+
+theorem wf_noRoot : WF3 sNoRoot := by
+  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+  · intro b y; simp [sNoRoot]
+  · intro a x; simp [sNoRoot]
+  · decide
+  · decide
+  · decide
+  · intro q pl f hq ho
+    match q, hq with
+    | 0, hq => simp [sNoRoot] at hq; subst hq; cases ho; decide
+  · intro q pl o hq ho
+    match q, hq with
+    | 0, hq => simp [sNoRoot] at hq; subst hq; cases ho
+  · intro q pl r hq hp
+    match q, hq with
+    | 0, hq => simp [sNoRoot] at hq; subst hq; cases hp
+  · intro a y hy; simp [sNoRoot] at hy
+  · intro a y l hy; simp [sNoRoot] at hy
+  · intro x z l r hz; simp [sNoRoot] at hz
+
+example : RootPlace sNoRoot.P 0 ∧ sNoRoot.Usable 0 ∧ sNoRoot.A = [] := by decide
+example : ¬ RootLive sNoRoot := fun h => by
+  obtain ⟨i, z, pr, hz, -⟩ := h 0 (by decide) (by decide)
+  simp [sNoRoot] at hz
+
+/-- Gap kept (report, (f) 6): the `WF3` of the draft accepts a cycle of owners (MM-03.3 §2.1,
+clause 3: "des chaînes de possession bien fondées"); it only asks owner places to exist. -/
+def sCyc : S3 :=
+  { F := [0], nF := 1, P := [⟨none, .place 1, 0⟩, ⟨none, .place 0, 0⟩], I := fun _ => .uninit,
+    A := [], D := fun _ => [], dead := fun _ => false, freed := fun _ => false,
+    pin := fun _ => false, arenas := [], callParams := fun _ => [] }
+
+theorem wf_cyc : WF3 sCyc := by
+  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩
+  · intro b y; simp [sCyc]
+  · intro a x; simp [sCyc]
+  · decide
+  · decide
+  · decide
+  · intro q pl f hq ho
+    match q, hq with
+    | 0, hq => simp [sCyc] at hq; subst hq; cases ho
+    | 1, hq => simp [sCyc] at hq; subst hq; cases ho
+  · intro q pl o hq ho
+    match q, hq with
+    | 0, hq => simp [sCyc] at hq; subst hq; cases ho; decide
+    | 1, hq => simp [sCyc] at hq; subst hq; cases ho; decide
+  · intro q pl r hq hp
+    match q, hq with
+    | 0, hq => simp [sCyc] at hq; subst hq; cases hp
+    | 1, hq => simp [sCyc] at hq; subst hq; cases hp
+  · intro a y hy; simp [sCyc] at hy
+  · intro a y l hy; simp [sCyc] at hy
+  · intro x z l r hz; simp [sCyc] at hz
+
+example : sCyc.P[0]? = some ⟨none, .place 1, 0⟩ ∧ sCyc.P[1]? = some ⟨none, .place 0, 0⟩ := by
+  decide
+
+end DraftGaps
 
 end Ern.MM23
