@@ -2203,7 +2203,8 @@ namespace DraftGaps
 /-- Gap kept (report, (f) 5): the `WF3` of the draft accepts a usable root place without its
 active root authority (MM-03.3 §2.1, clause 7, `RootHeld`: "chaque emplacement racine utilisable
 possède son autorité racine `Modify` active"); the draft `RootHeld` only constrains the root
-authorities that exist. `RootLive` holds on the reached states (`reachable_rootLive`). -/
+authorities that exist. `RootLive` holds on the reached states under `DDSound k`
+(`reachable_rootLive`). -/
 def sNoRoot : S3 :=
   { F := [0], nF := 1, P := [⟨none, .frame 0, 0⟩], I := fun _ => .uninit, A := [],
     D := fun _ => [], dead := fun _ => false, freed := fun _ => false, pin := fun _ => false,
