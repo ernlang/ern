@@ -1292,6 +1292,476 @@ theorem r2_writeShared_reachable {k : K} {statics : Statics} {C : Nat → Nat �
   r2_writeShared (reachable_invariants hdd hr).1 (reachable_invariants hdd hr).2.1.nd
     (reachable_fpLeaves_frameOwnedLive hdd hr).1 hR h hstat hdec
 
+/-! ## Allocation of a root place (K2) -/
+
+/-- Every place has a leaf (MM-03.3.2), under `WF3`: a part comes after its parent. -/
+theorem exists_leaf {s : S3} (hwf : WF3 s) : ∀ m q, s.P.length ≤ q + m → q < s.P.length →
+    ∃ l, l ∈ footprint s.P q
+  | 0, q, hm, hq => absurd hq (by omega)
+  | m + 1, q, hm, hq => by
+    by_cases h : ∃ r, r < s.P.length ∧ parentOf s.P r = some q
+    · obtain ⟨r, hr, hp⟩ := h
+      have hlt := (hwf.parent_lt hp).1
+      obtain ⟨l, hl⟩ := exists_leaf hwf m r (by omega) hr
+      exact ⟨l, footprint_sub hwf ⟨hr, .inr (by rw [chain_cons hp hlt]; exact List.mem_cons_self ..)⟩
+        hl⟩
+    · exact ⟨q, mem_footprint.2 ⟨hq, fun r hr e => h ⟨r, hr, e⟩, hq, .inl rfl⟩⟩
+
+/-- K2: the allocation of the root place `r`, read on the first leaf of its footprint. -/
+def rootAlloc (L : Layout) (P : List Place) (r : Nat) : Nat := (L ((footprint P r).headD r)).alloc
+
+theorem headD_mem_footprint {s : S3} (hwf : WF3 s) {r : Nat} (hr : r < s.P.length) :
+    (footprint s.P r).headD r ∈ footprint s.P r := by
+  obtain ⟨l, hl⟩ := exists_leaf hwf s.P.length r (by omega) hr
+  cases h : footprint s.P r with
+  | nil => rw [h] at hl; cases hl
+  | cons x xs => exact List.mem_cons_self ..
+
+/-- K1 (a), K2: every leaf of a root place is in the allocation of the root. -/
+theorem rootAlloc_eq {L : Layout} {s3 : S3} {s2 : MM02.State} (hwf : WF3 s3)
+    (hlw : LayoutWF L s3 s2) {r : Nat} (hr : RootPlace s3.P r) {l : Nat}
+    (hl : l ∈ footprint s3.P r) : (L l).alloc = rootAlloc L s3.P r :=
+  hlw.sameAlloc r hr.1 hr l hl _ (headD_mem_footprint hwf hr.1)
+
+/-! ## Deallocations (K4: `free`, `exitFrame`) -/
+
+theorem exec_wf : ∀ (ops : List Op2) (s : MM02.State), MM02.WF s → MM02.WF (exec s ops)
+  | [], _, h => h
+  | o :: os, _, h => exec_wf os _ (by
+      cases o
+      · exact h
+      · exact MM02.write_wf h _ _
+      · exact MM02.dealloc_wf h _
+      · exact MM02.alloc_wf h _ _ _ _ _)
+
+/-- K4 (`free`, `exitFrame`): one deallocation of each allocation of `ids`, with the
+deallocation authority `au` (MM-02.D). -/
+def deallocOps (ids : List Nat) (au : Nat) : List Op2 := ids.map fun i => .dealloc i au
+
+theorem dealloc_allocs (s : MM02.State) (id i : Nat) :
+    (s.dealloc id).allocs i =
+      if i = id then (s.allocs i).map (fun a => { a with live := false }) else s.allocs i := rfl
+
+theorem exec_deallocOps (au : Nat) : ∀ (ids : List Nat) (s : MM02.State) (j : Nat),
+    (exec s (deallocOps ids au)).allocs j =
+      if j ∈ ids then (s.allocs j).map (fun a => { a with live := false }) else s.allocs j
+  | [], s, j => by simp [deallocOps, exec]
+  | i :: is, s, j => by
+    show (exec (s.dealloc i) (deallocOps is au)).allocs j = _
+    rw [exec_deallocOps au is, dealloc_allocs]
+    by_cases h2 : j = i
+    · subst h2
+      have hm : j ∈ j :: is := List.mem_cons_self ..
+      by_cases h1 : j ∈ is
+      · simp only [h1, hm, ↓reduceIte]; cases s.allocs j <;> rfl
+      · simp only [h1, hm, ↓reduceIte]
+    · have hm : j ∈ i :: is ↔ j ∈ is := by simp [h2]
+      by_cases h1 : j ∈ is
+      · simp only [hm, h1, h2, ↓reduceIte]
+      · simp only [hm, h1, h2, ↓reduceIte]
+
+/-- K4: the deallocations of distinct live allocations whose token is compatible with `au` have
+the outcome `ok` (MM-02.D). -/
+theorem deallocOps_ok {C : Nat → Nat → Prop} {ObR : MM02.ReadOblSpec} {ObW : MM02.WriteOblSpec}
+    {au : Nat} : ∀ (ids : List Nat) (s : MM02.State), ids.Pairwise (· ≠ ·) →
+      (∀ i ∈ ids, AllocP s i fun a => a.live = true ∧ ∃ d, a.freeAuth = some d ∧ C au d) →
+      AllOk C ObR ObW s (deallocOps ids au)
+  | [], _, _, _ => trivial
+  | i :: is, s, hp, h => by
+    obtain ⟨hne, hp⟩ := List.pairwise_cons.1 hp
+    obtain ⟨a, ha, hl, d, hd, hc⟩ := h i (List.mem_cons_self ..)
+    refine ⟨.ok ⟨a, ha, hl, d, hd, hc⟩, deallocOps_ok is _ hp fun j hj => ?_⟩
+    have hji : j ≠ i := fun e => hne j hj e.symm
+    exact (h j (List.mem_cons_of_mem _ hj)).of_eq (by
+      show (s.dealloc i).allocs j = s.allocs j
+      rw [dealloc_allocs]; simp only [hji, ↓reduceIte])
+
+/-- K3: `Repr` carries over when the places, the stack and the `freed` marks do not change, no
+place becomes usable and no leaf becomes `Init` (`endUse` and the steps without MM-02 step). -/
+theorem Repr.shrink {tok : Nat → Nat} {L : Layout} {s3 s3' : S3} {s2 : MM02.State}
+    (hR : Repr tok L s3 s2) (hP : s3'.P = s3.P) (hF : s3'.F = s3.F) (hfr : s3'.freed = s3.freed)
+    (hU : ∀ q, s3'.Usable q → s3.Usable q) (hI : ∀ l, s3'.I l = .init → s3.I l = .init) :
+    Repr tok L s3' s2 := by
+  refine ⟨⟨?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> simp only [hP, hF, hfr]
+  · exact hR.lwf.sameAlloc
+  · exact hR.lwf.disjoint
+  · exact hR.lwf.within
+  · exact hR.inj
+  · exact hR.tokens
+  · exact fun r hr hrt hu => hR.live r hr hrt (hU r hu)
+  · exact fun l hl hlf hi => hR.init l hl hlf (hI l hi)
+  · exact hR.freed
+  · exact hR.exited
+  · intro r hr hrt hu hf ho
+    by_cases hu' : s3.Usable r
+    · exact hR.live r hr hrt hu'
+    · exact hR.leaked r hr hrt hu' hf ho
+
+/-- K3, K4: `Repr` carries over to the deallocation of the allocations `ids` when the places do
+not change, no leaf becomes `Init`, a root usable after was usable before and keeps its
+allocation, a root freed or exited after was so before or has its allocation deallocated, and a
+leaked root after was usable or not freed before and keeps its allocation. -/
+theorem repr_deallocs {tok : Nat → Nat} {L : Layout} {s3 s3' : S3} {s2 : MM02.State}
+    (hR : Repr tok L s3 s2) (ids : List Nat) (au : Nat) (hP : s3'.P = s3.P)
+    (hI : ∀ l, s3'.I l = .init → s3.I l = .init)
+    (hlive : ∀ r < s3.P.length, RootPlace s3.P r → s3'.Usable r →
+      s3.Usable r ∧ ∀ l ∈ footprint s3.P r, (L l).alloc ∉ ids)
+    (hfreed : ∀ r < s3.P.length, RootPlace s3.P r → s3'.freed r = true →
+      s3.freed r = true ∨ ∀ l ∈ footprint s3.P r, (L l).alloc ∈ ids)
+    (hexit : ∀ r < s3.P.length, RootPlace s3.P r →
+      OptP (s3.P[r]?) (fun pl => FrameGone s3'.F pl.owner) False →
+      OptP (s3.P[r]?) (fun pl => FrameGone s3.F pl.owner) False ∨
+        ∀ l ∈ footprint s3.P r, (L l).alloc ∈ ids)
+    (hleak : ∀ r < s3.P.length, RootPlace s3.P r → ¬ s3'.Usable r → s3'.freed r = false →
+      OptP (s3.P[r]?) (fun pl => pl.owner.isPlace = true) False →
+      (s3.Usable r ∨ s3.freed r = false) ∧ ∀ l ∈ footprint s3.P r, (L l).alloc ∉ ids) :
+    Repr tok L s3' (exec s2 (deallocOps ids au)) := by
+  have hall := exec_deallocOps au ids s2
+  have hkeep : ∀ j (p : MM02.Alloc → Prop), AllocP s2 j p → j ∉ ids →
+      AllocP (exec s2 (deallocOps ids au)) j p := fun j p h hj =>
+    h.of_eq (by rw [hall]; simp only [hj, ↓reduceIte])
+  have hmeta : ∀ j (p : MM02.Alloc → Prop), AllocP s2 j p →
+      (∀ a : MM02.Alloc, p a → p { a with live := false }) →
+      AllocP (exec s2 (deallocOps ids au)) j p := fun j p h hp => by
+    obtain ⟨a, ha, hpa⟩ := h
+    by_cases hj : j ∈ ids
+    · exact ⟨_, by rw [hall]; simp only [hj, ↓reduceIte, ha, Option.map_some], hp a hpa⟩
+    · exact ⟨a, by rw [hall]; simp only [hj, ↓reduceIte, ha], hpa⟩
+  have hdead : ∀ j (p : MM02.Alloc → Prop), AllocP s2 j p → j ∈ ids →
+      DeadAlloc (exec s2 (deallocOps ids au)) j := fun j p h hj => by
+    obtain ⟨a, ha, -⟩ := h
+    exact ⟨{ a with live := false }, by rw [hall]; simp only [hj, ↓reduceIte, ha, Option.map_some],
+      rfl⟩
+  refine ⟨⟨?_, ?_, ?_⟩, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> simp only [hP]
+  · exact hR.lwf.sameAlloc
+  · exact hR.lwf.disjoint
+  · exact fun l hl hlf => hmeta _ _ (hR.lwf.within l hl hlf) fun _ h => h
+  · exact hR.inj
+  · exact fun r hr hrt => OptP.imp (hR.tokens r hr hrt) (fun _ h => OptP.imp h
+      (fun _ h l hl => hmeta _ _ (h l hl) fun _ h => h) id) id
+  · intro r hr hrt hu l hl
+    obtain ⟨hu', hn⟩ := hlive r hr hrt hu
+    exact hkeep _ _ (hR.live r hr hrt hu' l hl) (hn l hl)
+  · exact fun l hl hlf hi => hmeta _ _ (hR.init l hl hlf (hI l hi)) fun _ h => h
+  · intro r hr hrt hf l hl
+    rcases hfreed r hr hrt hf with h | h
+    · exact hmeta _ _ (hR.freed r hr hrt h l hl) fun _ _ => rfl
+    · exact hdead _ _ (hR.lwf.within l (mem_footprint.1 hl).1 (mem_footprint.1 hl).2.1) (h l hl)
+  · intro r hr hrt hg l hl
+    rcases hexit r hr hrt hg with h | h
+    · exact hmeta _ _ (hR.exited r hr hrt h l hl) fun _ _ => rfl
+    · exact hdead _ _ (hR.lwf.within l (mem_footprint.1 hl).1 (mem_footprint.1 hl).2.1) (h l hl)
+  · intro r hr hrt hu hf ho l hl
+    obtain ⟨h, hn⟩ := hleak r hr hrt hu hf ho
+    have hl' : LiveAlloc s2 (L l).alloc := by
+      by_cases hu' : s3.Usable r
+      · exact hR.live r hr hrt hu' l hl
+      · exact hR.leaked r hr hrt hu' (h.resolve_left hu') ho l hl
+    exact hkeep _ _ hl' (hn l hl)
+
+/-! ## R6 (MM-03.3 §9.2; K4) -/
+
+/-- MM-03.3.8 (`Deallocable`, `FreeCompat`) and K4 ("`free` ↦ `DeallocStep`, autorité
+`Compatible` issue de `FreeCompat`"): obligation of the contracts towards MM-02 in the state `s2`:
+when the contracts permit `free p auth`, every leaf of `p` is in an allocation with a token
+compatible with `auth` (MM-02.D). -/
+def FreeSound (k : K) (C : Nat → Nat → Prop) (L : Layout) (s3 : S3) (s2 : MM02.State) : Prop :=
+  ∀ p auth, k.Deallocable p → k.FreeCompat p auth → ∀ l ∈ footprint s3.P p,
+    AllocP s2 (L l).alloc fun a => ∃ d, a.freeAuth = some d ∧ C auth d
+
+/-- K2: the token proper to each frame is compatible with itself (MM-02.D): the authority that
+`exitFrame` presents for an automatic allocation of the frame `f` is `tok f`, compatible by
+construction. -/
+def TokCompat (C : Nat → Nat → Prop) (tok : Nat → Nat) : Prop := ∀ f, C (tok f) (tok f)
+
+theorem exec_readOps (s2 s2' : MM02.State) (L : Layout) :
+    ∀ ls : List Nat, exec s2 (readOps s2' L ls) = s2
+  | [] => rfl
+  | _ :: ls => exec_readOps s2 s2' L ls
+
+/-- R6 for `read3` (MM-03.3 §9.2; K4): the reads of MM-02 have the outcome `ok` and the arrival
+states are in `Repr`; hypotheses of `r1_read3`. -/
+theorem r6_read3 {C : Nat → Nat → Prop} {ObR : MM02.ReadOblSpec} {ObW : MM02.WriteOblSpec}
+    {tok : Nat → Nat} {L : Layout} {s3 s3' : S3} {s2 : MM02.State} {a : Nat} {ls : List Nat}
+    (hwf : WF3 s3) (hnd : NoDangling s3) (hfl : FpLeaves s3) (hR : Repr tok L s3 s2)
+    (h : Read3Step a ls s3 (.ok s3')) (hstat : ∀ s ac, ObR.stat s ac)
+    (hdec : ∀ l ∈ ls, ObR.dec s2 (leafAcc s2 L .read l)) :
+    AllOk C ObR ObW s2 (readOps s2 L ls) ∧ Repr tok L s3' (exec s2 (readOps s2 L ls)) := by
+  have h1 := r1_read3 hwf hnd hfl hR h hstat hdec
+  obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
+  refine ⟨?_, by rw [exec_readOps]; exact hR⟩
+  have : ∀ ls', (∀ l ∈ ls', l ∈ ls) → AllOk C ObR ObW s2 (readOps s2 L ls') := fun ls' => by
+    induction ls' with
+    | nil => exact fun _ => trivial
+    | cons l ls' ih =>
+      intro hs
+      obtain ⟨al, -, -, hok, -⟩ := h1 l (hs l (List.mem_cons_self ..))
+      exact ⟨⟨_, hok⟩, ih fun l' hl' => hs l' (List.mem_cons_of_mem _ hl')⟩
+  exact this ls fun _ h => h
+
+/-- R6 for `alloc` of outcome `ok` (MM-03.3 §9.2, O14; K4: `alloc` `ok` ↦ `AllocStep`): for a
+shape with one root (O14: "une nouvelle racine"), the allocation of MM-02, at the base chosen by
+the placement, has the outcome `ok`, and the arrival states are in `Repr`, for every geometry of
+valid alignment, every token `fa` and every layout of the new leaves in the fresh allocation
+(`NewLayout`). -/
+theorem r6_alloc {C : Nat → Nat → Prop} {ObR : MM02.ReadOblSpec} {ObW : MM02.WriteOblSpec}
+    {k : K} {tok : Nat → Nat} {L : Layout} {s3 s3' : S3} {s2 : MM02.State} {pr ow : Nat}
+    {ls : List (Option Nat × Option Nat × Nat)} {pl : Placement} {g : Nat → Geom}
+    {fa : Option Nat} {i : Nat} (hwf : WF3 s3) (hR : Repr tok L s3 s2) (hwf2 : MM02.WF s2)
+    (hpl : PlacementOK pl) (hg : 0 < (g i).align ∧ MM02.Pow2 (g i).align)
+    (h : MM03.AllocStep k pr ow ls s3 (.ok s3')) (hone : rootIdx ls = [i])
+    (hNL : NewLayout L s3'.P s3.P.length s2.next g [i]) :
+    AllOk C ObR ObW s2 [.alloc (g i).space (pl s2 (g i)) (g i).size (g i).align fa] ∧
+      Repr tok L s3' (exec s2 [.alloc (g i).space (pl s2 (g i)) (g i).size (g i).align fa]) := by
+  cases h with
+  | ok hst _ =>
+    have e : allocOps pl g fa s2 [i] = [.alloc (g i).space (pl s2 (g i)) (g i).size (g i).align fa] :=
+      rfl
+    rw [← e, ← hone]
+    refine ⟨allocOps_ok hpl _ _ hwf2 (by rw [hone]; intro j hj; rw [List.mem_singleton.1 hj]; exact hg),
+      repr_extend (hd := .place ow) hR hwf2 rfl hst.2.2.2.2.2.1
+        (fun q hq hu => alloc_usable_back hwf hu hq) (fun _ _ hu => alloc_usable_old hu)
+        (fun i hi => alloc_usable_new hst (i + 1) i (Nat.lt_succ_self i) hi) (fun _ => rfl)
+        (fun l hl => ?_) (fun _ _ _ _ h => h) (fun _ h => by cases h) (by rw [hone]; exact hNL)⟩
+    simp only [allocEff] at hl
+    split at hl
+    · cases hl
+    · rename_i hn
+      refine ⟨by omega, ?_⟩
+      split at hl
+      · exact hst.2.2.2.2.1 l ‹_›
+      · exact hl
+
+/-- R6 for `alloc` of outcome `fail` (MM-03.3 §9.2, O14; K4: `alloc` `fail` ↦ no step): the state
+is unchanged and stays in `Repr`. -/
+theorem r6_alloc_fail {C : Nat → Nat → Prop} {ObR : MM02.ReadOblSpec} {ObW : MM02.WriteOblSpec}
+    {k : K} {tok : Nat → Nat} {L : Layout} {s3 s3' : S3} {s2 : MM02.State} {pr ow : Nat}
+    {ls : List (Option Nat × Option Nat × Nat)} (hR : Repr tok L s3 s2)
+    (h : MM03.AllocStep k pr ow ls s3 (.fail s3')) :
+    AllOk C ObR ObW s2 [] ∧ Repr tok L s3' (exec s2 []) := by
+  obtain ⟨rfl, -⟩ := alloc_fail_unchanged h; exact ⟨trivial, hR⟩
+
+/-- R6 for `free` (MM-03.3 §9.2, O13; K4: `free` ↦ `DeallocStep` of the allocation of the root,
+authority `auth`, compatible by `FreeCompat`): under `WF3` and the obligation `FreeSound` of the
+contracts, the deallocation has the outcome `ok` and the arrival states are in `Repr`. -/
+theorem r6_free {C : Nat → Nat → Prop} {ObR : MM02.ReadOblSpec} {ObW : MM02.WriteOblSpec}
+    {k : K} {tok : Nat → Nat} {L : Layout} {s3 s3' : S3} {s2 : MM02.State} {p auth : Nat}
+    (hwf : WF3 s3) (hR : Repr tok L s3 s2) (hfs : FreeSound k C L s3 s2)
+    (h : FreeStep k p auth s3 (.ok s3')) :
+    AllOk C ObR ObW s2 (deallocOps [rootAlloc L s3.P p] auth) ∧
+      Repr tok L s3' (exec s2 (deallocOps [rootAlloc L s3.P p] auth)) := by
+  obtain ⟨⟨hdl, hfc, hu, hor, -⟩, rfl⟩ := Guarded.ok_iff.1 h
+  have hpr : RootPlace s3.P p := by
+    refine ⟨hu.lt, ?_⟩
+    unfold OwnedRoot at hor; unfold parentOf
+    cases hpl : s3.P[p]? with
+    | none => rw [hpl] at hor; exact hor.elim
+    | some pl => rw [hpl] at hor; exact hor.1
+  have hl0 := headD_mem_footprint hwf hpr.1
+  have hnu : ¬ (freeEff s3 p).Usable p := fun h' => by
+    have := h'.dead_false
+    simp [freeEff, cleanup, freeS, partOf, hpr.1] at this
+  have hne : ∀ r, (freeEff s3 p).Usable r → r ≠ p := fun r h' e => hnu (e ▸ h')
+  have hUb : ∀ r, (freeEff s3 p).Usable r → s3.Usable r := fun r h' =>
+    S3.Usable.mono (s := s3) (s' := freeEff s3 p) rfl (fun _ h => h) (fun q hq => by
+      simp only [freeEff, cleanup, freeS, Bool.or_eq_false_iff] at hq; exact hq.1) h'
+  have hdiff : ∀ r, RootPlace s3.P r → r ≠ p → ∀ l ∈ footprint s3.P r,
+      (L l).alloc ∉ [rootAlloc L s3.P p] := fun r hr hrp l hl hm => by
+    rw [List.mem_singleton] at hm
+    exact hR.inj r hr.1 p hpr.1 hr hpr hrp l hl _ hl0 hm
+  refine ⟨deallocOps_ok _ _ (List.pairwise_singleton _ _) fun i hi => ?_, ?_⟩
+  · rw [List.mem_singleton.1 hi]
+    exact (hR.live p hpr.1 hpr hu _ hl0).and (hfs p auth hdl hfc _ hl0)
+  · refine repr_deallocs hR _ _ rfl (fun _ h => h) (fun r _ hrt hu' => ⟨hUb r hu',
+      hdiff r hrt (hne r hu')⟩) (fun r _ hrt hf => ?_) (fun _ _ _ h => .inl h)
+      (fun r _ hrt _ hf _ => ?_)
+    · simp only [freeEff, cleanup, freeS, Bool.or_eq_true, decide_eq_true_eq] at hf
+      rcases hf with hf | rfl
+      · exact .inl hf
+      · exact .inr fun l hl => List.mem_singleton.2 (rootAlloc_eq hwf hR.lwf hpr hl)
+    · simp only [freeEff, cleanup, freeS, Bool.or_eq_false_iff, decide_eq_false_iff_not] at hf
+      exact ⟨.inr hf.1, hdiff r hrt hf.2⟩
+
+/-- R6 for `enterFrame` (MM-03.3 §9.2, O6; K4: `enterFrame` ↦ one `AllocStep` per root local):
+under `WF3`, the allocations of the root locals, with the token of the new frame (K2), at the bases
+chosen by the placement, have the outcome `ok`, and the arrival states are in `Repr`, for every
+geometry of valid alignment and every layout of the new leaves (`NewLayout`). -/
+theorem r6_enter {C : Nat → Nat → Prop} {ObR : MM02.ReadOblSpec} {ObW : MM02.WriteOblSpec}
+    {tok : Nat → Nat} {L : Layout} {s3 s3' : S3} {s2 : MM02.State} {ps : List Nat}
+    {ls : List (Option Nat × Option Nat × Nat)} {pl : Placement} {g : Nat → Geom}
+    (hwf : WF3 s3) (hR : Repr tok L s3 s2) (hwf2 : MM02.WF s2) (hpl : PlacementOK pl)
+    (hg : ∀ i ∈ rootIdx ls, 0 < (g i).align ∧ MM02.Pow2 (g i).align)
+    (h : EnterStep ps ls s3 (.ok s3')) (hNL : NewLayout L s3'.P s3.P.length s2.next g (rootIdx ls)) :
+    AllOk C ObR ObW s2 (allocOps pl g (some (tok s3.nF)) s2 (rootIdx ls)) ∧
+      Repr tok L s3' (exec s2 (allocOps pl g (some (tok s3.nF)) s2 (rootIdx ls))) := by
+  obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
+  refine ⟨allocOps_ok hpl _ _ hwf2 hg, repr_extend (hd := .frame s3.nF) hR hwf2 rfl
+    (enterPre_shapeOK hpre.1) (fun q hq hu => enter_usable_back hwf hu hq)
+    (fun _ _ hu => enter_usable_old hu)
+    (fun i hi => enter_usable_new hpre.1 (i + 1) i (Nat.lt_succ_self i) hi) (fun _ => rfl)
+    (fun l hl => ?_) (fun q _ pl _ hg => ?_) (fun f e => by cases e; rfl) hNL⟩
+  · simp only [enterEff] at hl
+    split at hl
+    · cases hl
+    · exact ⟨by omega, hl⟩
+  · cases ho : pl.owner with
+    | place _ => rw [ho] at hg; exact hg
+    | frame f => rw [ho] at hg; exact fun h => hg (List.mem_cons_of_mem _ h)
+
+/-- K4 (`exitFrame`): the root places owned by the frame `f`, the roots of its automatic
+allocations. -/
+def frameRoots (s3 : S3) (f : Nat) : List Nat :=
+  (List.range s3.P.length).filter fun r =>
+    decide (RootPlace s3.P r) && decide (OptP (s3.P[r]?) (fun pl => pl.owner = .frame f) False)
+
+theorem mem_frameRoots {s3 : S3} {f r : Nat} :
+    r ∈ frameRoots s3 f ↔ RootPlace s3.P r ∧ OptP (s3.P[r]?) (fun pl => pl.owner = .frame f) False := by
+  simp only [frameRoots, List.mem_filter, List.mem_range, Bool.and_eq_true, decide_eq_true_eq]
+  exact ⟨fun h => h.2, fun h => ⟨h.1.1, h.1, h.2⟩⟩
+
+/-- K4 (`exitFrame` ↦ one `DeallocStep` per automatic allocation of the frame, none for the owned
+storage that dies with it): the deallocations of the allocations of the root places owned by the
+current frame, with its token (K2). -/
+def exitOps (L : Layout) (tok : Nat → Nat) (s3 : S3) : List Op2 :=
+  deallocOps ((frameRoots s3 s3.top).map (rootAlloc L s3.P)) (tok s3.top)
+
+/-- R6 for `exitFrame` (MM-03.3 §9.2, O7; K4): under `WF3`, `FrameOwnedLive` and the compatibility
+of the frame tokens (K2), the deallocations of the automatic allocations of the exited frame have
+the outcome `ok`, and the arrival states are in `Repr`: owned storage that dies with the frame
+keeps its allocation live (leak). -/
+theorem r6_exit {C : Nat → Nat → Prop} {ObR : MM02.ReadOblSpec} {ObW : MM02.WriteOblSpec}
+    {k : K} {tok : Nat → Nat} {L : Layout} {s3 s3' : S3} {s2 : MM02.State} (hwf : WF3 s3)
+    (hfo : FrameOwnedLive s3) (hR : Repr tok L s3 s2) (htc : TokCompat C tok)
+    (h : ExitStep k s3 (.ok s3')) :
+    AllOk C ObR ObW s2 (exitOps L tok s3) ∧ Repr tok L s3' (exec s2 (exitOps L tok s3)) := by
+  obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
+  obtain ⟨f, F₀, hF⟩ : ∃ f F₀, s3.F = f :: F₀ := by
+    unfold ExitPre at hpre; split at hpre
+    · exact ⟨_, _, ‹_›⟩
+    · exact hpre.elim
+  have htop : s3.top = f := by simp [S3.top, hF]
+  have hfF₀ : f ∉ F₀ := by have := hwf.nodup; rw [hF] at this; exact (List.nodup_cons.1 this).1
+  have e := exitEff_eq hF
+  have hhead : ∀ r ∈ frameRoots s3 f, (footprint s3.P r).headD r ∈ footprint s3.P r := fun r hr =>
+    headD_mem_footprint hwf (mem_frameRoots.1 hr).1.1
+  -- the allocations of two distinct roots differ
+  have hinj : ∀ r r', RootPlace s3.P r → RootPlace s3.P r' → r ≠ r' → ∀ l ∈ footprint s3.P r,
+      (L l).alloc ≠ rootAlloc L s3.P r' := fun r r' hr hr' hne l hl =>
+    hR.inj r hr.1 r' hr'.1 hr hr' hne l hl _ (headD_mem_footprint hwf hr'.1)
+  -- a root owned by the frame `f` is not another root
+  have hnotin : ∀ r, RootPlace s3.P r → r ∉ frameRoots s3 f → ∀ l ∈ footprint s3.P r,
+      (L l).alloc ∉ (frameRoots s3 f).map (rootAlloc L s3.P) := fun r hr hn l hl hm => by
+    obtain ⟨r', hr', he⟩ := List.mem_map.1 hm
+    exact hinj r r' hr (mem_frameRoots.1 hr').1 (fun e => hn (e ▸ hr')) l hl he.symm
+  have howner : ∀ r, r ∈ frameRoots s3 f → ∃ pl, s3.P[r]? = some pl ∧ pl.owner = .frame f :=
+    fun r hr => by
+      have := (mem_frameRoots.1 hr).2
+      unfold OptP at this; split at this
+      · exact ⟨_, ‹_›, this⟩
+      · exact this.elim
+  unfold exitOps; rw [htop]
+  refine ⟨deallocOps_ok _ _ ?_ fun i hi => ?_, ?_⟩
+  · refine List.pairwise_map.2 (((pairwise_lt_range _).filter _).imp_of_mem
+      fun ha hb hlt => ?_)
+    exact hinj _ _ (mem_frameRoots.1 ha).1 (mem_frameRoots.1 hb).1 (Nat.ne_of_lt hlt) _ (hhead _ ha)
+  · obtain ⟨r, hr, rfl⟩ := List.mem_map.1 hi
+    obtain ⟨pl, hpl, ho⟩ := howner r hr
+    have hrt := (mem_frameRoots.1 hr).1
+    have hu : s3.Usable r := .frame hpl (hfo r pl f hpl ho) ho (by rw [hF]; exact List.mem_cons_self ..)
+    have ht := hR.tokens r hrt.1 hrt
+    rw [hpl] at ht; simp only [OptP] at ht; rw [ho] at ht
+    exact ((hR.live r hrt.1 hrt hu _ (hhead r hr)).and (ht _ (hhead r hr))).mono
+      fun a ⟨h1, h2⟩ => ⟨h1, _, h2, htc f⟩
+  · refine repr_deallocs hR _ _ (by rw [e]) (fun _ h => by rw [e] at h; exact h)
+      (fun r _ hrt hu => ?_) (fun r _ _ hf => .inl (by rw [e] at hf; exact hf))
+      (fun r _ hrt hg => ?_) (fun r _ hrt hu hf ho => ?_)
+    · have hu' : ({ s3 with F := F₀ } : S3).Usable r :=
+        (S3.Usable.congr (s := ({ s3 with F := F₀ } : S3)) (by rw [e]) (by rw [e]) (by rw [e])).1 hu
+      refine ⟨S3.Usable.mono (s := s3) (s' := { s3 with F := F₀ }) rfl
+        (fun g hg => by rw [hF]; exact List.mem_cons_of_mem _ hg) (fun _ h => h) hu',
+        hnotin r hrt fun hm => ?_⟩
+      obtain ⟨pl, hpl, ho⟩ := howner r hm
+      cases hu' with
+      | frame hpl' _ ho' hf' => rw [hpl] at hpl'; cases hpl'; rw [ho] at ho'; cases ho'; exact hfF₀ hf'
+      | place hpl' _ ho' _ => rw [hpl] at hpl'; cases hpl'; rw [ho] at ho'; cases ho'
+    · rw [e] at hg
+      cases hpl : s3.P[r]? with
+      | none => rw [hpl] at hg; exact hg.elim
+      | some pl =>
+        rw [hpl] at hg; simp only [OptP] at hg ⊢
+        cases ho : pl.owner with
+        | place _ => rw [ho] at hg; exact hg.elim
+        | frame g =>
+          rw [ho] at hg; simp only [FrameGone] at hg ⊢
+          by_cases hgf : g = f
+          · subst hgf
+            refine .inr fun l hl => List.mem_map.2 ⟨r, mem_frameRoots.2 ⟨hrt, ?_⟩,
+              (rootAlloc_eq hwf hR.lwf hrt hl).symm⟩
+            rw [hpl]; exact ho
+          · exact .inl fun hm => by rw [hF] at hm; exact (List.mem_cons.1 hm).elim hgf hg
+    · refine ⟨.inr (by rw [e] at hf; exact hf), hnotin r hrt fun hm => ?_⟩
+      obtain ⟨pl, hpl, ho'⟩ := howner r hm
+      rw [hpl] at ho; simp only [OptP] at ho; rw [ho'] at ho; cases ho
+
+/-- K4: the `ok` steps of MM-03 to which no MM-02 step corresponds: `derive`, `split`, `release`,
+`depend`, `endUse`, `pin`, `unpin`, `newArena`, `reset`. -/
+inductive NoStep (k : K) : S3 → S3 → Prop where
+  | derive {s s' : S3} {src q : Nat} {m : Mode} : DeriveStep src q m s (.ok s') → NoStep k s s'
+  | split {s s' : S3} {src : Nat} {rs : List (List Nat)} :
+      SplitStep k src rs s (.ok s') → NoStep k s s'
+  | release {s s' : S3} {a : Nat} : ReleaseStep a s (.ok s') → NoStep k s s'
+  | depend {s s' : S3} {q x : Nat} : DependStep q x s (.ok s') → NoStep k s s'
+  | endUse {s s' : S3} {p : Nat} : EndUseStep k p s (.ok s') → NoStep k s s'
+  | pin {s s' : S3} {p : Nat} : PinStep p s (.ok s') → NoStep k s s'
+  | unpin {s s' : S3} {p : Nat} : UnpinStep k p s (.ok s') → NoStep k s s'
+  | newArena {s s' : S3} {st i : Nat} : NewArenaStep st i s (.ok s') → NoStep k s s'
+  | reset {s s' : S3} {i via : Nat} : ResetAtStep k i via s (.ok s') → NoStep k s s'
+
+/-- R6 for the steps without MM-02 step (MM-03.3 §9.2; K4): the empty sequence, and the arrival
+states are in `Repr`. -/
+theorem r6_noStep {C : Nat → Nat → Prop} {ObR : MM02.ReadOblSpec} {ObW : MM02.WriteOblSpec}
+    {k : K} {tok : Nat → Nat} {L : Layout} {s3 s3' : S3} {s2 : MM02.State}
+    (hR : Repr tok L s3 s2) (h : NoStep k s3 s3') :
+    AllOk C ObR ObW s2 [] ∧ Repr tok L s3' (exec s2 []) := by
+  refine ⟨trivial, ?_⟩
+  have same : ∀ {s' : S3}, s'.P = s3.P → s'.F = s3.F → s'.dead = s3.dead → s'.freed = s3.freed →
+      s'.I = s3.I → Repr tok L s' s2 := fun hP hF hd hfr hI =>
+    hR.shrink hP hF hfr (fun _ h => h.of_eqs hP hF hd) (fun _ h => by rw [← hI]; exact h)
+  cases h with
+  | derive hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact same rfl rfl rfl rfl rfl
+  | split hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact same rfl rfl rfl rfl rfl
+  | release hs =>
+    obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs
+    unfold releaseEff; split <;> exact same rfl rfl rfl rfl rfl
+  | depend hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact same rfl rfl rfl rfl rfl
+  | endUse hs =>
+    rename_i p
+    obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs
+    refine hR.shrink rfl rfl rfl (fun q hq => S3.Usable.mono (s := s3) (s' := endUseEff s3 p) rfl
+      (fun _ h => h) (fun q' hq' => ?_) hq)
+      (fun l hl => ?_)
+    · simp only [endUseEff, cleanup, endUseS, Bool.or_eq_false_iff] at hq'; exact hq'.1
+    · simp only [endUseEff, cleanup, endUseS] at hl; split at hl
+      · cases hl
+      · exact hl
+  | pin hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact same rfl rfl rfl rfl rfl
+  | unpin hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact same rfl rfl rfl rfl rfl
+  | newArena hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact same rfl rfl rfl rfl rfl
+  | reset hs =>
+    obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs
+    unfold resetAtEff; split
+    · exact same rfl rfl rfl rfl rfl
+    · exact same rfl rfl rfl rfl rfl
+
+/-- R6 for `exitFrame` on the reached states (MM-03.3 §9.2, §10), under `DDSound k`: `WF3` and
+`FrameOwnedLive` hold there. -/
+theorem r6_exit_reachable {k : K} {statics : Statics} {C : Nat → Nat → Prop}
+    {ObR : MM02.ReadOblSpec} {ObW : MM02.WriteOblSpec} {tok : Nat → Nat} {L : Layout}
+    {s3 s3' : S3} {s2 : MM02.State} (hdd : DDSound k) (hr : Reachable k statics s3)
+    (hR : Repr tok L s3 s2) (htc : TokCompat C tok) (h : ExitStep k s3 (.ok s3')) :
+    AllOk C ObR ObW s2 (exitOps L tok s3) ∧ Repr tok L s3' (exec s2 (exitOps L tok s3)) :=
+  r6_exit (reachable_invariants hdd hr).1 (reachable_fpLeaves_frameOwnedLive hdd hr).2 hR htc h
+
 /-! ## Smoke test -/
 
 namespace Smoke
