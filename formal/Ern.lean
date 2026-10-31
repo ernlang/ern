@@ -2,3 +2,4 @@
 -- Import modules here that should be built as part of the library.
 import Ern.MM02
 import Ern.MM03
+import Ern.MM23
