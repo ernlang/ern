@@ -911,6 +911,387 @@ theorem repr_init {C : Nat → Nat → Prop} {ObR : MM02.ReadOblSpec} {ObW : MM0
     · have := hlf; simp only [write3Eff, hP0] at this; exact this
   simp only [write3Eff, hmem, ↓reduceIte]
 
+/-! ## Leaves covered by active authorities -/
+
+/-- MM-03.3 §2.1, clause 4 of `WF3`: the footprints of the authorities are made of leaves. The
+`WF3` of the draft `Ern.MM03` only asks existing places (report, (f)). -/
+def FpLeaves (s : S3) : Prop :=
+  ∀ (a : Nat) (y : Authority), s.A[a]? = some y → ∀ l ∈ y.footprint, isLeaf s.P l
+
+/-- K3, MM-03.3 §2.6 (`NoDangling`): under `WF3` and `FpLeaves`, a leaf covered by an active
+authority belongs to a usable root, so its allocation is live. -/
+theorem covered_live {tok : Nat → Nat} {L : Layout} {s3 : S3} {s2 : MM02.State} (hwf : WF3 s3)
+    (hnd : NoDangling s3) (hfl : FpLeaves s3) (hR : Repr tok L s3 s2) {a : Nat} {y : Authority}
+    (hy : s3.A[a]? = some y) (ya : y.active = true) {l : Nat} (hl : l ∈ y.footprint) :
+    l < s3.P.length ∧ isLeaf s3.P l ∧ LiveAlloc s2 (L l).alloc := by
+  have hlP := hwf.fp a y hy l hl
+  have hlf := hfl a y hy l hl
+  obtain ⟨r, hr, hlr⟩ := exists_rootPlace hwf (l + 1) l (Nat.lt_succ_self l) hlP
+  have hlfp : l ∈ footprint s3.P r := mem_footprint.2 ⟨hlP, hlf, hlr⟩
+  have hu : s3.Usable r := Decidable.byContradiction fun hu => hnd a y hy ya r hu l hlfp hl
+  exact ⟨hlP, hlf, hR.live r hr.1 hr hu l hlfp⟩
+
+theorem covered_of_effective {s : S3} {a l : Nat} (h : effective s a l ≠ none) :
+    ∃ y, s.A[a]? = some y ∧ y.active = true ∧ l ∈ y.footprint := by
+  cases he : effective s a l with
+  | none => exact absurd he h
+  | some m => obtain ⟨y, hy, ya, hl, -⟩ := effective_some he; exact ⟨y, hy, ya, hl⟩
+
+/-! ## R1, R2 (MM-03.3 §9.2; K4) -/
+
+/-- R1 (MM-03.3 §9.2; K4: `read3` ↦ `ReadStep` on each range read, provenance the allocation of
+the root, authority `read`): under `Repr`, `WF3`, `NoDangling` and `FpLeaves`, an `ok` read of
+MM-03 gives, for each leaf read, a read of MM-02 of outcome `ok`, never `ub`, whose value is the
+bytes of the range of the leaf, all initialised. Hypotheses on MM-02 (K5): `dec` for each access,
+`stat`. -/
+theorem r1_read3 {ObR : MM02.ReadOblSpec} {tok : Nat → Nat} {L : Layout} {s3 s3' : S3}
+    {s2 : MM02.State} {a : Nat} {ls : List Nat} (hwf : WF3 s3) (hnd : NoDangling s3)
+    (hfl : FpLeaves s3) (hR : Repr tok L s3 s2) (h : Read3Step a ls s3 (.ok s3'))
+    (hstat : ∀ s ac, ObR.stat s ac) (hdec : ∀ l ∈ ls, ObR.dec s2 (leafAcc s2 L .read l)) :
+    ∀ l ∈ ls, ∃ al, s2.allocs (L l).alloc = some al ∧ al.InitRange (L l).off (L l).len ∧
+      MM02.ReadStep ObR (leafAcc s2 L .read l) s2 (.ok (al.bytesAt (L l).off (L l).len)) ∧
+      ¬ MM02.ReadStep ObR (leafAcc s2 L .read l) s2 .ub := by
+  obtain ⟨⟨-, hc⟩, -⟩ := Guarded.ok_iff.1 h
+  intro l hl
+  obtain ⟨he, hi, -⟩ := hc l hl
+  obtain ⟨y, hy, ya, hly⟩ := covered_of_effective he
+  obtain ⟨hlP, hlf, hlive⟩ := covered_live hwf hnd hfl hR hy ya hly
+  obtain ⟨al, hal, ⟨hla, hsz⟩, hin⟩ :=
+    (hlive.and (hR.lwf.within l hlP hlf)).and (hR.init l hlP hlf hi)
+  have e : al.base + (L l).off - al.base = (L l).off := Nat.add_sub_cancel_left _ _
+  have hread : MM02.Read s2 (leafAcc s2 L .read l) := by
+    rw [leafAcc_of hal]
+    exact ⟨al, hal, hla, ⟨Nat.le_add_right _ _, by simp only; omega⟩, by simp only [e]; exact hin,
+      .inl rfl⟩
+  have hok := MM02.ReadStep.ok (ObR := ObR) hal ⟨hread, hdec l hl, hstat _ _⟩
+  rw [leafAcc_of hal] at hok ⊢
+  simp only [e] at hok
+  refine ⟨al, hal, hin, hok, fun hub => ?_⟩
+  cases hub with
+  | ub hn => rw [← leafAcc_of hal] at hn; exact hn ⟨hread, hdec l hl, hstat _ _⟩
+
+/-- R2 for `write3` (MM-03.3 §9.2; K4: `write3` ↦ `WriteStep` on each range written, authority
+`write`): under `Repr`, `WF3`, `NoDangling` and `FpLeaves`, an `ok` write of MM-03 gives writes of
+MM-02 of outcome `ok`, and the arrival states are in `Repr`, whatever the bytes `w` written.
+Hypotheses on MM-02 (K5): `dec` along the writes, `stat`. -/
+theorem r2_write3 {C : Nat → Nat → Prop} {ObR : MM02.ReadOblSpec} {ObW : MM02.WriteOblSpec}
+    {tok : Nat → Nat} {L : Layout} {s3 s3' : S3} {s2 : MM02.State} {a : Nat} {ls : List Nat}
+    {w : Nat → Nat → UInt8 × Option Nat} (hwf : WF3 s3) (hnd : NoDangling s3) (hfl : FpLeaves s3)
+    (hR : Repr tok L s3 s2) (h : Write3Step a ls s3 (.ok s3')) (hstat : ∀ s ac w, ObW.stat s ac w)
+    (hdec : DecAlong ObR ObW s2 (writeOps s2 L w ls)) :
+    AllOk C ObR ObW s2 (writeOps s2 L w ls) ∧ Repr tok L s3' (exec s2 (writeOps s2 L w ls)) := by
+  obtain ⟨⟨-, hc⟩, rfl⟩ := Guarded.ok_iff.1 h
+  exact repr_writes hstat ls s3 s2 hR (fun l hl => by
+    obtain ⟨y, hy, ya, hly⟩ := covered_of_effective (by rw [(hc l hl).1]; exact fun h => by cases h)
+    exact covered_live hwf hnd hfl hR hy ya hly) hdec
+
+/-- R2 for `writeShared` (MM-03.3 §9.2; O11; K4: `writeShared` ↦ `WriteStep`, authority `write`):
+as `r2_write3`; the effective mode of the access may be `Observe` (O11.2). -/
+theorem r2_writeShared {C : Nat → Nat → Prop} {ObR : MM02.ReadOblSpec} {ObW : MM02.WriteOblSpec}
+    {k : K} {tok : Nat → Nat} {L : Layout} {s3 s3' : S3} {s2 : MM02.State} {a : Nat}
+    {ls : List Nat} {w : Nat → Nat → UInt8 × Option Nat} (hwf : WF3 s3) (hnd : NoDangling s3)
+    (hfl : FpLeaves s3) (hR : Repr tok L s3 s2) (h : WriteSharedStep k a ls s3 (.ok s3'))
+    (hstat : ∀ s ac w, ObW.stat s ac w) (hdec : DecAlong ObR ObW s2 (writeOps s2 L w ls)) :
+    AllOk C ObR ObW s2 (writeOps s2 L w ls) ∧ Repr tok L s3' (exec s2 (writeOps s2 L w ls)) := by
+  obtain ⟨⟨-, hc⟩, rfl⟩ := Guarded.ok_iff.1 h
+  exact repr_writes hstat ls s3 s2 hR (fun l hl => by
+    obtain ⟨y, hy, ya, hly⟩ := covered_of_effective (hc l hl).1
+    exact covered_live hwf hnd hfl hR hy ya hly) hdec
+
+/-! ## Two invariants of the reached states missing from the draft -/
+
+/-- A place owned by a frame is not marked dead (MM-03.3.2: `endUse` and `free` mark dead only
+storage owned by a value, O12, O13; a local of a frame dies by the exit of the frame, O7). -/
+def FrameOwnedLive (s : S3) : Prop :=
+  ∀ (q : Nat) (pl : Place) (f : Nat), s.P[q]? = some pl → pl.owner = .frame f → s.dead q = false
+
+/-- `FpLeaves` carries over when the old leaves stay leaves and every leaf covered after the step
+is covered before it or is a leaf of a place after it. -/
+theorem FpLeaves.step {s s' : S3} (hwf : WF3 s) (h : FpLeaves s)
+    (hleaf : ∀ l < s.P.length, isLeaf s.P l → isLeaf s'.P l)
+    (hA : ∀ (j : Nat) (z : Authority), s'.A[j]? = some z → ∀ l ∈ z.footprint,
+      (∃ (y : Authority) (j' : Nat), s.A[j']? = some y ∧ l ∈ y.footprint) ∨
+        ∃ q, l ∈ footprint s'.P q) :
+    FpLeaves s' := by
+  intro j z hz l hl
+  rcases hA j z hz l hl with ⟨y, j', hy, hly⟩ | ⟨q, hq⟩
+  · exact hleaf l (hwf.fp j' y hy l hly) (h j' y hy l hly)
+  · exact (mem_footprint.1 hq).2.1
+
+/-- `FrameOwnedLive` carries over when every place owned by a frame after the step was owned by
+that frame with the same `dead` mark before it, or is alive. -/
+theorem FrameOwnedLive.step {s s' : S3} (h : FrameOwnedLive s)
+    (hP : ∀ (q : Nat) (pl : Place) (f : Nat), s'.P[q]? = some pl → pl.owner = .frame f →
+      (∃ pl' : Place, s.P[q]? = some pl' ∧ pl'.owner = .frame f ∧ s'.dead q = s.dead q) ∨
+        s'.dead q = false) : FrameOwnedLive s' := by
+  intro q pl f hq ho
+  rcases hP q pl f hq ho with ⟨pl', hq', ho', e⟩ | e
+  · rw [e]; exact h q pl' f hq' ho'
+  · exact e
+
+theorem isLeaf_of_parentOf {P P' : List Place} (hlen : P'.length = P.length)
+    (hpar : parentOf P' = parentOf P) {l : Nat} (h : isLeaf P l) : isLeaf P' l := by
+  simp only [isLeaf, hlen, hpar]; exact h
+
+/-- `FpLeaves` and `FrameOwnedLive` are preserved by every step of `Reachable` (`Step`), under
+`WF3`. -/
+theorem step_fpLeaves_frameOwnedLive {k : K} {s s' : S3} (hwf : WF3 s)
+    (h : FpLeaves s ∧ FrameOwnedLive s) (hs : Step k s s') :
+    FpLeaves s' ∧ FrameOwnedLive s' := by
+  obtain ⟨hfl, hfo⟩ := h
+  -- steps changing no place and keeping each footprint
+  have same : ∀ {s'' : S3}, s''.P = s.P → s''.dead = s.dead →
+      (∀ (j : Nat) (z : Authority), s''.A[j]? = some z →
+        ∃ y : Authority, s.A[j]? = some y ∧ z.footprint = y.footprint) →
+      FpLeaves s'' ∧ FrameOwnedLive s'' := fun hP hd hA =>
+    ⟨FpLeaves.step hwf hfl (fun l _ h => hP ▸ h) fun j z hz l hl => by
+      obtain ⟨y, hy, e⟩ := hA j z hz; exact .inl ⟨y, j, hy, e ▸ hl⟩,
+     FrameOwnedLive.step hfo fun q pl f hq ho => .inl ⟨pl, hP ▸ hq, ho, by rw [hd]⟩⟩
+  have sameA : ∀ {s'' : S3}, s''.P = s.P → s''.dead = s.dead → s''.A = s.A →
+      FpLeaves s'' ∧ FrameOwnedLive s'' := fun hP hd hA =>
+    same hP hd fun j z hz => ⟨z, hA ▸ hz, rfl⟩
+  -- steps appending authorities to `A`, places unchanged
+  have app : ∀ {s'' : S3} (extra : List Authority), s''.P = s.P → s''.dead = s.dead →
+      s''.A = s.A ++ extra → (∀ z ∈ extra, ∀ l ∈ z.footprint,
+        (∃ (y : Authority) (j' : Nat), s.A[j']? = some y ∧ l ∈ y.footprint) ∨
+          ∃ q, l ∈ footprint s.P q) →
+      FpLeaves s'' ∧ FrameOwnedLive s'' := fun _ hP hd hA hx =>
+    ⟨FpLeaves.step hwf hfl (fun l _ h => hP ▸ h) fun j z hz l hl => by
+      rw [hA] at hz
+      by_cases hj : j < s.A.length
+      · rw [List.getElem?_append_left hj] at hz; exact .inl ⟨z, j, hz, hl⟩
+      · rw [List.getElem?_append_right (by omega)] at hz
+        rcases hx z (List.mem_of_getElem? hz) l hl with h | ⟨q, hq⟩
+        · exact .inl h
+        · exact .inr ⟨q, hP ▸ hq⟩,
+     FrameOwnedLive.step hfo fun q pl f hq ho => .inl ⟨pl, hP ▸ hq, ho, by rw [hd]⟩⟩
+  cases hs with
+  | kernel hk =>
+    cases hk with
+    | derive hs =>
+      obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs
+      exact app [_] rfl rfl rfl fun z hz l hl => by
+        rw [List.mem_singleton.1 hz] at hl; exact .inr ⟨_, hl⟩
+    | split hs =>
+      obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 hs
+      refine app _ rfl rfl rfl fun z hz l hl => .inl ?_
+      obtain ⟨r, hr, rfl⟩ := List.mem_map.1 hz
+      have := (hpre.2.2.2.1 r hr l hl).1
+      unfold S3.afp at this; split at this
+      · exact ⟨_, _, ‹_›, this⟩
+      · cases this
+    | release hs =>
+      rename_i a
+      obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs
+      cases hy : s.A[a]? with
+      | none => exact sameA (by simp [releaseEff, hy]) (by simp [releaseEff, hy]) (by simp [releaseEff, hy])
+      | some y =>
+        refine same (by simp [releaseEff, hy]) (by simp [releaseEff, hy]) fun j z hz => ?_
+        rw [release_get hy] at hz; split at hz
+        · rename_i e; subst e; cases hz; exact ⟨y, hy, rfl⟩
+        · exact ⟨z, hz, rfl⟩
+    | transfer hs =>
+      rename_i src dst
+      obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs
+      have hlen : (transferEff s src dst).P.length = s.P.length := by simp [transferEff]
+      have hpar : parentOf (transferEff s src dst).P = parentOf s.P := by
+        funext i; simp only [parentOf, transferEff, List.getElem?_map]
+        cases s.P[i]? with
+        | none => rfl
+        | some pl => simp only [Option.map_some, Option.bind_some]; split <;> rfl
+      refine ⟨FpLeaves.step hwf hfl (fun l _ h => isLeaf_of_parentOf hlen hpar h) fun j z hz l hl => ?_,
+        FrameOwnedLive.step hfo fun q pl f hq ho => ?_⟩
+      · simp only [transferEff, List.getElem?_map] at hz
+        cases hy : s.A[j]? with
+        | none => rw [hy] at hz; cases hz
+        | some y =>
+          rw [hy] at hz; simp only [Option.map_some, Option.some.injEq] at hz
+          refine .inl ⟨y, j, hy, ?_⟩
+          split at hz <;> (subst hz; exact hl)
+      · simp only [transferEff, List.getElem?_map] at hq
+        cases hp : s.P[q]? with
+        | none => rw [hp] at hq; cases hq
+        | some pl' =>
+          rw [hp] at hq; simp only [Option.map_some, Option.some.injEq] at hq
+          split at hq
+          · subst hq
+            rename_i hh
+            cases ho' : pl'.owner with
+            | frame f' => rw [ho'] at hh; exact hh.elim
+            | place r => rw [ho'] at ho; simp [mvTo] at ho
+          · subst hq; exact .inl ⟨_, rfl, ho, rfl⟩
+    | depend hs =>
+      obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact sameA rfl rfl rfl
+    | enter hs =>
+      rename_i ps ls
+      obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 hs
+      have hsh := enterPre_shapeOK hpre.1
+      refine ⟨FpLeaves.step hwf hfl (fun l hl h => (shape_isLeaf_old hsh hl).2 h) fun j z hz l hl => ?_,
+        FrameOwnedLive.step hfo fun q pl f hq ho => ?_⟩
+      · rcases enter_get hz with ⟨-, y, hy, rfl⟩ | ⟨-, i, -, rfl⟩
+        · refine .inl ⟨y, j, hy, ?_⟩
+          split at hl <;> exact hl
+        · exact .inr ⟨_, hl⟩
+      · by_cases hqn : q < s.P.length
+        · have : (enterEff s ps ls).P[q]? = s.P[q]? := enterP_lt hqn
+          refine .inl ⟨pl, this ▸ hq, ho, ?_⟩
+          simp [enterEff, Nat.not_le.2 hqn]
+        · exact .inr (by simp [enterEff, Nat.le_of_not_lt hqn])
+    | exit hs =>
+      obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs
+      unfold exitEff; split
+      · rename_i F₀ _
+        refine same rfl rfl fun j z hz => ?_
+        rw [getElem?_mapI] at hz
+        cases hy : s.A[j]? with
+        | none => rw [hy] at hz; cases hz
+        | some y =>
+          rw [hy] at hz; simp only [Option.map_some, Option.some.injEq] at hz; subst hz
+          refine ⟨y, rfl, ?_⟩
+          unfold exitG; split
+          · split <;> rfl
+          · rfl
+      · exact sameA rfl rfl rfl
+    | read hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact sameA rfl rfl rfl
+    | write hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact sameA rfl rfl rfl
+    | writeShared hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact sameA rfl rfl rfl
+    | pin hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact sameA rfl rfl rfl
+    | unpin hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact sameA rfl rfl rfl
+    | endUse hs =>
+      rename_i p
+      obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs
+      have hor := (endUseS_releases s p).trans cleanup_releases
+      refine ⟨FpLeaves.step hwf hfl (fun l _ h => h) fun j z hz l hl => ?_, FrameOwnedLive.step hfo fun q pl f hq ho => ?_⟩
+      · obtain ⟨y, hy, -, -, e, -⟩ := hor.2 j z hz; exact .inl ⟨y, j, hy, e ▸ hl⟩
+      · refine .inl ⟨pl, hq, ho, ?_⟩
+        simp only [endUseEff, cleanup, endUseS]
+        have hq' : s.P[q]? = some pl := hq
+        rw [hq']; simp [heldIn, ho]
+    | free hs =>
+      rename_i p auth
+      obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 hs
+      have hor := (freeS_releases s p).trans cleanup_releases
+      refine ⟨FpLeaves.step hwf hfl (fun l _ h => h) fun j z hz l hl => ?_, FrameOwnedLive.step hfo fun q pl f hq ho => ?_⟩
+      · obtain ⟨y, hy, -, -, e, -⟩ := hor.2 j z hz; exact .inl ⟨y, j, hy, e ▸ hl⟩
+      · refine .inl ⟨pl, hq, ho, ?_⟩
+        have hq' : s.P[q]? = some pl := hq
+        have hnp : ¬ partOf s.P q p := fun hpart => by
+          obtain ⟨pl₁, pr, h1, h2, e⟩ := hwf.ownerOf hpart
+          have hor := hpre.2.2.2.1
+          unfold OwnedRoot at hor; rw [h2] at hor
+          rw [hq'] at h1; cases h1; rw [ho] at e
+          obtain ⟨-, hpl⟩ := hor; rw [← e] at hpl; cases hpl
+        simp [freeEff, cleanup, freeS, hnp]
+    | alloc hs =>
+      rename_i pr ow ls
+      cases hs with
+      | ok hst _ =>
+        have hsh := hst.2.2.2.2.2.1
+        refine ⟨FpLeaves.step hwf hfl (fun l hl h => (shape_isLeaf_old hsh hl).2 h) fun j z hz l hl => ?_,
+          FrameOwnedLive.step hfo fun q pl f hq ho => ?_⟩
+        · rcases alloc_get hz with ⟨-, hy⟩ | ⟨-, i, -, rfl⟩
+          · exact .inl ⟨z, j, hy, hl⟩
+          · exact .inr ⟨_, hl⟩
+        · by_cases hqn : q < s.P.length
+          · have : (allocEff s pr ow ls).P[q]? = s.P[q]? := allocP_lt hqn
+            refine .inl ⟨pl, this ▸ hq, ho, ?_⟩
+            simp [allocEff, Nat.not_le.2 hqn]
+          · exact .inr (by simp [allocEff, Nat.le_of_not_lt hqn])
+    | store hs =>
+      rename_i a p
+      obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 hs
+      obtain ⟨y, hy, -⟩ := store_pre_auth hpre.1
+      refine same (by rw [storeEff_eq hy]) (by rw [storeEff_eq hy]) fun j z hz => ?_
+      rw [store_get hy] at hz; split at hz
+      · rename_i e; subst e; cases hz; exact ⟨y, hy, rfl⟩
+      · exact ⟨z, hz, rfl⟩
+  | newArena hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact sameA rfl rfl rfl
+  | issue hs =>
+    cases hs with
+    | ok har hst =>
+      cases hst with
+      | ok hstat _ _ _ =>
+        refine app [_] rfl rfl rfl fun z hz l hl => .inl ?_
+        rw [List.mem_singleton.1 hz] at hl
+        have := hstat.2.2.1 l hl
+        unfold S3.afp at this; split at this
+        · exact ⟨_, _, ‹_›, this⟩
+        · cases this
+  | reset hs =>
+    rename_i i via
+    obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs
+    unfold resetAtEff; split
+    · exact sameA rfl rfl rfl
+    · exact sameA rfl rfl rfl
+
+/-- `FpLeaves` and `FrameOwnedLive` hold on every reached state (MM-03.3 §2.1, §10), under
+`DDSound k`, the hypothesis under which `WF3` is proved on reached states. -/
+theorem reachable_fpLeaves_frameOwnedLive {k : K} (hdd : DDSound k) {statics : Statics} {s : S3}
+    (h : Reachable k statics s) : FpLeaves s ∧ FrameOwnedLive s := by
+  have st : ∀ {s s' : S3}, Reachable k statics s → FpLeaves s ∧ FrameOwnedLive s → Step k s s' →
+      FpLeaves s' ∧ FrameOwnedLive s' := fun hr ih hs =>
+    step_fpLeaves_frameOwnedLive (reachable_invariants hdd hr).1 ih hs
+  induction h with
+  | init _ =>
+    refine ⟨fun j z hz l hl => ?_, fun _ _ _ _ _ => rfl⟩
+    obtain ⟨i, -, rfl⟩ := init_get hz
+    exact (mem_footprint.1 hl).2.1
+  | derive hr hs ih => exact st hr ih (.kernel (.derive hs))
+  | split hr hs ih => exact st hr ih (.kernel (.split hs))
+  | release hr hs ih => exact st hr ih (.kernel (.release hs))
+  | transfer hr hs ih => exact st hr ih (.kernel (.transfer hs))
+  | depend hr hs ih => exact st hr ih (.kernel (.depend hs))
+  | enter hr hs ih => exact st hr ih (.kernel (.enter hs))
+  | exit hr hs ih => exact st hr ih (.kernel (.exit hs))
+  | read hr hs ih => exact st hr ih (.kernel (.read hs))
+  | write hr hs ih => exact st hr ih (.kernel (.write hs))
+  | writeShared hr hs ih => exact st hr ih (.kernel (.writeShared hs))
+  | pin hr hs ih => exact st hr ih (.kernel (.pin hs))
+  | unpin hr hs ih => exact st hr ih (.kernel (.unpin hs))
+  | endUse hr hs ih => exact st hr ih (.kernel (.endUse hs))
+  | free hr hs ih => exact st hr ih (.kernel (.free hs))
+  | alloc hr hs ih => exact st hr ih (.kernel (.alloc hs))
+  | newArena hr hs ih => exact st hr ih (.newArena hs)
+  | issue hr hs ih => exact st hr ih (.issue hs)
+  | reset hr hs ih => exact st hr ih (.reset hs)
+  | store hr hs ih => exact st hr ih (.kernel (.store hs))
+
+/-! ## R1, R2 on reached states -/
+
+/-- R1 on the reached states (MM-03.3 §9.2, §10), under `DDSound k`: `WF3`, `NoDangling` and
+`FpLeaves` hold there. -/
+theorem r1_read3_reachable {k : K} {statics : Statics} {ObR : MM02.ReadOblSpec} {tok : Nat → Nat}
+    {L : Layout} {s3 s3' : S3} {s2 : MM02.State} {a : Nat} {ls : List Nat} (hdd : DDSound k)
+    (hr : Reachable k statics s3) (hR : Repr tok L s3 s2) (h : Read3Step a ls s3 (.ok s3'))
+    (hstat : ∀ s ac, ObR.stat s ac) (hdec : ∀ l ∈ ls, ObR.dec s2 (leafAcc s2 L .read l)) :
+    ∀ l ∈ ls, ∃ al, s2.allocs (L l).alloc = some al ∧ al.InitRange (L l).off (L l).len ∧
+      MM02.ReadStep ObR (leafAcc s2 L .read l) s2 (.ok (al.bytesAt (L l).off (L l).len)) ∧
+      ¬ MM02.ReadStep ObR (leafAcc s2 L .read l) s2 .ub :=
+  r1_read3 (reachable_invariants hdd hr).1 (reachable_invariants hdd hr).2.1.nd
+    (reachable_fpLeaves_frameOwnedLive hdd hr).1 hR h hstat hdec
+
+/-- R2 for `write3` on the reached states (MM-03.3 §9.2, §10), under `DDSound k`. -/
+theorem r2_write3_reachable {k : K} {statics : Statics} {C : Nat → Nat → Prop}
+    {ObR : MM02.ReadOblSpec} {ObW : MM02.WriteOblSpec} {tok : Nat → Nat} {L : Layout}
+    {s3 s3' : S3} {s2 : MM02.State} {a : Nat} {ls : List Nat} {w : Nat → Nat → UInt8 × Option Nat}
+    (hdd : DDSound k) (hr : Reachable k statics s3) (hR : Repr tok L s3 s2)
+    (h : Write3Step a ls s3 (.ok s3')) (hstat : ∀ s ac w, ObW.stat s ac w)
+    (hdec : DecAlong ObR ObW s2 (writeOps s2 L w ls)) :
+    AllOk C ObR ObW s2 (writeOps s2 L w ls) ∧ Repr tok L s3' (exec s2 (writeOps s2 L w ls)) :=
+  r2_write3 (reachable_invariants hdd hr).1 (reachable_invariants hdd hr).2.1.nd
+    (reachable_fpLeaves_frameOwnedLive hdd hr).1 hR h hstat hdec
+
+/-- R2 for `writeShared` on the reached states (MM-03.3 §9.2, §10), under `DDSound k`. -/
+theorem r2_writeShared_reachable {k : K} {statics : Statics} {C : Nat → Nat → Prop}
+    {ObR : MM02.ReadOblSpec} {ObW : MM02.WriteOblSpec} {tok : Nat → Nat} {L : Layout}
+    {s3 s3' : S3} {s2 : MM02.State} {a : Nat} {ls : List Nat} {w : Nat → Nat → UInt8 × Option Nat}
+    (hdd : DDSound k) (hr : Reachable k statics s3) (hR : Repr tok L s3 s2)
+    (h : WriteSharedStep k a ls s3 (.ok s3')) (hstat : ∀ s ac w, ObW.stat s ac w)
+    (hdec : DecAlong ObR ObW s2 (writeOps s2 L w ls)) :
+    AllOk C ObR ObW s2 (writeOps s2 L w ls) ∧ Repr tok L s3' (exec s2 (writeOps s2 L w ls)) :=
+  r2_writeShared (reachable_invariants hdd hr).1 (reachable_invariants hdd hr).2.1.nd
+    (reachable_fpLeaves_frameOwnedLive hdd hr).1 hR h hstat hdec
+
 /-! ## Smoke test -/
 
 namespace Smoke
@@ -935,6 +1316,18 @@ example : Repr tk L (S3.init st) s2 := by decide
 example : ¬ Repr tk L (S3.init st)
     (exec MM02.State.empty (allocOps topPlacement g (some (tk 0)) MM02.State.empty [0])) := by
   decide
+
+/-- Counterexample kept (report, (f)): the draft `canRead3` does not ask the leaves read to be
+usable (MM-03.3 O9.1). In a state outside the reached ones, where the static 0 is freed but its
+root authority stays active, `read3` is `ok`, `Repr` holds, and the MM-02 read is `ub`: R1 needs
+`NoDangling`. -/
+def cx : S3 := { S3.init st with dead := fun _ => true, freed := fun _ => true }
+def cx2 : MM02.State := s2.dealloc 0
+example : Repr tk L cx cx2 := by decide
+example : Read3Step 0 [0] cx (.ok cx) := .ok (by decide)
+example : MM02.ReadStep obR (leafAcc cx2 L .read 0) cx2 .ub :=
+  .ub fun ⟨h, _⟩ => absurd h (by decide)
+example : ¬ NoDangling cx := fun h => h 0 _ rfl rfl 0 (by decide) 0 (by decide) (by decide)
 
 end Smoke
 
