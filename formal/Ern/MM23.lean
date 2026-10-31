@@ -2,17 +2,19 @@ import Ern.MM02
 import Ern.MM03
 
 /-!
-# Refinement MM-03.3 v0.3 → MM-02 v0.4 (milestone 2, pass 1)
+# Refinement MM-03.3 v0.3 → MM-02 v0.4 (milestone 2, passes 1 and 2)
 
 Representation of the abstract states of MM-03.3 (module `Ern.MM03`) by the states of the abstract
-machine of MM-02 (module `Ern.MM02`), and refinement of the operations in the scope of the
-arbitrage K4 of the task. Both modules are imported unchanged; a lemma they lack is proved here.
+machine of MM-02 (module `Ern.MM02`), refinement of every operation of MM-03 (R6), and simulation
+of an execution. Both modules are imported unchanged; a lemma they lack is proved here.
 
-The arbitrages K1–K5 of the task are cited as `K1`…`K5`. The rules of the specifications are cited
-as `MM-02.x` (MM-02 v0.4) and `MM-03.3 …` (MM-03.3 v0.3 révisée). Out of scope: `transfer`,
-`store`, `issue`, concurrency, real `DDSound`, stability of pinned addresses, low-level translation.
-The decisions not dictated by the texts are listed in the report `formal/reports/MM23_v0.1.md`,
-section (c); the gaps between the drafts and their texts, section (f).
+The arbitrages of the task are cited as `K1`…`K5` (pass 1) and `L1`…`L8` (pass 2, which replace
+the K arbitrages where they say so). The rules of the specifications are cited as `MM-02.x`
+(MM-02 v0.4) and `MM-03.3 …` (MM-03.3 v0.3 révisée). Out of scope: concurrency, finite addresses,
+representation of the metadata of arenas, low-level translation. The decisions not dictated by the
+texts are listed in the reports `formal/reports/MM23_v0.1.md` (pass 1) and
+`formal/reports/MM23_v0.1_p2.md` (pass 2), section (c); the gaps between the drafts and their
+texts, section (f) of the pass-1 report.
 -/
 
 namespace Ern.MM23
@@ -2224,11 +2226,13 @@ theorem ReprB.transport {tok ptok : Nat → Nat} {provOf : Nat → Option Nat} {
     exact (hR.leaked r hr hrt hu hf ho' l hl).of_dom hd fun a a' _ _ e _ _ h => e ▸ h
 
 /-- R6 for `transfer` (MM-03.3 §9.2, O4; L6: for each pair of corresponding leaves, a `ReadStep` of
-the source range then a `WriteStep` of the destination range with the bytes read, provenance
-included; held authorities and owned storage give no step): under `WF3`, `SameSizeAlong` (spec 4),
+the source range then a `WriteStep` of the destination range with the bytes of the source range
+(`bytesOf`), provenance included; held authorities and owned storage give no step): under `WF3`,
 `dec` along the run and `stat` (K5), every read and write has the outcome `ok` and the arrival
-states are in `Repr`. The source ranges stay initialised in MM-02; MM-03 makes them unreadable
-(`Moved`). -/
+states are in `Repr`. The theorem does not take `SameSizeAlong` (L6, spec 4): without it, the
+write is not the copy of the bytes read (it reads past the source range, or copies a part of it);
+`transfer_copies`, which takes it, states the copy. The source ranges stay initialised in MM-02;
+MM-03 makes them unreadable (`Moved`). -/
 theorem r6_transfer {C : Nat → Nat → Prop} {ObR : MM02.ReadOblSpec} {ObW : MM02.WriteOblSpec}
     {k : K} {tok ptok : Nat → Nat} {provOf : Nat → Option Nat} {L : Layout} {s3 s3' : S3}
     {s2 : MM02.State} {src dst : Nat} (hwf : WF3 s3) (hR : Repr tok ptok provOf L s3 s2)
@@ -2449,8 +2453,10 @@ addresses, spec 11). -/
 def PtrEncAt (pe : PtrEnc) (addr : Nat) (prov : Option Nat) : Prop :=
   pe.decode (pe.enc addr prov) = addr ∧ ∀ i, (pe.enc addr prov i).2 = prov
 
-/-- L6: address of the first byte of the region `rg`: base of the allocation of its first leaf plus
-the offset of that leaf. -/
+/-- L6 ("base + off of first leaf"): address of the pointer to the region `rg`: base of the
+allocation of the first leaf of the list plus the offset of that leaf. It is the first byte of the
+region when that leaf has the lowest offset; K1 fixes no order of fields (pass-2 report,
+(e) 3). -/
 def regionAddr (s2 : MM02.State) (L : Layout) (rg : List Nat) : Nat :=
   match rg.head? with
   | some l => (((s2.allocs (L l).alloc).map (·.base)).getD 0) + (L l).off
@@ -2470,11 +2476,24 @@ region covered by `a`. -/
 def storeOps (pe : PtrEnc) (s2 : MM02.State) (L : Layout) (s3 : S3) (a p : Nat) : List Op2 :=
   [.write (leafAcc s2 L .write p) (ptrBytes pe s2 L (s3.afp a))]
 
-/-- L6 (`issue`): one write of the range of the destination with the bytes of a pointer to the
-block; `available` and `issued` are abstract state of the arena entry (library obligation). -/
-def issueOps (pe : PtrEnc) (s2 : MM02.State) (L : Layout) (region : List Nat) (dst : Nat) :
-    List Op2 :=
-  [.write (leafAcc s2 L .write dst) (ptrBytes pe s2 L region)]
+/-- L6 (`issue`, "prov: allocation of arena storage"): the provenance of a block of the arena entry
+`i` of `s3`: the allocation of the storage of the arena, read on its first leaf (as `rootAlloc`
+reads a root); none for a missing entry. -/
+def arenaProv (L : Layout) (s3 : S3) (i : Nat) : Option Nat :=
+  (s3.arenas[i]?).map fun ar => (L ((footprint s3.P ar.storage).headD ar.storage)).alloc
+
+/-- L6, the bytes of the pointer to the block `region` of the arena entry `i`: the address of the
+region (`regionAddr`) and the provenance of the storage of the arena (`arenaProv`). -/
+def issueBytes (pe : PtrEnc) (s2 : MM02.State) (L : Layout) (s3 : S3) (i : Nat)
+    (region : List Nat) : Nat → UInt8 × Option Nat :=
+  pe.enc (regionAddr s2 L region) (arenaProv L s3 i)
+
+/-- L6 (`issue` on the arena entry `i`): one write of the range of the destination with the bytes of
+the pointer to the block; `available` and `issued` are abstract state of the arena entry (library
+obligation). -/
+def issueOps (pe : PtrEnc) (s2 : MM02.State) (L : Layout) (s3 : S3) (i : Nat) (region : List Nat)
+    (dst : Nat) : List Op2 :=
+  [.write (leafAcc s2 L .write dst) (issueBytes pe s2 L s3 i region)]
 
 /-- L6: the pointer to a region whose first leaf `l` is covered by an active authority is neither
 lost nor fabricated: its provenance is the allocation of `l`, which is live, and its address is
@@ -2530,11 +2549,12 @@ theorem r6_issue {C : Nat → Nat → Prop} {ObR : MM02.ReadOblSpec} {ObW : MM02
     {s2 : MM02.State} {pe : PtrEnc} {i via dst : Nat} {region : List Nat} (hwf : WF3 s3)
     (hR : Repr tok ptok provOf L s3 s2) (h : IssueAt k i via region dst s3 (.ok s3'))
     (hstatW : ∀ s ac w, ObW.stat s ac w)
-    (hdec : ObW.dec s2 (leafAcc s2 L .write dst) (ptrBytes pe s2 L region)) :
-    AllOk C ObR ObW s2 (issueOps pe s2 L region dst) ∧
-      Repr tok ptok provOf L s3' (exec s2 (issueOps pe s2 L region dst)) ∧
-      rangeBytes (exec s2 (issueOps pe s2 L region dst)) L dst = some ((List.range (L dst).len).map
-        fun i => .init (ptrBytes pe s2 L region i).1 (ptrBytes pe s2 L region i).2) := by
+    (hdec : ObW.dec s2 (leafAcc s2 L .write dst) (issueBytes pe s2 L s3 i region)) :
+    AllOk C ObR ObW s2 (issueOps pe s2 L s3 i region dst) ∧
+      Repr tok ptok provOf L s3' (exec s2 (issueOps pe s2 L s3 i region dst)) ∧
+      rangeBytes (exec s2 (issueOps pe s2 L s3 i region dst)) L dst =
+        some ((List.range (L dst).len).map fun j =>
+          .init (issueBytes pe s2 L s3 i region j).1 (issueBytes pe s2 L s3 i region j).2) := by
   cases h with
   | ok har hst =>
     cases hst with
@@ -2553,9 +2573,12 @@ theorem r6_issue {C : Nat → Nat → Prop} {ObR : MM02.ReadOblSpec} {ObW : MM02
       · exact .inl hi
 
 /-- L6, `pointer_sound` for `store a p`: under the obligation of the encoding for the pointer
-written, the range of `p` holds bytes that decode to the address of the first leaf `l` of the
-region of `a` (base + offset) and that carry, each, the provenance of the allocation of `l`, which
-is live and contains the range of `l`: no address or provenance is lost or fabricated. -/
+written (`PtrEncAt`), the bytes of the pointer (`ptrBytes`) decode to the address of the first leaf
+`l` of the list of the region of `a` (base + offset), and each carries the provenance of the
+allocation of `l`, which is live and contains the range of `l`; the range of `p` receives the first
+`(L p).len` of these bytes. Whether they are enough to decode the address depends on the size of
+`p` (pass-2 report, (e) 4); whether `l` holds the first byte of the region, on the layout
+(pass-2 report, (e) 3). -/
 theorem pointer_sound_store {C : Nat → Nat → Prop} {ObR : MM02.ReadOblSpec}
     {ObW : MM02.WriteOblSpec} {tok ptok : Nat → Nat} {provOf : Nat → Option Nat} {L : Layout}
     {s3 s3' : S3} {s2 : MM02.State} {pe : PtrEnc} {a p : Nat} (hwf : WF3 s3)
@@ -2578,42 +2601,72 @@ theorem pointer_sound_store {C : Nat → Nat → Prop} {ObR : MM02.ReadOblSpec}
   refine ⟨hpe.1, fun i => ?_, hta, hst⟩
   rw [← hprov]; exact hpe.2 i
 
-/-- L6, `pointer_sound` for `issue`: under the obligation of the encoding for the pointer written,
-the range of the destination holds bytes that decode to the address of the first leaf `l` of the
-block and carry, each, the provenance of the allocation of `l` (the allocation of the storage of the
-arena), which is live and contains the range of `l`. -/
+/-- L6, provenance of `issue` ("prov: allocation of arena storage"): under `WF3`, `LayoutWF` and the
+invariant of the arenas of MM-03 (`ArenasInv`, true on the reached states), every leaf `l` of the
+block of an `ok` `issue` is in the allocation of every leaf of the storage of the arena, and
+`arenaProv` is that allocation. -/
+theorem issue_prov_storage {k : K} {L : Layout} {s3 s3' : S3} {s2 : MM02.State} {i via dst : Nat}
+    {region : List Nat} (hwf : WF3 s3) (hlw : LayoutWF L s3 s2) (hai : ArenasInv s3)
+    (h : IssueAt k i via region dst s3 (.ok s3')) {l : Nat} (hl : l ∈ region) :
+    arenaProv L s3 i = some (L l).alloc ∧ ∃ ar, s3.arenas[i]? = some ar ∧
+      ∀ l' ∈ footprint s3.P ar.storage, (L l').alloc = (L l).alloc := by
+  cases h with
+  | @ok ar _ _ har hst =>
+    cases hst with
+    | ok hstat _ _ _ =>
+      have hA := hai ar (List.mem_of_getElem? har) hstat.2.1
+      have hsl : ar.storage < s3.P.length := hA.2.2.2.2.2.1
+      obtain ⟨r, hr, hsr⟩ :=
+        exists_rootPlace hwf (ar.storage + 1) ar.storage (Nat.lt_succ_self _) hsl
+      have hlS : l ∈ footprint s3.P ar.storage := (hA.2.2.2.2.2.2.2 l).1 (hstat.2.2.1 l hl)
+      have key : ∀ l' ∈ footprint s3.P ar.storage, (L l').alloc = (L l).alloc := fun l' hl' =>
+        hlw.sameAlloc r hr.1 hr l' (footprint_sub hwf hsr hl') l (footprint_sub hwf hsr hlS)
+      refine ⟨?_, ar, har, key⟩
+      simp only [arenaProv, har, Option.map_some, key _ (headD_mem_footprint hwf hsl)]
+
+/-- L6, `pointer_sound` for `issue`: under the obligation of the encoding for the pointer written
+(`PtrEncAt`), the bytes of the pointer (`issueBytes`) decode to the address of the first leaf `l` of
+the list of the block (base + offset), and each carries the provenance of the storage of the arena
+(L6), the allocation of `l` and of every leaf of the storage, which is live and contains the range
+of `l`; the range of the destination receives the first `(L dst).len` of these bytes (pass-2
+report, (e) 3 and (e) 4). -/
 theorem pointer_sound_issue {C : Nat → Nat → Prop} {ObR : MM02.ReadOblSpec}
     {ObW : MM02.WriteOblSpec} {k : K} {tok ptok : Nat → Nat} {provOf : Nat → Option Nat}
     {L : Layout} {s3 s3' : S3} {s2 : MM02.State} {pe : PtrEnc} {i via dst : Nat}
     {region : List Nat} (hwf : WF3 s3) (hnd : NoDangling s3) (hfl : FpLeaves s3)
-    (hR : Repr tok ptok provOf L s3 s2) (h : IssueAt k i via region dst s3 (.ok s3'))
-    (hstatW : ∀ s ac w, ObW.stat s ac w)
-    (hdec : ObW.dec s2 (leafAcc s2 L .write dst) (ptrBytes pe s2 L region))
+    (hai : ArenasInv s3) (hR : Repr tok ptok provOf L s3 s2)
+    (h : IssueAt k i via region dst s3 (.ok s3')) (hstatW : ∀ s ac w, ObW.stat s ac w)
+    (hdec : ObW.dec s2 (leafAcc s2 L .write dst) (issueBytes pe s2 L s3 i region))
     {l : Nat} (hl : region.head? = some l)
-    (hpe : PtrEncAt pe (regionAddr s2 L region) (regionProv L region)) :
-    pe.decode (ptrBytes pe s2 L region) = regionAddr s2 L region ∧
-      (∀ i, (ptrBytes pe s2 L region i).2 = some (L l).alloc) ∧
+    (hpe : PtrEncAt pe (regionAddr s2 L region) (arenaProv L s3 i)) :
+    pe.decode (issueBytes pe s2 L s3 i region) = regionAddr s2 L region ∧
+      (∀ j, (issueBytes pe s2 L s3 i region j).2 = some (L l).alloc) ∧
+      (∃ ar, s3.arenas[i]? = some ar ∧
+        ∀ l' ∈ footprint s3.P ar.storage, (L l').alloc = (L l).alloc) ∧
       (∃ al, s2.allocs (L l).alloc = some al ∧ al.live = true ∧
         regionAddr s2 L region = al.base + (L l).off ∧ (L l).off + (L l).len ≤ al.size) ∧
-      rangeBytes (exec s2 (issueOps pe s2 L region dst)) L dst = some ((List.range (L dst).len).map
-        fun i => .init (ptrBytes pe s2 L region i).1 (ptrBytes pe s2 L region i).2) := by
+      rangeBytes (exec s2 (issueOps pe s2 L s3 i region dst)) L dst =
+        some ((List.range (L dst).len).map fun j =>
+          .init (issueBytes pe s2 L s3 i region j).1 (issueBytes pe s2 L s3 i region j).2) := by
   have hst := (r6_issue (C := C) (ObR := ObR) hwf hR h hstatW hdec).2.2
+  have hlm : l ∈ region :=
+    List.mem_of_getElem? (by rw [List.head?_eq_getElem?] at hl; exact hl)
+  obtain ⟨hprov, hsto⟩ := issue_prov_storage hwf hR.lwf hai h hlm
   cases h with
   | ok har hstep =>
     cases hstep with
     | ok hstat _ _ _ =>
-      have hact := hstat.2.1
-      obtain ⟨y, hy, ya⟩ := hact
+      obtain ⟨y, hy, ya⟩ := hstat.2.1
       have hrg : ∀ x ∈ region, x ∈ y.footprint := fun x hx => by
         have := hstat.2.2.1 x hx; simpa [S3.afp, hy] using this
-      obtain ⟨hprov, hta⟩ := ptr_target hwf hnd hfl hR.toReprB hy ya hrg hl
-      refine ⟨hpe.1, fun i => ?_, hta, hst⟩
-      rw [← hprov]; exact hpe.2 i
+      obtain ⟨-, hta⟩ := ptr_target hwf hnd hfl hR.toReprB hy ya hrg hl
+      refine ⟨hpe.1, fun j => ?_, hsto, hta, hst⟩
+      rw [← hprov]; exact hpe.2 j
 
 /-! ## Real `DDSound` (L7) -/
 
-/-- L7: instantiation of `K.DeclaredDisjoint` by the disjointness of the byte ranges of the leaves of
-the two regions: every leaf of `r` and every leaf of `r'` are in different allocations or in
+/-- L7: instantiation of `K.DeclaredDisjoint` by the disjointness of the byte ranges of the leaves
+of the two regions: every leaf of `r` and every leaf of `r'` are in different allocations or in
 disjoint ranges (MM-02.2, `RangeDisjoint`). -/
 def ByteDisjoint (L : Layout) (r r' : List Nat) : Prop :=
   ∀ l ∈ r, ∀ l' ∈ r', (L l).alloc ≠ (L l').alloc ∨
@@ -2639,7 +2692,7 @@ theorem ddSound_instance (k : K) {L : Layout} (hpos : ∀ l, 0 < (L l).len) :
     DDSound { k with DeclaredDisjoint := ByteDisjoint L } :=
   ddSound_of_layout (fun _ _ h => h) fun _ _ _ l _ => hpos l
 
-/-- Counterexample kept (report, (e)): with a leaf of size zero, allowed by K1 (d), the
+/-- Counterexample kept (pass-2 report, (e) 1): with a leaf of size zero, allowed by K1 (d), the
 instantiation of L7 declares a region disjoint from itself, and `DDSound` fails. -/
 theorem ddSound_of_layout_needs_size (k : K) :
     ¬ DDSound { k with DeclaredDisjoint := ByteDisjoint fun _ => ⟨0, 0, 0⟩ } := fun h =>
@@ -3163,7 +3216,7 @@ def assoc (π : Params) : Op3 → S3 → MM02.State → List Op2
   | .writeShared _ ls w, _, s2 => writeOps s2 π.L w ls
   | .transfer src dst, s3, s2 => transferOps s2 π.L s3.P src dst
   | .store a p, s3, s2 => storeOps π.pe s2 π.L s3 a p
-  | .issue _ _ region dst, _, s2 => issueOps π.pe s2 π.L region dst
+  | .issue i _ region dst, s3, s2 => issueOps π.pe s2 π.L s3 i region dst
   | .alloc pr _ ls, s3, s2 =>
     allocOps π.pl (fun i => π.geom (s3.P.length + i)) (some (π.ptok pr)) s2 (rootIdx ls)
   | .enter _ ls, s3, s2 =>
@@ -3287,7 +3340,9 @@ at each step the sequence associated by K4 and L6, has only `ok` outcomes, reach
 and is in `Repr` with the MM-03 state; the MM-03 state is reached, and the ghost `provOf` is empty
 beyond the places. Since every prefix of a `SimRun` is a `SimRun`, this holds at each step. The
 remaining hypotheses: `DDSound k` (L7: `ddSound_of_layout`); `stat` (K5); the obligation of the
-placement and valid alignments (K2); the compatibility of the frame tokens (K2). -/
+placement and valid alignments (K2); the compatibility of the frame tokens (K2). `SameSizeAlong`
+(L6) is not one: the outcomes and `Repr` hold without it; the copy of the bytes of a `transfer`
+holds under it (`transfer_copies`). -/
 theorem simulation {C : Nat → Nat → Prop} {ObR : MM02.ReadOblSpec} {ObW : MM02.WriteOblSpec}
     {k : K} {statics : Statics} {π : Params} (hdd : DDSound k)
     (hstatR : ∀ s ac, ObR.stat s ac) (hstatW : ∀ s ac w, ObW.stat s ac w)
@@ -4041,32 +4096,37 @@ example : (n18.allocs 4).map (·.freeAuth) = some (some 7) := by decide
 
 /-- The invariants of MM-03 and `Repr` on a prefix of the run. -/
 theorem inv {s3 : S3} {pv : Nat → Option Nat} {s2 : MM02.State} (h : Run s3 pv s2) :
-    Repr π.tok π.ptok pv L s3 s2 ∧ WF3 s3 ∧ NoDangling s3 ∧ FpLeaves s3 ∧
+    Repr π.tok π.ptok pv L s3 s2 ∧ WF3 s3 ∧ NoDangling s3 ∧ FpLeaves s3 ∧ ArenasInv s3 ∧
       Reachable KS [] s3 := by
   obtain ⟨_, _, -, hR, hr⟩ := sim h
   exact ⟨hR, (reachable_invariants (KT_dd _ _ _ _ _) hr).1,
     (reachable_invariants (KT_dd _ _ _ _ _) hr).2.1.nd,
-    (reachable_fpLeaves_frameOwnedLive (KT_dd _ _ _ _ _) hr).1, hr⟩
+    (reachable_fpLeaves_frameOwnedLive (KT_dd _ _ _ _ _) hr).1,
+    (reachable_access_invariant_underDD (KT_dd _ _ _ _ _) hr).2.2, hr⟩
 
 /-- `issue` (L6): R6 on the step of the run, and `pointer_sound_issue`: the bytes written in the
 destination 7 decode to the address 104 of the leaf 5 (base of the allocation 4 of the storage, plus
-offset 0), and each carries the provenance 4, a live allocation. -/
-example : AllOk C obR obW n9 (issueOps pe n9 L [5] 7) ∧ Repr π.tok π.ptok pvA L x10 n10 := by
+offset 0), and each carries the provenance 4, the allocation of every leaf of the storage 4 of the
+arena, live. -/
+example : AllOk C obR obW n9 (issueOps pe n9 L x9 0 [5] 7) ∧ Repr π.tok π.ptok pvA L x10 n10 := by
   obtain ⟨hR, hwf, -⟩ := inv run9
   have := r6_issue (C := C) (ObR := obR) (ObW := obW) (pe := pe) hwf hR step10
     (fun _ _ _ => trivial)
     (by show (leafAcc n9 L .write 7).addr % 4 = 0; decide)
   exact ⟨this.1, this.2.1⟩
-example : pe.decode (ptrBytes pe n9 L [5]) = 104 ∧
-    (∀ i, (ptrBytes pe n9 L [5] i).2 = some 4) ∧
+example : pe.decode (issueBytes pe n9 L x9 0 [5]) = 104 ∧
+    (∀ j, (issueBytes pe n9 L x9 0 [5] j).2 = some 4) ∧
+    (∃ ar, x9.arenas[0]? = some ar ∧ ar.storage = 4 ∧
+      ∀ l' ∈ footprint x9.P ar.storage, (L l').alloc = 4) ∧
     (∃ al, n9.allocs 4 = some al ∧ al.live = true ∧ regionAddr n9 L [5] = al.base + 0) := by
-  obtain ⟨hR, hwf, hnd, hfl, -⟩ := inv run9
-  obtain ⟨h1, h2, ⟨al, h3, h4, h5, -⟩, -⟩ := pointer_sound_issue (C := C) (ObR := obR)
-    (ObW := obW) (pe := pe)
-    hwf hnd hfl hR step10 (fun _ _ _ => trivial)
+  obtain ⟨hR, hwf, hnd, hfl, hai, -⟩ := inv run9
+  obtain ⟨h1, h2, ⟨ar, h3, h3'⟩, ⟨al, h4, h5, h6, -⟩, -⟩ := pointer_sound_issue (C := C)
+    (ObR := obR) (ObW := obW) (pe := pe) hwf hnd hfl hai hR step10 (fun _ _ _ => trivial)
     (by show (leafAcc n9 L .write 7).addr % 4 = 0; decide) (l := 5) rfl
     ⟨by decide, fun _ => rfl⟩
-  exact ⟨h1.trans (by decide), h2, al, h3, h4, h5⟩
+  have e : ar = arS := Option.some.inj (h3.symm.trans (by decide))
+  subst e
+  exact ⟨h1.trans (by decide), h2, ⟨arS, h3, rfl, h3'⟩, al, h4, h5, h6⟩
 example : rangeBytes n10 L 7 = some ([104, 0, 0, 0, 0, 0, 0, 0].map fun v => .init v (some 4)) := by
   decide
 
@@ -4103,6 +4163,46 @@ example : (x12.A[9]?).map (·.holder) = some (.place 2) ∧ x12.F = [2, 1, 0] :=
 /-- Without the write of `issue` or of `transfer`, `Repr` fails (K3: an `Init` leaf has its bytes
 initialised). -/
 example : ¬ ReprB π.tok π.ptok pvA L x10 n9 ∧ ¬ ReprB π.tok π.ptok pvA L x12 n11 := by
+  decide
+
+/-- Witness of question (e) 2 of the pass-2 report, `issue`: `issue` of the empty region is `ok`
+in `x9`; the pointer that L6 writes has the provenance 4 of the arena storage, and the address 0,
+which L6 does not define for an empty block. -/
+example : IssueAt KS 0 5 [] 7 x9
+      (.ok (arenaSet (issueEff x9 arS [] 7).1 0 (issueEff x9 arS [] 7).2)) ∧
+    regionAddr n9 L [] = 0 ∧ ∀ j, (issueBytes pe n9 L x9 0 [] j).2 = some 4 :=
+  ⟨.ok (ar := arS) (by decide) (.ok (by decide) (by decide) (by decide) (by decide)), rfl,
+    fun _ => (by decide : arenaProv L x9 0 = some 4)⟩
+
+/-- Witness of question (e) 2 of the pass-2 report, `store`: `split 6 [[]]` gives the authority 10
+of empty footprint (MM-03.3 O2 allows sub-regions of size zero), and `store 10 8` is `ok`; the
+pointer of the empty region has the address 0 and no provenance. -/
+def x10e : S3 := splitEff x10 6 [[]]
+example : Step3 KS (.split 6 [[]]) x10 x10e ∧ Step3 KS (.store 10 8) x10e (storeEff x10e 10 8) ∧
+    x10e.afp 10 = [] ∧ regionAddr n10 L (x10e.afp 10) = 0 ∧ regionProv L (x10e.afp 10) = none :=
+  ⟨.ok (by decide), .ok (by decide), by decide, by decide, by decide⟩
+
+/-- Witness of question (e) 3 of the pass-2 report: `issue` of the region `[6, 5]` (the leaves of
+`[5, 6]`) is `ok`; the pointer has the address 112 of its first leaf 6, while the region begins at
+104, the address of 5. Under the layout `Lsw`, which swaps the two fields (K1 fixes no order of
+fields) and satisfies `LayoutWF`, the region `[5, 6]` gives 112 while it begins at 104. -/
+example : Step3 KS (.issue 0 5 [6, 5] 7) x9
+      (arenaSet (issueEff x9 arS [6, 5] 7).1 0 (issueEff x9 arS [6, 5] 7).2) ∧
+    regionAddr n9 L [6, 5] = 112 ∧ leafAddr n9 L 5 = 104 ∧ leafAddr n9 L 6 = 112 :=
+  ⟨.ok (ar := arS) (by decide) (.ok (by decide) (by decide) (by decide) (by decide)),
+    by decide, by decide, by decide⟩
+def Lsw : Layout := fun q => if q = 5 then ⟨4, 8, 8⟩ else if q = 6 then ⟨4, 0, 8⟩ else L q
+example : LayoutWF Lsw x9 n9 ∧ regionAddr n9 Lsw [5, 6] = 112 ∧ leafAddr n9 Lsw 6 = 104 := by
+  decide
+
+/-- Witness of question (e) 4 of the pass-2 report: under the layout `L0`, where the leaf 8 has
+size 0 (K1 (d)), `ReprB` holds before `store 5 8`, the pointer written decodes to 8 as before, and
+the range of 8 receives no byte of it, while MM-03 makes 8 `Init` and lets it hold the
+authority 5. -/
+def L0 : Layout := fun q => if q = 8 then ⟨6, 0, 0⟩ else L q
+example : ReprB π.tok π.ptok pvA L0 x10 n10 ∧ pe.decode (ptrBytes pe n10 L0 (x10.afp 5)) = 8 ∧
+    rangeBytes (exec n10 (storeOps pe n10 L0 x10 5 8)) L0 8 = some [] ∧ x11.I 8 = .init ∧
+    (x11.A[5]?).map (·.holder) = some (.place 8) := by
   decide
 
 /-- L8 along the run (`simulation_pinned`): the leaf 1, pinned before the transfer, keeps a live
