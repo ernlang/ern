@@ -1762,6 +1762,24 @@ theorem r6_exit_reachable {k : K} {statics : Statics} {C : Nat → Nat → Prop}
     AllOk C ObR ObW s2 (exitOps L tok s3) ∧ Repr tok L s3' (exec s2 (exitOps L tok s3)) :=
   r6_exit (reachable_invariants hdd hr).1 (reachable_fpLeaves_frameOwnedLive hdd hr).2 hR htc h
 
+/-! ## R4 (MM-03.3 §9.2) -/
+
+/-- R4 (MM-03.3 §9.2, from `NoDangling`, §2.6): on a reached state of MM-03 in `Repr` with an MM-02
+state, no active authority covers a leaf whose MM-02 allocation is dead; the allocation of every
+leaf it covers is registered and live. Under `DDSound k`, the hypothesis of the invariants of the
+reached states. -/
+theorem r4_no_dead_cover {k : K} {statics : Statics} {tok : Nat → Nat} {L : Layout} {s3 : S3}
+    {s2 : MM02.State} (hdd : DDSound k) (hr : Reachable k statics s3) (hR : Repr tok L s3 s2) :
+    ∀ (j : Nat) (y : Authority), s3.A[j]? = some y → y.active = true → ∀ l ∈ y.footprint,
+      isLeaf s3.P l ∧ ¬ DeadAlloc s2 (L l).alloc ∧ LiveAlloc s2 (L l).alloc := by
+  intro j y hy ya l hl
+  obtain ⟨-, hlf, hlive⟩ := covered_live (reachable_invariants hdd hr).1
+    (reachable_invariants hdd hr).2.1.nd (reachable_fpLeaves_frameOwnedLive hdd hr).1 hR hy ya hl
+  refine ⟨hlf, fun hd => ?_, hlive⟩
+  obtain ⟨a, ha, hla⟩ := hlive
+  obtain ⟨b, hb, hlb⟩ := hd
+  rw [ha] at hb; cases hb; rw [hla] at hlb; cases hlb
+
 /-! ## Smoke test -/
 
 namespace Smoke
