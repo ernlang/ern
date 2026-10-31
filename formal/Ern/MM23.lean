@@ -1780,6 +1780,25 @@ theorem r4_no_dead_cover {k : K} {statics : Statics} {tok : Nat → Nat} {L : La
   obtain ⟨b, hb, hlb⟩ := hd
   rw [ha] at hb; cases hb; rw [hla] at hlb; cases hlb
 
+/-! ## Exclusive bytes (MM-03.3 §9.1.8) -/
+
+/-- `exclusive_bytes` (MM-03.3 §2.2, §9.1.8; K1 (b)): under I1 and `LayoutWF` (the clause `lwf` of
+`Repr`), if an authority `a` has the effective mode `Modify` on a leaf `l`, no other authority `b`
+has an effective mode on a leaf `l'` whose range overlaps the range of `l` (same allocation, ranges
+not disjoint). The task asks it of the active authorities that do not descend from `a`; neither
+condition is used: an active descendant of `a` covering `l` would remove the effective `Modify` of
+`a` (MM-03.3.5), and an inactive authority has no effective mode. Memory justification of
+non-aliasing, on the side of the kernel only. -/
+theorem exclusive_bytes {L : Layout} {s3 : S3} {s2 : MM02.State} (hlw : LayoutWF L s3 s2)
+    (hI1 : I1 s3) {a b l l' : Nat} (hl : l < s3.P.length) (hlf : isLeaf s3.P l)
+    (hl' : l' < s3.P.length) (hlf' : isLeaf s3.P l') (ha : effective s3 a l = some .modify)
+    (hab : a ≠ b) (hsame : (L l).alloc = (L l').alloc)
+    (hover : ¬ MM02.RangeDisjoint (L l).off (L l).len (L l').off (L l').len) :
+    effective s3 b l' = none := by
+  by_cases e : l = l'
+  · subst e; exact effective_exclusive hI1 hab ha
+  · exact absurd (hlw.disjoint l hl l' hl' hlf hlf' e hsame) hover
+
 /-! ## Smoke test -/
 
 namespace Smoke
