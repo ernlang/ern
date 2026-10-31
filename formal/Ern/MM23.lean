@@ -1799,23 +1799,31 @@ theorem exclusive_bytes {L : Layout} {s3 : S3} {s2 : MM02.State} (hlw : LayoutWF
   · subst e; exact effective_exclusive hI1 hab ha
   · exact absurd (hlw.disjoint l hl l' hl' hlf hlf' e hsame) hover
 
-/-! ## Smoke test -/
+/-! ## Cases (step 6 of the task)
 
-namespace Smoke
+Each verdict is checked by `decide` on the precondition of the MM-03 step and on `Repr`, which is
+decidable; the MM-02 sequences are exhibited by the definitions `opsN` and their effects. Each R6
+theorem is applied to a step of one scenario reached from `S3.init`. The obligations `dec` of the
+test cases ask an access aligned on 4 bytes, a non-trivial instance (K5); `stat` is `True`, as K5
+fixes for the sequential fragment. -/
 
+namespace CaseInit
+
+/-- One static leaf, declared `Init`, in a 4-byte range of the static allocation. -/
 def st : Statics := [((none, none, 0), true)]
 def L : Layout := fun _ => ⟨0, 0, 4⟩
 def tk : Nat → Nat := fun f => 100 + f
 def g : Nat → Geom := fun _ => ⟨0, 4, 4⟩
 def w : Nat → Nat → UInt8 × Option Nat := fun l i => ((l + i).toUInt8, none)
-/-- Obligations of the test cases: `dec` asks an access aligned on 4 bytes (K5: a non-trivial
-instance); `stat` is true, as K5 fixes for the sequential fragment. -/
+/-- Test obligations (K5): `dec`, an access aligned on 4 bytes; `stat`, true. -/
 def obR : MM02.ReadOblSpec := ⟨fun _ ac => ac.addr % 4 = 0, fun _ _ => True⟩
 def obW : MM02.WriteOblSpec := ⟨fun _ ac _ => ac.addr % 4 = 0, fun _ _ _ => True⟩
 instance : ∀ s o, Decidable (Op2.Dec obR obW s o) := fun s o => by
   cases o <;> simp only [Op2.Dec, obR, obW] <;> infer_instance
 def s2 : MM02.State := exec MM02.State.empty (initOps topPlacement g tk L w st)
 
+/-- `repr_init` on the static storage, and the same verdict by `decide`; without the write of the
+static, `Repr` fails (K3: an `Init` leaf has its bytes initialised). -/
 example : Repr tk L (S3.init st) s2 :=
   (repr_init (C := fun _ _ => False) (ObR := obR) (ObW := obW) (by decide) topPlacement_ok
     (by decide) (by decide) (fun _ _ _ => trivial) (by decide)).2
@@ -1836,6 +1844,251 @@ example : MM02.ReadStep obR (leafAcc cx2 L .read 0) cx2 .ub :=
   .ub fun ⟨h, _⟩ => absurd h (by decide)
 example : ¬ NoDangling cx := fun h => h 0 _ rfl rfl 0 (by decide) 0 (by decide) (by decide)
 
-end Smoke
+end CaseInit
+
+namespace Cases
+
+/-- Test contracts: leaf 5 `SharedMutable`; `ExternalDone` for 2; place 6 deallocable with the
+authority 7; the allocator at place 1 satisfiable, any other not. -/
+def KC : K := ⟨fun _ _ => False, (· ∈ [5]), (· ∈ ([] : List Nat)), (· ∈ [2]), (· ∈ [6]),
+  fun p a => (p, a) ∈ [(6, 7)], fun pr _ _ => pr = 1⟩
+instance : ∀ r r', Decidable (KC.DeclaredDisjoint r r') := fun _ _ => instDecidableFalse
+instance : DecidablePred KC.SharedMutable := fun l => inferInstanceAs (Decidable (l ∈ [5]))
+instance : DecidablePred KC.Pinned := fun l => inferInstanceAs (Decidable (l ∈ ([] : List Nat)))
+instance : DecidablePred KC.ExternalDone := fun l => inferInstanceAs (Decidable (l ∈ [2]))
+instance : DecidablePred KC.Deallocable := fun p => inferInstanceAs (Decidable (p ∈ [6]))
+instance : ∀ p a, Decidable (KC.FreeCompat p a) :=
+  fun p a => inferInstanceAs (Decidable ((p, a) ∈ [(6, 7)]))
+instance : ∀ p ls s, Decidable (KC.Satisfiable p ls s) :=
+  fun p _ _ => inferInstanceAs (Decidable (p = 1))
+theorem kc_dd : DDSound KC := fun _ _ h => h.elim
+
+/-- The scenario. Static 0 (`Init`). Frame 1 with locals 1 (an allocator value), 2 (owner of
+allocated storage, then arena value) and 3, a value with fields 4 and 5. Then: writes of 1 and 2,
+read of 1, `derive` of 4 from the root of 3 and its `release`, `split` of 3 into 4 and 5, `write3`
+of 4, `writeShared` of 5, `depend` of 2 on the root of 1, `pin` and `unpin` of 2, `alloc` of the
+storage 6 owned by 2 (`fail` from the allocator 2), `newArena` on 6, `reset`, `endUse` of 2 (6
+dies, not freed), `exitFrame`. On a branch, `free` of 6 after its allocation. -/
+def st : Statics := [((none, none, 0), true)]
+def lsF : List (Option Nat × Option Nat × Nat) :=
+  [(none, none, 0), (none, none, 0), (none, none, 0), (some 3, none, 0), (some 3, none, 0)]
+def e0 : S3 := S3.init st
+def e1 : S3 := enterEff e0 [] lsF
+def e2 : S3 := write3Eff e1 [1]
+def e3 : S3 := write3Eff e2 [2]
+def e4 : S3 := deriveEff e3 3 4 .observe
+def e5 : S3 := releaseEff e4 4
+def e6 : S3 := splitEff e5 3 [[4], [5]]
+def e7 : S3 := write3Eff e6 [4]
+def e8 : S3 := write3Eff e7 [5]
+def e9 : S3 := dependEff e8 2 1
+def e10 : S3 := pinEff e9 2 true
+def e11 : S3 := pinEff e10 2 false
+def e12 : S3 := allocEff e11 1 2 [(none, none, 0)]
+def e13 : S3 := newArenaEff e12 6 7
+def e14 : S3 := resetAtEff e13 0
+def e15 : S3 := endUseEff e14 2
+def e16 : S3 := exitEff e15
+def f13 : S3 := freeEff e12 6
+
+theorem r0 : Reachable KC st e0 := .init (by decide)
+theorem r1 : Reachable KC st e1 := .enter r0 (.ok (by decide))
+theorem r2 : Reachable KC st e2 := .write r1 (.ok (by decide) : Write3Step 1 [1] e1 (.ok e2))
+theorem r3 : Reachable KC st e3 := .write r2 (.ok (by decide) : Write3Step 2 [2] e2 (.ok e3))
+theorem r4 : Reachable KC st e4 := .derive r3 (.ok (by decide) : DeriveStep 3 4 .observe e3 (.ok e4))
+theorem r5 : Reachable KC st e5 := .release r4 (.ok (by decide) : ReleaseStep 4 e4 (.ok e5))
+theorem r6 : Reachable KC st e6 := .split r5 (.ok (by decide) : SplitStep KC 3 [[4], [5]] e5 (.ok e6))
+theorem r7 : Reachable KC st e7 := .write r6 (.ok (by decide) : Write3Step 5 [4] e6 (.ok e7))
+theorem r8 : Reachable KC st e8 :=
+  .writeShared r7 (.ok (by decide) : WriteSharedStep KC 6 [5] e7 (.ok e8))
+theorem r9 : Reachable KC st e9 := .depend r8 (.ok (by decide) : DependStep 2 1 e8 (.ok e9))
+theorem r10 : Reachable KC st e10 := .pin r9 (.ok (by decide) : PinStep 2 e9 (.ok e10))
+theorem r11 : Reachable KC st e11 := .unpin r10 (.ok (by decide) : UnpinStep KC 2 e10 (.ok e11))
+theorem r12 : Reachable KC st e12 :=
+  .alloc r11 (.ok (by decide) (by decide) : AllocStep KC 1 2 [(none, none, 0)] e11 (.ok e12))
+theorem r13 : Reachable KC st e13 := .newArena r12 (.ok (by decide) : NewArenaStep 6 7 e12 (.ok e13))
+theorem r14 : Reachable KC st e14 := .reset r13 (.ok (by decide) : ResetAtStep KC 0 2 e13 (.ok e14))
+theorem r15 : Reachable KC st e15 := .endUse r14 (.ok (by decide) : EndUseStep KC 2 e14 (.ok e15))
+theorem r16 : Reachable KC st e16 := .exit r15 (.ok (by decide) : ExitStep KC e15 (.ok e16))
+theorem rf : Reachable KC st f13 := .free r12 (.ok (by decide) : FreeStep KC 6 7 e12 (.ok f13))
+
+/-- MM-02 parameters: compatibility by equality of tokens (so `TokCompat`); frame token `100 + f`;
+geometry: 8 bytes aligned on 4; layout: one allocation per root, fields 4 and 5 at offsets 0 and 4
+of the allocation of 3; the bytes written in leaf `l` are `10 l + i`. -/
+def C : Nat → Nat → Prop := fun a d => a = d
+def tk : Nat → Nat := fun f => 100 + f
+def g : Nat → Geom := fun _ => ⟨0, 8, 4⟩
+def L : Layout := fun q => match q with
+  | 0 => ⟨0, 0, 4⟩ | 1 => ⟨1, 0, 4⟩ | 2 => ⟨2, 0, 4⟩ | 3 => ⟨3, 0, 8⟩
+  | 4 => ⟨3, 0, 4⟩ | 5 => ⟨3, 4, 4⟩ | 6 => ⟨4, 0, 4⟩ | _ => ⟨99, 0, 0⟩
+def w : Nat → Nat → UInt8 × Option Nat := fun l i => ((10 * l + i).toUInt8, none)
+/-- Test obligations (K5): `dec`, an access aligned on 4 bytes; `stat`, true. -/
+def obR : MM02.ReadOblSpec := ⟨fun _ ac => ac.addr % 4 = 0, fun _ _ => True⟩
+def obW : MM02.WriteOblSpec := ⟨fun _ ac _ => ac.addr % 4 = 0, fun _ _ _ => True⟩
+instance : ∀ s o, Decidable (Op2.Dec obR obW s o) := fun s o => by
+  cases o <;> simp only [Op2.Dec, obR, obW] <;> infer_instance
+
+/-- The MM-02 sequences attached to the steps (K4) and the states they reach. -/
+def m0 : MM02.State := exec MM02.State.empty (initOps topPlacement g tk L w st)
+def ops1 : List Op2 := allocOps topPlacement g (some (tk e0.nF)) m0 (rootIdx lsF)
+def m1 : MM02.State := exec m0 ops1
+def ops2 : List Op2 := writeOps m1 L w [1]
+def m2 : MM02.State := exec m1 ops2
+def ops3 : List Op2 := writeOps m2 L w [2]
+def m3 : MM02.State := exec m2 ops3
+def ops7 : List Op2 := writeOps m3 L w [4]
+def m7 : MM02.State := exec m3 ops7
+def ops8 : List Op2 := writeOps m7 L w [5]
+def m8 : MM02.State := exec m7 ops8
+def ops12 : List Op2 :=
+  [.alloc (g 0).space (topPlacement m8 (g 0)) (g 0).size (g 0).align (some 7)]
+def m12 : MM02.State := exec m8 ops12
+def ops16 : List Op2 := exitOps L tk e15
+def m16 : MM02.State := exec m12 ops16
+def opsF : List Op2 := deallocOps [rootAlloc L e12.P 6] 7
+def mF : MM02.State := exec m12 opsF
+
+theorem wf2 (ops : List Op2) : MM02.WF (exec MM02.State.empty ops) := exec_wf ops _ fun _ _ => rfl
+theorem wfm8 : MM02.WF m8 := by
+  unfold m8 m7 m3 m2 m1
+  exact exec_wf _ _ (exec_wf _ _ (exec_wf _ _ (exec_wf _ _ (exec_wf _ _ (wf2 _)))))
+
+/-- The sequences exhibited: the bases chosen by `topPlacement` for the locals (16, 28, 40) and the
+allocated storage (52), with their tokens; the deallocations of `exitFrame`, of the allocations 1,
+2, 3 of the roots owned by frame 1, with its token 101. -/
+example : (m1.allocs 1).map (·.base) = some 16 ∧ (m1.allocs 2).map (·.base) = some 28 ∧
+    (m1.allocs 3).map (·.base) = some 40 ∧ (m1.allocs 3).map (·.freeAuth) = some (some 101) := by
+  decide
+example : (m12.allocs 4).map (·.base) = some 52 ∧ (m12.allocs 4).map (·.live) = some true ∧
+    (m12.allocs 4).map (·.freeAuth) = some (some 7) := by decide
+example : (frameRoots e15 e15.top).map (rootAlloc L e15.P) = [1, 2, 3] ∧ tk e15.top = 101 := by
+  decide
+
+/-- `Repr` at each point, by `decide`. -/
+example : Repr tk L e0 m0 ∧ Repr tk L e1 m1 ∧ Repr tk L e2 m2 ∧ Repr tk L e3 m3 ∧
+    Repr tk L e6 m3 ∧ Repr tk L e8 m8 ∧ Repr tk L e12 m12 ∧ Repr tk L e15 m12 ∧
+    Repr tk L e16 m16 ∧ Repr tk L f13 mF := by decide
+
+/-- K3: initial state (`repr_init`). -/
+example : AllOk C obR obW MM02.State.empty (initOps topPlacement g tk L w st) ∧ Repr tk L e0 m0 :=
+  repr_init (by decide) topPlacement_ok (by decide) (by decide) (fun _ _ _ => trivial) (by decide)
+/-- R6, `enterFrame`: three allocations, one per root local. -/
+example : AllOk C obR obW m0 ops1 ∧ Repr tk L e1 m1 :=
+  r6_enter (reachable_invariants kc_dd r0).1 (by decide) (wf2 _) topPlacement_ok (by decide)
+    (.ok (by decide)) (by decide)
+/-- R2, `write3`. -/
+example : AllOk C obR obW m1 ops2 ∧ Repr tk L e2 m2 :=
+  r2_write3_reachable kc_dd r1 (by decide) (.ok (by decide) : Write3Step 1 [1] e1 (.ok e2))
+    (fun _ _ _ => trivial) (by decide)
+example : AllOk C obR obW m3 ops7 ∧ Repr tk L e7 m7 :=
+  r2_write3_reachable kc_dd r6 (by decide) (.ok (by decide) : Write3Step 5 [4] e6 (.ok e7))
+    (fun _ _ _ => trivial) (by decide)
+/-- R2, `writeShared` under an authority of effective mode present. -/
+example : AllOk C obR obW m7 ops8 ∧ Repr tk L e8 m8 :=
+  r2_writeShared_reachable kc_dd r7 (by decide)
+    (.ok (by decide) : WriteSharedStep KC 6 [5] e7 (.ok e8)) (fun _ _ _ => trivial) (by decide)
+/-- R1 and R6, `read3`; the value read is the 4 bytes written by `write3` in leaf 1. -/
+example : AllOk C obR obW m3 (readOps m3 L [1]) ∧ Repr tk L e3 (exec m3 (readOps m3 L [1])) :=
+  r6_read3 (reachable_invariants kc_dd r3).1 (reachable_invariants kc_dd r3).2.1.nd
+    (reachable_fpLeaves_frameOwnedLive kc_dd r3).1 (by decide)
+    (.ok (by decide) : Read3Step 1 [1] e3 (.ok e3)) (fun _ _ => trivial) (fun l hl => by
+      rw [List.mem_singleton] at hl; subst hl; show (leafAcc m3 L .read 1).addr % 4 = 0; decide)
+example : ((m3.allocs 1).map fun a => a.bytesAt 0 4) =
+    some [.init 10 none, .init 11 none, .init 12 none, .init 13 none] := by decide
+example : ((m8.allocs 3).map fun a => a.bytesAt 0 8) = some [.init 40 none, .init 41 none,
+    .init 42 none, .init 43 none, .init 50 none, .init 51 none, .init 52 none, .init 53 none] := by
+  decide
+/-- R6, `alloc` `ok`: one allocation, at base 52, token 7. -/
+example : AllOk C obR obW m8 ops12 ∧ Repr tk L e12 m12 :=
+  r6_alloc (i := 0) (reachable_invariants kc_dd r11).1 (by decide) wfm8 topPlacement_ok
+    (by decide) (.ok (by decide) (by decide) : AllocStep KC 1 2 [(none, none, 0)] e11 (.ok e12)) rfl
+    (by decide)
+/-- R6, `alloc` `fail`: allocator 2 not satisfiable, no step. -/
+example : AllOk C obR obW m12 [] ∧ Repr tk L e12 (exec m12 []) :=
+  r6_alloc_fail (by decide)
+    (.fail (by decide) (by decide) : AllocStep KC 2 2 [(none, none, 0)] e12 (.fail e12))
+/-- R6, `free` of 6 with the authority 7: the allocation 4 dies. -/
+example : AllOk C obR obW m12 opsF ∧ Repr tk L f13 mF := by
+  refine r6_free (k := KC) (auth := 7) (reachable_invariants kc_dd r12).1 (by decide) ?_
+    (.ok (by decide))
+  intro p auth hp hc l hl
+  have hfp : footprint e12.P 6 = [6] := by decide
+  simp only [KC, List.mem_cons, Prod.mk.injEq, List.not_mem_nil, or_false] at hp hc
+  obtain ⟨rfl, rfl⟩ := hc
+  rw [hfp, List.mem_singleton] at hl; subst hl
+  exact (show AllocP m12 4 (·.freeAuth = some 7) by decide).mono fun _ h => ⟨7, h, rfl⟩
+example : DeadAlloc mF 4 := by decide
+/-- R6, `exitFrame`: three deallocations; the storage 6, dead by `endUse` and not freed, keeps
+its allocation 4 live (leak, K3, K4). -/
+example : AllOk C obR obW m12 ops16 ∧ Repr tk L e16 m16 :=
+  r6_exit_reachable kc_dd r15 (by decide) (fun _ => rfl) (.ok (by decide))
+example : DeadAlloc m16 1 ∧ DeadAlloc m16 2 ∧ DeadAlloc m16 3 ∧ LiveAlloc m16 4 ∧
+    LiveAlloc m16 0 := by decide
+/-- R6, the steps without MM-02 step (K4). After `endUse` of 2, the storage 6 is not usable and
+not freed, and its allocation stays live. -/
+example : AllOk C obR obW m3 [] ∧ Repr tk L e4 (exec m3 []) :=
+  r6_noStep (k := KC) (by decide) (.derive (.ok (by decide) : DeriveStep 3 4 .observe e3 (.ok e4)))
+example : AllOk C obR obW m3 [] ∧ Repr tk L e5 (exec m3 []) :=
+  r6_noStep (k := KC) (by decide) (.release (.ok (by decide) : ReleaseStep 4 e4 (.ok e5)))
+example : AllOk C obR obW m3 [] ∧ Repr tk L e6 (exec m3 []) :=
+  r6_noStep (by decide) (.split (.ok (by decide) : SplitStep KC 3 [[4], [5]] e5 (.ok e6)))
+example : AllOk C obR obW m8 [] ∧ Repr tk L e9 (exec m8 []) :=
+  r6_noStep (k := KC) (by decide) (.depend (.ok (by decide) : DependStep 2 1 e8 (.ok e9)))
+example : AllOk C obR obW m8 [] ∧ Repr tk L e10 (exec m8 []) :=
+  r6_noStep (k := KC) (by decide) (.pin (.ok (by decide) : PinStep 2 e9 (.ok e10)))
+example : AllOk C obR obW m8 [] ∧ Repr tk L e11 (exec m8 []) :=
+  r6_noStep (by decide) (.unpin (.ok (by decide) : UnpinStep KC 2 e10 (.ok e11)))
+example : AllOk C obR obW m12 [] ∧ Repr tk L e13 (exec m12 []) :=
+  r6_noStep (k := KC) (by decide) (.newArena (.ok (by decide) : NewArenaStep 6 7 e12 (.ok e13)))
+example : AllOk C obR obW m12 [] ∧ Repr tk L e14 (exec m12 []) :=
+  r6_noStep (by decide) (.reset (.ok (by decide) : ResetAtStep KC 0 2 e13 (.ok e14)))
+example : AllOk C obR obW m12 [] ∧ Repr tk L e15 (exec m12 []) :=
+  r6_noStep (by decide) (.endUse (.ok (by decide) : EndUseStep KC 2 e14 (.ok e15)))
+example : ¬ e15.Usable 6 ∧ e15.freed 6 = false ∧ LiveAlloc m12 4 := by decide
+
+/-- R4 on the reached state after `exitFrame`: the authorities still active cover only the
+static leaf, in a live allocation. -/
+example : ∀ j < e16.A.length, e16.Active j → e16.afp j = [0] := by decide
+example : LiveAlloc m16 (L 0).alloc :=
+  (r4_no_dead_cover (tok := tk) kc_dd r16 (by decide) 0 _ rfl rfl 0 (List.mem_singleton_self _)).2.2
+
+/-- `exclusive_bytes`: after `split`, authority 5 has effective `Modify` on leaf 4; the root 3,
+active and covering 4, has no effective mode there; authority 6 keeps effective `Modify` on the
+adjacent range of leaf 5. A layout where the ranges of 4 and 5 overlap violates `LayoutWF`. -/
+example : effective e6 5 4 = some .modify ∧ e6.Active 3 ∧ 4 ∈ e6.afp 3 ∧
+    effective e6 6 5 = some .modify := by decide
+example : effective e6 3 4 = none :=
+  exclusive_bytes (L := L) (s2 := m3) (by decide) (reachable_invariants kc_dd r6).2.1.base.1
+    (l := 4) (l' := 4) (by decide) (by decide) (by decide) (by decide) (a := 5) (by decide)
+    (by decide) rfl (by decide)
+def Lov : Layout := fun q => if q = 5 then ⟨3, 2, 4⟩ else L q
+example : ¬ LayoutWF Lov e6 m3 := by decide
+
+/-- K1 (d): the storage 6, a shape of one leaf, may have size zero. -/
+def L0 : Layout := fun q => if q = 6 then ⟨4, 0, 0⟩ else L q
+def m12z : MM02.State := exec m8 [.alloc 0 (topPlacement m8 ⟨0, 0, 4⟩) 0 4 (some 7)]
+example : Repr tk L0 e12 m12z := by decide
+
+/-- Each clause of `Repr` rejects a wrong MM-02 state: a usable root with a dead allocation; a
+leaked root deallocated at `endUse`; two roots in one allocation (`LayoutWF` holds); a wrong frame
+token; an exited root or a freed root whose allocation is still live. -/
+example : ¬ Repr tk L e3 (m3.dealloc 1) := by decide
+example : ¬ Repr tk L e15 (m12.dealloc 4) := by decide
+def Lsh : Layout := fun q => if q = 2 then ⟨1, 4, 4⟩ else L q
+example : LayoutWF Lsh e1 m1 ∧ ¬ Repr tk Lsh e1 m1 := by decide
+example : ¬ Repr (fun f => 200 + f) L e1 m1 := by decide
+example : ¬ Repr tk L e16 m12 ∧ ¬ Repr tk L f13 m12 := by decide
+
+/-- Counterexample kept (report, (e), (f)): the draft accepts `alloc` of a shape with two roots,
+where O14 creates one root; with the one `AllocStep` of K4, a layout putting both roots in the
+fresh allocation satisfies `LayoutWF` but not `Repr` (two roots, one allocation). -/
+def e12b : S3 := allocEff e11 1 2 [(none, none, 0), (none, none, 0)]
+example : AllocStep KC 1 2 [(none, none, 0), (none, none, 0)] e11 (.ok e12b) :=
+  .ok (by decide) (by decide)
+def L2 : Layout := fun q => if q = 7 then ⟨4, 4, 4⟩ else L q
+def m12b : MM02.State := exec m8 [.alloc 0 (topPlacement m8 (g 0)) 8 4 (some 7)]
+example : LayoutWF L2 e12b m12b ∧ ¬ Repr tk L2 e12b m12b := by decide
+
+end Cases
 
 end Ern.MM23
