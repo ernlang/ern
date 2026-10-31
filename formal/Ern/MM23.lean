@@ -2604,6 +2604,354 @@ theorem byteDisjoint_of_leaves {L : Layout} {s3 : S3} {s2 : MM02.State} (hlw : L
       (fun h => hd l hl (h ▸ hl')) e)
   · exact .inl e
 
+/-! ## Pinned addresses (L8) -/
+
+/-- Pinned leaves stay live (MM-03.3 §3 O15; A8): every leaf of an existing place that is pinned,
+dynamically (`pin`) or statically (`K.Pinned`, MM-03.3.8), is usable. -/
+def PinnedLive (k : K) (s : S3) : Prop :=
+  ∀ l < s.P.length, isLeaf s.P l → (s.pin l = true ∨ k.Pinned l) → s.Usable l
+
+/-- A pinned usable leaf stays usable across every `ok` step (MM-03.3 §3 O15: `transfer`, `endUse`,
+`free` and `exitFrame` are rejected on pinned leaves; O4.5, O12.4, O13.4, §4 O7.3 (B4)). The other
+steps keep or extend the places, the stack and the `dead` flags. -/
+theorem step_pinned_usable {k : K} {s s' : S3} (hw : WF3 s) (hp : PinnedLive k s)
+    (h : Step k s s') : ∀ l < s.P.length, isLeaf s.P l → (s.pin l = true ∨ k.Pinned l) →
+      s'.Usable l := by
+  intro l hl hleaf hpin
+  have hu := hp l hl hleaf hpin
+  -- A step that keeps places, stack and `dead` flags keeps usability.
+  have same : ∀ {t : S3}, t.P = s.P → t.F = s.F → t.dead = s.dead → t.Usable l :=
+    fun hP hF hd => (S3.Usable.congr hP hF hd).2 hu
+  -- A leaf that stops being usable must not be pinned.
+  have unpinned : ∀ {t : S3}, (¬ t.Usable l → s.pin l = false ∧ ¬ k.Pinned l) → t.Usable l :=
+    fun hc => Decidable.byContradiction fun hn => by
+      obtain ⟨h1, h2⟩ := hc hn
+      rcases hpin with h3 | h3
+      · rw [h1] at h3; cases h3
+      · exact h2 h3
+  cases h with
+  | kernel h =>
+    cases h with
+    | derive hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact same rfl rfl rfl
+    | split hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact same rfl rfl rfl
+    | release hs =>
+      obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs
+      unfold releaseEff; split <;> exact same rfl rfl rfl
+    | transfer hs =>
+      obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 hs
+      exact transfer_usable_fwd hw hpre.2.2.2.2.2.2.2.1 hu
+    | depend hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact same rfl rfl rfl
+    | enter hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact enter_usable_old hu
+    | exit hs =>
+      obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 hs
+      unfold ExitPre at hpre
+      split at hpre
+      · rename_i f F₀ hF
+        -- A leaf is in its own footprint.
+        have hu' : ({ s with F := F₀ } : S3).Usable l := unpinned fun hn =>
+          hpre.2.2.2.1 l (List.mem_range.2 hl) hu hn l (mem_footprint.2 ⟨hl, hleaf, hl, .inl rfl⟩)
+        rw [exitEff_eq hF]; exact S3.Usable.of_eqs (s' := { s with F := F₀ }) hu' rfl rfl rfl
+      · exact hpre.elim
+    | read hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact hu
+    | write hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact same rfl rfl rfl
+    | writeShared hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact same rfl rfl rfl
+    | pin hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact same rfl rfl rfl
+    | unpin hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact same rfl rfl rfl
+    | @endUse p hs =>
+      obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 hs
+      -- `cleanup` changes only authorities.
+      refine (S3.Usable.congr (s := endUseS s p) (s' := endUseEff s p) rfl rfl rfl).2
+        (unpinned fun hn => ?_)
+      exact hpre.2.2.2.2 l (List.mem_range.2 hl) (.inr ⟨hu, hn⟩)
+    | @free p _ hs =>
+      obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 hs
+      refine (S3.Usable.congr (s := freeS s p) (s' := freeEff s p) rfl rfl rfl).2
+        (unpinned fun hn => ?_)
+      exact hpre.2.2.2.2.2.2.2 l (List.mem_range.2 hl) (.inr ⟨hu, hn⟩)
+    | alloc hs => cases hs with | ok _ _ => exact alloc_usable_old hu
+    | store hs =>
+      obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs
+      unfold storeEff; split <;> exact same rfl rfl rfl
+  | newArena hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact same rfl rfl rfl
+  | issue hs => cases hs with | ok _ hst => cases hst with | ok => exact same rfl rfl rfl
+  | reset hs =>
+    obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs
+    unfold resetAtEff; split <;> exact same rfl rfl rfl
+
+/-- What a step does to the places and pins of `s` (MM-03.3 §3–6; A5, A8): it keeps the existing
+places and their parents, appends new usable places (`enterFrame` O6, `alloc` O14), and pins
+an unpinned leaf only through `pin` (O15), which pins leaves of a usable place. -/
+theorem step_extends {k : K} {s s' : S3} (hw : WF3 s) (h : Step k s s') :
+    s.P.length ≤ s'.P.length ∧ (∀ r < s.P.length, parentOf s'.P r = parentOf s.P r) ∧
+    (∀ l < s.P.length, s'.pin l = true → s.pin l = true ∨ s'.Usable l) ∧
+    (∀ q < s'.P.length, s.P.length ≤ q → s'.Usable q) := by
+  have frozen : ∀ {t : S3}, t.P.length = s.P.length → parentOf t.P = parentOf s.P →
+      t.pin = s.pin →
+      s.P.length ≤ t.P.length ∧ (∀ r < s.P.length, parentOf t.P r = parentOf s.P r) ∧
+      (∀ l < s.P.length, t.pin l = true → s.pin l = true ∨ t.Usable l) ∧
+      (∀ q < t.P.length, s.P.length ≤ q → t.Usable q) :=
+    fun hlen hpar hpin => ⟨Nat.le_of_eq hlen.symm, fun r _ => by rw [hpar],
+      fun l _ hl => .inl (hpin ▸ hl), fun q hq hge => absurd (hlen ▸ hq) (Nat.not_lt.2 hge)⟩
+  cases h with
+  | kernel h =>
+    cases h with
+    | derive hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact frozen rfl rfl rfl
+    | split hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact frozen rfl rfl rfl
+    | release hs =>
+      obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs
+      unfold releaseEff; split <;> exact frozen rfl rfl rfl
+    | transfer hs =>
+      obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs
+      exact frozen (transfer_len s _ _) (transfer_parentOf s _ _) rfl
+    | depend hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact frozen rfl rfl rfl
+    | @enter ps ls hs =>
+      obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 hs
+      have hlen : (enterEff s ps ls).P.length = s.P.length + ls.length := enterP_len s ls
+      refine ⟨by rw [hlen]; exact Nat.le_add_right _ _, fun r hr => ?_, fun l hl hpl => ?_,
+        fun q hq hge => ?_⟩
+      · show parentOf (shapeP s.P (.frame s.nF) ls) r = _
+        exact shape_parentOf_lt hr
+      · simp only [enterEff, Nat.not_le.2 hl, ↓reduceIte] at hpl
+        exact .inl hpl
+      · rw [hlen] at hq
+        have := enter_usable_new hpre.1 (q - s.P.length + 1) (q - s.P.length)
+          (Nat.lt_succ_self _) (by omega)
+        rwa [Nat.add_sub_cancel' hge] at this
+    | exit hs =>
+      obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 hs
+      unfold ExitPre at hpre
+      split at hpre
+      · rename_i f F₀ hF
+        rw [exitEff_eq hF]; exact frozen rfl rfl rfl
+      · exact hpre.elim
+    | read hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact frozen rfl rfl rfl
+    | write hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact frozen rfl rfl rfl
+    | writeShared hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact frozen rfl rfl rfl
+    | @pin p hs =>
+      obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 hs
+      refine ⟨Nat.le_refl _, fun _ _ => rfl, fun l _ hpl => ?_,
+        fun q hq hge => absurd hq (Nat.not_lt.2 hge)⟩
+      by_cases hm : l ∈ footprint s.P p
+      · -- A leaf of the usable place `p` is usable (A5).
+        exact .inr ((S3.Usable.congr (s := s) (s' := pinEff s p true) rfl rfl rfl).2
+          (usable_of_partOf hw (l + 1) l p (Nat.lt_succ_self l) (mem_footprint.1 hm).2.2 hpre.1))
+      · simp only [pinEff, hm, ↓reduceIte] at hpl
+        exact .inl hpl
+    | @unpin p hs =>
+      obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs
+      refine ⟨Nat.le_refl _, fun _ _ => rfl, fun l _ hpl => ?_,
+        fun q hq hge => absurd hq (Nat.not_lt.2 hge)⟩
+      simp only [pinEff] at hpl
+      split at hpl
+      · cases hpl
+      · exact .inl hpl
+    | endUse hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact frozen rfl rfl rfl
+    | free hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact frozen rfl rfl rfl
+    | @alloc pr ow ls hs =>
+      cases hs with
+      | ok hst _ =>
+        have hlen : (allocEff s pr ow ls).P.length = s.P.length + ls.length := allocP_len s ow ls
+        refine ⟨by rw [hlen]; exact Nat.le_add_right _ _, fun r hr => ?_, fun l hl hpl => ?_,
+          fun q hq hge => ?_⟩
+        · exact shape_parentOf_lt hr
+        · simp only [allocEff, Nat.not_le.2 hl, ↓reduceIte] at hpl
+          exact .inl hpl
+        · rw [hlen] at hq
+          have := alloc_usable_new hst (q - s.P.length + 1) (q - s.P.length)
+            (Nat.lt_succ_self _) (by omega)
+          rwa [Nat.add_sub_cancel' hge] at this
+    | store hs =>
+      obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs
+      unfold storeEff; split <;> exact frozen rfl rfl rfl
+  | newArena hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact frozen rfl rfl rfl
+  | issue hs => cases hs with | ok _ hst => cases hst with | ok => exact frozen rfl rfl rfl
+  | reset hs =>
+    obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs
+    unfold resetAtEff; split <;> exact frozen rfl rfl rfl
+
+/-- `PinnedLive` is preserved by every `ok` step (MM-03.3 §3 O15; O4.5, O12.4, O13.4, §4 O7.3
+(B4)): old pinned leaves stay usable, a leaf pinned by `pin` is a leaf of a usable place, and new
+places, unpinned, are usable. -/
+theorem step_pinnedLive {k : K} {s s' : S3} (hw : WF3 s) (hp : PinnedLive k s) (h : Step k s s') :
+    PinnedLive k s' := by
+  obtain ⟨hlen, hpar, hpin, hnew⟩ := step_extends hw h
+  intro l hl' hleaf' hpin'
+  rcases Nat.lt_or_ge l s.P.length with hl | hl
+  · have hleaf : isLeaf s.P l := fun r hr e =>
+      hleaf' r (Nat.lt_of_lt_of_le hr hlen) ((hpar r hr).trans e)
+    rcases hpin' with hd | hk
+    · rcases hpin l hl hd with hd | hu
+      · exact step_pinned_usable hw hp h l hl hleaf (.inl hd)
+      · exact hu
+    · exact step_pinned_usable hw hp h l hl hleaf (.inr hk)
+  · exact hnew l hl' hl
+
+/-- On reached states, pinned leaves are usable (MM-03.3 §3 O15; §10; D1: the static places are
+usable in the initial state). Under `DDSound k` (MM-03.3.8), which gives `WF3`. -/
+theorem reachable_pinnedLive {k : K} (hdd : DDSound k) {statics : Statics} {s : S3}
+    (h : Reachable k statics s) : PinnedLive k s := by
+  induction h with
+  | init hsh =>
+    intro l hl _ _
+    exact init_usable hsh (l + 1) l (Nat.lt_succ_self l) (by rwa [init_len] at hl)
+  | derive h0 hs ih => exact step_pinnedLive (reachable_invariants hdd h0).1 ih (.kernel (.derive hs))
+  | split h0 hs ih => exact step_pinnedLive (reachable_invariants hdd h0).1 ih (.kernel (.split hs))
+  | release h0 hs ih =>
+    exact step_pinnedLive (reachable_invariants hdd h0).1 ih (.kernel (.release hs))
+  | transfer h0 hs ih =>
+    exact step_pinnedLive (reachable_invariants hdd h0).1 ih (.kernel (.transfer hs))
+  | depend h0 hs ih => exact step_pinnedLive (reachable_invariants hdd h0).1 ih (.kernel (.depend hs))
+  | enter h0 hs ih => exact step_pinnedLive (reachable_invariants hdd h0).1 ih (.kernel (.enter hs))
+  | exit h0 hs ih => exact step_pinnedLive (reachable_invariants hdd h0).1 ih (.kernel (.exit hs))
+  | read h0 hs ih => exact step_pinnedLive (reachable_invariants hdd h0).1 ih (.kernel (.read hs))
+  | write h0 hs ih => exact step_pinnedLive (reachable_invariants hdd h0).1 ih (.kernel (.write hs))
+  | writeShared h0 hs ih =>
+    exact step_pinnedLive (reachable_invariants hdd h0).1 ih (.kernel (.writeShared hs))
+  | pin h0 hs ih => exact step_pinnedLive (reachable_invariants hdd h0).1 ih (.kernel (.pin hs))
+  | unpin h0 hs ih => exact step_pinnedLive (reachable_invariants hdd h0).1 ih (.kernel (.unpin hs))
+  | endUse h0 hs ih => exact step_pinnedLive (reachable_invariants hdd h0).1 ih (.kernel (.endUse hs))
+  | free h0 hs ih => exact step_pinnedLive (reachable_invariants hdd h0).1 ih (.kernel (.free hs))
+  | alloc h0 hs ih => exact step_pinnedLive (reachable_invariants hdd h0).1 ih (.kernel (.alloc hs))
+  | newArena h0 hs ih => exact step_pinnedLive (reachable_invariants hdd h0).1 ih (.newArena hs)
+  | issue h0 hs ih => exact step_pinnedLive (reachable_invariants hdd h0).1 ih (.issue hs)
+  | reset h0 hs ih => exact step_pinnedLive (reachable_invariants hdd h0).1 ih (.reset hs)
+  | store h0 hs ih => exact step_pinnedLive (reachable_invariants hdd h0).1 ih (.kernel (.store hs))
+
+/-- An `ok` step keeps every leaf of the places of `s` a leaf (MM-03.3.2; C6: the places it creates
+have new parents). -/
+theorem step_isLeaf_old {k : K} {s s' : S3} (h : Step k s s') {l : Nat} (hl : l < s.P.length)
+    (hlf : isLeaf s.P l) : isLeaf s'.P l := by
+  cases h with
+  | kernel hk =>
+    cases hk with
+    | enter hs =>
+      obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 hs
+      exact (shape_isLeaf_old (enterPre_shapeOK hpre.1) hl).2 hlf
+    | alloc hs =>
+      cases hs with
+      | ok hst _ => exact (shape_isLeaf_old hst.2.2.2.2.2.1 hl).2 hlf
+    | transfer hs =>
+      rename_i src dst
+      obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs
+      refine isLeaf_of_parentOf (by simp [transferEff]) ?_ hlf
+      funext i; simp only [parentOf, transferEff, List.getElem?_map]
+      cases s.P[i]? with
+      | none => rfl
+      | some pl => simp only [Option.map_some, Option.bind_some]; split <;> rfl
+    | release hs =>
+      obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; unfold releaseEff; split <;> exact hlf
+    | exit hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; unfold exitEff; split <;> exact hlf
+    | store hs =>
+      obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 hs
+      obtain ⟨y, hy, -⟩ := store_pre_auth hpre.1
+      rw [storeEff_eq hy]; exact hlf
+    | derive hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact hlf
+    | split hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact hlf
+    | depend hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact hlf
+    | read hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact hlf
+    | write hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact hlf
+    | writeShared hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact hlf
+    | pin hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact hlf
+    | unpin hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact hlf
+    | endUse hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact hlf
+    | free hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact hlf
+  | newArena hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact hlf
+  | issue hs =>
+    cases hs with
+    | ok _ hst => cases hst with
+      | ok _ _ _ _ => exact hlf
+  | reset hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; unfold resetAtEff; split <;> exact hlf
+
+/-- The bases of the registered allocations: a sequence of MM-02 operations from a state with fresh
+identities changes the base of no registered allocation (MM-02.A: an allocation leaves the others
+intact; MM-02.C, MM-02.D: a write and a deallocation keep the base). -/
+theorem exec_keeps_base : ∀ (ops : List Op2) (s : MM02.State), MM02.WF s → ∀ i (a : MM02.Alloc),
+    s.allocs i = some a → ∃ b, (exec s ops).allocs i = some b ∧ b.base = a.base
+  | [], _, _, _, a, h => ⟨a, h, rfl⟩
+  | o :: os, s, hwf, i, a, h => by
+    obtain ⟨b, hb, e⟩ : ∃ b, (o.eff s).allocs i = some b ∧ b.base = a.base := by
+      cases o with
+      | read _ => exact ⟨a, h, rfl⟩
+      | write ac w =>
+        obtain ⟨b, hb, -, e, -⟩ := Dom.write s ac w i a h; exact ⟨b, hb, e⟩
+      | dealloc id _ =>
+        by_cases e : i = id
+        · refine ⟨{ a with live := false }, ?_, rfl⟩
+          show (s.dealloc id).allocs i = _
+          rw [dealloc_allocs, h]; simp only [e, ↓reduceIte, Option.map_some]
+        · refine ⟨a, ?_, rfl⟩
+          show (s.dealloc id).allocs i = _
+          rw [dealloc_allocs, h]; simp only [e, ↓reduceIte]
+      | alloc sp b sz al fa =>
+        obtain ⟨b', hb', -, e, -⟩ := Dom.alloc hwf sp b sz al fa i a h; exact ⟨b', hb', e⟩
+    obtain ⟨c, hc, e'⟩ := exec_keeps_base os (o.eff s) (by
+      cases o
+      · exact hwf
+      · exact MM02.write_wf hwf _ _
+      · exact MM02.dealloc_wf hwf _
+      · exact MM02.alloc_wf hwf _ _ _ _ _) i b hb
+    exact ⟨c, hc, e'.trans e⟩
+
+/-- MM-03.3 §10 (annex A.3: "théorème reliant tous les constructeurs `Reachable` à `Step`"): one
+`Step` from a reached state reaches a state. -/
+theorem Reachable.ofStep {k : K} {statics : Statics} {s s' : S3} (hr : Reachable k statics s)
+    (h : Step k s s') : Reachable k statics s' := by
+  cases h with
+  | kernel hk =>
+    cases hk with
+    | derive hs => exact .derive hr hs
+    | split hs => exact .split hr hs
+    | release hs => exact .release hr hs
+    | transfer hs => exact .transfer hr hs
+    | depend hs => exact .depend hr hs
+    | enter hs => exact .enter hr hs
+    | exit hs => exact .exit hr hs
+    | read hs => exact .read hr hs
+    | write hs => exact .write hr hs
+    | writeShared hs => exact .writeShared hr hs
+    | pin hs => exact .pin hr hs
+    | unpin hs => exact .unpin hr hs
+    | endUse hs => exact .endUse hr hs
+    | free hs => exact .free hr hs
+    | alloc hs => exact .alloc hr hs
+    | store hs => exact .store hr hs
+  | newArena hs => exact .newArena hr hs
+  | issue hs => exact .issue hr hs
+  | reset hs => exact .reset hr hs
+
+/-- L8, the address of a leaf in an MM-02 state: the base of its allocation plus its offset. -/
+def leafAddr (s2 : MM02.State) (L : Layout) (l : Nat) : Nat :=
+  (((s2.allocs (L l).alloc).map (·.base)).getD 0) + (L l).off
+
+/-- `pinned_address_stable` (L8; MM-03.3 O15, §9.1.6): for an `ok` step of MM-03 from a reached
+state and an MM-02 sequence after which the arrival states are in `Repr` (the sequence of the step,
+`r6_*`), every leaf pinned before the step, dynamically or statically (`K.Pinned`), has a live
+allocation before and after, and the same address (base + offset). The content is the liveness:
+MM-02 models no physical move of an allocation, and the theorem claims nothing about moves. Under
+`DDSound k`. -/
+theorem pinned_address_stable {k : K} {statics : Statics} {tok ptok : Nat → Nat}
+    {provOf : Nat → Option Nat} {L : Layout} {s3 s3' : S3} {s2 : MM02.State} {ops : List Op2}
+    (hdd : DDSound k) (hr : Reachable k statics s3) (hs : Step k s3 s3')
+    (hR : Repr tok ptok provOf L s3 s2) (hR' : Repr tok ptok provOf L s3' (exec s2 ops)) {l : Nat}
+    (hl : l < s3.P.length) (hlf : isLeaf s3.P l) (hpin : s3.pin l = true ∨ k.Pinned l) :
+    LiveAlloc s2 (L l).alloc ∧ LiveAlloc (exec s2 ops) (L l).alloc ∧
+      leafAddr (exec s2 ops) L l = leafAddr s2 L l := by
+  have hwf := (reachable_invariants hdd hr).1
+  have hp := reachable_pinnedLive hdd hr
+  have hu := hp l hl hlf hpin
+  have hu' := step_pinned_usable hwf hp hs l hl hlf hpin
+  have hwf' : WF3 s3' := (reachable_invariants hdd (Reachable.ofStep hr hs)).1
+  have hlf' := step_isLeaf_old hs hl hlf
+  have hl' : l < s3'.P.length := Nat.lt_of_lt_of_le hl (step_extends hwf hs).1
+  have hlive := (live_of_usable_part hwf hR.toReprB hu
+    (mem_footprint.2 ⟨hl, hlf, hl, .inl rfl⟩)).mono fun _ h => h.1
+  have hlive' := (live_of_usable_part hwf' hR'.toReprB hu'
+    (mem_footprint.2 ⟨hl', hlf', hl', .inl rfl⟩)).mono fun _ h => h.1
+  refine ⟨hlive, hlive', ?_⟩
+  obtain ⟨a, ha, -⟩ := hlive
+  obtain ⟨b, hb, e⟩ := exec_keeps_base ops s2 hR.wf2 _ a ha
+  simp only [leafAddr, ha, hb, Option.map_some, Option.getD_some, e]
+
 /-! ## R4 (MM-03.3 §9.2) -/
 
 /-- R4 (MM-03.3 §9.2, from `NoDangling`, §2.6): on a reached state of MM-03 in `Repr` with an MM-02
