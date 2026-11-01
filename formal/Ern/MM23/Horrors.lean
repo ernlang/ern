@@ -167,6 +167,32 @@ theorem srun_sound : ∀ {ops : List Op3} {s3 : S3} {pv : Nat → Option Nat} {o
           exact ⟨os', by simpa [List.reverse_cons, List.append_assoc] using h2⟩
         · cases hx
 
+theorem srun_append : ∀ (st : SSt) (ops ops' : List Op3),
+    srun k C ObR ObW π st (ops ++ ops') =
+      (srun k C ObR ObW π st ops).bind fun st' => srun k C ObR ObW π st' ops'
+  | st, [], ops' => by simp [srun]
+  | st, op :: ops, ops' => by
+    simp only [List.cons_append, srun]
+    cases sexec k C ObR ObW π st op with
+    | none => rfl
+    | some st₁ => simp only [Option.bind_some]; exact srun_append st₁ ops ops'
+
+/-- A successful translated step is a labelled MM-03 step with its obligations. -/
+theorem sexec_step {st st' : SSt} {op : Op3} (h : sexec k C ObR ObW π st op = some st') :
+    ∃ s3', Step3 k op st.1 s3' ∧ Oblig k C ObR ObW π op st.1 s3' st.2.1 st.2.2 ∧
+      st' = (s3', provStep op st.1 st.2.1, exec st.2.2 (assoc π op st.1 st.2.2)) := by
+  simp only [sexec] at h
+  cases hs : step3exec k st.1 op with
+  | none => rw [hs] at h; cases h
+  | some s3' =>
+    rw [hs] at h
+    simp only at h
+    split at h
+    · rename_i hob
+      simp only [Option.some.injEq] at h
+      exact ⟨s3', step3exec_sound hs, hob, h.symm⟩
+    · cases h
+
 end RunSound
 
 /-! ## Parameters of the runs -/
@@ -238,10 +264,6 @@ variable (k : K) [∀ r r', Decidable (k.DeclaredDisjoint r r')] [DecidablePred 
   [DecidablePred k.Pinned] [DecidablePred k.ExternalDone] [DecidablePred k.Deallocable]
   [∀ p a, Decidable (k.FreeCompat p a)] [∀ p ls s, Decidable (k.Satisfiable p ls s)]
 
-/-- The parameters of the run `ops` from `S3.init statics`: the layout of its final places. -/
-def paramsOf (statics : Statics) (ops : List Op3) (z : List Nat) : Params :=
-  piOf (Ern.MM03.Horrors.run k statics (ops.map toOp)).s.P z
-
 /-- The state reached by the translated run of `ops` (or the initial state if it fails). -/
 def sst (statics : Statics) (π : Params) (ops : List Op3) : SSt :=
   (srun k Ceq CaseSim.obR CaseSim.obW π (sinit statics π) ops).getD (sinit statics π)
@@ -288,6 +310,39 @@ theorem sim_of {statics : Statics} {P : List Place} {z : List Nat} {ops : List O
     (piOf_geom P z) (fun _ => rfl) h'
   exact ⟨os, this.1, this.2.1, this.2.2.1, this.2.2.2.1⟩
 
+/-- R6 at one step of a translated run: the MM-02 sequence associated with the step `op` after the
+prefix `ops` has only `ok` outcomes in the MM-02 state of the prefix (`simulation` on the prefix and
+on the prefix extended by the step). -/
+theorem step_ok_of {statics : Statics} {P : List Place} {z : List Nat} {ops : List Op3}
+    {op : Op3} (hdd : DDSound k) (hsh : ShapeOK 0 (statics.map (·.1)))
+    (hlay : NewLayout (piOf P z).L (S3.init statics).P 0 0 (piOf P z).geom
+      (rootIdx (statics.map (·.1))))
+    (hdec : DecAlong CaseSim.obR CaseSim.obW MM02.State.empty (initOpsOf (piOf P z) statics))
+    (h : (srun k Ceq CaseSim.obR CaseSim.obW (piOf P z) (sinit statics (piOf P z))
+      (ops ++ [op])).isSome = true) :
+    AllOk Ceq CaseSim.obR CaseSim.obW (sst k statics (piOf P z) ops).2.2
+      (assoc (piOf P z) op (sst k statics (piOf P z) ops).1 (sst k statics (piOf P z) ops).2.2) := by
+  rw [srun_append] at h
+  cases hp : srun k Ceq CaseSim.obR CaseSim.obW (piOf P z) (sinit statics (piOf P z)) ops with
+  | none => rw [hp] at h; cases h
+  | some st₀ =>
+    rw [hp] at h
+    simp only [Option.bind_some, srun] at h
+    cases hx : sexec k Ceq CaseSim.obR CaseSim.obW (piOf P z) st₀ op with
+    | none => rw [hx] at h; cases h
+    | some st₁ =>
+      have hst : sst k statics (piOf P z) ops = st₀ := by simp [sst, hp]
+      obtain ⟨os, ht⟩ := simRun_of (k := k) hsh hlay hdec (by rw [hp]; rfl)
+      rw [hst] at ht ⊢
+      obtain ⟨s3', hs, hob, -⟩ := sexec_step hx
+      have h₁ := simulation hdd (fun _ _ => trivial) (fun _ _ _ => trivial) topPlacement_ok
+        (piOf_geom P z) (fun _ => rfl) ht
+      have h₂ := simulation hdd (fun _ _ => trivial) (fun _ _ _ => trivial) topPlacement_ok
+        (piOf_geom P z) (fun _ => rfl) (ht.step hs hob)
+      have := along_append.1 h₂.1
+      rw [h₁.2.1] at this
+      exact this.2
+
 end Sim
 
 /-- The value of a successful read of MM-02 exists when the provenance names an allocation and the
@@ -303,6 +358,23 @@ theorem read_ok_of {ObR : MM02.ReadOblSpec} {ac : MM02.Access} {s : MM02.State}
 theorem sameSize_of {L : Layout} {P : List Place} {src dst : Nat}
     (h : ∀ p ∈ transferPairs P src dst, (L p.1).len = (L p.2).len) : SameSizeAlong L P src dst :=
   fun l l' hm => h (l, l') hm
+
+/-- The kind of an MM-02 operation: 0 read, 1 write, 2 deallocation, 3 allocation. -/
+def opTag : Op2 → Nat
+  | .read _ => 0
+  | .write _ _ => 1
+  | .dealloc _ _ => 2
+  | .alloc .. => 3
+
+/-- The size of an MM-02 allocation. -/
+def opAllocSize : Op2 → Option Nat
+  | .alloc _ _ sz _ _ => some sz
+  | _ => none
+
+/-- An abstract byte is initialised (MM-02.3). -/
+def initB : MM02.AByte → Bool
+  | .init _ _ => true
+  | .uninit => false
 
 /-- The allocation an MM-02 operation reads, writes or deallocates. -/
 def opAlloc : Op2 → Option Nat
@@ -373,28 +445,34 @@ theorem H03 : LiveAlloc r1a.2.2 (π1.L 3).alloc ∧
         (by decide) (by decide) (.inl (by decide))).2.2
 
 /-- **MM23-H04** (passe 2, `transfer_copies`). Transfer of a value in place (`v` into `w`): its
-MM-02 sequence reads then writes the bytes, so the range of `w` receives the bytes of `v`,
-provenance included, and the bytes of `v` stay as they were, initialised; in MM-03 the source is
+MM-02 sequence is a read then a write; the range of `w` receives the bytes of `v`, provenance
+included, and the bytes of `v` stay as they were, every one initialised; in MM-03 the source is
 `Moved` and unreadable (I4). Expected: the same; obtained: the same. -/
-theorem H04 : rangeBytes (exec r1a.2.2 (assoc π1 (.transfer 1 2) r1a.1 r1a.2.2)) π1.L 2 =
+theorem H04 : (assoc π1 (.transfer 1 2) r1a.1 r1a.2.2).map opTag = [0, 1] ∧
+    rangeBytes (exec r1a.2.2 (assoc π1 (.transfer 1 2) r1a.1 r1a.2.2)) π1.L 2 =
       rangeBytes r1a.2.2 π1.L 1 ∧
     rangeBytes (exec r1a.2.2 (assoc π1 (.transfer 1 2) r1a.1 r1a.2.2)) π1.L 1 =
       rangeBytes r1a.2.2 π1.L 1 ∧
-    (rangeBytes r1a.2.2 π1.L 1).isSome = true ∧
+    (rangeBytes r1a.2.2 π1.L 1).map (·.all initB) = some true ∧
     r1b.I 1 = .moved ∧ ∀ a, ¬ CanReadLeaf r1b a 1 := by
   obtain ⟨_, ht⟩ := R1_prefix
   have hs := simulation (KT_dd _ _ _ _ _) (fun _ _ => trivial) (fun _ _ _ => trivial)
     topPlacement_ok (piOf_geom _ _) (fun _ => rfl) ht
   have hwf := (reachable_invariants (KT_dd _ _ _ _ _) hs.2.2.2.1).1
   have hc := transfer_copies hwf hs.2.2.1 R1_step6 (sameSize_of (by decide)) 1 2 (by decide)
-  exact ⟨hc.1, hc.2, by decide, by decide, fun a h => by
+  exact ⟨by decide, hc.1, hc.2, by decide, by decide, fun a h => by
     have h2 := h.2.1
     rw [show r1b.I 1 = .moved by decide] at h2; cases h2⟩
 
-/-- **MM23-H07**, `ok` (passe 1). The `alloc` of R1 is one `AllocStep`, `ok` in the run of
-`R1_sim`, of the geometry of the new root. -/
+/-- **MM23-H07**, `ok` (passe 1). The `alloc` of R1 is one allocation of MM-02, of the size of the
+geometry of the new root (8 bytes, one leaf), with the outcome `ok` (`step_ok_of`). -/
 theorem H07_ok : (assoc π1 (.alloc 0 1 [lf]) (sst K1 [] π1 (r1.take 3)).1
-    (sst K1 [] π1 (r1.take 3)).2.2).length = 1 := by decide
+      (sst K1 [] π1 (r1.take 3)).2.2).map opAllocSize = [some 8] ∧
+    AllOk Ceq CaseSim.obR CaseSim.obW (sst K1 [] π1 (r1.take 3)).2.2
+      (assoc π1 (.alloc 0 1 [lf]) (sst K1 [] π1 (r1.take 3)).1 (sst K1 [] π1 (r1.take 3)).2.2) :=
+  ⟨by decide, step_ok_of (k := K1) (statics := []) (P := P1) (z := []) (ops := r1.take 3)
+    (KT_dd [] [] [3] [] []) (by decide)
+    (by decide) (by decide) (by decide)⟩
 
 /-- **MM23-H08** (passe 1, `leaked`). `endUse` of `w`, whose owned storage 3 is not freed: no MM-02
 step; the storage is logically dead and not freed, its allocation live (a leak). Expected: the
@@ -403,13 +481,18 @@ theorem H08 : assoc π1 (.endUse 2) (sst K1 [] π1 (r1.take 8)).1 (sst K1 [] π1
     r1e.1.dead 3 = true ∧ r1e.1.freed 3 = false ∧ LiveAlloc r1e.2.2 (π1.L 3).alloc :=
   ⟨rfl, by decide, by decide, by decide⟩
 
-/-- **MM23-H09** (passe 1). The exit of frame 1: one `DeallocStep` per automatic allocation of the
-frame (its locals 0, 1, 2, token 101), none for the owned storage 3, still live afterwards.
-Expected: the same; obtained: the same. -/
-theorem H09 : (assoc π1 .exit r1e.1 r1e.2.2).map (fun o => opAlloc o) =
-      [some (π1.L 0).alloc, some (π1.L 1).alloc, some (π1.L 2).alloc] ∧
+/-- **MM23-H09** (passe 1). The exit of frame 1: one deallocation per automatic allocation of the
+frame (its locals 0, 1, 2, with the frame token 101), each `ok` (`step_ok_of`), none for the owned
+storage 3, still live afterwards. Expected: the same; obtained: the same. -/
+theorem H09 : (assoc π1 .exit r1e.1 r1e.2.2).map opDealloc =
+      [some ((π1.L 0).alloc, 101), some ((π1.L 1).alloc, 101), some ((π1.L 2).alloc, 101)] ∧
+    AllOk Ceq CaseSim.obR CaseSim.obW (sst K1 [] π1 (r1.take 9)).2.2
+      (assoc π1 .exit (sst K1 [] π1 (r1.take 9)).1 (sst K1 [] π1 (r1.take 9)).2.2) ∧
     DeadAlloc r1f.2.2 (π1.L 0).alloc ∧ DeadAlloc r1f.2.2 (π1.L 1).alloc ∧
-    DeadAlloc r1f.2.2 (π1.L 2).alloc ∧ LiveAlloc r1f.2.2 (π1.L 3).alloc := by decide
+    DeadAlloc r1f.2.2 (π1.L 2).alloc ∧ LiveAlloc r1f.2.2 (π1.L 3).alloc :=
+  ⟨by decide, step_ok_of (k := K1) (statics := []) (P := P1) (z := []) (ops := r1.take 9)
+    (op := .exit) (KT_dd [] [] [3] [] [])
+    (by decide) (by decide) (by decide) (by decide), by decide, by decide, by decide, by decide⟩
 
 /-! ## Run R2: arena, block written, transferred, read, reset (H02, H06, H13) -/
 
@@ -440,25 +523,40 @@ theorem reset_kills_blocks {k : K} {s s' : S3} {i via : Nat} (h : ResetAtStep k 
   simp only [resetAtEff, har, resetEff, arenaSet]
   exact hpre.2.2.1
 
-/-- **MM23-H02** (to state: R4 and `ResetPre`). After `reset`, the old block 5 is inactive, so no
-safe program reads through it (`reset_kills_blocks`; the read through it is rejected), while MM-02
-accepts a read of its range: the allocation of the storage is live and the bytes written through
-the block are initialised. Expected: no safe program reaches it, MM-02 would accept it; obtained:
-the same. -/
+/-- The old blocks stay inactive after the `reset`, whatever the later steps of `Reachable`
+(MM-03.3 §3–6: no step reactivates an authority, `Steps.keeps`). -/
+theorem reset_kills_blocks_after {k : K} {s s' s'' : S3} {i via : Nat}
+    (h : ResetAtStep k i via s (.ok s')) {ar : Arena} (har : s.arenas[i]? = some ar)
+    (hs : Ern.HandlePool.Steps k s' s'') :
+    ∀ j < s'.A.length, ar.internal ∈ s'.ancs j → ¬ s''.Active j :=
+  fun j hj ha hact => reset_kills_blocks h har j (List.mem_range.2 hj) ha
+    ((Ern.HandlePool.Steps.keeps hs).active hj hact)
+
+/-- **MM23-H02** (to state: R4 and `ResetPre`). After `reset`, the old block 5 is inactive and
+stays so whatever the later steps (`reset_kills_blocks_after` for every old block), so no safe
+program reads through it (the read through it is rejected), while MM-02 accepts a read of its range:
+the allocation of the storage is live and the bytes written through the block are initialised. In
+R2 the block was already released by `endUse q`, which `reset` requires (O19.2). Expected: no safe
+program reaches it, MM-02 would accept it; obtained: the same. -/
 theorem H02 : ¬ r2f.1.Active 5 ∧ Read3Step 5 [5] r2f.1 .reject ∧
+    (∀ s', Ern.HandlePool.Steps K0 r2f.1 s' → ¬ s'.Active 5) ∧
     LiveAlloc r2f.2.2 (π2.L 5).alloc ∧
     ∃ v, MM02.ReadStep CaseSim.obR (leafAcc r2f.2.2 π2.L .read 5) r2f.2.2 (.ok v) :=
-  ⟨by decide, .reject (by decide), by decide,
+  ⟨by decide, .reject (by decide), fun _ hs ha =>
+    absurd ((Ern.HandlePool.Steps.keeps hs).active (by decide) ha) (by decide), by decide,
     read_ok_of (by decide) ⟨by decide, by simp only [CaseSim.obR]; decide, trivial⟩⟩
 
-/-- Contracts deallocating the storage 4 of R2 with the authority 7. -/
-abbrev K2f : K := KT [] [] [] [4] [(4, 7)]
+/-- Contracts declaring deallocable, with the authority 7, both the storage 4 of R2 and the region
+5 of its block. -/
+abbrev K2f : K := KT [] [] [] [4, 5] [(4, 7), (5, 7)]
 
-/-- **MM23-H06** (passe 1). `free` of the block on `[5]` is rejected in MM-03, even with the storage
-deallocable: the block is a part of the storage, not an allocation; its leaf lies in the allocation
-of the storage. Expected: impossible, not an allocation; obtained: the same. -/
-theorem H06 : FreeStep K2f 5 7 r2i.1 .reject ∧ (π2.L 5).alloc = (π2.L 4).alloc :=
-  ⟨.reject (by decide), by decide⟩
+/-- **MM23-H06** (passe 1). `free` of the block on `[5]` is rejected in MM-03 even when the contracts
+declare it deallocable and compatible: the region is a part of the storage, not an owned root
+(`OwnedRoot`, A6), and its leaf lies in the allocation of the storage. Expected: impossible, not an
+allocation; obtained: the same. -/
+theorem H06 : K2f.Deallocable 5 ∧ K2f.FreeCompat 5 7 ∧ ¬ OwnedRoot r2i.1 5 ∧
+    FreeStep K2f 5 7 r2i.1 .reject ∧ (π2.L 5).alloc = (π2.L 4).alloc :=
+  ⟨by decide, by decide, by decide, .reject (by decide), by decide⟩
 
 /-- **MM23-H13** (passe 2). The block value `v` holds a pointer (L6: the address of the leaf 5,
 the provenance of the storage); after `transfer v q`, the range of `q` holds the same bytes, every
@@ -494,17 +592,22 @@ theorem R3_sim : ∃ os, AllOk Ceq CaseSim.obR CaseSim.obW MM02.State.empty os �
 
 /-- **MM23-H05** (passe 2, `freeSound_derived`). `free 4 7`: one `DeallocStep` of the allocation of
 the root 4 with the authority 7, compatible with the token of its provider 1 (L4: `FreeCompat`
-instantiated by `FreeCompatInst`), `ok` in the run of `R3_sim`; the allocation is dead afterwards.
+instantiated by `FreeCompatInst`), `ok` (`step_ok_of`); the allocation is dead afterwards.
 Expected: the same; obtained: the same. -/
 theorem H05 : (assoc π3 (.free 4 7) (sst K3 stZ π3 (r3.take 7)).1
       (sst K3 stZ π3 (r3.take 7)).2.2).map opDealloc = [some ((π3.L 4).alloc, 7)] ∧
     FreeCompatInst Ceq π3.ptok (sst K3 stZ π3 (r3.take 7)).2.1 4 7 ∧
+    AllOk Ceq CaseSim.obR CaseSim.obW (sst K3 stZ π3 (r3.take 7)).2.2
+      (assoc π3 (.free 4 7) (sst K3 stZ π3 (r3.take 7)).1 (sst K3 stZ π3 (r3.take 7)).2.2) ∧
     DeadAlloc r3f.2.2 (π3.L 4).alloc ∧ (r3f.2.2.allocs (π3.L 4).alloc).map (·.freeAuth) = some (some 7) :=
-  ⟨by decide, by decide, by decide, by decide⟩
+  ⟨by decide, by decide, step_ok_of (k := K3) (statics := stZ) (P := P3) (z := []) (ops := r3.take 7)
+    (op := .free 4 7) (KT_dd [3] [] [] [4] [(4, 7)]) (by decide) (by decide) (by decide) (by decide), by decide, by decide⟩
 
-/-- **MM23-H10** (passe 1). The allocation of the static 0 is still live after the run, frame exit
-included. Expected: never deallocated; obtained: live at the end. -/
-theorem H10 : LiveAlloc r3f.2.2 (π3.L 0).alloc := by decide
+/-- **MM23-H10** (passe 1). The allocation of the static 0 is live after every prefix of the run,
+frame exit included. Expected: never deallocated; obtained: live at every step. -/
+theorem H10 : ∀ n ∈ List.range (r3.length + 1),
+    LiveAlloc (sst K3 stZ π3 (r3.take n)).2.2 (π3.L 0).alloc := by
+  decide
 
 /-- **MM23-H11** (passe 1, R1). The read of the `Init` static leaf by the base frame: one read of
 MM-02, `ok`. Expected: `ReadStep` `ok`; obtained: the same. -/
@@ -631,16 +734,35 @@ def P7 : List Place := (Ern.MM03.Horrors.run K0 [] (r7.map toOp)).s.P
 def π7 : Params := piOf P7 [2]
 def r7a : SSt := sst K0 [] π7 (r7.take 3)
 
-/-- **MM23-H07** (passe 1). `alloc` `ok`: one `AllocStep` (R1, `H07_ok`); of size zero: one
-`AllocStep` of size 0, `ok` in a translated run; `fail` (`K.Satisfiable` false): the state is
-unchanged, and the run has no step, so no MM-02 operation. Expected: `AllocStep` / no step /
-`AllocStep` of size 0; obtained: the same. -/
+instance : ∀ r r', Decidable (KNS.DeclaredDisjoint r r') := fun _ _ => instDecidableFalse
+instance : DecidablePred KNS.Pinned := fun l => inferInstanceAs (Decidable (l ∈ ([] : List Nat)))
+instance : DecidablePred KNS.ExternalDone := fun l =>
+  inferInstanceAs (Decidable (l ∈ ([] : List Nat)))
+instance : DecidablePred KNS.Deallocable := fun l =>
+  inferInstanceAs (Decidable (l ∈ ([] : List Nat)))
+instance : ∀ p a, Decidable (KNS.FreeCompat p a) := fun p a =>
+  inferInstanceAs (Decidable ((p, a) ∈ ([] : List (Nat × Nat))))
+
+/-- The prefix of R7 reached under the contracts `KNS`, where no allocation is satisfiable. -/
+def r7n : Ern.HandlePool.PS := Ern.MM03.Horrors.run KNS [] ((r7.take 3).map toOp)
+
+/-- **MM23-H07** (passe 1). `alloc` `ok`: one allocation of MM-02, `ok` (R1, `H07_ok`); of size zero:
+one allocation of size 0, `ok` (`step_ok_of`) in a translated run; `fail` (`K.Satisfiable` false,
+`KNS`, on a state reached under `KNS`): the state is unchanged, and there is no labelled step
+(`Step3` asks the outcome `ok`), so the translation has no step and no MM-02 operation. Expected:
+`AllocStep` / no step / `AllocStep` of size 0; obtained: the same. -/
 theorem H07 : (∃ os, AllOk Ceq CaseSim.obR CaseSim.obW MM02.State.empty os ∧
       exec MM02.State.empty os = (sst K0 [] π7 r7).2.2) ∧
-    (assoc π7 (.alloc 0 1 [lf]) r7a.1 r7a.2.2).map (fun o => match o with
-      | .alloc _ _ sz _ _ => some sz | _ => none) = [some 0] ∧
-    AllocStep KNS 0 1 [lf] r7a.1 (.fail r7a.1) :=
+    (assoc π7 (.alloc 0 1 [lf]) r7a.1 r7a.2.2).map opAllocSize = [some 0] ∧
+    AllOk Ceq CaseSim.obR CaseSim.obW r7a.2.2 (assoc π7 (.alloc 0 1 [lf]) r7a.1 r7a.2.2) ∧
+    Ern.HandlePool.PReach KNS [] r7n ∧ AllocStep KNS 0 1 [lf] r7n.s (.fail r7n.s) ∧
+    ∀ s', ¬ Step3 KNS (.alloc 0 1 [lf]) r7n.s s' :=
   ⟨(sim_of (P := P7) (z := [2]) (KT_dd _ _ _ _ _) (by decide) (by decide) (by decide)
-    (by decide)).imp fun _ h => ⟨h.1, h.2.1⟩, by decide, .fail (by decide) (fun h => h)⟩
+    (by decide)).imp fun _ h => ⟨h.1, h.2.1⟩, by decide,
+    step_ok_of (k := K0) (statics := []) (P := P7) (z := [2]) (ops := r7.take 3)
+      (op := .alloc 0 1 [lf]) (KT_dd [] [] [] [] [])
+      (by decide) (by decide) (by decide) (by decide),
+    Ern.MM03.Horrors.run_reach (by decide) (by decide), .fail (by decide) (fun h => h),
+    fun _ hs => nomatch alloc_det hs.2 (AllocStep.fail (by decide) (fun h => h))⟩
 
 end Ern.MM23.Horrors

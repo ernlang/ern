@@ -94,8 +94,9 @@ theorem H01 : PReach K0 [] h01 ∧ DeriveStep 0 1 .observe h01.s .reject ∧ PRe
     .ok (by decide), .ok (by decide)⟩
 
 /-- H01, reading where the `Observe` parameter is derived from the `Modify` one (report, (b)): the
-call with both is accepted. G1 constrains the origin of a `Modify` parameter only, and the two
-authorities are related by derivation (I1). -/
+only construction that reaches `enterFrame` with both parameters. Expected (H01 row): reject;
+obtained: the call is accepted. G1 constrains the direct origin of a `Modify` parameter only (O6.3),
+and the two authorities are related by derivation (I1). -/
 theorem H01_reborrow : PReach K0 [] (run K0 [] [.enter [] S2, .derive 0 0 .modify,
     .derive 1 1 .observe, .enter [1, 2] []]) :=
   run_reach (by decide) (by decide)
@@ -118,7 +119,9 @@ def h03t : PS := run K0 [] [.enter [] (S2 ++ [lf])]
 
 /-- **H03** (A; I1, F4; N3). The value of Y holds a `Modify` derived on the part `p` of X; a write
 of `p` through the root of X is rejected (no effective mode, MM-03.3.5; O10). Expected: reject;
-obtained: reject. Twin without the stored authority: accepted. -/
+obtained: reject. Twin without the stored authority: accepted. The `store` is not what makes the
+write fail: after the `derive` alone, the write is already rejected (I1, effective mode), so the case
+does not exercise F4 itself. -/
 theorem H03 : PReach K0 [] h03 ∧ Write3Step 0 [1] h03.s .reject ∧
     Write3Step 0 [1] h03t.s (.ok (write3Eff h03t.s [1])) :=
   ⟨run_reach (by decide) (by decide), .reject (by decide), .ok (by decide)⟩
@@ -170,9 +173,8 @@ def h07t : PS := run K0 stS h07p
 /-- **H07** (B; C1, G4; N3). The callee stores into the static, through its `Modify` parameter on
 it, a value anchored on a local of the caller: the `transfer` is rejected, the effective anchor
 being of frame 1, not an ancestor of the frame 0 of the static (C1, `EffAnchorOK`). Expected: reject
-at the `transfer`; obtained: reject. Twin without the anchor: accepted. The material speaks of a
-value received as a parameter; the callee cannot transfer out of a parameter (H16), so the value is
-a local of the callee (report, (b)). -/
+at the `transfer`; obtained: reject. Twin without the anchor: accepted. The stored value is a local
+of the callee, which the material leaves open. -/
 theorem H07 : PReach K0 stS h07 ∧ TransferStep K0 2 0 h07.s .reject ∧ PReach K0 stS h07t ∧
     TransferStep K0 2 0 h07t.s (.ok (transferEff h07t.s 2 0)) :=
   ⟨run_reach (by decide) (by decide), .reject (by decide), run_reach (by decide) (by decide),
@@ -314,15 +316,22 @@ abbrev KF4 : K := KT [] [] [] [4] [(4, 7)]
 def h17p : List Op := [.enter [] [lf, lf, lf, lf], .write 1 [1],
   .alloc 1 0 [lf, (some 4, none, 0), (some 4, none, 0)], .write 0 [0], .newArena 4 4]
 def h17 : PS := run KF4 [] (h17p ++ [.issue 0 0 [5] 2])
-def h17t : PS := run KF4 [] h17p
+/-- Twin of H17: the same run, the block ended with its value 2. -/
+def h17t : PS := run KF4 [] (h17p ++ [.issue 0 0 [5] 2, .endUse 2])
+/-- Contracts declaring deallocable, with the authority 7, both the storage 4 and the region 5. -/
+abbrev KF45 : K := KT [] [] [] [4, 5] [(4, 7), (5, 7)]
+def h17d : PS := run KF45 [] (h17p ++ [.issue 0 0 [5] 2])
 
 /-- **H17** (C; A6, `Deallocable`; Lib; covered pass 2). `free` of the block on `[5]`: rejected,
-the region is a part of the storage, neither an owned root nor deallocable. Expected: reject;
-obtained: reject. Twin: `free` of the allocated storage 4 itself, with nothing issued, accepted. -/
-theorem H17 : PReach KF4 [] h17 ∧ FreeStep KF4 5 7 h17.s .reject ∧ PReach KF4 [] h17t ∧
-    FreeStep KF4 4 7 h17t.s (.ok (freeEff h17t.s 4)) :=
+the region is a part of the storage, not an owned root, nor deallocable under `KF4`; with the region
+declared deallocable (`KF45`), the `free` is still rejected (`OwnedRoot`). Expected: reject;
+obtained: reject. Twin: in the same run, the block ended, the `free` of the allocated storage 4 is
+accepted. -/
+theorem H17 : PReach KF4 [] h17 ∧ FreeStep KF4 5 7 h17.s .reject ∧
+    PReach KF45 [] h17d ∧ ¬ OwnedRoot h17d.s 5 ∧ FreeStep KF45 5 7 h17d.s .reject ∧
+    PReach KF4 [] h17t ∧ FreeStep KF4 4 7 h17t.s (.ok (freeEff h17t.s 4)) :=
   ⟨run_reach (by decide) (by decide), .reject (by decide), run_reach (by decide) (by decide),
-    .ok (by decide)⟩
+    by decide, .reject (by decide), run_reach (by decide) (by decide), .ok (by decide)⟩
 
 /-! ## D. Arenas -/
 
@@ -388,12 +397,12 @@ def h22t : PS := run K0 [] [.enter [] [lf, lf], .write 0 [0]]
 /-- **H22** (E; A8; N3; covered pass 2). The transfer of a value whose in-place leaf is pinned is
 rejected; the transfer of a value whose owned storage only is pinned is accepted. Expected:
 reject / `ok`; obtained: the same. Twin of the rejection: without the pin, accepted. -/
-theorem H22 : PReach K0 [] h22 ∧ TransferStep K0 0 1 h22.s .reject ∧
+theorem H22 : PReach K0 [] h22 ∧ TransferStep K0 0 1 h22.s .reject ∧ PReach K0 [] h22t ∧
     TransferStep K0 0 1 h22t.s (.ok (transferEff h22t.s 0 1)) ∧
     PReach K0 [] (run K0 [] [.enter [] [lf, lf, lf], .write 0 [0], .write 1 [1], .alloc 0 1 [lf],
       .pin 3, .transfer 1 2]) :=
-  ⟨run_reach (by decide) (by decide), .reject (by decide), .ok (by decide),
-    run_reach (by decide) (by decide)⟩
+  ⟨run_reach (by decide) (by decide), .reject (by decide), run_reach (by decide) (by decide),
+    .ok (by decide), run_reach (by decide) (by decide)⟩
 
 /-- H23: frame 1 calls frame 2 with the local 1, pinned. -/
 def h23 : PS := run K0 [] [.enter [] [lf], .enter [] [lf], .pin 1]
@@ -752,8 +761,9 @@ def h51n : PS := run K0 [] [.enter [] [lf, lf], .write 0 [0], .write 1 [1],
   .alloc 0 1 [lf, (some 2, none, 0)], .derive 1 1 .observe]
 
 /-- **H51** (I; §5; N3). An element of a storage owned by `v` holds a view on `v`. The direct `store`
-is rejected by its arrival clause (G2); with a helper on the storage, then its `release`, it is
-reached. Then `v` can be neither written, ended by `endUse`, nor relieved of the view (`release`
+is rejected: the view already takes away the frame's `Modify` on `v`, hence on the storage `v` owns
+(`HasRight` before the step, B2), and the arrival clause of G2 fails too; with a helper on the
+storage, then its `release`, the configuration is reached. Then `v` can be neither written, ended by `endUse`, nor relieved of the view (`release`
 rejected), while the view stays exercisable at `Observe`; the exit of the frame releases it.
 Expected: to arbitrate (§5); obtained: `ok`, with a residual blocking until the exit. -/
 theorem H51 : PReach K0 [] h51n ∧ StoreStep 3 3 h51n.s .reject ∧ PReach K0 [] h51 ∧
@@ -813,12 +823,13 @@ def w2o : List Op := [.enter [] [lf, lf, lf, lf, lf, lf, lf], .write 0 [0], .wri
 def w2 : PS := run K0 [] w2o
 def w2a : PS := run K0 [] (w2o ++ [.release 12])
 
-/-- **W2** (§5b, ECS archetype and sparse set; Lib). Disjoint reads and writes `ok`;
-`resolveMany` `ok`; the move of a field of the row while the column view is active: rejected; after
-the release of the views: `ok`. Expected: the same. Obtained: the same, reading "the view of the
-column" as the column authority given by `split` (report, (f)): after the release of the read view
-12 alone, the move is still rejected by the column authority 11 (O4.4); after its release, and that
-of the first column authority, both fields of the row move. -/
+/-- **W2** (§5b, ECS archetype and sparse set; Lib). Expected: disjoint reads and writes `ok`;
+`resolveMany` `ok`; the move of a field of the row while the column view is active: reject; after
+its release: `ok`. Obtained: disjoint accesses, `resolveMany` and the rejection during the view as
+expected. After the release: if "the view of the column" is the read view 12, the move is still
+rejected, by the column authority 11 given by `split` (O4.4; report, (b)); if it is the column
+authority itself, the move is accepted after its release (and that of the first column authority,
+which covers the other field of the row). -/
 theorem W2 : PReach K0 [] w2 ∧ TransferStep K0 12 19 w2.s .reject ∧ PReach K0 [] w2a ∧
     TransferStep K0 12 19 w2a.s .reject ∧ ActiveDerivedOutside w2a.s 12 11 ∧
     PReach K0 [] (run K0 [] (w2o ++ [.release 12, .release 11, .release 10, .transfer 9 16,
@@ -837,27 +848,112 @@ def w3o : List Op := [.enter [] [lf, lf, lf, lf, lf, lf, (some 5, none, 0), (som
   .store 12 8]
 def w3 : PS := run K0 [] w3o
 def w3e : PS := run K0 [] (w3o ++ [.endUse 5])
-/-- W3, reading where the blocks are issued into the fields of the structure 2 (fields 3, 4, 5;
-storage 6 with the leaves 7, 8, 9, `internal` 3). -/
+/-- W3, reading where the blocks are issued into fields of the structure: structure 2 with the
+fields 3 to 8; storage 9 (leaves 10, 11, 12), `internal` 3; the blocks 4, 5, 6 issued into the
+fields 3, 4, 5; the views 7, 8, 9 derived from them and stored into the fields 6, 7, 8. -/
 def w3vo : List Op := [.enter [] [lf, lf, lf, (some 2, none, 0), (some 2, none, 0),
-    (some 2, none, 0)], .write 1 [1],
-  .alloc 1 0 [lf, (some 6, none, 0), (some 6, none, 0), (some 6, none, 0)], .write 0 [0],
-  .newArena 6 3, .issue 0 0 [7] 3, .issue 0 0 [8] 4, .issue 0 0 [9] 5]
+    (some 2, none, 0), (some 2, none, 0), (some 2, none, 0), (some 2, none, 0)], .write 1 [1],
+  .alloc 1 0 [lf, (some 9, none, 0), (some 9, none, 0), (some 9, none, 0)], .write 0 [0],
+  .newArena 9 3, .issue 0 0 [10] 3, .issue 0 0 [11] 4, .issue 0 0 [12] 5,
+  .derive 4 10 .observe, .derive 5 11 .observe, .derive 6 12 .observe, .store 7 6, .store 8 7,
+  .store 9 8]
 
 /-- **W3** (§5b, frame arena; Lib). Expected: `reset` while the views live: reject; after `endUse`
 of the structure: `ok`; reissue `ok`. Obtained, literal reading (report, (b)): reject while the
 views live; after `endUse` of the structure, `reset` is still rejected, the three blocks being held
 by the values 2, 3, 4 (MM-03.3 §6, O19.2); after their end, `reset` and the reissue are accepted.
-With the blocks issued into the fields of the structure, the expected verdicts are obtained. -/
+With the blocks issued into fields of the structure and the views stored into others, the expected
+verdicts are obtained. -/
 theorem W3 : PReach K0 [] w3 ∧ ResetAtStep K0 0 0 w3.s .reject ∧ PReach K0 [] w3e ∧
     ResetAtStep K0 0 0 w3e.s .reject ∧
     PReach K0 [] (run K0 [] (w3o ++ [.endUse 5, .endUse 2, .endUse 3, .endUse 4, .reset 0 0,
       .issue 0 0 [10] 2])) ∧
     PReach K0 [] (run K0 [] w3vo) ∧ ResetAtStep K0 0 0 (run K0 [] w3vo).s .reject ∧
-    PReach K0 [] (run K0 [] (w3vo ++ [.endUse 2, .reset 0 0, .issue 0 0 [7] 3])) :=
+    PReach K0 [] (run K0 [] (w3vo ++ [.endUse 2, .reset 0 0, .issue 0 0 [10] 3])) :=
   ⟨run_reach (by decide) (by decide), .reject (by decide), run_reach (by decide) (by decide),
     .reject (by decide), run_reach (by decide) (by decide), run_reach (by decide) (by decide),
     .reject (by decide), run_reach (by decide) (by decide)⟩
+
+/-! ## Observations on the contract of the pool (report, (g))
+
+Reached runs that bear on the reading of material §4, kept as witnesses. -/
+
+/-- The prefix of H44: a pool on an arena block, both entries allocated, nothing resolved, nothing
+pinned. -/
+def ob1 : PS := run K0 [] (h44o.take 9)
+
+/-- `freeSlot` on a pool whose `internal` is derived (here the block 6) is rejected by the
+preconditions of `endUse` (material §4: "reject si une précondition d'`endUse` échoue"):
+`internal` itself is an active derived authority on the entry, held outside it (`EndUseAccessOK`,
+A6). -/
+theorem pool_freeSlot_derived_internal : PReach K0 [] ob1 ∧ ob1.res = [] ∧
+    FreeSlotStep K0 0 0 ⟨0, 0, 0⟩ ob1 .reject ∧ ¬ EndUseAccessOK ob1.s 7 6 ∧ ob1.s.org 6 = some 5 :=
+  ⟨run_reach (by decide) (by decide), by decide,
+    .endUse (pl := ⟨0, 6, 6, [⟨7, 0, true⟩, ⟨10, 0, true⟩]⟩) (sl := ⟨7, 0, true⟩) (by decide)
+      (by decide) (by decide) (by decide) (by decide) (by decide), by decide, by decide⟩
+
+/-- Contracts with the leaf 1 (the pool value of `pb`) `SharedMutable`. -/
+abbrev KSh : K := KT [1] [] [] [] []
+/-- A callee with an `Observe` parameter (5) on the pool value of `pb`, entry 0 allocated. -/
+def ob2 : PS := run KSh [] (pb ++ [.allocSlot 0 0 2, .derive 1 1 .observe, .enter [5] [lf]])
+
+/-- With the right to update the pool value by `writeShared` on its `SharedMutable` metadata
+(material §4), `allocSlot` is accepted while `freeSlot` is rejected: `endUse` asks `Modify` on the
+entry (A2). -/
+theorem pool_freeSlot_shared_right : PReach KSh [] ob2 ∧ ¬ HasRight ob2.s .modify 1 ∧
+    PoolRight KSh ob2.s ⟨0, 4, 4, [⟨5, 0, true⟩, ⟨6, 0, false⟩]⟩ 5 ∧
+    (pexec KSh ob2 (.allocSlot 0 5 7)).isSome = true ∧
+    FreeSlotStep KSh 0 5 ⟨0, 0, 0⟩ ob2 .reject ∧ ¬ HasRight ob2.s .modify 5 :=
+  ⟨run_reach (by decide) (by decide), by decide, by decide, by decide,
+    .endUse (pl := ⟨0, 4, 4, [⟨5, 0, true⟩, ⟨6, 0, false⟩]⟩) (sl := ⟨5, 0, true⟩) (by decide)
+      (by decide) (by decide) (by decide) (by decide) (by decide), by decide⟩
+
+/-- Two pools on the same storage and `internal` 5 (`newPool` reads the arenas only, O17.4): pool 0
+frees its entry 0 and allocates it again; the handle of pool 1 on the same place still resolves. -/
+def ob3o : List Op := [.enter [] [lf, lf, lf, lf, lf], .write 0 [0], .write 1 [1],
+  .alloc 0 1 [lf, (some 5, none, 0), (some 5, none, 0)], .newPool 5 5, .newPool 5 5,
+  .allocSlot 0 0 2, .allocSlot 1 0 3, .freeSlot 0 0 ⟨0, 0, 0⟩, .allocSlot 0 0 4]
+
+theorem pool_two_on_one_internal : PReach K0 [] (run K0 [] ob3o) ∧
+    (run K0 [] ob3o).pools = [⟨0, 5, 5, [⟨6, 1, true⟩, ⟨7, 0, false⟩]⟩,
+      ⟨1, 5, 5, [⟨6, 0, true⟩, ⟨7, 0, false⟩]⟩] ∧
+    PReach K0 [] (run K0 [] (ob3o ++ [.resolve 1 ⟨1, 0, 0⟩ .modify])) :=
+  ⟨run_reach (by decide) (by decide), by decide, run_reach (by decide) (by decide)⟩
+
+/-- Two pools on the same `internal`: the `freeSlot` of pool 1 ends the content of the entry 0 of
+pool 0, written and live. -/
+def ob3b : List Op := pb ++ [.newPool 4 4, .allocSlot 0 0 2, .allocSlot 1 0 3, .write 4 [5],
+  .freeSlot 1 0 ⟨1, 0, 0⟩]
+
+theorem pool_two_freeSlot_cross : PReach K0 [] (run K0 [] ob3b) ∧
+    (run K0 [] (ob3b.take 9)).s.I 5 = .init ∧ (run K0 [] ob3b).s.I 5 = .uninit ∧
+    (run K0 [] ob3b).pools.map (fun pl => pl.slots.map (·.live)) = [[true, false], [false, false]] :=
+  ⟨run_reach (by decide) (by decide), by decide, by decide, by decide⟩
+
+/-- The mirror: `newArena` on the `internal` of a live pool is accepted (O17.4 reads arenas). -/
+theorem arena_on_pool_internal :
+    PReach K0 [] (run K0 [] (pb ++ [.allocSlot 0 0 2, .newArena 4 4])) :=
+  run_reach (by decide) (by decide)
+
+/-- "Périmé" read twice (report, (f)): on a fresh pool, `resolveMany` of the handle of a free entry at
+its current generation fails (the entry is free), while `freeSlot` of the same handle is accepted
+(only the identity and the generation are read). -/
+theorem pool_free_entry_handle : PReach K0 [] (run K0 [] pb) ∧
+    ResolveManyStep K0 0 [⟨0, 0, 0⟩] .modify (run K0 [] pb) (.fail (run K0 [] pb)) ∧
+    (pexec K0 (run K0 [] pb) (.freeSlot 0 0 ⟨0, 0, 0⟩)).isSome = true :=
+  ⟨run_reach (by decide) (by decide),
+    .fail (pl := ⟨0, 4, 4, [⟨5, 0, false⟩, ⟨6, 0, false⟩]⟩) (by decide) (by decide) (by decide),
+    by decide⟩
+
+/-- `allocSlot` leaves the content of the entry as it is (material §4: "son contenu reste
+`Uninit`"): a storage written before `newPool` gives a live entry whose content is `Init`. -/
+theorem pool_allocSlot_content_init : PReach K0 [] (run K0 [] [.enter [] [lf, lf, lf, lf],
+      .write 0 [0], .write 1 [1], .alloc 0 1 [lf, (some 4, none, 0), (some 4, none, 0)],
+      .write 4 [5], .newPool 4 4, .allocSlot 0 0 2]) ∧
+    (run K0 [] [.enter [] [lf, lf, lf, lf], .write 0 [0], .write 1 [1],
+      .alloc 0 1 [lf, (some 4, none, 0), (some 4, none, 0)], .write 4 [5], .newPool 4 4,
+      .allocSlot 0 0 2]).s.I 5 = .init :=
+  ⟨run_reach (by decide) (by decide), by decide⟩
 
 /-! ## J. Out of kernel (material §1 J): the one expressible expansion -/
 

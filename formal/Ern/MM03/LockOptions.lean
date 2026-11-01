@@ -15,10 +15,13 @@ is (option 1, no rule), without modifying it:
 For each case of the list "doit être accepté" of §5 (H11, H19, H29b, H35 to H37, H44 to H47, W1
 to W3) and for H49 to H51, `decisions` gives the decision of an option on each `transfer`, `issue`
 and `store` of the run of the case (`Ern.MM03.Horrors`), decided on the state where the step runs;
-`true` is acceptance. The cost: option 2 is decided from the authorities the operation moves and the
-places that receive them (`opt2_transfer_local`); option 3 is not, the decision depends on
-authorities the operation does not touch (`opt3_not_local`). No option is adopted (material §5:
-"la décision revient à l'arbitrage").
+`true` is acceptance. The cost, measured as the brief asks (from the authorities and places the
+operation touches, or the whole state): option 2 on `transfer` depends on the state only through the
+places and the authorities the transfer moves (`opt2_transfer_local`), on `issue` only through the
+region and the destination (`opt2_issue_local`); option 3 depends on authorities the operation does
+not touch (`opt3_not_local`). Whether option 3 needs more than the function where the operation runs
+(material §5, "locale à une fonction") is not settled here (report, (g)). No option is adopted
+(material §5: "la décision revient à l'arbitrage").
 -/
 
 namespace Ern.MM03.LockOptions
@@ -145,7 +148,7 @@ def mustAccept : List (String × List Op) :=
    ("H45", h45o), ("H46", h46o), ("H47", h47o), ("W1", w1o),
    ("W2", w2o ++ [.release 12, .release 11, .release 10, .transfer 9 16, .transfer 12 19]),
    ("W3", w3o ++ [.endUse 5, .endUse 2, .endUse 3, .endUse 4, .reset 0 0, .issue 0 0 [10] 2]),
-   ("W3v", w3vo ++ [.endUse 2, .reset 0 0, .issue 0 0 [7] 3])]
+   ("W3v", w3vo ++ [.endUse 2, .reset 0 0, .issue 0 0 [10] 3])]
 
 /-- Every run of the list is `ok` in the kernel at each step, so the decisions cover all its
 checked steps. -/
@@ -157,7 +160,7 @@ theorem opt2_decisions : mustAccept.map (fun c => (c.1, dec2 c.2)) =
     [("H11", [true, true, true]), ("H19", [true]), ("H29b", [true]), ("H35", []),
      ("H36", []), ("H37", [true]), ("H44", [true]), ("H45", [true, true, true, true]),
      ("H46", [true]), ("H47", [true]), ("W1", []), ("W2", [true, true]),
-     ("W3", [true, true, true, true, true, true, true]), ("W3v", [true, true, true, true])] := by
+     ("W3", [true, true, true, true, true, true, true]), ("W3v", [true, true, true, true, true, true, true])] := by
   decide
 
 /-- The decisions of option 3 on the checked steps of each case. -/
@@ -165,7 +168,7 @@ theorem opt3_decisions : mustAccept.map (fun c => (c.1, dec3 c.2)) =
     [("H11", [true, true, true]), ("H19", [true]), ("H29b", [true]), ("H35", []),
      ("H36", []), ("H37", [true]), ("H44", [true]), ("H45", [true, true, true, true]),
      ("H46", [true]), ("H47", [true]), ("W1", []), ("W2", [true, true]),
-     ("W3", [true, true, true, true, true, true, true]), ("W3v", [true, true, true, true])] := by
+     ("W3", [true, true, true, true, true, true, true]), ("W3v", [true, true, true, true, true, true, true])] := by
   decide
 
 /-- No false rejection (material §5, criterion): neither option rejects a checked step of a case that
@@ -177,7 +180,7 @@ theorem no_false_rejection : mustAccept.all (fun c => (dec2 c.2).all id && (dec3
 /-! ## Residual blockings (H49 to H51) -/
 
 /-- H49 (the cycle closed through a helper then its `release`): option 2 accepts every checked step,
-so the blocking of H49 remains; option 3 rejects the `store` that closes the cycle (the 7th checked
+so the blocking of H49 remains; option 3 rejects the `store` that closes the cycle (the fourth checked
 step), the helper notwithstanding. -/
 theorem H49_options : dec2 h49o = [true, true, true, true] ∧
     dec3 h49o = [true, true, true, false] := by
@@ -195,10 +198,13 @@ theorem H50_options : dec2 h50ao = [true, false] ∧ dec3 h50ao = [true, false] 
     dec2 h50bo = [false] ∧ dec3 h50bo = [false] := by
   decide
 
-/-- H51 (an element of a storage owned by `v` holds a view on `v`): option 2 does not check `store`,
-so the blocking remains; option 3 rejects the `store`: in its arrival state, the root of the storage,
-held by `v`, and the view, held by the element, block each other. -/
+/-- H51 (an element of a storage owned by `v` holds a view on `v`): option 2 accepts the `store`, and
+would even if it checked `store`: the view is not self-locked, the configuration being a cycle of
+two authorities, which option 2 does not cover (material §5); the blocking remains. Option 3 rejects
+the `store`: in its arrival state, the root of the storage, held by `v`, and the view, held by the
+element, block each other. -/
 theorem H51_options : dec2 h51o = [true] ∧ dec3 h51o = [false] ∧
+    ¬ SelfLock (storeEff (run K0 [] (h51o.take 6)).s 4 3) 4 ∧
     Blocks (storeEff (run K0 [] (h51o.take 6)).s 4 3) 2 4 ∧
     Blocks (storeEff (run K0 [] (h51o.take 6)).s 4 3) 4 2 := by
   decide
@@ -244,15 +250,23 @@ theorem opt2_issue_local (s : S3) (ar : Arena) (region : List Nat) (dst : Nat) :
   simp only [issueEff, S3.addAuth, List.getElem?_append_right (Nat.le_refl _), Nat.sub_self,
     List.getElem?_cons_zero, OptP, true_and, holderLeaves]
 
-/-- Option 3 is not local: from two reached states that agree on the authority stored, 8 (same
-entry), on the target 6 (same footprint) and on the number of authorities, the `store 8 6` gets
-different decisions. They differ on the authority 7, which the step does not touch: stored into the
-node 5 in the first (H48), held by the frame in the second (its twin). -/
+/-- The states of `opt3_not_local`: the state of H48 with the helper 9 (`Modify` on the node 6,
+derived from 7), and the same run without the `store` of 7, which stays held by the frame. -/
+def nl1 : PS := run K0 [] (h48o ++ [.derive 7 6 .modify])
+def nl2 : PS := run K0 [] (fao ++ [.derive 6 6 .modify, .derive 5 5 .modify, .derive 7 6 .modify])
+
+/-- Option 3 is not local to the operation: in two reached states where the kernel accepts
+`store 8 6`, with the same places, the same stored authority 8 and as many authorities, the decisions
+differ. The states differ by the authority 7, which the step does not touch (stored into the node 5
+in the first, held by the frame in the second), and by the initialisation and anchors of the node 5,
+which option 3 does not read. Both states are in one frame (report, (g)). -/
 theorem opt3_not_local :
-    PReach K0 [] h48 ∧ PReach K0 [] h48t ∧ h48.s.A[8]? = h48t.s.A[8]? ∧
-    footprint h48.s.P 6 = footprint h48t.s.P 6 ∧ h48.s.A.length = h48t.s.A.length ∧
-    h48.s.A[7]? ≠ h48t.s.A[7]? ∧
-    ¬ NoLock (storeEff h48.s 8 6) ∧ NoLock (storeEff h48t.s 8 6) :=
-  ⟨H48.1, H48.2.2.1, by decide, by decide, by decide, by decide, by decide, by decide⟩
+    PReach K0 [] nl1 ∧ PReach K0 [] nl2 ∧
+    StoreStep 8 6 nl1.s (.ok (storeEff nl1.s 8 6)) ∧ StoreStep 8 6 nl2.s (.ok (storeEff nl2.s 8 6)) ∧
+    nl1.s.P = nl2.s.P ∧ nl1.s.A[8]? = nl2.s.A[8]? ∧ nl1.s.A.length = nl2.s.A.length ∧
+    nl1.s.A[7]? ≠ nl2.s.A[7]? ∧ nl1.s.F = nl2.s.F ∧
+    ¬ NoLock (storeEff nl1.s 8 6) ∧ NoLock (storeEff nl2.s 8 6) :=
+  ⟨run_reach (by decide) (by decide), run_reach (by decide) (by decide), .ok (by decide),
+    .ok (by decide), by decide, by decide, by decide, by decide, by decide, by decide, by decide⟩
 
 end Ern.MM03.LockOptions

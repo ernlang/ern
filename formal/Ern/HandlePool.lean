@@ -144,7 +144,8 @@ instance (k : K) [DecidablePred k.SharedMutable] (s : S3) (pl : Pool) (via dst :
   unfold AllocSlotStatic; infer_instance
 
 /-- Effect of `allocSlot` on the entry `i` of the pool `j` (material §4): the entry becomes live,
-its content stays as it is, the handle is written into `dst`, which alone becomes `Init`. -/
+its content is not changed (the material says it stays `Uninit`, which holds when it was `Uninit`:
+report, (g)), the handle is written into `dst`, which alone becomes `Init`. -/
 def allocSlotEff (ps : PS) (j : Nat) (pl : Pool) (i : Nat) (sl : Slot) (dst : Nat) : PS :=
   { setPool ps j (setSlot pl i { sl with live := true }) with s := write3Eff ps.s [dst] }
 
