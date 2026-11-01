@@ -122,9 +122,10 @@ of `p` through the root of X is rejected (no effective mode, MM-03.3.5; O10). Ex
 obtained: reject. Twin without the stored authority: accepted. The `store` is not what makes the
 write fail: after the `derive` alone, the write is already rejected (I1, effective mode), so the case
 does not exercise F4 itself. -/
-theorem H03 : PReach K0 [] h03 ∧ Write3Step 0 [1] h03.s .reject ∧
+theorem H03 : PReach K0 [] h03 ∧ Write3Step 0 [1] h03.s .reject ∧ PReach K0 [] h03t ∧
     Write3Step 0 [1] h03t.s (.ok (write3Eff h03t.s [1])) :=
-  ⟨run_reach (by decide) (by decide), .reject (by decide), .ok (by decide)⟩
+  ⟨run_reach (by decide) (by decide), .reject (by decide), run_reach (by decide) (by decide),
+    .ok (by decide)⟩
 
 /-- H04: frame 1, array 0 with the elements 1 and 2, and an authority 1, `Modify` on element 1. -/
 def h04 : PS := run K0 [] [.enter [] S2, .derive 0 1 .modify]
@@ -281,6 +282,18 @@ Twin without the access: accepted. -/
 theorem H15 : PReach KF2 [] h15 ∧ FreeStep KF2 2 7 h15.s .reject ∧
     PReach KF2 [] (run KF2 [] (h14p ++ [.alloc 0 2 [lf], .free 2 7])) :=
   ⟨run_reach (by decide) (by decide), .reject (by decide), run_reach (by decide) (by decide)⟩
+
+/-- A `transfer` is rejected while an active derived authority held by a frame covers a leaf of the
+source (MM-03.3 §3, O4.4, `ActiveDerivedOutside`): a callee cannot transfer out of the footprint of
+one of its parameters (H16, H07). -/
+theorem transfer_rejected_by_frame_held {k : K} {s : S3} {src dst j f : Nat} {y : Authority}
+    (hy : s.A[j]? = some y) (ha : y.active = true) (ho : y.origin ≠ none)
+    (hh : y.holder = .frame f) (hl : ∃ l ∈ y.footprint, l ∈ footprint s.P src) :
+    TransferStep k src dst s .reject := by
+  have had : ActiveDerivedOutside s src j := by
+    unfold ActiveDerivedOutside; rw [hy]; exact ⟨ha, ho, by rw [hh]; exact id, hl⟩
+  exact .reject fun hpre =>
+    hpre.2.2.2.2.2.2.2.2.1 j (List.mem_range.2 (lt_of_getElem? hy)) had
 
 /-- Contracts with the place 3 deallocable by the authority 7. -/
 abbrev KF3 : K := KT [] [] [] [3] [(3, 7)]
@@ -822,20 +835,25 @@ def w2o : List Op := [.enter [] [lf, lf, lf, lf, lf, lf, lf], .write 0 [0], .wri
   .write 10 [9, 10], .read 12 [12, 13], .resolveMany 0 [⟨0, 0, 0⟩, ⟨0, 1, 0⟩, ⟨0, 2, 0⟩] .modify]
 def w2 : PS := run K0 [] w2o
 def w2a : PS := run K0 [] (w2o ++ [.release 12])
+/-- W2 after the release of the read view 12 and of the column authority 11. -/
+def w2b : PS := run K0 [] (w2o ++ [.release 12, .release 11])
 
 /-- **W2** (§5b, ECS archetype and sparse set; Lib). Expected: disjoint reads and writes `ok`;
-`resolveMany` `ok`; the move of a field of the row while the column view is active: reject; after
-its release: `ok`. Obtained: disjoint accesses, `resolveMany` and the rejection during the view as
-expected. After the release: if "the view of the column" is the read view 12, the move is still
-rejected, by the column authority 11 given by `split` (O4.4; report, (b)); if it is the column
-authority itself, the move is accepted after its release (and that of the first column authority,
-which covers the other field of the row). -/
+`resolveMany` `ok`; the move of the row (transfers of its fields) while a column view is active:
+reject; after its release: `ok`. Obtained: disjoint accesses, `resolveMany` and the rejection during
+the view as expected. After the release of one view, the move is still rejected under either
+reading of "the view of the column": after the read view 12 alone, by the column authority 11
+(O4.4); after the read view and the column authority 11, the field 9 of the row is still covered
+by the other column authority 10. The move is accepted after the release of both column authorities
+given by `split` (report, (b)). -/
 theorem W2 : PReach K0 [] w2 ∧ TransferStep K0 12 19 w2.s .reject ∧ PReach K0 [] w2a ∧
     TransferStep K0 12 19 w2a.s .reject ∧ ActiveDerivedOutside w2a.s 12 11 ∧
+    PReach K0 [] w2b ∧ TransferStep K0 9 16 w2b.s .reject ∧ ActiveDerivedOutside w2b.s 9 10 ∧
     PReach K0 [] (run K0 [] (w2o ++ [.release 12, .release 11, .release 10, .transfer 9 16,
       .transfer 12 19])) :=
   ⟨run_reach (by decide) (by decide), .reject (by decide), run_reach (by decide) (by decide),
-    .reject (by decide), by decide, run_reach (by decide) (by decide)⟩
+    .reject (by decide), by decide, run_reach (by decide) (by decide), .reject (by decide),
+    by decide, run_reach (by decide) (by decide)⟩
 
 /-- W3, literal reading: frame 1, arena value 0, allocator 1, block values 2, 3, 4, structure 5
 with the fields 6, 7, 8; storage 9 (leaves 10, 11, 12) owned by 0, `internal` 6; three blocks
@@ -882,10 +900,10 @@ Reached runs that bear on the reading of material §4, kept as witnesses. -/
 pinned. -/
 def ob1 : PS := run K0 [] (h44o.take 9)
 
-/-- `freeSlot` on a pool whose `internal` is derived (here the block 6) is rejected by the
-preconditions of `endUse` (material §4: "reject si une précondition d'`endUse` échoue"):
-`internal` itself is an active derived authority on the entry, held outside it (`EndUseAccessOK`,
-A6). -/
+/-- `freeSlot` on this pool, whose `internal` is derived (the block 6) and held by the pool value,
+outside the entry, is rejected by the preconditions of `endUse` (material §4: "reject si une
+précondition d'`endUse` échoue"): `internal` itself is an active derived authority on the entry, held
+outside it and staying live (`EndUseAccessOK`, A6). -/
 theorem pool_freeSlot_derived_internal : PReach K0 [] ob1 ∧ ob1.res = [] ∧
     FreeSlotStep K0 0 0 ⟨0, 0, 0⟩ ob1 .reject ∧ ¬ EndUseAccessOK ob1.s 7 6 ∧ ob1.s.org 6 = some 5 :=
   ⟨run_reach (by decide) (by decide), by decide,

@@ -20,8 +20,8 @@ operation touches, or the whole state): option 2 on `transfer` depends on the st
 places and the authorities the transfer moves (`opt2_transfer_local`), on `issue` only through the
 region and the destination (`opt2_issue_local`); option 3 depends on authorities the operation does
 not touch (`opt3_not_local`). Whether option 3 needs more than the function where the operation runs
-(material §5, "locale à une fonction") is not settled here (report, (g)). No option is adopted
-(material §5: "la décision revient à l'arbitrage").
+(material §5, "locale à une fonction") is not settled here (report, (g)). No option is adopted (task
+of jalon 3, step 4: the decision is left to arbitration).
 -/
 
 namespace Ern.MM03.LockOptions

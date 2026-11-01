@@ -536,13 +536,14 @@ theorem reset_kills_blocks_after {k : K} {s s' s'' : S3} {i via : Nat}
 stays so whatever the later steps (`reset_kills_blocks_after` for every old block), so no safe
 program reads through it (the read through it is rejected), while MM-02 accepts a read of its range:
 the allocation of the storage is live and the bytes written through the block are initialised. In
-R2 the block was already released by `endUse q`, which `reset` requires (O19.2). Expected: no safe
-program reaches it, MM-02 would accept it; obtained: the same. -/
-theorem H02 : ¬ r2f.1.Active 5 ∧ Read3Step 5 [5] r2f.1 .reject ∧
+R2 the block was already released by `endUse q`, which `reset` requires (O19.2). Twin: the same read
+through the block before its end is accepted. Expected: no safe program reaches it, MM-02 would
+accept it; obtained: the same. -/
+theorem H02 : ¬ r2f.1.Active 5 ∧ Read3Step 5 [5] r2f.1 .reject ∧ Read3Step 5 [5] r2i.1 (.ok r2i.1) ∧
     (∀ s', Ern.HandlePool.Steps K0 r2f.1 s' → ¬ s'.Active 5) ∧
     LiveAlloc r2f.2.2 (π2.L 5).alloc ∧
     ∃ v, MM02.ReadStep CaseSim.obR (leafAcc r2f.2.2 π2.L .read 5) r2f.2.2 (.ok v) :=
-  ⟨by decide, .reject (by decide), fun _ hs ha =>
+  ⟨by decide, .reject (by decide), .ok (by decide), fun _ hs ha =>
     absurd ((Ern.HandlePool.Steps.keeps hs).active (by decide) ha) (by decide), by decide,
     read_ok_of (by decide) ⟨by decide, by simp only [CaseSim.obR]; decide, trivial⟩⟩
 
@@ -550,13 +551,25 @@ theorem H02 : ¬ r2f.1.Active 5 ∧ Read3Step 5 [5] r2f.1 .reject ∧
 5 of its block. -/
 abbrev K2f : K := KT [] [] [] [4, 5] [(4, 7), (5, 7)]
 
+/-- R2 under `K2f` before the transfer, and after the end of the block value. -/
+def r2k : SSt := sst K2f [] π2 (r2.take 7)
+def r2kt : SSt := sst K2f [] π2 (r2.take 10)
+
 /-- **MM23-H06** (passe 1). `free` of the block on `[5]` is rejected in MM-03 even when the contracts
 declare it deallocable and compatible: the region is a part of the storage, not an owned root
 (`OwnedRoot`, A6), and its leaf lies in the allocation of the storage. Expected: impossible, not an
-allocation; obtained: the same. -/
-theorem H06 : K2f.Deallocable 5 ∧ K2f.FreeCompat 5 7 ∧ ¬ OwnedRoot r2i.1 5 ∧
-    FreeStep K2f 5 7 r2i.1 .reject ∧ (π2.L 5).alloc = (π2.L 4).alloc :=
-  ⟨by decide, by decide, by decide, .reject (by decide), by decide⟩
+allocation; obtained: the same. Every state is reached under `K2f`. Twin: in the same run, once the
+block value has ended, the `free` of the allocated storage 4 is accepted. -/
+theorem H06 : Reachable K2f [] r2k.1 ∧ K2f.Deallocable 5 ∧ K2f.FreeCompat 5 7 ∧
+    ¬ OwnedRoot r2k.1 5 ∧ FreeStep K2f 5 7 r2k.1 .reject ∧ (π2.L 5).alloc = (π2.L 4).alloc ∧
+    Reachable K2f [] r2kt.1 ∧ FreeStep K2f 4 7 r2kt.1 (.ok (freeEff r2kt.1 4)) := by
+  obtain ⟨_, -, -, -, h₁⟩ := sim_of (k := K2f) (statics := []) (P := P2) (z := [])
+    (ops := r2.take 7) (KT_dd [] [] [] [4, 5] [(4, 7), (5, 7)]) (by decide) (by decide)
+    (by decide) (by decide)
+  obtain ⟨_, -, -, -, h₂⟩ := sim_of (k := K2f) (statics := []) (P := P2) (z := [])
+    (ops := r2.take 10) (KT_dd [] [] [] [4, 5] [(4, 7), (5, 7)]) (by decide) (by decide)
+    (by decide) (by decide)
+  exact ⟨h₁, by decide, by decide, by decide, .reject (by decide), by decide, h₂, .ok (by decide)⟩
 
 /-- **MM23-H13** (passe 2). The block value `v` holds a pointer (L6: the address of the leaf 5,
 the provenance of the storage); after `transfer v q`, the range of `q` holds the same bytes, every
@@ -635,39 +648,47 @@ def r4 : List Op3 := [.enter [] [lf, (some 0, none, 0), (some 0, none, 0)]]
 def P4 : List Place := (Ern.MM03.Horrors.run K0 [] (r4.map toOp)).s.P
 def π4 : Params := piOf P4 []
 
-/-- L7: the contracts whose `DeclaredDisjoint` is the byte disjointness of the leaves of the two
-regions under the layout of R4. -/
-def KL : K := { K0 with DeclaredDisjoint := ByteDisjoint π4.L }
+/-- Decision 1 of jalon 2, the source of MM23-H01: the contracts whose `DeclaredDisjoint` is the
+disjointness of the leaves of the two regions, as a parameter `K` (the draft `MM23` is unchanged). -/
+def KLf : K := { K0 with DeclaredDisjoint := fun r r' => ∀ l ∈ r, l ∉ r' }
 
-instance : ∀ r r', Decidable (KL.DeclaredDisjoint r r') := fun r r' => by
-  show Decidable (ByteDisjoint π4.L r r'); unfold ByteDisjoint; infer_instance
-instance : DecidablePred KL.SharedMutable := fun l => inferInstanceAs (Decidable (l ∈ ([] : List Nat)))
-instance : DecidablePred KL.Pinned := fun l => inferInstanceAs (Decidable (l ∈ ([] : List Nat)))
-instance : DecidablePred KL.ExternalDone := fun l => inferInstanceAs (Decidable (l ∈ ([] : List Nat)))
-instance : DecidablePred KL.Deallocable := fun l => inferInstanceAs (Decidable (l ∈ ([] : List Nat)))
-instance : ∀ p a, Decidable (KL.FreeCompat p a) := fun p a =>
+instance : ∀ r r', Decidable (KLf.DeclaredDisjoint r r') := fun r r' =>
+  inferInstanceAs (Decidable (∀ l ∈ r, l ∉ r'))
+instance : DecidablePred KLf.SharedMutable := fun l =>
+  inferInstanceAs (Decidable (l ∈ ([] : List Nat)))
+instance : DecidablePred KLf.Pinned := fun l => inferInstanceAs (Decidable (l ∈ ([] : List Nat)))
+instance : DecidablePred KLf.ExternalDone := fun l =>
+  inferInstanceAs (Decidable (l ∈ ([] : List Nat)))
+instance : DecidablePred KLf.Deallocable := fun l =>
+  inferInstanceAs (Decidable (l ∈ ([] : List Nat)))
+instance : ∀ p a, Decidable (KLf.FreeCompat p a) := fun p a =>
   inferInstanceAs (Decidable ((p, a) ∈ ([] : List (Nat × Nat))))
-instance : ∀ p ls s, Decidable (KL.Satisfiable p ls s) := fun _ _ _ => instDecidableTrue
+instance : ∀ p ls s, Decidable (KLf.Satisfiable p ls s) := fun _ _ _ => instDecidableTrue
 
-/-- `DDSound` of `KL` (L7, `ddSound_instance`): every leaf of the layout has a non-empty range. -/
-theorem KL_dd : DDSound KL :=
-  ddSound_instance K0 (L := π4.L) fun l => by unfold π4 piOf autoL; simp
+/-- `DDSound` of the instantiation by leaf disjointness: immediate (MM-03.3.8). -/
+theorem KLf_dd : DDSound KLf := fun _ _ h => h
 
-def r4s : SSt := sst KL [] π4 r4
+def r4s : SSt := sst KLf [] π4 r4
+/-- R4 after the `split` of the structure into the regions `[1]` and `[2]`. -/
+def r4d : SSt := sst KLf [] π4 (r4 ++ [.split 0 [[1], [2]]])
 
-/-- **MM23-H01** (passe 2, `ddSound_of_layout`). With `DeclaredDisjoint` instantiated by the byte
-disjointness of the leaves, two regions sharing the leaf 2 are not declared disjoint, and their
-`split` is rejected; the regions `[1]` and `[2]` are declared disjoint, with disjoint bytes, and
-their `split` runs in a translated execution, `DDSound` holding. Expected: rejected through
-`DDSound`, declared regions with disjoint bytes; obtained: the same. -/
-theorem H01 : DDSound KL ∧ ¬ KL.DeclaredDisjoint [1, 2] [2] ∧ SplitStep KL 0 [[1, 2], [2]] r4s.1 .reject ∧
-    ByteDisjoint π4.L [1] [2] ∧
-    ∃ os, AllOk Ceq CaseSim.obR CaseSim.obW MM02.State.empty os ∧
-      Repr π4.tok π4.ptok (sst KL [] π4 (r4 ++ [.split 0 [[1], [2]]])).2.1 π4.L
-        (sst KL [] π4 (r4 ++ [.split 0 [[1], [2]]])).1 (sst KL [] π4 (r4 ++ [.split 0 [[1], [2]]])).2.2 :=
-  ⟨KL_dd, by decide, .reject (by decide), (show KL.DeclaredDisjoint [1] [2] by decide),
-    (sim_of (P := P4) (z := []) KL_dd (by decide) (by decide) (by decide) (by decide)).imp
-      fun _ h => ⟨h.1, h.2.2.1⟩⟩
+/-- **MM23-H01** (decision 1 of jalon 2; L7, `byteDisjoint_of_leaves`). With `DeclaredDisjoint`
+instantiated by the disjointness of the leaves, two regions sharing the leaf 2 are not declared
+disjoint and their `split` is rejected; the regions `[1]` and `[2]` are declared disjoint and their
+`split` runs in a translated execution. In its MM-02 state, every pair of declared regions of leaves
+has disjoint bytes, through `LayoutWF` of `Repr`. Expected: rejected through `DDSound`
+(instantiation by leaves), declared regions with disjoint bytes; obtained: the same. -/
+theorem H01 : DDSound KLf ∧ ¬ KLf.DeclaredDisjoint [1, 2] [2] ∧
+    SplitStep KLf 0 [[1, 2], [2]] r4s.1 .reject ∧ KLf.DeclaredDisjoint [1] [2] ∧
+    SplitStep KLf 0 [[1], [2]] r4s.1 (.ok (splitEff r4s.1 0 [[1], [2]])) ∧
+    (∃ os, AllOk Ceq CaseSim.obR CaseSim.obW MM02.State.empty os ∧
+      Repr π4.tok π4.ptok r4d.2.1 π4.L r4d.1 r4d.2.2) ∧
+    ∀ r r', KLf.DeclaredDisjoint r r' → (∀ l ∈ r, l < r4d.1.P.length ∧ isLeaf r4d.1.P l) →
+      (∀ l ∈ r', l < r4d.1.P.length ∧ isLeaf r4d.1.P l) → ByteDisjoint π4.L r r' := by
+  obtain ⟨os, hok, -, hR, -⟩ := sim_of (k := KLf) (statics := []) (P := P4) (z := [])
+    (ops := r4 ++ [.split 0 [[1], [2]]]) KLf_dd (by decide) (by decide) (by decide) (by decide)
+  exact ⟨KLf_dd, by decide, .reject (by decide), by decide, .ok (by decide), ⟨os, hok, hR⟩,
+    fun r r' hd hr hr' => byteDisjoint_of_leaves hR.lwf hr hr' hd⟩
 
 /-! ## Run R5: pointers to empty regions (H15, écart connu) -/
 
