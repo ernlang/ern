@@ -285,7 +285,7 @@ theorem H15 : PReach KF2 [] h15 ∧ FreeStep KF2 2 7 h15.s .reject ∧
 
 /-- A `transfer` is rejected while an active derived authority held by a frame covers a leaf of the
 source (MM-03.3 §3, O4.4, `ActiveDerivedOutside`): a callee cannot transfer out of the footprint of
-one of its parameters (H16, H07). -/
+one of its parameters (H16). -/
 theorem transfer_rejected_by_frame_held {k : K} {s : S3} {src dst j f : Nat} {y : Authority}
     (hy : s.A[j]? = some y) (ha : y.active = true) (ho : y.origin ≠ none)
     (hh : y.holder = .frame f) (hl : ∃ l ∈ y.footprint, l ∈ footprint s.P src) :
@@ -822,7 +822,7 @@ theorem W1 : PReach K0 [] w1 ∧ w1.pools = [plW] ∧ ResolveStep 0 ⟨0, 1, 0�
 15 with 16, 17 and 18 with 19, 20) owned by 2; entity storage 21 (entries 22, 23, 24) owned by 3,
 pool on it. `split` of the archetype into the columns (10 and 11), the second written, a read view
 12 on it; system A writes the first column while system B reads through the view; `resolveMany
-Modify` of three distinct entities. -/
+Modify` of three distinct entities; system A, done, releases its column authority 10. -/
 def w2o : List Op := [.enter [] [lf, lf, lf, lf, lf, lf, lf], .write 0 [0], .write 1 [1],
   .write 2 [2], .write 3 [3],
   .alloc 0 1 [lf, (some 7, none, 0), (some 8, none, 0), (some 8, none, 0), (some 7, none, 0),
@@ -832,28 +832,29 @@ def w2o : List Op := [.enter [] [lf, lf, lf, lf, lf, lf, lf], .write 0 [0], .wri
   .alloc 0 3 [lf, (some 21, none, 0), (some 21, none, 0), (some 21, none, 0)], .newPool 21 9,
   .allocSlot 0 0 4, .allocSlot 0 0 5, .allocSlot 0 0 6,
   .split 7 [[9, 10], [12, 13]], .write 11 [12, 13], .derive 11 11 .observe,
-  .write 10 [9, 10], .read 12 [12, 13], .resolveMany 0 [⟨0, 0, 0⟩, ⟨0, 1, 0⟩, ⟨0, 2, 0⟩] .modify]
+  .write 10 [9, 10], .read 12 [12, 13], .resolveMany 0 [⟨0, 0, 0⟩, ⟨0, 1, 0⟩, ⟨0, 2, 0⟩] .modify,
+  .release 10]
 def w2 : PS := run K0 [] w2o
 def w2a : PS := run K0 [] (w2o ++ [.release 12])
-/-- W2 after the release of the read view 12 and of the column authority 11. -/
+/-- W2 after the release of the read view 12 and of the column authority 11 of system B. -/
 def w2b : PS := run K0 [] (w2o ++ [.release 12, .release 11])
 
 /-- **W2** (§5b, ECS archetype and sparse set; Lib). Expected: disjoint reads and writes `ok`;
 `resolveMany` `ok`; the move of the row (transfers of its fields) while a column view is active:
-reject; after its release: `ok`. Obtained: disjoint accesses, `resolveMany` and the rejection during
-the view as expected. After the release of one view, the move is still rejected under either
-reading of "the view of the column": after the read view 12 alone, by the column authority 11
-(O4.4); after the read view and the column authority 11, the field 9 of the row is still covered
-by the other column authority 10. The move is accepted after the release of both column authorities
-given by `split` (report, (b)). -/
+reject; after its release: `ok`. System A releases its column authority 10 after its write, so one
+column view, that of system B (the column authority 11 and its read view 12), is active at the move.
+Obtained: disjoint accesses, `resolveMany` and the rejection during the view as expected. After the
+release: if "the view of the column" is the column authority 11 of `split` (with its read view),
+the move is accepted; if it is the read view 12 alone, the move is still rejected, the column
+authority 11 covering the field (O4.4; report, (b)). -/
 theorem W2 : PReach K0 [] w2 ∧ TransferStep K0 12 19 w2.s .reject ∧ PReach K0 [] w2a ∧
     TransferStep K0 12 19 w2a.s .reject ∧ ActiveDerivedOutside w2a.s 12 11 ∧
-    PReach K0 [] w2b ∧ TransferStep K0 9 16 w2b.s .reject ∧ ActiveDerivedOutside w2b.s 9 10 ∧
-    PReach K0 [] (run K0 [] (w2o ++ [.release 12, .release 11, .release 10, .transfer 9 16,
+    PReach K0 [] w2b ∧ TransferStep K0 12 19 w2b.s (.ok (transferEff w2b.s 12 19)) ∧
+    PReach K0 [] (run K0 [] (w2o ++ [.release 12, .release 11, .transfer 9 16,
       .transfer 12 19])) :=
   ⟨run_reach (by decide) (by decide), .reject (by decide), run_reach (by decide) (by decide),
-    .reject (by decide), by decide, run_reach (by decide) (by decide), .reject (by decide),
-    by decide, run_reach (by decide) (by decide)⟩
+    .reject (by decide), by decide, run_reach (by decide) (by decide), .ok (by decide),
+    run_reach (by decide) (by decide)⟩
 
 /-- W3, literal reading: frame 1, arena value 0, allocator 1, block values 2, 3, 4, structure 5
 with the fields 6, 7, 8; storage 9 (leaves 10, 11, 12) owned by 0, `internal` 6; three blocks

@@ -146,7 +146,7 @@ def mustAccept : List (String × List Op) :=
    ("H19", h19p ++ [.endUse 2, .reset 0 0]),
    ("H29b", h29bo), ("H35", h35o), ("H36", h36o), ("H37", h37o), ("H44", h44o),
    ("H45", h45o), ("H46", h46o), ("H47", h47o), ("W1", w1o),
-   ("W2", w2o ++ [.release 12, .release 11, .release 10, .transfer 9 16, .transfer 12 19]),
+   ("W2", w2o ++ [.release 12, .release 11, .transfer 9 16, .transfer 12 19]),
    ("W3", w3o ++ [.endUse 5, .endUse 2, .endUse 3, .endUse 4, .reset 0 0, .issue 0 0 [10] 2]),
    ("W3v", w3vo ++ [.endUse 2, .reset 0 0, .issue 0 0 [10] 3])]
 

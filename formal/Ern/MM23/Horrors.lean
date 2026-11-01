@@ -536,10 +536,11 @@ theorem reset_kills_blocks_after {k : K} {s s' s'' : S3} {i via : Nat}
 stays so whatever the later steps (`reset_kills_blocks_after` for every old block), so no safe
 program reads through it (the read through it is rejected), while MM-02 accepts a read of its range:
 the allocation of the storage is live and the bytes written through the block are initialised. In
-R2 the block was already released by `endUse q`, which `reset` requires (O19.2). Twin: the same read
-through the block before its end is accepted. Expected: no safe program reaches it, MM-02 would
+R2 the block was already released by `endUse q`, which `reset` requires (O19.2). Twin: the same run
+without the end of the block (before `endUse q`), the read through the block is accepted. Expected: no safe program reaches it, MM-02 would
 accept it; obtained: the same. -/
-theorem H02 : ¬ r2f.1.Active 5 ∧ Read3Step 5 [5] r2f.1 .reject ∧ Read3Step 5 [5] r2i.1 (.ok r2i.1) ∧
+theorem H02 : ¬ r2f.1.Active 5 ∧ Read3Step 5 [5] r2f.1 .reject ∧
+    Read3Step 5 [5] (sst K0 [] π2 (r2.take 9)).1 (.ok (sst K0 [] π2 (r2.take 9)).1) ∧
     (∀ s', Ern.HandlePool.Steps K0 r2f.1 s' → ¬ s'.Active 5) ∧
     LiveAlloc r2f.2.2 (π2.L 5).alloc ∧
     ∃ v, MM02.ReadStep CaseSim.obR (leafAcc r2f.2.2 π2.L .read 5) r2f.2.2 (.ok v) :=
@@ -551,25 +552,22 @@ theorem H02 : ¬ r2f.1.Active 5 ∧ Read3Step 5 [5] r2f.1 .reject ∧ Read3Step 
 5 of its block. -/
 abbrev K2f : K := KT [] [] [] [4, 5] [(4, 7), (5, 7)]
 
-/-- R2 under `K2f` before the transfer, and after the end of the block value. -/
-def r2k : SSt := sst K2f [] π2 (r2.take 7)
+/-- R2 under `K2f`, after the end of the block value `q`. -/
 def r2kt : SSt := sst K2f [] π2 (r2.take 10)
 
 /-- **MM23-H06** (passe 1). `free` of the block on `[5]` is rejected in MM-03 even when the contracts
 declare it deallocable and compatible: the region is a part of the storage, not an owned root
 (`OwnedRoot`, A6), and its leaf lies in the allocation of the storage. Expected: impossible, not an
-allocation; obtained: the same. Every state is reached under `K2f`. Twin: in the same run, once the
-block value has ended, the `free` of the allocated storage 4 is accepted. -/
-theorem H06 : Reachable K2f [] r2k.1 ∧ K2f.Deallocable 5 ∧ K2f.FreeCompat 5 7 ∧
-    ¬ OwnedRoot r2k.1 5 ∧ FreeStep K2f 5 7 r2k.1 .reject ∧ (π2.L 5).alloc = (π2.L 4).alloc ∧
-    Reachable K2f [] r2kt.1 ∧ FreeStep K2f 4 7 r2kt.1 (.ok (freeEff r2kt.1 4)) := by
-  obtain ⟨_, -, -, -, h₁⟩ := sim_of (k := K2f) (statics := []) (P := P2) (z := [])
-    (ops := r2.take 7) (KT_dd [] [] [] [4, 5] [(4, 7), (5, 7)]) (by decide) (by decide)
-    (by decide) (by decide)
-  obtain ⟨_, -, -, -, h₂⟩ := sim_of (k := K2f) (statics := []) (P := P2) (z := [])
+allocation; obtained: the same. The state is reached under `K2f`, the block value ended, so the
+other clauses of `free` hold. Twin: on the same state, the `free` of the allocated storage 4 is
+accepted. -/
+theorem H06 : Reachable K2f [] r2kt.1 ∧ K2f.Deallocable 5 ∧ K2f.FreeCompat 5 7 ∧
+    ¬ OwnedRoot r2kt.1 5 ∧ FreeStep K2f 5 7 r2kt.1 .reject ∧ (π2.L 5).alloc = (π2.L 4).alloc ∧
+    FreeStep K2f 4 7 r2kt.1 (.ok (freeEff r2kt.1 4)) := by
+  obtain ⟨_, -, -, -, h⟩ := sim_of (k := K2f) (statics := []) (P := P2) (z := [])
     (ops := r2.take 10) (KT_dd [] [] [] [4, 5] [(4, 7), (5, 7)]) (by decide) (by decide)
     (by decide) (by decide)
-  exact ⟨h₁, by decide, by decide, by decide, .reject (by decide), by decide, h₂, .ok (by decide)⟩
+  exact ⟨h, by decide, by decide, by decide, .reject (by decide), by decide, .ok (by decide)⟩
 
 /-- **MM23-H13** (passe 2). The block value `v` holds a pointer (L6: the address of the leaf 5,
 the provenance of the storage); after `transfer v q`, the range of `q` holds the same bytes, every
