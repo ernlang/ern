@@ -259,14 +259,19 @@ def toOp : Op3 → Ern.HandlePool.Op
   | .reset i via => .reset i via
   | .store a p => .store a p
 
+/-- The state given for a translated run whose steps are not all `ok`: it has no frame, so it is not
+reached (`sst_ok_of_reachable`). -/
+def sstuck : SSt := ({ S3.init [] with F := [] }, fun _ => none, MM02.State.empty)
+
 section Cases
 variable (k : K) [∀ r r', Decidable (k.DeclaredDisjoint r r')] [DecidablePred k.SharedMutable]
   [DecidablePred k.Pinned] [DecidablePred k.ExternalDone] [DecidablePred k.Deallocable]
   [∀ p a, Decidable (k.FreeCompat p a)] [∀ p ls s, Decidable (k.Satisfiable p ls s)]
 
-/-- The state reached by the translated run of `ops` (or the initial state if it fails). -/
+/-- The state reached by the translated run of `ops`; `sstuck` if a step is not `ok`, so a statement
+that its MM-03 state is reached says that every step is `ok` (`sst_ok_of_reachable`). -/
 def sst (statics : Statics) (π : Params) (ops : List Op3) : SSt :=
-  (srun k Ceq CaseSim.obR CaseSim.obW π (sinit statics π) ops).getD (sinit statics π)
+  (srun k Ceq CaseSim.obR CaseSim.obW π (sinit statics π) ops).getD sstuck
 
 end Cases
 
@@ -287,7 +292,7 @@ theorem simRun_of {statics : Statics} {P : List Place} {z : List Nat} {ops : Lis
       (sst k statics (piOf P z) ops).1 (sst k statics (piOf P z) ops).2.1 os
       (sst k statics (piOf P z) ops).2.2 := by
   obtain ⟨os, h'⟩ := srun_sound (SimRun.init (k := k) (C := Ceq) hsh hlay hdec)
-    (Ern.HandlePool.some_getD (d := sinit statics (piOf P z)) h)
+    (Ern.HandlePool.some_getD (d := sstuck) h)
   rw [List.append_nil] at h'
   exact ⟨os, h'⟩
 
@@ -342,6 +347,17 @@ theorem step_ok_of {statics : Statics} {P : List Place} {z : List Nat} {ops : Li
       have := along_append.1 h₂.1
       rw [h₁.2.1] at this
       exact this.2
+
+/-- Under `DDSound`, a translated run whose MM-03 state is reached is a run whose every step is `ok`:
+the state given for a failed run has no frame, which `WF3` excludes (MM-03.3 §2.1). -/
+theorem sst_ok_of_reachable (hdd : DDSound k) {statics : Statics} {π : Params} {ops : List Op3}
+    (h : Reachable k statics (sst k statics π ops).1) :
+    (srun k Ceq CaseSim.obR CaseSim.obW π (sinit statics π) ops).isSome = true := by
+  cases hp : srun k Ceq CaseSim.obR CaseSim.obW π (sinit statics π) ops with
+  | some _ => rfl
+  | none =>
+    simp only [sst, hp, Option.getD_none, sstuck] at h
+    exact absurd rfl (reachable_invariants hdd h).1.2.2.1
 
 end Sim
 

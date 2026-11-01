@@ -22,15 +22,20 @@ namespace Ern.MM03.Horrors
 
 open Ern.MM03 Ern.HandlePool
 
+/-- The state given for a run whose steps are not all `ok`: it has no frame, so no run reaches it
+(`run_ok_of_reach`). -/
+def stuckPS : PS := ⟨{ S3.init [] with F := [] }, [], 0, []⟩
+
 section Run
 variable (k : K) [∀ r r', Decidable (k.DeclaredDisjoint r r')] [DecidablePred k.SharedMutable]
   [DecidablePred k.Pinned] [DecidablePred k.ExternalDone] [DecidablePred k.Deallocable]
   [∀ p a, Decidable (k.FreeCompat p a)] [∀ p ls s, Decidable (k.Satisfiable p ls s)]
 
-/-- The state reached by the operations `os` from `S3.init statics`, or that initial state when a
-step is not `ok` (then `run_reach` cannot be used). -/
+/-- The state reached by the operations `os` from `S3.init statics`; `stuckPS` when a step is not
+`ok`. So a statement `PReach k statics (run k statics os)` says that every step is `ok`
+(`run_ok_of_reach`). -/
 def run (statics : Statics) (os : List Op) : PS :=
-  (prun k (PS.init statics) os).getD (PS.init statics)
+  (prun k (PS.init statics) os).getD stuckPS
 
 end Run
 
@@ -43,6 +48,17 @@ variable {k : K} [∀ r r', Decidable (k.DeclaredDisjoint r r')] [DecidablePred 
 theorem run_reach {statics : Statics} {os : List Op} (hsh : ShapeOK 0 (statics.map (·.1)))
     (h : (prun k (PS.init statics) os).isSome = true) : PReach k statics (run k statics os) :=
   prun_init hsh (some_getD h)
+
+/-- Under `DDSound`, a reached `run` is a run whose every step is `ok`: the state given for a failed
+run has no frame, which `WF3` excludes on reached states (MM-03.3 §2.1). -/
+theorem run_ok_of_reach (hdd : DDSound k) {statics : Statics} {os : List Op}
+    (h : PReach k statics (run k statics os)) : (prun k (PS.init statics) os).isSome = true := by
+  cases hp : prun k (PS.init statics) os with
+  | some _ => rfl
+  | none =>
+    have hr := pReach_reachable hdd h
+    simp only [run, hp, Option.getD_none] at hr
+    exact absurd rfl (reachable_invariants hdd hr).1.2.2.1
 
 end RunSound
 
@@ -847,14 +863,15 @@ Obtained: disjoint accesses, `resolveMany` and the rejection during the view as 
 release: if "the view of the column" is the column authority 11 of `split` (with its read view),
 the move is accepted; if it is the read view 12 alone, the move is still rejected, the column
 authority 11 covering the field (O4.4; report, (b)). -/
-theorem W2 : PReach K0 [] w2 ∧ TransferStep K0 12 19 w2.s .reject ∧ PReach K0 [] w2a ∧
+theorem W2 : PReach K0 [] w2 ∧ ¬ w2.s.Active 10 ∧ TransferStep K0 12 19 w2.s .reject ∧
+    PReach K0 [] w2a ∧
     TransferStep K0 12 19 w2a.s .reject ∧ ActiveDerivedOutside w2a.s 12 11 ∧
     PReach K0 [] w2b ∧ TransferStep K0 12 19 w2b.s (.ok (transferEff w2b.s 12 19)) ∧
     PReach K0 [] (run K0 [] (w2o ++ [.release 12, .release 11, .transfer 9 16,
       .transfer 12 19])) :=
-  ⟨run_reach (by decide) (by decide), .reject (by decide), run_reach (by decide) (by decide),
-    .reject (by decide), by decide, run_reach (by decide) (by decide), .ok (by decide),
-    run_reach (by decide) (by decide)⟩
+  ⟨run_reach (by decide) (by decide), by decide, .reject (by decide),
+    run_reach (by decide) (by decide), .reject (by decide), by decide,
+    run_reach (by decide) (by decide), .ok (by decide), run_reach (by decide) (by decide)⟩
 
 /-- W3, literal reading: frame 1, arena value 0, allocator 1, block values 2, 3, 4, structure 5
 with the fields 6, 7, 8; storage 9 (leaves 10, 11, 12) owned by 0, `internal` 6; three blocks
