@@ -509,12 +509,16 @@ theorem H29 : PReach K0 [] h29 ∧ ReleaseStep 2 h29.s .reject ∧
     PReach K0 [] (run K0 [] (h29p ++ [.derive 0 0 .modify, .enter [3] [], .release 2])) :=
   ⟨run_reach (by decide) (by decide), .reject (by decide), run_reach (by decide) (by decide)⟩
 
+/-- H29b: frame 1, arena value 0, allocator 1, value 2; storage 3 with the leaf 4; the block 4 on
+`[4]` issued to 2; 5, `Modify` from the block; 6, `Observe` on the arena value; the call. -/
+def h29bo : List Op := [.enter [] [lf, lf, lf], .write 1 [1], .alloc 1 0 [lf, (some 3, none, 0)],
+  .write 0 [0], .newArena 3 3, .issue 0 0 [4] 2, .derive 4 4 .modify, .derive 0 0 .observe,
+  .enter [6, 5] []]
+
 /-- **H29b** (F; G1; Lib; covered pass 7). The arena value passed `Observe` and a `Modify` parameter
 derived from a block held by a value of the caller: the call is accepted. Expected: `ok`;
 obtained: `ok`. -/
-theorem H29b : PReach K0 [] (run K0 [] [.enter [] [lf, lf, lf], .write 1 [1],
-    .alloc 1 0 [lf, (some 3, none, 0)], .write 0 [0], .newArena 3 3, .issue 0 0 [4] 2,
-    .derive 4 4 .modify, .derive 0 0 .observe, .enter [6, 5] []]) :=
+theorem H29b : PReach K0 [] (run K0 [] h29bo) :=
   run_reach (by decide) (by decide)
 
 /-! ## G. Handles (material §4, `Ern.HandlePool`) -/
@@ -611,32 +615,39 @@ theorem H34b : PReach K0 [] h34b ∧ h34b.pools.map (·.id) = [0, 1] ∧
     .fail (pl := ⟨1, 7, 5, [⟨8, 0, false⟩, ⟨9, 0, false⟩]⟩) (by decide) (by decide) (by decide),
     by decide⟩
 
+/-- H44: the run described below. -/
+def h44o : List Op := [.enter [] [lf, lf, lf, lf, lf], .write 1 [1],
+  .alloc 1 0 [lf, (some 5, none, 0), (some 6, none, 0), (some 7, none, 0), (some 7, none, 0),
+    (some 6, none, 0), (some 10, none, 0), (some 10, none, 0)], .write 0 [0], .newArena 5 5,
+  .issue 0 0 [8, 9, 11, 12] 2, .newPool 6 6, .allocSlot 0 0 3, .allocSlot 0 0 4,
+  .resolve 0 ⟨0, 0, 0⟩ .modify, .write 8 [8, 9], .unresolve 7,
+  .resolve 0 ⟨0, 1, 0⟩ .modify, .write 10 [11, 12], .unresolve 9, .endUse 2, .reset 0 0]
+
 /-- **H44** (G; §4, A10; Lib). Frame 1: arena value 0, allocator 1, pool value 2, handle leaves 3 and
 4; storage 5 owned by 0, with the place 6 holding the nodes 7 (fields 8, 9) and 10 (fields 11, 12);
 arena on 5; the block on the footprint of 6 issued to the pool value; pool on 6 with that block as
 `internal`. Each node resolved in turn, its link written (the handle of the other node), then
 unresolved; `endUse` of the pool value; `reset` of the arena, without reading the links. Expected:
 `ok`; obtained: `ok` at each step. -/
-theorem H44 : PReach K0 [] (run K0 [] [.enter [] [lf, lf, lf, lf, lf], .write 1 [1],
-    .alloc 1 0 [lf, (some 5, none, 0), (some 6, none, 0), (some 7, none, 0), (some 7, none, 0),
-      (some 6, none, 0), (some 10, none, 0), (some 10, none, 0)], .write 0 [0], .newArena 5 5,
-    .issue 0 0 [8, 9, 11, 12] 2, .newPool 6 6, .allocSlot 0 0 3, .allocSlot 0 0 4,
-    .resolve 0 ⟨0, 0, 0⟩ .modify, .write 8 [8, 9], .unresolve 7,
-    .resolve 0 ⟨0, 1, 0⟩ .modify, .write 10 [11, 12], .unresolve 9, .endUse 2, .reset 0 0]) :=
+theorem H44 : PReach K0 [] (run K0 [] h44o) :=
   run_reach (by decide) (by decide)
 
 /-! ## H. Abusive rejections (the model must accept) -/
 
+/-- H35: frame 1, structure 0 with the columns 1 and 2, split and written. -/
+def h35o : List Op := [.enter [] S2, .split 0 [[1], [2]], .write 1 [1], .write 2 [2]]
+
 /-- **H35** (H; MM-03.1.3; N3; covered jalon 1, case 15). SoA: two columns written after `split`.
 Expected: `ok`; obtained: `ok`. -/
-theorem H35 : PReach K0 [] (run K0 [] [.enter [] S2, .split 0 [[1], [2]], .write 1 [1],
-    .write 2 [2]]) :=
+theorem H35 : PReach K0 [] (run K0 [] h35o) :=
   run_reach (by decide) (by decide)
+
+/-- H36: a local written, ended, written again and read. -/
+def h36o : List Op := [.enter [] [lf], .write 0 [0], .endUse 0, .write 0 [0], .read 0 [0]]
 
 /-- **H36** (H; C8; N3; covered pass 4). A local ended by `endUse`, then written again and read.
 Expected: `ok`; obtained: `ok`. -/
-theorem H36 : PReach K0 [] (run K0 [] [.enter [] [lf], .write 0 [0], .endUse 0, .write 0 [0],
-    .read 0 [0]]) :=
+theorem H36 : PReach K0 [] (run K0 [] h36o) :=
   run_reach (by decide) (by decide)
 
 /-- H37: frame 1, result 0, allocator 1 written; it passes 2 (`Modify` on 0) and 3 (`Modify` on 1);
@@ -650,28 +661,35 @@ def h37o : List Op := [.enter [] [lf, lf], .write 1 [1], .derive 0 0 .modify, .d
 its value, and returned: every step `ok`. Expected: `ok`; obtained: `ok`. Negative twin: H21b. -/
 theorem H37 : PReach K0 [] (run K0 [] h37o) := run_reach (by decide) (by decide)
 
+/-- H45: the run of the pass-6 witness `fb`, then `reset`. -/
+def h45o : List Op := [.enter [] [lf, lf, lf, lf], .write 1 [1],
+  .alloc 1 0 [lf, (some 4, none, 0), (some 5, none, 0), (some 5, none, 0), (some 4, none, 0),
+    (some 8, none, 0), (some 8, none, 0)], .write 0 [0], .newArena 4 4,
+  .issue 0 0 [6, 7] 2, .issue 0 0 [9, 10] 3, .derive 6 9 .modify, .store 7 7,
+  .derive 5 6 .modify, .store 8 10, .release 7, .release 8, .endUse 2, .endUse 3, .reset 0 0]
+
 /-- **H45** (H; F7 (b); Lib; covered pass 6, `progress_cycle_disjoint_fields`). Two arena nodes,
 `A.link` holding a view on `B.data` and `B.link` on `A.data`; teardown (`release` of both views,
 `endUse` of both node values), then `reset`. Expected: `ok` throughout; obtained: `ok`. -/
-theorem H45 : PReach K0 [] (run K0 [] [.enter [] [lf, lf, lf, lf], .write 1 [1],
-    .alloc 1 0 [lf, (some 4, none, 0), (some 5, none, 0), (some 5, none, 0), (some 4, none, 0),
-      (some 8, none, 0), (some 8, none, 0)], .write 0 [0], .newArena 4 4,
-    .issue 0 0 [6, 7] 2, .issue 0 0 [9, 10] 3, .derive 6 9 .modify, .store 7 7,
-    .derive 5 6 .modify, .store 8 10, .release 7, .release 8, .endUse 2, .endUse 3,
-    .reset 0 0]) :=
+theorem H45 : PReach K0 [] (run K0 [] h45o) :=
   run_reach (by decide) (by decide)
+
+/-- H46: array 0 (leaves 1, 2), structure 3 (field 4); a view stored, read, released. -/
+def h46o : List Op := [.enter [] [lf, (some 0, none, 0), (some 0, none, 0), lf, (some 3, none, 0)],
+  .write 0 [1, 2], .derive 0 0 .observe, .store 2 4, .read 2 [1], .release 2]
 
 /-- **H46** (H; F4; N3; covered pass 6). A view on a local array, stored into a field of a local
 structure, read, then released. Expected: `ok`; obtained: `ok`. -/
-theorem H46 : PReach K0 [] (run K0 [] [.enter [] [lf, (some 0, none, 0), (some 0, none, 0), lf,
-    (some 3, none, 0)], .write 0 [1, 2], .derive 0 0 .observe, .store 2 4, .read 2 [1],
-    .release 2]) :=
+theorem H46 : PReach K0 [] (run K0 [] h46o) :=
   run_reach (by decide) (by decide)
+
+/-- H47: structures 0 (fields 1, 2) and 3 (fields 4, 5); the field 1 written and transferred. -/
+def h47o : List Op := [.enter [] [lf, (some 0, none, 0), (some 0, none, 0), lf, (some 3, none, 0),
+  (some 3, none, 0)], .write 0 [1], .transfer 1 4]
 
 /-- **H47** (H; J1; N3; covered pass 8). Field-by-field transfer of a partially initialised
 aggregate: the written field is transferred. Expected: `ok`; obtained: `ok`. -/
-theorem H47 : PReach K0 [] (run K0 [] [.enter [] [lf, (some 0, none, 0), (some 0, none, 0), lf,
-    (some 3, none, 0), (some 3, none, 0)], .write 0 [1], .transfer 1 4]) :=
+theorem H47 : PReach K0 [] (run K0 [] h47o) :=
   run_reach (by decide) (by decide)
 
 /-! ## I. Progress (`NoLock`, material §5) -/
@@ -707,11 +725,13 @@ theorem H49 : PReach K0 [] h49 ∧ ¬ h49.s.ExercisableAt 7 .observe ∧
 
 /-- H50, `transfer`: frame 1, structure 0 with the field 1, structure 2 with the field 3; 2,
 `Modify` on 3, stored into 1; 0 transferred into 2 (pass-7 `held_unexercisable_by_transfer`). -/
-def h50a : PS := run K0 [] [.enter [] [lf, (some 0, none, 0), lf, (some 2, none, 0)],
+def h50ao : List Op := [.enter [] [lf, (some 0, none, 0), lf, (some 2, none, 0)],
   .derive 1 3 .modify, .store 2 1, .transfer 0 2]
+def h50a : PS := run K0 [] h50ao
 /-- H50, `issue`: the block on the node 5 issued to the node 5 itself (pass-7
 `held_unexercisable_by_issue`). -/
-def h50b : PS := run K0 [] (fao.take 5 ++ [.issue 0 0 [5] 5])
+def h50bo : List Op := fao.take 5 ++ [.issue 0 0 [5] 5]
+def h50b : PS := run K0 [] h50bo
 
 /-- **H50** (I; §5; N3, Lib; covered pass 7). An authority transferred or issued into the place it
 covers: accepted, and then exercisable at no mode. Expected: to arbitrate (§5); obtained: `ok`,
