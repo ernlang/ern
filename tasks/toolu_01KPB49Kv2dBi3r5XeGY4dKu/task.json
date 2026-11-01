@@ -1,0 +1,15 @@
+{
+  "tool_use_id": "toolu_01KPB49Kv2dBi3r5XeGY4dKu",
+  "agent_id": "a9fabe986081cfffc",
+  "subagent_type": "general-purpose",
+  "task_description": "Review MM3-H twins and verdicts",
+  "token_usage": {
+    "input_tokens": 44,
+    "cache_creation_tokens": 189714,
+    "cache_read_tokens": 2938757,
+    "output_tokens": 44250,
+    "api_call_count": 22
+  },
+  "started_at": "2026-11-01T19:21:24.956601+01:00",
+  "completed_at": "2026-11-01T19:28:34.012771+01:00"
+}

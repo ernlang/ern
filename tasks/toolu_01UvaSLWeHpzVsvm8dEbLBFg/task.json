@@ -1,0 +1,15 @@
+{
+  "tool_use_id": "toolu_01UvaSLWeHpzVsvm8dEbLBFg",
+  "agent_id": "a57d686ff2dbfddb8",
+  "subagent_type": "general-purpose",
+  "task_description": "Review MM23-H translated cases",
+  "token_usage": {
+    "input_tokens": 40,
+    "cache_creation_tokens": 149745,
+    "cache_read_tokens": 2188466,
+    "output_tokens": 36664,
+    "api_call_count": 20
+  },
+  "started_at": "2026-11-01T19:21:25.005726+01:00",
+  "completed_at": "2026-11-01T19:27:36.843604+01:00"
+}

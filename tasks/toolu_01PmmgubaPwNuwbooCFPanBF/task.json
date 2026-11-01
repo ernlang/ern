@@ -1,0 +1,15 @@
+{
+  "tool_use_id": "toolu_01PmmgubaPwNuwbooCFPanBF",
+  "agent_id": "ab24b80b795951b95",
+  "subagent_type": "general-purpose",
+  "task_description": "Review HandlePool exclusivity and fidelity",
+  "token_usage": {
+    "input_tokens": 52,
+    "cache_creation_tokens": 188075,
+    "cache_read_tokens": 3339104,
+    "output_tokens": 46570,
+    "api_call_count": 26
+  },
+  "started_at": "2026-11-01T19:21:24.907391+01:00",
+  "completed_at": "2026-11-01T19:29:11.754571+01:00"
+}
