@@ -49,7 +49,8 @@ theorem metaRightM_metaRight {k : K} {s : S3} {ar : Arena} {via : Nat} (h : Meta
 /-! ## Restricted `issue` (candidate Spec 1 §77) -/
 
 /-- Static preconditions of the restricted `issue` (candidate Spec 1 §77, clauses 1 and 2, with
-`MetaRightM`): clause 1, restricted metadata right and `internal` active; clause 2, the region
+`MetaRightM`): clause 1, restricted metadata right and `internal` active (the existence of the
+entry is the lookup of `IssueAtR`; the theorems take an entry `ar ∈ s.arenas`); clause 2, the region
 within the administered storage, the destination a usable leaf, under exercisable `Modify`, not
 `Init`, holding no active authority, and not in the region ("Prévention locale de l'auto-blocage",
 §88). The static restrictions of clause 3 are those of the kernel (`IssueStatic`,
@@ -98,7 +99,13 @@ instance (s : S3) (ar : Arena) (region : List Nat) (dst : Nat) :
 precondition fails; `fail`, the state unchanged, when the region is not available (§77.4);
 `reject` when `internal` lacks effective `Modify` on the region (§77.5) or an arrival check fails
 (§77.3, §77.6); `ok` otherwise. The disjointness of §77.5 from the active emissions is not
-restated: it follows from the effective right (`issue_disjoint_redundant`, A11). -/
+restated: it follows from the effective right (`issue_disjoint_redundant`, A11).
+
+Availability is the kernel `Avail`, read leaf by leaf: the kernel keeps `available` as a list of
+leaves, where §46 types it `Set<Region>` and §77.4 tests whether the region belongs to it. The text
+does not settle which reading holds, and the readings classify differently: under the leaf reading a
+region that partly overlaps an active emission fails (§77.4) instead of reaching §77.5, and the
+empty region is always available (`ce_avail_leaf`; report, (f)). -/
 inductive IssueR (ar : Arena) (region : List Nat) (dst : Nat) (s : S3) : IOutcome → Prop where
   | ok : IssueStaticR s ar region dst → Avail ar region → IssueRight s ar region →
       ArrivalR s ar region dst →
@@ -163,6 +170,18 @@ theorem issueR_reject_iff {ar : Arena} {region : List Nat} {dst : Nat} {s : S3} 
     | ok s' ar' => exact absurd ho (h1 s' ar')
     | fail s' ar' => exact absurd ho (h2 s' ar')
     | reject => exact ho
+
+/-- The restricted `issue` on the entry `i` of the state (§77.1, "L'entrée `arena` existe"): the
+`IssueR` of the recorded entry, whose new metadata is written back, as the kernel `IssueAt`; a
+missing entry is rejected. -/
+inductive IssueAtR (i : Nat) (region : List Nat) (dst : Nat) (s : S3) : AOutcome → Prop where
+  | ok {ar : Arena} {s' : S3} {ar' : Arena} : s.arenas[i]? = some ar →
+      IssueR ar region dst s (.ok s' ar') → IssueAtR i region dst s (.ok (arenaSet s' i ar'))
+  | fail {ar : Arena} {s' : S3} {ar' : Arena} : s.arenas[i]? = some ar →
+      IssueR ar region dst s (.fail s' ar') → IssueAtR i region dst s (.fail s)
+  | reject {ar : Arena} : s.arenas[i]? = some ar → IssueR ar region dst s .reject →
+      IssueAtR i region dst s .reject
+  | none : s.arenas[i]? = none → IssueAtR i region dst s .reject
 
 /-! ## The kernel sequence for `issue` -/
 
@@ -656,23 +675,40 @@ end IssueAsKernel
 
 /-! ## Restricted `reset` (candidate Spec 1 §78) -/
 
-/-- Preconditions of the restricted `reset` (candidate Spec 1 §78, with `MetaRightM`), as the
-clauses of the kernel `ResetPre`: 1 restricted metadata right (§78.1); 2 no active authority
-derived from `internal` (§78.2); 3 no usable place with an anchor in the subtree of origins of
-`internal`, `internal` itself included, as the kernel reads §78.3. Transitive dependencies through
-contained values are covered since every usable part is a usable place. -/
+/-- Preconditions of the restricted `reset` of the entry `ar` (candidate Spec 1 §78, with
+`MetaRightM`), as the clauses of the kernel `ResetAtPre` and `ResetPre`: 1 the entry is live
+(`internal` active) and the restricted metadata right holds (§78.1; the existence of the entry is the
+lookup of `ResetAtPreR`); 2 no active authority derived from `internal` (§78.2); 3 no usable place
+with an anchor in the subtree of origins of `internal`, `internal` itself included, as the kernel
+reads §78.3 (an ambiguity, report (f)). Transitive dependencies through contained values are
+covered since every usable part is a usable place. -/
 def ResetPreR (s : S3) (ar : Arena) : Prop :=
-  MetaRightM s ar ∧
+  s.Active ar.internal ∧ MetaRightM s ar ∧
   (∀ j ∈ List.range s.A.length, ar.internal ∈ s.ancs j → ¬ s.Active j) ∧
   (∀ q ∈ List.range s.P.length, s.Usable q → ∀ x ∈ s.D q, x ≠ ar.internal ∧ ar.internal ∉ s.ancs x)
 
 instance (s : S3) (ar : Arena) : Decidable (ResetPreR s ar) := by
   unfold ResetPreR; infer_instance
 
-/-- The restricted `reset` is the kernel `ResetPre` with the restricted right. -/
+/-- The restricted `reset` is the kernel `ResetPre` of a live entry with the restricted right. -/
 theorem resetPreR_iff {k : K} {via : Nat} {s : S3} {ar : Arena} :
-    ResetPreR s ar ↔ MetaRightM s ar ∧ ResetPre k s ar via :=
-  ⟨fun ⟨h0, h1, h2⟩ => ⟨h0, .inl h0, h1, h2⟩, fun ⟨h0, ⟨_, h1, h2⟩⟩ => ⟨h0, h1, h2⟩⟩
+    ResetPreR s ar ↔ s.Active ar.internal ∧ MetaRightM s ar ∧ ResetPre k s ar via :=
+  ⟨fun ⟨ha, h0, h1, h2⟩ => ⟨ha, h0, .inl h0, h1, h2⟩,
+   fun ⟨ha, h0, ⟨_, h1, h2⟩⟩ => ⟨ha, h0, h1, h2⟩⟩
+
+/-- The restricted `reset` on the entry `i` of the state (§78.1, "L'entrée existe et est vivante"):
+the entry exists and `ResetPreR` holds, as the kernel `ResetAtPre`. -/
+def ResetAtPreR (s : S3) (i : Nat) : Prop := OptP (s.arenas[i]?) (fun ar => ResetPreR s ar) False
+
+instance (s : S3) (i : Nat) : Decidable (ResetAtPreR s i) := by
+  unfold ResetAtPreR; infer_instance
+
+theorem resetAtPreR_iff {s : S3} {i : Nat} :
+    ResetAtPreR s i ↔ ∃ ar, s.arenas[i]? = some ar ∧ ResetPreR s ar := by
+  unfold ResetAtPreR
+  cases h : s.arenas[i]? with
+  | none => simp [OptP]
+  | some ar => simp [OptP]
 
 /-- The footprint of an authority derived, transitively, from `a` lies in the footprint of `a`
 (I2, §42: "La création de droits dérivés n'accroît ni la portée"). -/
@@ -712,19 +748,19 @@ theorem reset_seq_arrival (s : S3) (ar : Arena) :
 section ResetAsKernel
 
 variable {k : K} (hdd : DDSound k) {statics : Statics} {s : S3} (hr : Reachable k statics s)
-  {ar : Arena} (har : ar ∈ s.arenas) (hact : s.Active ar.internal)
-include hdd hr har hact
+  {ar : Arena} (har : ar ∈ s.arenas)
+include hdd hr har
 
-/-- Direction `reset` → sequence (brief, question 1): the restricted `reset` of a live arena gives
-the `ok` of `derive` of `internal` at `Modify` on the storage (O1), then of `release` of the derived
+/-- Direction `reset` → sequence (brief, question 1): the restricted `reset` of an entry gives the
+`ok` of `derive` of `internal` at `Modify` on the storage (O1), then of `release` of the derived
 authority (O3). -/
 theorem reset_to_seq (h : ResetPreR s ar) :
     DeriveStep ar.internal ar.storage .modify s (.ok (deriveEff s ar.internal ar.storage .modify)) ∧
       ReleaseStep s.A.length (deriveEff s ar.internal ar.storage .modify)
         (.ok (releaseEff (deriveEff s ar.internal ar.storage .modify) s.A.length)) := by
   obtain ⟨-, hinv, -, hais⟩ := reachable_invariants hdd hr
+  obtain ⟨hact, hm, h2, -⟩ := h
   have hai := hais ar har hact
-  obtain ⟨hm, h2, -⟩ := h
   obtain ⟨yi, hyi, yia⟩ := hact
   refine ⟨.ok ⟨⟨yi, hyi, yia⟩, (metaRightM_iff hai ⟨yi, hyi, yia⟩).1 hm,
     live_arena_storage_usable hdd hr ar har ⟨yi, hyi, yia⟩, fun l hl => (hai.2.2.2.2.2.2.2 l).2 hl,
@@ -762,8 +798,8 @@ theorem seq_to_reset {s₁ s₂ : S3} (hd : DeriveStep ar.internal ar.storage .m
     (hemp : ∀ j ∈ List.range s.A.length, ar.internal ∈ s.ancs j → s.Active j → s.afp j ≠ [])
     (hanc : ∀ q, s.Usable q → ar.internal ∉ s.D q) : ResetPreR s ar := by
   obtain ⟨hwf, hinv, -, hais⟩ := reachable_invariants hdd hr
+  obtain ⟨⟨hact, hex, -, -, hal⟩, -⟩ := Guarded.ok_iff.1 hd
   have hai := hais ar har hact
-  obtain ⟨⟨-, hex, -, -, hal⟩, -⟩ := Guarded.ok_iff.1 hd
   have h2 : ∀ j ∈ List.range s.A.length, ar.internal ∈ s.ancs j → ¬ s.Active j := by
     intro j hj ha hja
     obtain ⟨l, hl⟩ := List.exists_mem_of_ne_nil _ (hemp j hj ha hja)
@@ -777,13 +813,13 @@ theorem seq_to_reset {s₁ s₂ : S3} (hd : DeriveStep ar.internal ar.storage .m
     rcases effOf_cases hx with ⟨h0, -⟩ | ⟨-, -, h1⟩
     · rw [h0] at hmem; simp at hmem
     · cases h1
-  refine ⟨(metaRightM_iff hai hact).2 hex, h2, fun q _ hq x hx => ⟨fun he => hanc q hq (he ▸ hx),
-    fun hxa => ?_⟩⟩
+  refine ⟨hact, (metaRightM_iff hai hact).2 hex, h2, fun q _ hq x hx =>
+    ⟨fun he => hanc q hq (he ▸ hx), fun hxa => ?_⟩⟩
   obtain ⟨z, hz, za⟩ := hinv.base.2.2.1 q hq x hx
   exact h2 x (List.mem_range.2 (lt_of_getElem? hz)) hxa ⟨z, hz, za⟩
 
-/-- `reset_as_kernel` (brief, question 1), in reached states, for a live arena: the restricted
-`reset` holds iff `derive` of `internal` at `Modify` on the storage then `release` of the derived
+/-- `reset_as_kernel` (brief, question 1), in reached states, for an entry of the state: the
+restricted `reset` holds iff `derive` of `internal` at `Modify` on the storage then `release` of the derived
 authority are `ok`, no active authority derived from `internal` has an empty footprint, and no
 usable place has `internal` as anchor. The kernel part of the arrival states differs by the released
 authority alone (`reset_seq_arrival`). -/
@@ -796,13 +832,13 @@ theorem reset_as_kernel :
       (∀ q, s.Usable q → ar.internal ∉ s.D q) := by
   constructor
   · intro h
-    obtain ⟨hd, hrl⟩ := reset_to_seq hdd hr har hact h
-    exact ⟨hd, hrl, fun j hj ha hja => absurd hja (h.2.1 j hj ha), fun q hq hx =>
-      (h.2.2 q (List.mem_range.2 hq.lt) hq _ hx).1 rfl⟩
+    obtain ⟨hd, hrl⟩ := reset_to_seq hdd hr har h
+    exact ⟨hd, hrl, fun j hj ha hja => absurd hja (h.2.2.1 j hj ha), fun q hq hx =>
+      (h.2.2.2 q (List.mem_range.2 hq.lt) hq _ hx).1 rfl⟩
   · rintro ⟨hd, hrl, hemp, hanc⟩
-    exact seq_to_reset hdd hr har hact hd hrl hemp hanc
+    exact seq_to_reset hdd hr har hd hrl hemp hanc
 
-omit har hact in
+omit har in
 /-- Under the strict reading of §78.3 (the subtree of origins of `internal` without `internal`),
 the clause follows from §78.2 and I3 in reached states. -/
 theorem reset_clause3_strict (h2 : ∀ j ∈ List.range s.A.length, ar.internal ∈ s.ancs j → ¬ s.Active j) :
@@ -1143,9 +1179,10 @@ theorem ce_avail :
   ⟨reach_run (by decide), by decide, .fail (by decide) (by decide), .ok (by decide),
     .ok (by decide)⟩
 
-/-- **Empty region**: the restricted `issue` of the empty region is `ok`; no place has an empty
-footprint (`exists_mem_footprint`), so `derive` (O1), which takes a place, cannot produce the block,
-while `split` on one region can (`issue_as_kernel_split`). -/
+/-- **Empty region**: the restricted `issue` of the empty region is `ok` (the empty region is
+available under the leaf reading of `available`, `ce_avail_leaf`); no place has an empty footprint
+(`exists_mem_footprint`), so `derive` (O1), which takes a place, cannot produce the block, while
+`split` on one region can (`issue_as_kernel_split`). -/
 theorem ce_empty_region :
     IssueR arD [] 2 (run K0 [] opsArena).s
       (.ok (issueEffR (run K0 [] opsArena).s arD [] 2).1 (issueEffR (run K0 [] opsArena).s arD [] 2).2) ∧
@@ -1174,7 +1211,7 @@ theorem ce_reset_anchor :
 usable. -/
 theorem reset_blocked_by_stored_internal {s : S3} {ar : Arena} {v : Nat} (hv : s.Usable v)
     (hx : ar.internal ∈ s.D v) : ¬ ResetPreR s ar :=
-  fun h => (h.2.2 v (List.mem_range.2 hv.lt) hv _ hx).1 rfl
+  fun h => (h.2.2.2 v (List.mem_range.2 hv.lt) hv _ hx).1 rfl
 
 /-- Prefix with an allocated storage: frame 1 with the leaves 0 (arena value), 1 (allocator
 value), 2 and 3 (destinations); `alloc` of the storage 4, of parts 5 and 6, owned by 0, of root
@@ -1185,6 +1222,23 @@ def opsAlloc : List Op :=
 
 /-- The entry registered by `opsAlloc`. -/
 def arL : Arena := ⟨4, 4, [5, 6], []⟩
+
+/-- The entry of `opsAlloc` once `[5]` is issued into 2 (block 5). -/
+def arLi : Arena := ⟨4, 4, [6], [([5], 5)]⟩
+
+/-- **Leaf reading of `available`** (Q1I-1 of the review): after the emission of `[5]` (block 5,
+active), the region `[5, 6]` partly overlaps the active emission. With `available` read leaf by leaf
+(the kernel `Avail`), it is unavailable and the restricted `issue` fails (§77.4); with `available`
+a set of regions from which only `[5]` left, `[5, 6]` would be available and §77.5 would reject it,
+`internal` lacking the effective right on 5. The empty region is available though `available`
+holds no region of it. -/
+def opsLeaf : List Op := opsAlloc ++ [.issue 0 0 [5] 2]
+
+theorem ce_avail_leaf :
+    Reachable K0 [] (run K0 [] opsLeaf).s ∧ (run K0 [] opsLeaf).s.arenas = [arLi] ∧
+    IssueR arLi [5, 6] 3 (run K0 [] opsLeaf).s (.fail (run K0 [] opsLeaf).s arLi) ∧
+    ¬ IssueRight (run K0 [] opsLeaf).s arLi [5, 6] ∧ Avail arLi [] :=
+  ⟨reach_run (by decide), by decide, .fail (by decide) (by decide), by decide, by decide⟩
 
 /-- **Empty derivation** (`reset`): `split` of `internal` on the empty region creates an active
 derivation of empty footprint. The restricted `reset` and the kernel `reset` are rejected by their

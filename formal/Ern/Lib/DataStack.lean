@@ -9,16 +9,18 @@ does (candidate Spec 1 §36, §46), with library metadata: the ordered leaves of
 top, the issued blocks and the live marks. Its operations are built on kernel steps and on the
 derived `issue` and `reset` of question 1 (`Ern.Derived.Arena`):
 
-* `push`: the derived `issue` at the top, `split` of `internal` on the cells then `store` of the
-  block into the destination; `fail` when no room is left;
+* `push`: the restricted `issue` at the top, its static clauses (§77.1, §77.2) checked before the
+  room, realised by `split` of `internal` on the cells then `store` of the block into the
+  destination; `fail` when no room is left;
 * `mark`: a mark (stack, fresh identifier, top), metadata only;
 * `rewind`: the derived `reset` on the cells above the mark, `split` of `internal` on them then
   `release` of the derived authority; `fail` for a mark that is not live in the stack;
 * `grow`: in place, `release` of the last block, then the derived `issue` of a region of the same
-  base and of larger size into the same destination; `fail` when no room is left.
+  base and of larger size into the same destination, which is `Init`; `fail` when no room is left.
 
 Every `ok` step of the library takes kernel steps of `Reachable` only (`dexec_reach`). The theorems
-of the brief are `rewind_rejects_live_above`, `mark_no_aba`, `rewind_keeps_older_marks`,
+of the brief are `rewind_rejects_live_above`, `mark_no_aba` (with `rewind_removes`),
+`rewind_keeps_older_marks`,
 `grow_same_base`, `grow_keeps_prefix_init` and `grow_keeps_prefix_bytes` (through the refinement
 `Ern.MM23`, unchanged). The decisions the brief does not settle are listed in the report
 (`formal/reports/Derivability_v0.1.md`, (c) and (f)).
@@ -71,8 +73,11 @@ inductive Out where
 /-- The `n` cells of the stack from the index `b`. -/
 def cellsOf (st : Stack) (b n : Nat) : List Nat := (st.cells.drop b).take n
 
-/-- The cells above the mark `m`, those that `rewind m` returns (brief: "les régions au-dessus de
-`m`"): the regions issued after `m` lie there. -/
+/-- The cells above the mark `m`, from its top to the current top: those that `rewind m` returns
+to the available part (brief: "les régions au-dessus de `m`"). A region issued after `m` and still
+below the top lies there, but not every such region does: a block grown after `m` from a base below
+`m` starts below it, and a region issued after `m` and returned by an intermediate `rewind` lies
+above the current top (`case_rewind_reading`; report, (f)). -/
 def above (st : Stack) (m : Mark) : List Nat := cellsOf st m.top (st.top - m.top)
 
 /-- The stack seen as an administration of its storage, for `MetaRightM` and `blockOf`. -/
@@ -84,14 +89,16 @@ def NoHeld (s : S3) (dst : Nat) : Prop :=
 
 instance (s : S3) (dst : Nat) : Decidable (NoHeld s dst) := by unfold NoHeld; infer_instance
 
-/-- Static preconditions of `push`, checked before the room (§58, §77.4): the stack is live, the
-current frame has exercisable `Modify` on the stack value (`MetaRightM`), and the destination is a
-usable leaf under exercisable `Modify` holding no active authority. -/
-def PushStatic (s : S3) (st : Stack) (dst : Nat) : Prop :=
+/-- Static preconditions of `push` of the cells `r`, checked before the room (§58, §77.4), those of
+the restricted `issue` (`IssueStaticR`, §77.1 and §77.2): the stack is live, the current frame has
+exercisable `Modify` on the stack value (`MetaRightM`), and the destination is a usable leaf under
+exercisable `Modify`, not `Init`, holding no active authority and outside `r`. The inclusion of the
+region in the storage is the room. -/
+def PushStatic (s : S3) (st : Stack) (r : List Nat) (dst : Nat) : Prop :=
   s.Active st.internal ∧ MetaRightM s st.arena ∧ s.Usable dst ∧ isLeaf s.P dst ∧
-    HasRight s .modify dst ∧ NoHeld s dst
+    HasRight s .modify dst ∧ (∀ l ∈ footprint s.P dst, s.I l ≠ .init) ∧ NoHeld s dst ∧ dst ∉ r
 
-instance (s : S3) (st : Stack) (dst : Nat) : Decidable (PushStatic s st dst) := by
+instance (s : S3) (st : Stack) (r : List Nat) (dst : Nat) : Decidable (PushStatic s st r dst) := by
   unfold PushStatic; infer_instance
 
 /-- The derived `issue` (question 1, `issue_as_kernel_split`): `split` of `internal` on `r`, then
@@ -136,13 +143,17 @@ def newStack (d : DS) (storage i : Nat) : Out :=
     .ok { d with stacks := d.stacks ++ [⟨storage, i, footprint d.s.P storage, 0, [], []⟩] }
   else .reject
 
-/-- `push size dst` on the stack `j` (brief): the derived `issue` of the `size` cells at the top into
-`dst`; `fail` when fewer than `size` cells are left. -/
+/-- `push size dst` on the stack `j` (brief: "émission au sommet (`issue` restreint)"): the static
+clauses of the restricted `issue` (`PushStatic`), then `fail` when fewer than `size` cells are left,
+then the derived `issue` of the `size` cells at the top into `dst`. By `issue_as_kernel_split`, this
+realisation through kernel steps differs from the restricted `issue` only by clause 5 of `store`
+(O8.5), which it inherits. `size` may be zero: the block then has an empty footprint, as the
+restricted `issue` of the empty region (`ce_empty_region`), and it blocks no `rewind`. -/
 def push (d : DS) (j size dst : Nat) : Out :=
   match d.stacks[j]? with
   | none => .reject
   | some st =>
-    if PushStatic d.s st dst then
+    if PushStatic d.s st (cellsOf st st.top size) dst then
       if st.top + size ≤ st.cells.length then
         if IssueSeq k d.s st (cellsOf st st.top size) dst then
           .ok { d with
@@ -164,10 +175,13 @@ def mark (d : DS) (j : Nat) : Out :=
       stacks := d.stacks.set j { st with marks := st.marks ++ [⟨j, d.fresh, st.top⟩] }
       fresh := d.fresh + 1 }
 
-/-- `rewind m` on the stack `j` (brief): `fail` when `m` is not a live mark of the stack; the derived
-`reset` on the cells above `m`, rejected when an active authority derived from `internal` covers
-one of them (`rewind_rejects_live_above`); `ok`: the top returns to the top of `m`, the blocks above
-`m` are forgotten, `m` and the later marks are removed, the older marks stay. -/
+/-- `rewind m` on the stack `j` (brief): `fail` when `m` is not a live mark of the stack; then the
+derived `reset` on the cells above `m`, `split` of `internal` on them and `release`, which rejects
+when an active authority derived from `internal` covers one of them (`rewind_rejects_live_above`)
+and also when the current frame cannot exercise `internal` at `Modify` (O2.1, the restricted
+`MetaRight` of §78.1); `ok`: the top returns to the top of `m`, the blocks whose base is above it
+are forgotten, `m` and the later marks are removed, the older marks stay (`rewind_removes`). A stack
+that does not exist rejects (no stack value). -/
 def rewind (d : DS) (j : Nat) (m : Mark) : Out :=
   match d.stacks[j]? with
   | none => .reject
@@ -184,10 +198,13 @@ def rewind (d : DS) (j : Nat) (m : Mark) : Out :=
       else .reject
     else .fail
 
-/-- `grow b extra` on the stack `j` (brief: in place only): `b` is the authority of the last block,
-at the top, `extra` is positive and `b` can be released; `fail` when fewer than `extra` cells follow
-the block; otherwise `release` of `b`, then the derived `issue` of the region of the same base and
-of size `size + extra` into the destination of the block. -/
+/-- `grow b extra` on the stack `j` (brief: in place only). Static clauses, checked before the room
+(§58): `b` is the authority of the last block, at the top, `extra` is positive ("taille plus
+grande"), `b` can be released, the stack is live and the current frame has exercisable `Modify` on
+the stack value (`MetaRightM`). `fail` when fewer than `extra` cells follow the block; otherwise
+`release` of `b`, then the derived `issue` of the region of the same base and of size `size + extra`
+into the destination recorded for the block. That destination is `Init` (the first `store` wrote
+it): the derived `issue` accepts it (O8.2), the restricted `issue` would not (§77.2, report (c)). -/
 def grow (d : DS) (j b extra : Nat) : Out :=
   match d.stacks[j]? with
   | none => .reject
@@ -195,7 +212,8 @@ def grow (d : DS) (j b extra : Nat) : Out :=
     match st.blocks.getLast? with
     | none => .reject
     | some x =>
-      if 0 < extra ∧ x.auth = b ∧ x.base + x.size = st.top ∧ ReleasePre d.s b then
+      if 0 < extra ∧ x.auth = b ∧ x.base + x.size = st.top ∧ ReleasePre d.s b ∧
+          d.s.Active st.internal ∧ MetaRightM d.s st.arena then
         if x.base + x.size + extra ≤ st.cells.length then
           if IssueSeq k (releaseEff d.s b) st (cellsOf st x.base (x.size + extra)) x.dst then
             .ok { d with
@@ -266,7 +284,8 @@ theorem newStack_ok {d d' : DS} {st i : Nat} (h : newStack d st i = .ok d') :
   · cases h
 
 theorem push_ok {d d' : DS} {j size dst : Nat} (h : push k d j size dst = .ok d') :
-    ∃ st, d.stacks[j]? = some st ∧ PushStatic d.s st dst ∧ st.top + size ≤ st.cells.length ∧
+    ∃ st, d.stacks[j]? = some st ∧ PushStatic d.s st (cellsOf st st.top size) dst ∧
+      st.top + size ≤ st.cells.length ∧
       IssueSeq k d.s st (cellsOf st st.top size) dst ∧
       d' = { d with
         s := issueSeqEff d.s st (cellsOf st st.top size) dst
@@ -317,7 +336,8 @@ theorem rewind_ok {d d' : DS} {j : Nat} {m : Mark} (h : rewind k d j m = .ok d')
 
 theorem grow_ok {d d' : DS} {j b extra : Nat} (h : grow k d j b extra = .ok d') :
     ∃ st x, d.stacks[j]? = some st ∧ st.blocks.getLast? = some x ∧ 0 < extra ∧ x.auth = b ∧
-      x.base + x.size = st.top ∧ ReleasePre d.s b ∧ x.base + x.size + extra ≤ st.cells.length ∧
+      x.base + x.size = st.top ∧ ReleasePre d.s b ∧
+      (d.s.Active st.internal ∧ MetaRightM d.s st.arena) ∧ x.base + x.size + extra ≤ st.cells.length ∧
       IssueSeq k (releaseEff d.s b) st (cellsOf st x.base (x.size + extra)) x.dst ∧
       d' = { d with
         s := issueSeqEff (releaseEff d.s b) st (cellsOf st x.base (x.size + extra)) x.dst
@@ -337,7 +357,8 @@ theorem grow_ok {d d' : DS} {j b extra : Nat} (h : grow k d j b extra = .ok d') 
         split at h
         · split at h
           · cases h
-            exact ⟨st, x, hst, hx, hc.1, hc.2.1, hc.2.2.1, hc.2.2.2, by assumption, by assumption, rfl⟩
+            exact ⟨st, x, hst, hx, hc.1, hc.2.1, hc.2.2.1, hc.2.2.2.1, hc.2.2.2.2, by assumption,
+              by assumption, rfl⟩
           · cases h
         · cases h
       · cases h
@@ -394,7 +415,7 @@ theorem dexec_reach {statics : Statics} {d d' : DS} {o : DOp} (hr : Reachable k 
       .split hr (rs := [above st m]) (src := st.internal) (.ok hsp)
     exact .release h1 (.ok hrel)
   | grow j b extra =>
-    obtain ⟨st, x, -, -, -, -, -, hrel, -, hseq, rfl⟩ := grow_ok h
+    obtain ⟨st, x, -, -, -, -, -, hrel, -, -, hseq, rfl⟩ := grow_ok h
     exact (issueSeq_reach (.release hr (.ok hrel)) hseq).2
 
 theorem drun_reach {statics : Statics} : ∀ {d d' : DS} {os : List DOp},
@@ -479,9 +500,10 @@ section Thms
 variable {k : K} [∀ r r', Decidable (k.DeclaredDisjoint r r')]
 
 /-- `rewind_rejects_live_above` (brief): `rewind m` of a live mark is rejected when an active
-authority derived from `internal` covers a cell above `m`, where the regions issued after `m` lie:
-its effective `Modify` on that cell is gone, so `split` of `internal` on the cells above `m` is
-rejected (O2.1). -/
+authority derived from `internal` covers a cell above `m` (`above`, the cells that the rewind
+returns): its effective `Modify` on that cell is gone, so `split` of `internal` on the cells above
+`m` is rejected (O2.1). The brief's "couvre une région émise après `m`" is read on the cells that the
+rewind returns (`above`; report, (f)). -/
 theorem rewind_rejects_live_above {d : DS} {j : Nat} {st : Stack} {m : Mark}
     (hst : d.stacks[j]? = some st) (hm : m ∈ st.marks) {x l : Nat} {y : Authority}
     (hy : d.s.A[x]? = some y) (ya : y.active = true) (hx : st.internal ∈ d.s.ancs x)
@@ -490,8 +512,10 @@ theorem rewind_rejects_live_above {d : DS} {j : Nat} {st : Stack} {m : Mark}
     effective_ne_modify_of_active_desc hy ya hly hx (h.1.2.2.1 _ (List.mem_singleton_self _) l hl)
   simp [rewind, hst, hm, hn]
 
-/-- Converse of `rewind_rejects_live_above`: an `ok` of `rewind m` is the rewind of a live mark of
-the stack above which no active authority derived from `internal` covers a cell. -/
+/-- `rewind_rejects_live_above` read on an `ok` (its contrapositive): an `ok` of `rewind m` is the
+rewind of a live mark of the stack above which no active authority derived from `internal` covers a
+cell. The converse of `rewind_rejects_live_above` does not hold: `rewind` also rejects when the
+current frame cannot exercise `internal` (see `rewind`). -/
 theorem rewind_ok_no_live_above {d d' : DS} {j : Nat} {m : Mark} (h : rewind k d j m = .ok d') :
     ∃ st, d.stacks[j]? = some st ∧ m ∈ st.marks ∧
       ∀ (x : Nat) (y : Authority), d.s.A[x]? = some y → y.active = true →
@@ -527,22 +551,34 @@ theorem grow_new_auth {s : S3} {st : Stack} {r : List Nat} {b dst : Nat} :
   rw [List.getElem?_set_self (by simp [S3.addAuth, releaseEff_len])]
   rfl
 
-/-- `grow_same_base` (brief): the `ok` of `grow b extra` releases `b`, the last block, and gives the
-stack a last block of the same base, of size `size + extra`, held by the same destination, whose
-authority covers the cells from the same base; the old cells are a prefix of the new ones. -/
+/-- `grow_same_base` (brief): the `ok` of `grow b extra` releases `b`, the last block (inactive in
+the arrival state), and gives the stack a last block of the same base, of size `size + extra`, with
+the same recorded destination; its authority covers the cells from the same base and is held by that
+destination; the old cells are a prefix of the new ones. -/
 theorem grow_same_base {d d' : DS} {j b extra : Nat} (h : grow k d j b extra = .ok d') :
     ∃ st x st', d.stacks[j]? = some st ∧ st.blocks.getLast? = some x ∧ x.auth = b ∧ 0 < extra ∧
       d'.stacks[j]? = some st' ∧
       st'.blocks.getLast? = some ⟨x.base, x.size + extra, d.s.A.length, x.dst⟩ ∧
       d'.s.afp d.s.A.length = cellsOf st x.base (x.size + extra) ∧
+      d'.s.A[d.s.A.length]?.map (·.holder) = some (.place x.dst) ∧
       cellsOf st x.base x.size <+: cellsOf st x.base (x.size + extra) ∧
-      (releaseEff d.s b).A[b]?.map (·.active) = some false := by
-  obtain ⟨st, x, hst, hx, hex, hb, -, hrel, -, -, rfl⟩ := grow_ok h
+      d'.s.A[b]?.map (·.active) = some false := by
+  obtain ⟨st, x, hst, hx, hex, hb, -, hrel, -, -, -, rfl⟩ := grow_ok h
   have hj : j < d.stacks.length := lt_of_getElem? hst
-  refine ⟨st, x, _, hst, hx, hb, hex, List.getElem?_set_self hj, by simp, grow_new_auth,
+  have hy₀ := addAuth_self (releaseEff d.s b)
+    (blockOf (releaseEff d.s b) st.arena (cellsOf st x.base (x.size + extra)))
+  refine ⟨st, x, _, hst, hx, hb, hex, List.getElem?_set_self hj, by simp, grow_new_auth, ?_,
     cellsOf_prefix st _ _ _, ?_⟩
-  obtain ⟨⟨y, hy, -⟩, -⟩ := hrel
-  rw [releaseEff_eq hy, List.getElem?_set_self (lt_of_getElem? hy)]; rfl
+  · show (issueSeqEff _ _ _ _).A[d.s.A.length]?.map _ = _
+    unfold issueSeqEff; rw [storeEff_eq hy₀]; simp only
+    rw [← releaseEff_len d.s b, List.getElem?_set_self (by simp [S3.addAuth])]; rfl
+  · obtain ⟨⟨y, hy, -⟩, -⟩ := hrel
+    have hbl : b < d.s.A.length := lt_of_getElem? hy
+    show (issueSeqEff _ _ _ _).A[b]?.map _ = _
+    unfold issueSeqEff; rw [storeEff_eq hy₀]; simp only
+    rw [List.getElem?_set_ne (by rw [releaseEff_len]; omega),
+      addAuth_lt (by rw [releaseEff_len]; exact hbl), releaseEff_eq hy, List.getElem?_set_self hbl]
+    rfl
 
 /-- `grow_keeps_prefix_init` (brief): `grow` changes the initialisation of no cell of the old block:
 `release` and `split` change no initialisation, and `store` initialises only the destination, which
@@ -550,7 +586,7 @@ the new block does not cover (O8.3). -/
 theorem grow_keeps_prefix_init {d d' : DS} {j b extra : Nat} (h : grow k d j b extra = .ok d')
     {st : Stack} {x : Blk} (hst : d.stacks[j]? = some st) (hx : st.blocks.getLast? = some x) :
     ∀ l ∈ cellsOf st x.base x.size, d'.s.I l = d.s.I l := by
-  obtain ⟨st₀, x₀, hst₀, hx₀, -, -, -, -, -, ⟨-, hstore⟩, rfl⟩ := grow_ok h
+  obtain ⟨st₀, x₀, hst₀, hx₀, -, -, -, -, -, -, ⟨-, hstore⟩, rfl⟩ := grow_ok h
   rw [hst] at hst₀; cases hst₀; rw [hx] at hx₀; cases hx₀
   intro l hl
   have hy₀ := addAuth_self (releaseEff d.s b)
@@ -572,9 +608,11 @@ end Thms
 
 /-! ## Marks are never reused (`mark_no_aba`) -/
 
-/-- The marks of the stack `i` name the stack `i` and have identifiers below `fresh`. -/
+/-- The marks of the stack `i` are pairwise distinct, name the stack `i` and have identifiers below
+`fresh`. -/
 def MarksWF (d : DS) : Prop :=
-  ∀ (i : Nat) (st : Stack), d.stacks[i]? = some st → ∀ m ∈ st.marks, m.stack = i ∧ m.id < d.fresh
+  ∀ (i : Nat) (st : Stack), d.stacks[i]? = some st →
+    st.marks.Nodup ∧ ∀ m ∈ st.marks, m.stack = i ∧ m.id < d.fresh
 
 /-- The mark `m` is live in no stack, and its identifier was given out. -/
 def Gone (d : DS) (m : Mark) : Prop :=
@@ -598,6 +636,13 @@ theorem stacks_set_marks {d : DS} {j : Nat} {st st' : Stack} (hst : d.stacks[j]?
   rcases getElem?_set_cases h with ⟨rfl, rfl⟩ | ⟨-, h⟩
   · exact hQ _ st hst m (hm m hm')
   · exact hQ i st'' h m hm'
+
+theorem stacks_set_nodup {d : DS} {j : Nat} {st st' : Stack} (hst : d.stacks[j]? = some st)
+    (hw : MarksWF d) {i : Nat} {st'' : Stack} (h : (d.stacks.set j st')[i]? = some st'')
+    (hsub : List.Sublist st'.marks st.marks) : st''.marks.Nodup := by
+  rcases getElem?_set_cases h with ⟨rfl, rfl⟩ | ⟨-, h⟩
+  · exact (hw _ st hst).1.sublist hsub
+  · exact (hw i st'' h).1
 
 theorem dexec_gone {d d' : DS} {o : DOp} {m : Mark} (h : dexec k d o = .ok d') (hg : Gone d m) :
     Gone d' m := by
@@ -634,7 +679,7 @@ theorem dexec_gone {d d' : DS} {o : DOp} {m : Mark} (h : dexec k d o = .ok d') (
     intro i st'' h' m' hm'
     exact stacks_set_marks hst hQ h' (fun _ h => List.takeWhile_subset _ h) m' hm'
   | grow j b extra =>
-    obtain ⟨st, x, hst, -, -, -, -, -, -, -, rfl⟩ := grow_ok h
+    obtain ⟨st, x, hst, -, -, -, -, -, -, -, -, rfl⟩ := grow_ok h
     refine ⟨hid, fin ?_⟩
     intro i st'' h' m' hm'; exact stacks_set_marks hst hQ h' (fun _ h => h) m' hm'
 
@@ -649,34 +694,46 @@ theorem drun_gone {m : Mark} : ∀ {d d' : DS} {os : List DOp}, drun k d os = so
 
 theorem dexec_marksWF {d d' : DS} {o : DOp} (h : dexec k d o = .ok d') (hw : MarksWF d) :
     MarksWF d' := by
+  have hQ : ∀ (i : Nat) (st : Stack), d.stacks[i]? = some st → ∀ m ∈ st.marks,
+      m.stack = i ∧ m.id < d.fresh := fun i st h => (hw i st h).2
   cases o with
   | kernel o =>
     obtain ⟨-, hs, hf⟩ := dexec_kernel h
-    intro i st h' m hm; rw [hs] at h'; rw [hf]; exact hw i st h' m hm
+    intro i st h'; rw [hs] at h'; rw [hf]; exact hw i st h'
   | newStack st i =>
     obtain ⟨-, -, rfl⟩ := newStack_ok h
-    intro i' st' h' m hm
+    intro i' st' h'
     rcases getElem?_append_single h' with h' | ⟨-, rfl⟩
-    · exact hw i' st' h' m hm
-    · simp at hm
+    · exact hw i' st' h'
+    · exact ⟨List.nodup_nil, fun m hm => by simp at hm⟩
   | push j size dst =>
     obtain ⟨st, hst, -, -, -, rfl⟩ := push_ok h
-    intro i st'' h' m hm; exact stacks_set_marks hst hw h' (fun _ h => h) m hm
+    intro i st'' h'
+    exact ⟨stacks_set_nodup hst hw h' (List.Sublist.refl _),
+      stacks_set_marks hst hQ h' (fun _ h => h)⟩
   | mark j =>
     obtain ⟨st, hst, rfl⟩ := mark_ok h
-    intro i st' h' m hm
+    intro i st' h'
     rcases getElem?_set_cases h' with ⟨rfl, rfl⟩ | ⟨-, h'⟩
-    · rcases List.mem_append.1 hm with hm | hm
-      · exact ⟨(hw _ st hst m hm).1, Nat.lt_succ_of_lt (hw _ st hst m hm).2⟩
-      · rw [List.mem_singleton] at hm; subst hm; exact ⟨rfl, Nat.lt_succ_self _⟩
-    · exact ⟨(hw i st' h' m hm).1, Nat.lt_succ_of_lt (hw i st' h' m hm).2⟩
+    · refine ⟨List.nodup_append.2 ⟨(hw _ st hst).1, List.nodup_cons.2 ⟨by simp, List.nodup_nil⟩,
+        fun a ha b hb e => ?_⟩, fun m hm => ?_⟩
+      · rw [List.mem_singleton] at hb; subst hb; subst e
+        exact Nat.lt_irrefl _ ((hw _ st hst).2 _ ha).2
+      · rcases List.mem_append.1 hm with hm | hm
+        · exact ⟨(hw _ st hst).2 m hm |>.1, Nat.lt_succ_of_lt ((hw _ st hst).2 m hm).2⟩
+        · rw [List.mem_singleton] at hm; subst hm; exact ⟨rfl, Nat.lt_succ_self _⟩
+    · exact ⟨(hw i st' h').1, fun m hm =>
+        ⟨((hw i st' h').2 m hm).1, Nat.lt_succ_of_lt ((hw i st' h').2 m hm).2⟩⟩
   | rewind j m' =>
     obtain ⟨st, hst, -, -, rfl⟩ := rewind_ok h
-    intro i st'' h' m hm
-    exact stacks_set_marks hst hw h' (fun _ h => List.takeWhile_subset _ h) m hm
+    intro i st'' h'
+    exact ⟨stacks_set_nodup hst hw h' (List.takeWhile_sublist _),
+      stacks_set_marks hst hQ h' (fun _ h => List.takeWhile_subset _ h)⟩
   | grow j b extra =>
-    obtain ⟨st, x, hst, -, -, -, -, -, -, -, rfl⟩ := grow_ok h
-    intro i st'' h' m hm; exact stacks_set_marks hst hw h' (fun _ h => h) m hm
+    obtain ⟨st, x, hst, -, -, -, -, -, -, -, -, rfl⟩ := grow_ok h
+    intro i st'' h'
+    exact ⟨stacks_set_nodup hst hw h' (List.Sublist.refl _),
+      stacks_set_marks hst hQ h' (fun _ h => h)⟩
 
 theorem drun_marksWF : ∀ {d d' : DS} {os : List DOp}, drun k d os = some d' → MarksWF d →
     MarksWF d'
@@ -687,25 +744,50 @@ theorem drun_marksWF : ∀ {d d' : DS} {os : List DOp}, drun k d os = some d' �
     · rename_i d₁ h₁; exact drun_marksWF h (dexec_marksWF h₁ hw)
     · cases h
 
-/-- `mark_no_aba` (brief): a mark removed by `rewind` is live in no stack in any later state, even
-when the top returns to the same position: the identifiers of marks are fresh and a mark is live by
-membership, so `rewind` of it fails forever after. -/
+omit [DecidablePred k.SharedMutable] [DecidablePred k.Pinned] [DecidablePred k.ExternalDone]
+  [DecidablePred k.Deallocable] [∀ p a, Decidable (k.FreeCompat p a)]
+  [∀ p ls s, Decidable (k.Satisfiable p ls s)] in
+/-- Under `MarksWF`, `rewind m` keeps exactly the marks older than `m` and removes `m` and every later
+mark of the stack (brief: "`m` et toutes les marques au-dessus sont retirées, les plus anciennes
+restent vivantes"). -/
+theorem rewind_removes {d d' : DS} {j : Nat} {m : Mark} (hw : MarksWF d)
+    (h : rewind k d j m = .ok d') {st : Stack} (hst : d.stacks[j]? = some st)
+    {pre post : List Mark} (hs : st.marks = pre ++ m :: post) :
+    ∃ st', d'.stacks[j]? = some st' ∧ st'.marks = pre ∧ ∀ m' ∈ m :: post, m' ∉ st'.marks := by
+  have hnd := (hw j st hst).1
+  rw [hs] at hnd
+  have hdisj := (List.nodup_append.1 hnd).2.2
+  have hmpre : m ∉ pre := fun h => hdisj m h m (List.mem_cons_self ..) rfl
+  obtain ⟨⟨st', hst', hpre, -⟩, -, -⟩ := rewind_keeps_older_marks h hst hs hmpre
+  exact ⟨st', hst', hpre, fun m' hm' hin => hdisj m' (hpre ▸ hin) m' hm' rfl⟩
+
+/-- `mark_no_aba` (brief): every mark that `rewind m` removes, `m` and the later marks of the stack,
+is live in no stack in any later state, even when the top returns to the same position: identifiers
+are fresh and a mark is live by membership, so `rewind` of a removed mark fails forever after. -/
 theorem mark_no_aba {d d₁ d' : DS} {j : Nat} {m : Mark} {os : List DOp} (hw : MarksWF d)
-    (hr : rewind k d j m = .ok d₁) (h : drun k d₁ os = some d') :
-    (∀ (i : Nat) (st : Stack), d'.stacks[i]? = some st → m ∉ st.marks) ∧
-      ∀ st, d'.stacks[j]? = some st → rewind k d' j m = .fail := by
-  obtain ⟨st, hst, hm, -, rfl⟩ := rewind_ok hr
+    (hr : rewind k d j m = .ok d₁) (h : drun k d₁ os = some d') {st : Stack}
+    (hst : d.stacks[j]? = some st) {pre post : List Mark} (hs : st.marks = pre ++ m :: post)
+    {m' : Mark} (hm' : m' ∈ m :: post) :
+    (∀ (i : Nat) (st' : Stack), d'.stacks[i]? = some st' → m' ∉ st'.marks) ∧
+      ∀ st', d'.stacks[j]? = some st' → rewind k d' j m' = .fail := by
+  obtain ⟨st₁, hst₁, hgone1, hgone⟩ :
+      ∃ st₁, d₁.stacks[j]? = some st₁ ∧ st₁.marks = pre ∧ ∀ m' ∈ m :: post, m' ∉ st₁.marks :=
+    rewind_removes hw hr hst hs
+  obtain ⟨st₀, hst₀, -, -, rfl⟩ := rewind_ok hr
+  rw [hst] at hst₀; cases hst₀
+  have hm'st : m' ∈ st.marks := by rw [hs]; exact List.mem_append_right _ hm'
+  obtain ⟨-, hwj⟩ := hw j st hst
   have hg : Gone { d with
       s := releaseEff (d.s.addAuth (blockOf d.s st.arena (above st m))) d.s.A.length
       stacks := d.stacks.set j
         { st with
           top := m.top
           blocks := st.blocks.filter (·.base < m.top)
-          marks := st.marks.takeWhile (· ≠ m) } } m := by
-    refine ⟨(hw j st hst m hm).2, fun i st' h' hm' => ?_⟩
+          marks := st.marks.takeWhile (· ≠ m) } } m' := by
+    refine ⟨(hwj m' hm'st).2, fun i st' h' hm'' => ?_⟩
     rcases getElem?_set_cases h' with ⟨rfl, rfl⟩ | ⟨hi, h'⟩
-    · exact not_mem_takeWhile_ne _ hm'
-    · exact hi ((hw i st' h' m hm').1.symm.trans (hw j st hst m hm).1)
+    · rw [hst₁] at h'; cases h'; exact hgone m' hm' hm''
+    · exact hi (((hw i st' h').2 m' hm'').1.symm.trans (hwj m' hm'st).1)
   have hg' := drun_gone h hg
   refine ⟨hg'.2, fun st' hst' => ?_⟩
   simp [rewind, hst', hg'.2 j st' hst']
@@ -742,7 +824,7 @@ theorem grow_keeps_prefix_bytes (hdd : DDSound k) {statics : Statics} {d d' : DS
       ∀ l ∈ cellsOf st x.base x.size,
         MM23.rangeBytes (MM23.exec s2 (MM23.storeOps pe s2 L (growMid d.s st x b extra)
           (releaseEff d.s b).A.length x.dst)) L l = MM23.rangeBytes s2 L l := by
-  obtain ⟨st₀, x₀, hst₀, hx₀, -, -, -, hrel, -, ⟨hsp, hstore⟩, rfl⟩ := grow_ok h
+  obtain ⟨st₀, x₀, hst₀, hx₀, -, -, -, hrel, -, -, ⟨hsp, hstore⟩, rfl⟩ := grow_ok h
   rw [hst] at hst₀; cases hst₀; rw [hx] at hx₀; cases hx₀
   have hr₁ : Reachable k statics (releaseEff d.s b) := .release hr (.ok hrel)
   have hr₂ : Reachable k statics (growMid d.s st x b extra) :=
@@ -896,6 +978,59 @@ theorem case_frame :
     (drun K0 DS.init (opsF ++ [.kernel (.endUse 8), .rewind 0 ⟨0, 0, 0⟩, .kernel .exit])).isSome = true ∧
     (final (opsF ++ [.kernel (.endUse 8), .rewind 0 ⟨0, 0, 0⟩, .kernel .exit])).stacks.map
       (fun st => (st.top, st.blocks, st.marks)) = [(0, [], [])] := by
+  decide
+
+/-- Block 6 pushed on `[2, 3]`, mark `⟨0, 0, 2⟩`, block grown to `[2, 3, 4]` (authority 7), released;
+then 8 derived from `internal` 5 on the cell 2, below the mark. -/
+def opsE4 : List DOp :=
+  setup1 ++ [.push 0 2 5, .mark 0, .grow 0 6 1, .kernel (.release 7), .kernel (.derive 5 2 .modify)]
+
+/-- Marks `⟨0, 0, 0⟩` and `⟨0, 1, 1⟩` around block 6 on `[2]`; block 7 on `[3]` pushed after both
+marks, released, and returned by `rewind ⟨0, 1, 1⟩`; block 6 released; then 9 derived from
+`internal` 5 on the cell 3, above the current top. -/
+def opsE8 : List DOp :=
+  setup1 ++ [.mark 0, .push 0 1 5, .mark 0, .push 0 1 6, .kernel (.release 7),
+    .rewind 0 ⟨0, 1, 1⟩, .kernel (.release 6), .kernel (.derive 5 3 .modify)]
+
+/-- Mark `⟨0, 0, 0⟩`, then a `push` of size 0: block 6, active, of empty footprint. -/
+def opsE3 : List DOp := setup1 ++ [.mark 0, .push 0 0 5]
+
+/-- **Reading of "couvre une région émise après `m`"** (review, DS-2 and DS-3): `rewind` looks at
+the cells it returns (`above`). In `opsE4` the authority 8, active and derived from `internal`,
+covers the cell 2 of the region `[2, 3, 4]` issued (by `grow`) after the mark `⟨0, 0, 2⟩`, below
+the mark, and `rewind` is accepted (the cell 2 is not returned). In `opsE8` the authority 9 covers
+the cell 3 of a region issued after `⟨0, 0, 0⟩`, now above the top, and `rewind` is accepted (the
+cell 3 is already available). In `opsE3` the empty block 6, issued after the mark and active, does
+not block `rewind`, and stays active once the metadata forget it. -/
+theorem case_rewind_reading :
+    (drun K0 DS.init opsE4).isSome = true ∧
+    (final opsE4).s.A[8]?.map (fun y => (y.active, y.origin, y.footprint)) = some (true, some 5, [2]) ∧
+    (dexec K0 (final opsE4) (.rewind 0 ⟨0, 0, 2⟩)).isOk = true ∧
+    (drun K0 DS.init opsE8).isSome = true ∧
+    (final opsE8).s.A[9]?.map (fun y => (y.active, y.origin, y.footprint)) = some (true, some 5, [3]) ∧
+    (dexec K0 (final opsE8) (.rewind 0 ⟨0, 0, 0⟩)).isOk = true ∧
+    (drun K0 DS.init (opsE3 ++ [.rewind 0 ⟨0, 0, 0⟩])).isSome = true ∧
+    (final (opsE3 ++ [.rewind 0 ⟨0, 0, 0⟩])).s.A[6]?.map (fun y => (y.active, y.origin, y.footprint)) =
+      some (true, some 5, []) := by
+  decide
+
+/-- Block 6 pushed into 5, then a callee entered with only 7, a `Modify` derived from the root of 5:
+it has no right on the stack value 0. -/
+def opsZ : List DOp := setup1 ++ [.push 0 1 5, .kernel (.derive 2 5 .modify), .kernel (.enter [7] [])]
+
+/-- **Static clauses before `fail`** (§58, §77.4; review, DS-5 and Q2-GROW-ORDER): without a right on
+the stack value, `grow` is rejected with or without room; `push` into an `Init` destination is
+rejected; `push` into a destination inside the requested cells is rejected even without room, while
+the same `push` into an outside destination fails. -/
+theorem case_static_before_fail :
+    (drun K0 DS.init opsZ).isSome = true ∧
+    (dexec K0 (final opsZ) (.grow 0 6 5)).isReject = true ∧
+    (dexec K0 (final opsZ) (.grow 0 6 1)).isReject = true ∧
+    (drun K0 DS.init (setup1 ++ [.kernel (.write 2 [5])])).isSome = true ∧
+    (dexec K0 (final (setup1 ++ [.kernel (.write 2 [5])])) (.push 0 1 5)).isReject = true ∧
+    (drun K0 DS.init setup1).isSome = true ∧
+    (dexec K0 (final setup1) (.push 0 4 2)).isReject = true ∧
+    (dexec K0 (final setup1) (.push 0 4 5)).isFail = true := by
   decide
 
 /-- The kernel states of the cases are reached. -/
