@@ -1087,7 +1087,8 @@ theorem newArena_as_library {k : K} (hdd : DDSound k) {statics : Statics} {s : S
   obtain ⟨hwf, hinv, -, hai, hao, hrl⟩ := key
   exact ⟨hwf, hinv, hao, noOrphan_of_rootLive hwf hrl, hai⟩
 
-/-- I1 rejects a second emission of a leaf through a second administration of the same `internal`
+/-- The effective right (§43, case 3) rejects a second emission of a leaf through a second
+administration of the same `internal`
 (brief, question 1): an active `Modify` block derived from `internal` covering a leaf of the region
 takes the effective right of `internal` away, so neither the kernel `issue` nor the restricted
 `issue` of any entry with this `internal` is `ok`, and `split` of `internal` on the region is
@@ -1294,8 +1295,8 @@ theorem ce_writeShared :
 /-- **Two administrations** (`newArena_as_library`): the unguarded registration of `internal` 4 a
 second time (`NewArenaPreNG` holds, the kernel guard rejects); the emission of `[5]` through entry 0
 is `ok`; the emission of `[5]` through entry 1, whose metadata still has 5 available, is rejected by
-the effective right (§77.5), as is `split` of `internal` on `[5]`: the kernel (I1) rejects the double
-emission, and the metadata of entry 1 no longer separates `fail` from `reject`. -/
+the effective right (§77.5, §43 case 3), as is `split` of `internal` on `[5]`: the kernel rejects
+the double emission, and the metadata of entry 1 no longer separates `fail` from `reject`. -/
 def sTwo : S3 := newArenaEff (run K0 [] opsAlloc).s 4 4
 
 def sTwoIssued : S3 := arenaSet (issueEff sTwo arL [5] 2).1 0 (issueEff sTwo arL [5] 2).2
@@ -1312,6 +1313,29 @@ theorem ce_two_admins :
     (.ok (by decide) (by decide) (by decide) (by decide)))), by decide,
     .reject (ar := arL) (by decide) (.noRight (by decide) (by decide) (by decide)), by decide,
     by decide, .reject (by decide)⟩
+
+/-- The state of `ce_two_admins` once the block 5, issued through entry 0, is released. -/
+def sTwoReleased : S3 := releaseEff sTwoIssued 5
+
+/-- **Two administrations, `fail` turned into `ok`** (follow-up review, R-1): after the release of
+the block 5, entry 0 still lists `[5]` as issued and its emission of `[5]` fails (§77.4), while
+entry 1, registered without the guard, issues `[5]` with `ok`. With the guard there is one entry,
+and before a `reset` the region can only fail. No safety property is involved (the block is
+inactive, `newArena_as_library`): what the guard keeps is the contract of the abstraction, an issued
+region not issued again before `reset`. -/
+theorem ce_two_admins_ok :
+    ReachableNG K0 [] sTwoReleased ∧
+    IssueAt K0 0 0 [5] 3 sTwoReleased (.fail sTwoReleased) ∧
+    IssueAt K0 1 0 [5] 3 sTwoReleased
+      (.ok (arenaSet (issueEff sTwoReleased arL [5] 3).1 1 (issueEff sTwoReleased arL [5] 3).2)) := by
+  have h1 : NewArenaPreNG (run K0 [] opsAlloc).s 4 4 := by decide
+  have hr : ReachableNG K0 [] sTwo :=
+    .newArenaNG (reachableNG_of_reachable (reach_run (by decide))) h1
+  have hr2 : ReachableNG K0 [] sTwoIssued := .step hr (.issue (via := 0) (.ok (ar := arL) (by decide)
+    (.ok (by decide) (by decide) (by decide) (by decide))))
+  exact ⟨.step hr2 (.kernel (.release (.ok (by decide)))),
+    .fail (ar := ⟨4, 4, [6], [([5], 5)]⟩) (by decide) (.fail (by decide) (by decide)),
+    .ok (ar := arL) (by decide) (.ok (by decide) (by decide) (by decide) (by decide))⟩
 
 /-- **Inexact metadata with the guard**: in a reached state, a frame that can exercise `internal`
 derives from it directly (`derive` of 4 on 5 at `Observe`); the region `[5]` is available in the

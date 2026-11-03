@@ -13,10 +13,13 @@ Branche `formal/derivability_0.1`, créée depuis `formal/validation_0.1`. Broui
 - `lake build` : réussi, sans avertissement.
 - La recherche de `sorry`, `admit`, `native_decide` et `axiom` est vide ; aucun `noncomputable`.
 - Parcours `collectAxioms` de **toutes** les constantes des deux modules : rien hors de `propext` et `Quot.sound` (pas même `Classical.choice`).
-  - `Derived.Arena` : 159 constantes, dont 86 théorèmes ;
-  - `Lib.DataStack` : 360 constantes, dont 156 théorèmes.
+  - `Derived.Arena` : 161 constantes, dont 87 théorèmes ;
+  - `Lib.DataStack` : 361 constantes, dont 156 théorèmes.
 
-**Passages de la spécification lus et formalisés.** §36, §42 à §47, §54 à §58, §60 (O1), §61 (O2), §62 (O3), §65 (O8), §76 (O17), §77 (O18), §78 (O19), §86, §88, §89. Chaque définition et théorème cite son passage dans sa docstring.
+**Passages de la spécification.**
+- Lus : §36, §38, §42 à §47, §50, §54 à §58, §60 (O1), §61 (O2), §62 (O3), §63 (O4), §65 (O8), §68 (O11), §74 à §78 (O15 à O19), §86, §88, §89.
+- Formalisés ou cités dans les docstrings : §36, §42, §43, §46, §54 à §58, O1, O2, O3, O8, O17 (§76), O18 (§77), O19 (§78), §88. Chaque définition et théorème qui code une règle cite son passage.
+- Les autres passages ont servi au contexte ; aucun énoncé ne les formalise.
 
 **Méthode.** Les équivalences sont énoncées pour tout état atteint (`Reachable k statics s`, sous `DDSound k`) et prouvées dans les deux sens ; chaque écart est accompagné d'un contre-exemple sur un état atteint, décidé par `decide`. Les contre-exemples sont conservés comme théorèmes `ce_*`.
 
@@ -89,9 +92,13 @@ Provenance des clauses de `ResetPre` :
 - **Invariants.** Sur tout état de `ReachableNG`, sous `DDSound`, valent tous les invariants de §57 (`newArena_as_library`) : `WF3`, `Inv3` (I1 à I4, `AnchorOrder`, `NoDangling`), `AnchorOrderHeld`, `NoOrphan` et `ArenaInv` de chaque arène vivante.
   - Preuve : chaque pas de `Reachable` préserve ces invariants **et** `RootLive` sur tout état qui les vérifie (`step_inv57`, reprise des cas de `reachable_invariants`, `reachable_anchorOrderHeld`, `reachable_rootLive`).
   - L'inscription sans garde les préserve aussi (`newArenaNG_inv57`). La preuve du noyau, `newArena_preserves`, n'utilise d'ailleurs pas la garde.
-- **I1.** Il rejette la double émission par deux administrations du même `internal`. Un bloc actif dérivé de `internal` ôte à `internal` le droit effectif sur ses feuilles. Ni l'`issue` du noyau, ni `IssueR`, ni `split` ne passent alors, quelle que soit l'entrée (`issue_blocked_by_block`).
+- **Double émission.** Elle est rejetée par la règle du droit effectif, non par la garde. Un bloc actif dérivé de `internal` ôte à `internal` le droit effectif sur ses feuilles (§43, cas 3). Ni l'`issue` du noyau, ni `IssueR` (§77.5), ni `split` (O2.1) ne passent alors, quelle que soit l'entrée (`issue_blocked_by_block`). I1 (§50) ne joue pas ici : le bloc et `internal` sont apparentés.
   - Exemple : `ce_two_admins`. Deux entrées partagent `internal` 4. L'émission de `[5]` par l'entrée 0 est `ok`. Celle de `[5]` par l'entrée 1 est rejetée, alors que ses métadonnées tiennent 5 pour disponible.
-- **Seul effet observable de la garde.** Il porte sur le classement des issues : avec deux administrations, une région émise par l'autre donne `reject` au lieu de `fail`. Même avec la garde, les métadonnées ne sont pas exactes. Un cadre qui exerce `internal` peut dériver directement depuis lui, et une région disponible est alors rejetée (`ce_avail_reject`).
+- **Ce que la garde change : les issues, pas la sûreté.**
+  - Avec deux administrations, une région émise par l'autre donne `reject` au lieu de `fail` (`ce_two_admins`).
+  - Une région émise puis libérée, que la première entrée tient encore pour émise (`fail`), est réémise `ok` par la seconde (`ce_two_admins_ok`).
+  - La garde protège donc un point du contrat de l'abstraction : une région émise n'est pas réémise avant `reset`. Elle ne protège aucun invariant de §57.
+  - Même avec la garde, les métadonnées ne sont pas exactes. Un cadre qui exerce `internal` peut dériver directement depuis lui, et une région disponible est alors rejetée (`ce_avail_reject`).
 
 ## (b) Contre-exemple de la branche `writeShared` (conservé)
 
@@ -145,15 +152,15 @@ L'équivalence de (a) vaut pour l'une ou l'autre lecture : la disponibilité n'y
 |---|---|---|
 | `push` | clauses statiques de l'`issue` restreint (§77.1, §77.2) avant la place, puis `split` et `store` | `fail` sans place |
 | `rewind` | `split` puis `release` (`reset` dérivé) sur les cellules au-dessus de la marque | `fail` pour une marque non vivante de la pile |
-| `grow` | clauses statiques (dont `MetaRightM`) avant la place, puis `release` du dernier bloc et `issue` dérivé de même base et de taille plus grande vers la même destination, déjà `Init` | `fail` sans place |
-| `mark` | aucun (métadonnées) | toujours `ok` |
+| `grow` | clauses statiques (dont `MetaRightM` et la destination hors de la nouvelle région) avant la place, puis `release` du dernier bloc et `issue` dérivé de même base et de taille plus grande vers la destination enregistrée (`Init`, ou `Moved` après un `transfer`) | `fail` sans place |
+| `mark` | aucun (métadonnées) | `ok` sur une pile existante |
 | `newStack` | aucun (inscription) | garde de §56 sur les deux registres |
 
 Un `newArena` du noyau consulte aussi le registre des piles (`KGuard`, §56). Tout pas `ok` de la bibliothèque est une suite de pas de `Reachable` (`dexec_reach`, `drun_reach`).
 
 | Théorème | Statut | Énoncé |
 |---|---|---|
-| `rewind_rejects_live_above` | prouvé | marque vivante, autorité active dérivée de `internal` couvrant une cellule au-dessus de la marque ⟹ `rewind` = `reject` ; réciproque `rewind_ok_no_live_above` |
+| `rewind_rejects_live_above` | prouvé | marque vivante, autorité active dérivée de `internal` couvrant une cellule au-dessus de la marque ⟹ `rewind` = `reject` ; contraposée lue sur un `ok` : `rewind_ok_no_live_above` (la réciproque est fausse : `rewind` rejette aussi faute d'exercice de `internal`) |
 | `mark_no_aba` | prouvé | **toute** marque retirée par `rewind m` (`m` et les marques postérieures de la pile) n'est plus vivante dans aucune pile après toute suite d'opérations, et son `rewind` échoue (`fail`), même quand le sommet revient à sa position. Hypothèse `MarksWF` (marques deux à deux distinctes, nommant leur pile, d'identifiants donnés), établie pour tout état atteint par la bibliothèque (`drun_init_marksWF`) |
 | `rewind_removes` | prouvé | sous `MarksWF` : après `rewind m`, les marques de la pile sont exactement celles antérieures à `m` ; `m` et les postérieures sont retirées |
 | `rewind_keeps_older_marks` | prouvé | après `rewind m` : marques = celles antérieures à `m`, sommet = sommet de `m`, autres piles inchangées, initialisation inchangée |
@@ -172,11 +179,14 @@ Cas (`decide`, chaque exécution étant d'abord établie `ok`) :
 | ABA | `case_aba` | sommet revenu à 2 ; la marque retirée `⟨0, 1, 2⟩` échoue ; la nouvelle `⟨0, 2, 2⟩` est acceptée |
 | `grow` | `case_grow` | accepté en place ; sans place : `fail` ; bloc qui n'est plus le dernier : `reject` |
 | cadre | `case_frame` | marque à l'entrée de l'appelé, `push` dans un local ; `rewind` refusé tant que le bloc vit ; après `endUse` du local, `rewind` et `exitFrame` acceptés, pile vide |
-| lecture de `rewind` | `case_rewind_reading` | une autorité dérivée active couvrant la partie d'une région émise après `m` qui est sous `m` (bloc agrandi) ou au-dessus du sommet courant ne bloque pas `rewind` ; un bloc vide (`push` de taille 0) non plus |
-| statique avant `fail` | `case_static_before_fail` | sans droit sur la valeur pile, `grow` est rejeté avec ou sans place ; `push` vers une destination `Init`, ou intérieure aux cellules demandées, est rejeté même sans place |
+| lecture de `rewind` | `case_rewind_reading` | une autorité dérivée active couvrant la partie d'une région émise après `m` qui est sous `m` (bloc agrandi) ou au-dessus du sommet courant ne bloque pas `rewind` ; un bloc vide (`push` de taille 0) non plus, et les métadonnées l'oublient alors qu'il reste actif |
+| statique avant `fail` | `case_static_before_fail` | sans droit sur la valeur pile, `grow` est rejeté avec ou sans place ; `push` vers une destination `Init` est rejeté avec ou sans place ; `push` vers une destination intérieure aux cellules demandées, et `grow` vers une destination enregistrée intérieure à la nouvelle région, sont rejetés même sans place |
 | atteignabilité | `cases_reachable` | les états noyau des cas sont atteints |
 
-Constat utile pour la question 1 : `grow` réémet dans une destination déjà `Init`, celle du bloc libéré. Il n'est exprimable qu'avec l'`issue` dérivé, `store` acceptant une cible `Init` ; `IssueR` le rejetterait (écart 2). `push`, que la tâche définit par l'`issue` restreint, en suit les clauses statiques ; réalisé par `split` et `store`, il en diffère seulement par O8.5 (écart 1, `issue_as_kernel_split`).
+Constats utiles pour la question 1 :
+
+- **`grow` et `Init`.** Sans `transfer` du bloc, `grow` réémet dans une destination déjà `Init`, celle du bloc libéré. Il n'est alors exprimable qu'avec l'`issue` dérivé, `store` acceptant une cible `Init` ; `IssueR` le rejetterait (écart 2). Après un `transfer`, la destination enregistrée est `Moved`, et `IssueR` l'accepterait.
+- **`push` et l'`issue` restreint.** `push`, que la tâche définit par l'`issue` restreint, en suit les clauses statiques. Réalisé par `split` et `store`, il demande aussi O8.5 (écart 1). Sa relation exacte à `IssueR` n'est pas prouvée : `issue_as_kernel_split` porte sur une entrée du registre d'arènes, ce qu'une pile n'est pas, et la place y tient lieu de disponibilité.
 
 ## (e) Amendements de texte de la Spec 1 qui découlent des résultats
 
@@ -184,9 +194,10 @@ Chaque amendement porte sur une clause. Lorsque les résultats laissent deux for
 
 1. **§77.1 et §78.1 (`MetaRight`).** Si la dérivabilité est retenue, retirer la branche `writeShared`.
    - §78.1 : « La mise à jour des métadonnées de l'arène est autorisée par `MetaRight(s,arena)` : `Modify` exerçable sur la valeur arène. » La suite « **ou** mutation `writeShared` légale sur ses métadonnées `SharedMutable` » est supprimée.
-   - §36 : remplacer « L'arène des opérations O17–O19 en est une illustration » par une phrase qui exclut l'arène de l'administration depuis une autorité partagée, puisque l'administration d'une arène exige l'exercice de `internal` en `Modify` (`ce_writeShared`, `metaRightM_iff`).
+   - §36 : la phrase « L’arène définie par les opérations O17–O19 illustre cette discipline. » rattache l'arène à l'administration depuis une autorité partagée. La remplacer par une phrase qui l'en exclut, puisque l'administration d'une arène exige alors l'exercice de `internal` en `Modify` (`ce_writeShared`, `metaRightM_iff`).
+   - Portée. §36 régit aussi les métadonnées d'un pool de handles par `MetaRight` (« les métadonnées sont régies par `MetaRight` »). Retirer la branche à §78.1 retire donc aussi la mutation partagée aux pools. Les résultats de cette passe ne portent que sur les arènes. Si les pools doivent la garder, §36 doit leur donner une règle propre.
 2. **§77.2 (destination non `Init`) contre O8.2.** Deux formulations :
-   - (A) supprimer « non `Init` (elle peut notamment être `Uninit` ou `Moved`) » de §77.2. `issue` coïncide alors avec la séquence (`issue_as_kernel_split`), et `grow` en place est exprimable ;
+   - (A) supprimer « non `Init` (elle peut notamment être `Uninit` ou `Moved`) » de §77.2. L'écart 2 disparaît. `issue` coïncide alors avec la séquence si (e) 3 (A) est aussi retenu, puisque l'écart 1 (O8.5) demeure sinon (`ce_g2`). `grow` en place devient exprimable par l'`issue` restreint ;
    - (B) conserver §77.2. Ajouter à §77 : « Cette clause est une précondition propre de l'abstraction ; elle n'a pas d'équivalent dans O8 (O8.2). » L'équivalence porte alors la précondition « non `Init` » du côté de la séquence.
 3. **§77.6 contre O8.5.** Deux formulations :
    - (A) ajouter à §77.6 : « Dans l'état d'arrivée, `destination` reste sous `Modify` exerçable pour le cadre courant ; cette clause est une vraie précondition supplémentaire, comme O8.5. » `issue` rejette alors `ce_g2`, comme `store`. §88 devient : « … `issue` ne peut émettre dans une feuille appartenant à la région émise, ni vers une destination qui ne serait plus exerçable dans l'état d'arrivée. »
@@ -200,9 +211,9 @@ Chaque amendement porte sur une clause. Lorsque les résultats laissent deux for
 6. **§46 et §77.4 (disponibilité).** Deux formulations :
    - (A) lecture par feuilles : « `region` est disponible si chacune de ses feuilles appartient à `available` ». Supprimer alors la phrase de §77.5 « La région ne peut chevaucher une région émise encore active », qui n'est plus atteignable, et préciser que la région vide est toujours disponible (`ce_avail_leaf`) ;
    - (B) lecture par régions : `available: Set<Region>` et « `region` ∈ `available` ». Préciser alors ce que devient une région qui chevauche une région émise (rejet par §77.5) et ce que `reset` rend disponible (« la totalité des régions du stockage »).
-7. **§56 et O17.4 (garde d'administration unifiée).** Ajouter à §56 : « Cette garde ne conditionne aucune propriété de sûreté de la section 57 : I1 rejette déjà une seconde émission d'une région par une autre administration du même `internal`. Son absence change seulement l'issue (`reject` au lieu de `fail`) d'une émission dont l'autre administration détient la région. » (`newArena_as_library`, `ce_two_admins`).
-   - Si l'arbitrage veut la conserver comme règle, préciser à §56 que la création d'une arène par le noyau doit consulter les registres de bibliothèque, ce que `NewArenaPre` ne fait pas (voir `KGuard`).
-8. **§58 et §XIV, si les arènes deviennent dérivées.** §58 dit que « seules `alloc` et `issue` peuvent émettre [`fail`] dans ce noyau ». Si O17–O19 sont des opérations de bibliothèque, remplacer par « seule `alloc` … ; les opérations de bibliothèque (§36) peuvent définir leurs propres échecs ». Adapter de même §46, §47, §55 et §57, qui placent l'entrée d'arène et `ArenaInv` dans l'état et l'invariant du noyau. Cet amendement découle de l'hypothèse de la tâche, pas d'un théorème : il est à confirmer.
+7. **§56 et O17.4 (garde d'administration unifiée).** Ajouter à §56 : « Cette garde ne conditionne aucune propriété de sûreté de la section 57 : le droit effectif (§43, cas 3) rejette déjà une seconde émission d'une région par une autre administration du même `internal`. Elle protège le contrat de l'abstraction : sans elle, une seconde administration rejette une région que la première a émise (au lieu d'un `fail`), et réémet une région que la première tient encore pour émise après sa libération. » (`newArena_as_library`, `ce_two_admins`, `ce_two_admins_ok`).
+   - La spécification exige déjà que `newArena` consulte les deux registres (§56, O17.4 : « Les registres d’arènes **et** des instances de bibliothèque sont consultés avant l’inscription »). L'écart est dans le noyau formalisé, dont `NewArenaPre` ne consulte que les arènes ; `DataStack` l'ajoute (`KGuard`). Aucun amendement de texte n'en découle.
+8. **§58 et §XIV, si les arènes deviennent dérivées.** §58 dit que « seules `alloc` et `issue` peuvent émettre [`fail`] dans ce noyau ». Si O17–O19 sont des opérations de bibliothèque, remplacer par « seule `alloc` … ; les opérations de bibliothèque (§36) peuvent définir leurs propres échecs ». Adapter de même §38 (l'état `S_3=(F,P,I,A,D,𝓡)`, où `𝓡` est l'ensemble des instances d'arènes), §46, §47, §55 et §57, qui placent l'entrée d'arène et `ArenaInv` dans l'état et l'invariant du noyau. Cet amendement découle de l'hypothèse de la tâche, pas d'un théorème : il est à confirmer.
 9. **§60 (O1).** Aucun amendement. O1 prend une région ; c'est le noyau formalisé qui prend un emplacement (écart 6). Si une formalisation conserve un `derive` sur emplacements, `split` à une région tient lieu de `derive` sur région (`issue_as_kernel_split`).
 
 ## (f) Questions et décisions non dictées
@@ -213,17 +224,17 @@ Chaque amendement porte sur une clause. Lorsque les résultats laissent deux for
 2. **§46 et §77.4 (disponibilité).** Lecture par feuilles (celle du noyau, reprise ici) ou par régions ? Voir (e) 6 et `ce_avail_leaf` : les deux lectures classent différemment une région qui chevauche en partie une émission active (`fail` ou `reject`).
 3. **§77.2 contre O8.2 (`Init`)** et **§77.6 contre O8.5 (exerçabilité d'arrivée)** : quelle formulation, (A) ou (B), de (e) 2 et (e) 3 ?
 4. **§78.2 et l'empreinte vide** : (e) 5, (A) ou (B) ?
-5. **§56** : la garde reste-t-elle une règle de la spécification, et doit-elle alors s'imposer au `newArena` du noyau envers les registres de bibliothèque ?
+5. **§56** : la garde reste-t-elle une règle de la spécification, au titre du contrat de l'abstraction, puisque aucune propriété de sûreté n'en dépend (`newArena_as_library`, `ce_two_admins_ok`) ?
 6. **`DataStack.push` et `grow`.** La tâche définit `push` par l'`issue` restreint, et `grow` par une émission de même base, sans dire laquelle. C'est un choix sémantique : il change les programmes acceptés.
    - `push` suit ici les clauses statiques de l'`issue` restreint : destination non `Init`, hors des cellules demandées, droit sur la valeur pile, tous contrôlés avant la place.
-   - `grow` utilise l'`issue` dérivé : sa destination est `Init`, et l'`issue` restreint la rejetterait toujours.
-   - Si la formulation (A) de (e) 2 est retenue, les deux coïncident.
+   - `grow` utilise l'`issue` dérivé. Sa destination est `Init` tant que le bloc n'a pas été transféré, et l'`issue` restreint la rejetterait alors ; après un `transfer`, elle est `Moved` et l'`issue` restreint l'accepterait.
+   - Si la formulation (A) de (e) 2 est retenue, la clause `Init` cesse de séparer les deux ; O8.5 les sépare encore, sauf si (e) 3 (A) est aussi retenu.
 7. **`DataStack.rewind`.** « Couvre une région émise après `m` » est lu sur les cellules que `rewind` rend (`above`, du sommet de `m` au sommet courant). Ce n'est pas exactement « les régions émises après `m` » (`case_rewind_reading`) :
    - un bloc agrandi après `m` commence sous `m`, et une dérivation active sur sa partie basse ne bloque pas `rewind` ;
    - une région émise après `m` puis rendue par un `rewind` intermédiaire est au-dessus du sommet courant ;
    - un bloc vide émis après `m` ne bloque pas `rewind`.
 
-   Aucun de ces cas ne rend disponible une cellule couverte. Une lecture « couvre la région entière » laisserait `rewind` passer quand une dérivation en couvre une partie seulement, puis rejetterait le `push` suivant (I1). Quelle lecture est voulue ?
+   Aucun de ces cas ne rend disponible une cellule couverte. Une lecture « couvre la région entière » laisserait `rewind` passer quand une dérivation en couvre une partie seulement ; le `push` suivant serait alors rejeté par le droit effectif (§43, cas 3). Quelle lecture est voulue ?
 
 ### Décisions de représentation prises ici (à confirmer)
 
@@ -231,9 +242,9 @@ Chaque amendement porte sur une clause. Lorsque les résultats laissent deux for
 - **Lecture inclusive de §78.3 pour `ResetPreR`**, celle du noyau ((f) 1). **Lecture par feuilles de la disponibilité**, celle du noyau ((f) 2).
 - **Clauses statiques avant `fail`** (§58), par analogie avec §77 :
   - `push` : clauses de `IssueStaticR` (pile vivante, `MetaRightM`, destination feuille utilisable, sous `Modify`, non `Init`, sans autorité active, hors des cellules) ;
-  - `grow` : `0 < extra`, `b` dernier bloc et au sommet, `b` libérable, pile vivante, `MetaRightM`.
+  - `grow` : `0 < extra`, `b` dernier bloc et au sommet, `b` libérable, pile vivante, `MetaRightM`, destination enregistrée hors de la nouvelle région. Les autres clauses sur la destination portent sur l'état après la libération ; ce sont celles de `store`.
 
-  La tâche dit seulement « `fail` si pas de place ». `0 < extra` traduit « taille plus grande ».
+  La tâche dit seulement « `fail` si pas de place ». La place tient lieu à la fois de l'inclusion de la région dans le stockage (clause statique de §77.2) et de sa disponibilité (§77.4). `0 < extra` traduit « taille plus grande ».
 - **`push` de taille 0** est accepté, comme l'`issue` restreint de la région vide (`ce_empty_region`). Le bloc vide ne bloque aucun `rewind` (`case_rewind_reading`).
 - **`grow` stocke dans la destination enregistrée** pour le bloc (`Blk.dst`), qui peut ne plus être le détenteur du bloc après un `transfer` (cible `Moved`, permise par §77.2).
 - **`mark` n'exige aucun droit**, la tâche disant « `mark : ok` ». Il ne modifie que des métadonnées. Une pile inexistante donne `reject`.
@@ -273,4 +284,28 @@ Les relecteurs n'ont trouvé aucun écart supplémentaire entre l'opération et 
 | DS-7 | réfuté | blocs conservés par le filtre | règle documentée ; un bloc conservé qui chevauche est inactif |
 | DS-8 | réfuté | destination de `grow` après `transfer` | comportement documenté ; décision ajoutée en (f) |
 
-Une revue ciblée des corrections a suivi ; voir l'historique de la branche.
+### Revue ciblée des corrections
+
+Trois relecteurs, chacun suivi d'un vérificateur, ont porté sur les corrections de `DataStack`, celles de `Derived.Arena` et la cohérence de ce rapport avec le code. Sur 20 constats, 17 sont confirmés (1 majeur, 16 mineurs) et 3 réfutés.
+
+- **Corrections de `DataStack` : tenues.**
+  - `MarksWF` est satisfaisable et préservée.
+  - `mark_no_aba` couvre toute marque retirée.
+  - Le contrôle de build, de mots interdits et d'axiomes est propre.
+- **Constat majeur (R-1).** Ce rapport attribuait à la garde de §56 un seul effet, `reject` au lieu de `fail`. Une seconde administration peut aussi rendre `ok` une émission que la première ferait échouer (`ce_two_admins_ok`, ajouté). (a) et (e) 7 sont corrigés : la garde protège le contrat de l'abstraction, aucune propriété de sûreté.
+- **Code.**
+  - `grow` contrôle désormais aussi « destination hors de la nouvelle région » avant `fail` (§77.2, `case_static_before_fail`).
+  - Les docstrings de `push` et `grow` ne prétendent plus ce qui n'est pas prouvé : relation exacte de `push` à `IssueR` ; destination `Init` ou `Moved` après `transfer`.
+  - `case_rewind_reading` vérifie que les métadonnées oublient le bloc vide.
+  - L'attribution à I1 de la double émission est corrigée : c'est le droit effectif, §43 cas 3.
+- **Rapport.**
+  - (e) 2 (A) et (f) 6 : la coïncidence exige aussi (e) 3 (A).
+  - (e) 1 : citation exacte de §36, et portée sur les pools.
+  - (e) 7 : la consultation des deux registres est déjà exigée par le texte.
+  - (e) 8 : §38 ajouté.
+  - Liste des passages lus et formalisés corrigée.
+  - Tableaux de (d) corrigés (« contraposée », `mark` sur une pile existante, cas statiques).
+- **Réfutés.**
+  - Le conjoint « anciennes cellules préfixe des nouvelles » de `grow_same_base` vaut pour toute pile. Le vérificateur le juge exact : la docstring le décrit comme une propriété des métadonnées (`cellsOf`), et les autres conjoints portent sur l'état d'arrivée.
+  - `ce_avail_leaf` et `resetAtPreR_iff` sans docstring propre. Ce sont un cas et un lemme de dépliage ; les passages sont cités par `opsLeaf` et `ResetAtPreR`.
+  - La docstring de `reset_alloc_ok` est exacte ; la moitié noyau découle de `resetPreR_iff`.

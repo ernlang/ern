@@ -92,8 +92,9 @@ instance (s : S3) (dst : Nat) : Decidable (NoHeld s dst) := by unfold NoHeld; in
 /-- Static preconditions of `push` of the cells `r`, checked before the room (§58, §77.4), those of
 the restricted `issue` (`IssueStaticR`, §77.1 and §77.2): the stack is live, the current frame has
 exercisable `Modify` on the stack value (`MetaRightM`), and the destination is a usable leaf under
-exercisable `Modify`, not `Init`, holding no active authority and outside `r`. The inclusion of the
-region in the storage is the room. -/
+exercisable `Modify`, not `Init`, holding no active authority and outside `r`. The brief's "`fail`
+si pas de place" stands for both the inclusion of the region in the storage (a static clause of
+§77.2) and its availability (§77.4): `push` fails when the cells requested go past the storage. -/
 def PushStatic (s : S3) (st : Stack) (r : List Nat) (dst : Nat) : Prop :=
   s.Active st.internal ∧ MetaRightM s st.arena ∧ s.Usable dst ∧ isLeaf s.P dst ∧
     HasRight s .modify dst ∧ (∀ l ∈ footprint s.P dst, s.I l ≠ .init) ∧ NoHeld s dst ∧ dst ∉ r
@@ -145,9 +146,11 @@ def newStack (d : DS) (storage i : Nat) : Out :=
 
 /-- `push size dst` on the stack `j` (brief: "émission au sommet (`issue` restreint)"): the static
 clauses of the restricted `issue` (`PushStatic`), then `fail` when fewer than `size` cells are left,
-then the derived `issue` of the `size` cells at the top into `dst`. By `issue_as_kernel_split`, this
-realisation through kernel steps differs from the restricted `issue` only by clause 5 of `store`
-(O8.5), which it inherits. `size` may be zero: the block then has an empty footprint, as the
+then the derived `issue` of the `size` cells at the top into `dst`. Its kernel part being the
+derived `issue`, `push` also asks clause 5 of `store` (O8.5), which the restricted `issue` does not
+(`issue_as_kernel_split`, for registered arenas). Its exact relation to `IssueR` is not proven here:
+a stack is not an entry of the arena registry, and the room stands for availability. `size` may be
+zero: the block then has an empty footprint, as the
 restricted `issue` of the empty region (`ce_empty_region`), and it blocks no `rewind`. -/
 def push (d : DS) (j size dst : Nat) : Out :=
   match d.stacks[j]? with
@@ -200,11 +203,14 @@ def rewind (d : DS) (j : Nat) (m : Mark) : Out :=
 
 /-- `grow b extra` on the stack `j` (brief: in place only). Static clauses, checked before the room
 (§58): `b` is the authority of the last block, at the top, `extra` is positive ("taille plus
-grande"), `b` can be released, the stack is live and the current frame has exercisable `Modify` on
-the stack value (`MetaRightM`). `fail` when fewer than `extra` cells follow the block; otherwise
-`release` of `b`, then the derived `issue` of the region of the same base and of size `size + extra`
-into the destination recorded for the block. That destination is `Init` (the first `store` wrote
-it): the derived `issue` accepts it (O8.2), the restricted `issue` would not (§77.2, report (c)). -/
+grande"), `b` can be released, the stack is live, the current frame has exercisable `Modify` on
+the stack value (`MetaRightM`), and the destination recorded for the block is outside the new region
+(§77.2, "vérifiée avant le `fail` de disponibilité"). `fail` when fewer than `extra` cells follow
+the block; otherwise `release` of `b`, then the derived `issue` of the region of the same base and of
+size `size + extra` into that destination. The other clauses on the destination concern the state
+after the release and are those of `store`. The destination is `Init` (the first `store` wrote it)
+unless the block value was moved out of it (`Moved`): the derived `issue` accepts both (O8.2), the
+restricted `issue` rejects the `Init` case (§77.2, report (c)). -/
 def grow (d : DS) (j b extra : Nat) : Out :=
   match d.stacks[j]? with
   | none => .reject
@@ -213,7 +219,8 @@ def grow (d : DS) (j b extra : Nat) : Out :=
     | none => .reject
     | some x =>
       if 0 < extra ∧ x.auth = b ∧ x.base + x.size = st.top ∧ ReleasePre d.s b ∧
-          d.s.Active st.internal ∧ MetaRightM d.s st.arena then
+          d.s.Active st.internal ∧ MetaRightM d.s st.arena ∧
+          x.dst ∉ cellsOf st x.base (x.size + extra) then
         if x.base + x.size + extra ≤ st.cells.length then
           if IssueSeq k (releaseEff d.s b) st (cellsOf st x.base (x.size + extra)) x.dst then
             .ok { d with
@@ -337,7 +344,8 @@ theorem rewind_ok {d d' : DS} {j : Nat} {m : Mark} (h : rewind k d j m = .ok d')
 theorem grow_ok {d d' : DS} {j b extra : Nat} (h : grow k d j b extra = .ok d') :
     ∃ st x, d.stacks[j]? = some st ∧ st.blocks.getLast? = some x ∧ 0 < extra ∧ x.auth = b ∧
       x.base + x.size = st.top ∧ ReleasePre d.s b ∧
-      (d.s.Active st.internal ∧ MetaRightM d.s st.arena) ∧ x.base + x.size + extra ≤ st.cells.length ∧
+      (d.s.Active st.internal ∧ MetaRightM d.s st.arena ∧ x.dst ∉ cellsOf st x.base (x.size + extra)) ∧
+      x.base + x.size + extra ≤ st.cells.length ∧
       IssueSeq k (releaseEff d.s b) st (cellsOf st x.base (x.size + extra)) x.dst ∧
       d' = { d with
         s := issueSeqEff (releaseEff d.s b) st (cellsOf st x.base (x.size + extra)) x.dst
@@ -1011,26 +1019,36 @@ theorem case_rewind_reading :
     (dexec K0 (final opsE8) (.rewind 0 ⟨0, 0, 0⟩)).isOk = true ∧
     (drun K0 DS.init (opsE3 ++ [.rewind 0 ⟨0, 0, 0⟩])).isSome = true ∧
     (final (opsE3 ++ [.rewind 0 ⟨0, 0, 0⟩])).s.A[6]?.map (fun y => (y.active, y.origin, y.footprint)) =
-      some (true, some 5, []) := by
+      some (true, some 5, []) ∧
+    (final (opsE3 ++ [.rewind 0 ⟨0, 0, 0⟩])).stacks.map (fun st => (st.top, st.blocks, st.marks)) =
+      [(0, [], [])] := by
   decide
 
 /-- Block 6 pushed into 5, then a callee entered with only 7, a `Modify` derived from the root of 5:
 it has no right on the stack value 0. -/
 def opsZ : List DOp := setup1 ++ [.push 0 1 5, .kernel (.derive 2 5 .modify), .kernel (.enter [7] [])]
 
+/-- Block 6 pushed on `[2]` into the cell 3 of the stack's own storage. -/
+def opsIn : List DOp := setup1 ++ [.push 0 1 3]
+
 /-- **Static clauses before `fail`** (§58, §77.4; review, DS-5 and Q2-GROW-ORDER): without a right on
 the stack value, `grow` is rejected with or without room; `push` into an `Init` destination is
-rejected; `push` into a destination inside the requested cells is rejected even without room, while
-the same `push` into an outside destination fails. -/
+rejected, with or without room; `push` into a destination inside the requested cells is rejected
+even without room, while the same `push` into an outside destination fails; `grow` into a recorded
+destination inside the new region is rejected even without room (`opsIn`). -/
 theorem case_static_before_fail :
     (drun K0 DS.init opsZ).isSome = true ∧
     (dexec K0 (final opsZ) (.grow 0 6 5)).isReject = true ∧
     (dexec K0 (final opsZ) (.grow 0 6 1)).isReject = true ∧
     (drun K0 DS.init (setup1 ++ [.kernel (.write 2 [5])])).isSome = true ∧
     (dexec K0 (final (setup1 ++ [.kernel (.write 2 [5])])) (.push 0 1 5)).isReject = true ∧
+    (dexec K0 (final (setup1 ++ [.kernel (.write 2 [5])])) (.push 0 4 5)).isReject = true ∧
     (drun K0 DS.init setup1).isSome = true ∧
     (dexec K0 (final setup1) (.push 0 4 2)).isReject = true ∧
-    (dexec K0 (final setup1) (.push 0 4 5)).isFail = true := by
+    (dexec K0 (final setup1) (.push 0 4 5)).isFail = true ∧
+    (drun K0 DS.init opsIn).isSome = true ∧
+    (dexec K0 (final opsIn) (.grow 0 6 1)).isReject = true ∧
+    (dexec K0 (final opsIn) (.grow 0 6 5)).isReject = true := by
   decide
 
 /-- The kernel states of the cases are reached. -/
