@@ -880,9 +880,9 @@ theorem run_ok :
 
 /-! ### Readings with a changed verdict (DS-v1)
 
-Each theorem below shows, on a library-reachable state, a program whose verdict depends on a
-reading of DS-v1 recorded in the readings: the verdict of the reading formalized here, and the
-facts that make the other reading give another verdict. -/
+Each theorem below shows, on a library-reachable state, a program whose verdict or arrival state
+depends on a reading of DS-v1 recorded in the readings: the verdict or arrival state of the reading
+formalized here, and the facts that make the other reading give another one. -/
 
 /-- `release(5)` by the program, after the rewind (§62; DS-v1 non-vacuity). -/
 def d11 : DState := ⟨releaseEff d9.kern 5, d9.stacks, d9.fresh⟩
@@ -933,6 +933,86 @@ theorem reading_order :
     .noExtra (st := st9) (x := x5) (by decide) (by decide) rfl, .ok (by decide), by decide,
     by decide, .ok (by decide), .ok (by decide),
     .fail (st := st3) (by decide) (by decide) (by decide)⟩
+
+/-- **Reading of `mark`: no right required** (DS-v1, non-normative; §36, §58). In `d13`, a callee
+frame with no right on the stack value 0 (no `AdminRight`, no `Observe` right, no valid
+`writeShared` through any authority, §68) marks stack 0: `ok`, a mark appended to the metadata.
+Under the reading of §36 ¶1 (metadata modified "to the extent permitted by the applicable
+rights"), these facts give `reject`. -/
+theorem reading_mark :
+    DReach K0 wst d13 ∧ d13.stacks[0]? = some st9 ∧ ¬ AdminRight d13.kern st9 ∧
+    ¬ HasRight d13.kern .observe 0 ∧
+    (∀ a ∈ List.range d13.kern.A.length, ¬ WriteSharedPre K0 d13.kern a (footprint d13.kern.P 0)) ∧
+    MarkStep 0 d13 (.ok ⟨d13.kern, d13.stacks.set 0 (markMeta 0 st9 d13.fresh), d13.fresh + 1⟩) :=
+  ⟨reading_order.1, by decide, by decide, by decide, by decide, .ok (by decide)⟩
+
+/-- `transfer(4, 5)` by the program after the first push: the block value, holding block authority
+5, moves from place 4 to place 5, and place 4 becomes `Moved` (§63; DS-v1 reading of the `grow`
+destination). -/
+def d14 : DState := ⟨transferEff d5.kern 4 5, d5.stacks, d5.fresh⟩
+
+/-- The kernel state of `grow(0, 5, 1)` in `d14` after `release(5)` and `split(4, [[2, 3]])`
+(§62, §61; DS-v1 reading of the `grow` destination). -/
+def s14 : S3 :=
+  splitEff (releaseEff d14.kern 5) st5.internal [cellsOf st5 x5.base (x5.size + 1)]
+
+/-- `grow(0, 5, 1)` in `d14`: `release(5)`, `split(4, [[2, 3]])`, `store(6, 4)` into the recorded
+destination 4 (DS-v1, Part XIV, §77). -/
+def d15 : DState :=
+  ⟨storeEff s14 (releaseEff d14.kern 5).A.length x5.dst,
+    d14.stacks.set 0 (growMeta st5 x5 1 (releaseEff d14.kern 5).A.length), d14.fresh⟩
+
+/-- **Reading of the `grow` destination: the recorded `Blk.dst`** (DS-v1, non-normative; §63, §65,
+§77). In `d14`, the block value of block 5, recorded with destination 4, was transferred to place 5,
+which now holds authority 5, and place 4 is `Moved`. `grow(0, 5, 1)` is `ok` and stores the new
+block authority 6 into the moved-from place 4, which becomes `Init`. Under the reading "the current
+holder of `b`", the static checks of the derived issue and `store` into place 5 are `ok` on the same
+released and split state, and authority 6 is held by place 5: another arrival state. -/
+theorem reading_grow_dst :
+    DReach K0 wst d14 ∧ d14.stacks[0]? = some st5 ∧ st5.block 5 = some x5 ∧ x5.dst = 4 ∧
+    d14.kern.A[5]?.map (·.holder) = some (.place 5) ∧ d14.kern.I 4 = .moved ∧
+    GrowStep K0 0 5 1 d14 (.ok d15) ∧
+    d15.kern.A[d14.kern.A.length]?.map (·.holder) = some (.place 4) ∧ d15.kern.I 4 = .init ∧
+    IssueStatic (releaseEff d14.kern 5) st5.entry (cellsOf st5 x5.base (x5.size + 1)) 5 ∧
+    StoreStep (releaseEff d14.kern 5).A.length 5 s14
+      (.ok (storeEff s14 (releaseEff d14.kern 5).A.length 5)) ∧
+    (storeEff s14 (releaseEff d14.kern 5).A.length 5).A[d14.kern.A.length]?.map (·.holder) =
+      some (.place 5) := by
+  have r1 : DReach K0 wst d1 := .step .init (.kernel (.derive (.ok (by decide))))
+  have r2 : DReach K0 wst d2 := .step r1 (.kernel (.store (.ok (by decide))))
+  have r3 : DReach K0 wst d3 := .step r2 (.newStack (others := []) (.ok (by decide)))
+  have r4 : DReach K0 wst d4 := .step r3 (.mark (.ok (st := st3) (by decide)))
+  have r5 : DReach K0 wst d5 := .step r4
+    (.push (.ok (st := st4) (by decide) (by decide) (by decide) (.ok (by decide))
+      (.ok (by decide))))
+  exact ⟨.step r5 (.kernel (.transfer (.ok (by decide)))), by decide, by decide, rfl, by decide,
+    by decide,
+    .ok (st := st5) (x := x5) (by decide) (by decide) (by decide) (.ok (by decide)) (by decide)
+      (by decide) (.ok (by decide)) (.ok (by decide)),
+    by decide, by decide, by decide, .ok (by decide), by decide⟩
+
+/-- Statics of the `newStack` reading (§47; DS-v1 reading of §76.5): leaf 0, `Uninit`, owned by
+frame 0, is the stack value; leaf 1, owned by static 0, is the storage, whose root authority 1 is
+held by place 0. -/
+def wsu : Statics := [((none, none, 0), false), ((none, some 0, 0), false)]
+
+/-- **Reading of the `newStack` preconditions: §76.5 applies** (DS-v1, non-normative; §76.1–§76.3,
+§76.5, §56). In the initial state of `wsu`, `newStack(1, 1)` is rejected: the stack value 0 holding
+`internal` 1 is `Uninit` (§76.5). Every other precondition holds: storage 1 usable under
+exercisable `Modify` (§76.1); `internal` 1 active, of own mode `Modify`, exercisable (§76.2), held
+by place 0 with the footprint of the storage (§76.3); the guard of §56. Under the reading that
+drops §76.5 for a stack, the outcome is `ok`. -/
+theorem reading_newStack :
+    DReach K0 wsu (DState.init wsu) ∧ NewStackStep [] 1 1 (DState.init wsu) .reject ∧
+    (DState.init wsu).kern.A[1]? = some ⟨.modify, none, [1], .place 0, true⟩ ∧
+    (DState.init wsu).kern.I 0 = .uninit ∧ ¬ LeavesInit (DState.init wsu).kern (.place 0) ∧
+    (DState.init wsu).kern.Usable 1 ∧ HasRight (DState.init wsu).kern .modify 1 ∧
+    (DState.init wsu).kern.ExercisableAt 1 .modify ∧
+    (∀ l ∈ (DState.init wsu).kern.afp 1, l ∈ footprint (DState.init wsu).kern.P 1) ∧
+    (∀ l ∈ footprint (DState.init wsu).kern.P 1, l ∈ (DState.init wsu).kern.afp 1) ∧
+    Guard56 [stackInternals (DState.init wsu).kern (DState.init wsu).stacks] 1 :=
+  ⟨.init, .reject (by decide), by decide, by decide, by decide, by decide, by decide, by decide,
+    by decide, by decide, by decide⟩
 
 end Witness
 
