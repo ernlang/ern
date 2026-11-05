@@ -142,7 +142,14 @@ def liveInternals (s : S3) (arenas : List ArenaEntry) : List Nat :=
   (arenas.filter fun E => decide (s.Active E.internal)).map (·.internal)
 
 /-- Preconditions of `newArena(storage, internal)` other than the guard (§76.1–§76.3, §76.5).
-§76.6 restates invariants and is not a precondition (`newArena_clause6`). -/
+§76.6 is a precondition of §76 and is omitted here pending arbitration, since it has two readings:
+global (`NewArena766Global`: `WF3`, `I1`, `AnchorOrder` and `AnchorOrderHeld` of the state, and
+`ArenaInv` of every live entry) and local (`NewArena766Local`: their clauses at the storage, the
+arena value and `internal`, and `ArenaInv` of the new entry). Both hold when this structure holds
+on a `KInv` state (`newArena766Local_of_kinv`; `newArena766Global_of_kinv`, with `LInv`), but not on
+library-reachable states outside `KInv` (the §63 cycle): the model accepts `newArena` where the
+global reading fails and the local one holds (`Witness.newArena766_global_fails_local_holds`), and
+where both fail (`Witness.newArena766_local_fails`). -/
 structure NewArenaBase (s : S3) (storage internal : Nat) : Prop where
   /-- §76.1: `storage` is an existing, usable place. -/
   storageUsable : s.Usable storage
@@ -1485,9 +1492,14 @@ theorem newEntry_inv {s : S3} {st i : Nat} (h : NewArenaBase s st i) :
     show OptP (s.A[i]?) _ False
     rw [hy]; exact ⟨hia.2, hpl⟩
 
-/-- §76.6 is redundant on states satisfying the kernel invariant: the relations it lists hold
-before registration, which changes no kernel component, and the new entry satisfies `ArenaInv`
-(§76.6, §57, §55). -/
+/-- On states satisfying the kernel invariant, the kernel predicates listed by §76.6 hold before
+registration, which changes no kernel component, and the new entry satisfies `ArenaInv` (§76.6,
+§57, §55). §76.6 is not redundant in general: it is omitted from `NewArenaBase` pending
+arbitration between its global reading `NewArena766Global` and its local reading
+`NewArena766Local`. On library-reachable states outside `KInv` the model accepts `newArena` where
+the global reading fails and the local one holds (`Witness.newArena766_global_fails_local_holds`),
+and where both fail (`Witness.newArena766_local_fails`). Generalized to both readings by
+`newArena766Global_of_kinv` and `newArena766Local_of_kinv`. -/
 theorem newArena_clause6 {s : S3} {st i : Nat} (hk : KInv s) (h : NewArenaBase s st i) :
     WF3 s ∧ I1 s ∧ AnchorOrder s ∧ AnchorOrderHeld s ∧
       ArenaInv s ⟨st, i, footprint s.P st, []⟩ :=
@@ -1639,8 +1651,10 @@ false as stated (`Access.reachable_kinv_false`, the §63 ownership cycle). At `(
 instance of every witness of this file, both `hK` (`Witness.lReach_inv_hyp_false`) and the
 conclusion (`Witness.lReach_inv_conclusion_false`, `Witness.arenaInv_broken_by_transfer`) are
 false. This theorem is therefore a conditional, not a proof that `ArenaInv` is preserved on
-library runs; the unconditional content is in the per-step lemmas (`lInv_kernel`,
-`lInv_newArena`, `lInv_issue`, `lInv_reset`, `lInv_stepNG`). -/
+library runs. Only `lInv_newArena`, `lInv_issue` and `lInv_reset` hold with no kernel
+hypothesis; `lInv_kernel` and `lInv_stepNG` take the per-step instances of `hK` (`WF3` before,
+`NoDangling` after), which the breaking `transfer` of `Witness.arenaInv_broken_by_transfer`
+violates. -/
 theorem lReachNG_inv {k : K} {statics : Statics}
     (hK : ∀ s, Reachable k statics s → WF3 s ∧ NoDangling s) {L : LState}
     (h : LReachNG k statics L) : LInv L := by
@@ -2235,6 +2249,200 @@ theorem KInvB.sound {s : S3} (h : KInvB s) : KInv s ∧ KAux s := by
     | none => rw [hp] at h'; exact h'.elim
     | some pr => rw [hp] at h'; exact ⟨pr, rfl, h'⟩
 
+/-! ## §76.6 under its two readings (§76.6, §58, §44, §49, §50, §55)
+
+§76.6: "Dependency, holder, storage, and administration relations respect `WF3`, I1,
+`AnchorOrder`, `AnchorOrderHeld`, and the expected arena invariants." It is omitted from
+`NewArenaBase` pending arbitration between two readings, both defined here: global
+(`NewArena766Global`, the relations of the whole state) and local (`NewArena766Local`, the
+relations of the new arena only).
+
+State of evaluation. §76.6 is listed among the preconditions and does not say "in the resulting
+state", which §58 requires for evaluation there ("when a rule explicitly so provides", as §63.6,
+§63.7, §77.3 and §77.6 do): this points to the departure state. The arena invariants of the new
+arena, however, concern an entry that exists only in the arrival state. §76 leaves this open, so
+the global reading is a predicate on a library state, evaluated on the departure state `L` or on
+the arrival state `newArenaEff L st i`; the kernel component is the same in both (§76 `ok` effect,
+`newArena_kernel`), and the two agree whenever `NewArenaBase` holds
+(`newArena766Global_arrival_iff`), so the choice changes no verdict. The local reading reads only
+the kernel component and the new entry, so its departure and arrival forms coincide. -/
+
+/-- §76.6, global reading, on the library state `L` (departure or arrival state, see above): the
+kernel state satisfies `WF3` (§49), `I1` (§50), `AnchorOrder` and `AnchorOrderHeld` (§44), and
+every live entry of the registry satisfies `ArenaInv` (§55). -/
+def NewArena766Global (L : LState) : Prop :=
+  WF3 L.kern ∧ I1 L.kern ∧ AnchorOrder L.kern ∧ AnchorOrderHeld L.kern ∧
+    ∀ E ∈ L.arenas, Live L.kern E → ArenaInv L.kern E
+
+/-- The clauses of `WF3` (§49.2, §49.3, §49.7), `AnchorOrder` and `AnchorOrderHeld` (§44) whose
+bound place is `q`, with bounded quantifiers (local reading of §76.6, for the storage and the
+arena value). -/
+structure PlaceRel766 (s : S3) (q : Nat) : Prop where
+  /-- §49.2 at `q`: a parent of `q` exists, precedes it, shares its owner and death marker. -/
+  parent : OptP (s.P[q]?) (fun pl => OptP pl.parent (fun r =>
+    OptP (s.P[r]?) (fun pr => r < q ∧ pr.owner = pl.owner ∧ s.dead r = s.dead q) False) True) True
+  /-- §49.3 at `q`: the owner of `q` is valid. -/
+  owner : OptP (s.P[q]?) (fun pl => OwnerOK s pl.owner) True
+  /-- §49.3 at `q`: if `q` is usable, its ownership chain reaches a live frame. -/
+  chain : s.Usable q → ∃ f, FrameOf s q f ∧ f ∈ s.F
+  /-- §49.7 at `q`: if `q` is a usable root place, it has its root authority. -/
+  rootHeld : RootPlace s.P q → s.Usable q →
+    ∃ j ∈ List.range s.A.length, OptP (s.A[j]?) (RootAuth s q) False
+  /-- §44 `AnchorOrder` at `q`: the anchors of `q`, if usable. -/
+  anchorOrder : s.Usable q → ∀ x ∈ s.D q, EffAnchorOK s x (s.pframe q)
+  /-- §44 `AnchorOrderHeld` at `q`: the active authorities held by `q`, if usable. -/
+  anchorOrderHeld : s.Usable q → ∀ x ∈ List.range s.A.length, OptP (s.A[x]?) (fun y =>
+    y.active = true → y.holder = .place q → EffAnchorOK s x (s.pframe q)) True
+
+/-- The clauses of `WF3` (§49.4, §49.5, §49.6, §49.8) and `I1` (§50) whose bound authority is `a`,
+with bounded quantifiers (local reading of §76.6, for `internal`). -/
+structure AuthRel766 (s : S3) (a : Nat) : Prop where
+  /-- §49.4 at `a`: its footprint consists of leaves of existing places. -/
+  footprint : OptP (s.A[a]?) (fun x => ∀ l ∈ x.footprint, l < s.P.length ∧ isLeaf s.P l) True
+  /-- §49.5 at `a`: its origin precedes it. -/
+  origin : OptP (s.A[a]?) (fun y => OptP y.origin (· < a) True) True
+  /-- §49.6 at `a`: `RootChain` for every leaf it covers. -/
+  rootChain : OptP (s.A[a]?) (fun y => ∀ l ∈ y.footprint, isLeaf s.P l → ChainRoot s a l) True
+  /-- §49.8 at `a`: if active, it is held by a frame of the stack or by a usable place. -/
+  holder : OptP (s.A[a]?) (fun y => y.active = true → HolderLive s y.holder) True
+  /-- §50 at `a`: an active authority unrelated by derivation to `a` and sharing a leaf with it
+  has, with `a`, own mode `Observe`. -/
+  i1 : ∀ b ∈ List.range s.A.length, OptP (s.A[a]?) (fun x => OptP (s.A[b]?) (fun y =>
+    a ≠ b → x.active = true → y.active = true → (∃ p ∈ x.footprint, p ∈ y.footprint) →
+    a ∉ s.ancs b → b ∉ s.ancs a → x.mode = .observe ∧ y.mode = .observe) True) True
+
+/-- §76.6, local reading, for `newArena(st, i)` on the kernel state `s` (the same before and after
+registration): the relations of the new arena alone respect `WF3`, `I1`, `AnchorOrder` and
+`AnchorOrderHeld`, i.e. their clauses hold at its storage `st`, at its arena value (the place
+holding `i`, §46) and at `i` (`PlaceRel766`, `AuthRel766`), and the new entry satisfies `ArenaInv`
+(§55). §49.1, which concerns the frame stack and no relation of the arena, is not part of it. -/
+structure NewArena766Local (s : S3) (st i : Nat) : Prop where
+  /-- Storage relation: the clauses at the storage. -/
+  storage : PlaceRel766 s st
+  /-- Holder and dependency relations: the clauses at the arena value, if `i` is held by a place. -/
+  value : OptP (arenaValue s ⟨st, i, footprint s.P st, []⟩) (PlaceRel766 s) True
+  /-- Holder relation: the clauses at `internal`. -/
+  internal : AuthRel766 s i
+  /-- Administration relation: the new entry satisfies `ArenaInv` (§55). -/
+  arena : ArenaInv s ⟨st, i, footprint s.P st, []⟩
+
+/-- The clauses of `PlaceRel766` hold at every place of a state satisfying `WF3`, `AnchorOrder` and
+`AnchorOrderHeld` (§49, §44, §76.6). -/
+theorem placeRel766_of {s : S3} (hw : WF3 s) (ha : AnchorOrder s) (hh : AnchorOrderHeld s)
+    (q : Nat) : PlaceRel766 s q := by
+  refine ⟨?_, ?_, fun hu => hu.frameOf, fun hr hu => ?_, fun hu => ha q hu,
+    fun hu => anchorOrderHeld_iff.1 hh q (List.mem_range.2 hu.lt) hu⟩
+  · cases hpl : s.P[q]? with
+    | none => trivial
+    | some pl =>
+      show OptP pl.parent _ True
+      cases hr : pl.parent with
+      | none => trivial
+      | some r =>
+        obtain ⟨pr, hpr, h1, h2, h3⟩ := hw.places q pl r hpl hr
+        show OptP (s.P[r]?) _ False
+        rw [hpr]; exact ⟨h1, h2, h3⟩
+  · cases hpl : s.P[q]? with
+    | none => trivial
+    | some pl =>
+      show OwnerOK s pl.owner
+      cases ho : pl.owner with
+      | frame f => exact hw.owners.1 q pl f hpl ho
+      | place o => exact hw.owners.2.1 q pl o hpl ho
+  · obtain ⟨j, z, pr, hz, za, zo, zm, hpr, hh, hfp⟩ := hw.rootHeld q hr hu
+    refine ⟨j, List.mem_range.2 (lt_of_getElem? hz), ?_⟩
+    rw [hz]
+    refine ⟨za, zo, zm, ?_, fun l h => (hfp l).1 h, fun l h => (hfp l).2 h⟩
+    show OptP (s.P[q]?) _ False
+    rw [hpr]; exact hh
+
+/-- The clause §49.8 of `AuthRel766` holds at every authority of a state satisfying `WF3`
+(§49.8, §76.6). -/
+theorem authRel766_holder {s : S3} (hw : WF3 s) (a : Nat) :
+    OptP (s.A[a]?) (fun y => y.active = true → HolderLive s y.holder) True := by
+  cases hy : s.A[a]? with
+  | none => trivial
+  | some y => exact hw.holders a y hy
+
+/-- The clauses of `AuthRel766` hold at every authority of a state satisfying `WF3` and `I1`
+(§49, §50, §76.6). -/
+theorem authRel766_of {s : S3} (hw : WF3 s) (h1 : I1 s) (a : Nat) : AuthRel766 s a := by
+  refine ⟨?_, ?_, ?_, authRel766_holder hw a, fun b _ => ?_⟩
+  · cases hx : s.A[a]? with
+    | none => trivial
+    | some x => exact hw.footprints a x hx
+  · cases hy : s.A[a]? with
+    | none => trivial
+    | some y =>
+      show OptP y.origin _ True
+      cases ho : y.origin with
+      | none => trivial
+      | some o => exact hw.origins a y o hy ho
+  · cases hy : s.A[a]? with
+    | none => trivial
+    | some y =>
+      intro l hl hleaf
+      obtain ⟨x, z, r, hx, hz, hzo, hr, hlr, hfp⟩ := hw.rootChain a y l hy hl hleaf
+      refine ⟨x, ?_, ?_⟩
+      · rcases hx with rfl | hx
+        · exact List.mem_cons_self ..
+        · exact List.mem_cons_of_mem _ hx
+      · rw [hz]
+        exact ⟨hzo, r, List.mem_range.2 hr.1, hr, hlr, fun l' h => (hfp l').1 h,
+          fun l' h => (hfp l').2 h⟩
+  · cases hx : s.A[a]? with
+    | none => trivial
+    | some x =>
+      show OptP (s.A[b]?) _ True
+      cases hy : s.A[b]? with
+      | none => trivial
+      | some y =>
+        intro hab xa ya ⟨p, hpx, hpy⟩ hba hab'
+        exact h1 a b x y p hab hx hy xa ya hpx hpy hba hab'
+
+/-- Under the other preconditions of §76, the global reading of §76.6 gives the same verdict on
+the departure and on the arrival state: they differ only by `ArenaInv` of the new entry, which
+`NewArenaBase` gives (§76.6, §76 `ok` effect, §55). -/
+theorem newArena766Global_arrival_iff {L : LState} {st i : Nat} (h : NewArenaBase L.kern st i) :
+    NewArena766Global (newArenaEff L st i) ↔ NewArena766Global L := by
+  constructor
+  · rintro ⟨hw, h1, ha, hh, he⟩
+    exact ⟨hw, h1, ha, hh, fun E hE => he E (List.mem_append_left _ hE)⟩
+  · rintro ⟨hw, h1, ha, hh, he⟩
+    refine ⟨hw, h1, ha, hh, fun E hE hl => ?_⟩
+    rcases List.mem_append.1 hE with hE | hE
+    · exact he E hE hl
+    · rw [List.mem_singleton.1 hE]; exact (newEntry_inv h).1
+
+/-- Under the other preconditions of §76, the global reading of §76.6 implies the local one
+(§76.6). -/
+theorem newArena766Local_of_global {L : LState} {st i : Nat} (hg : NewArena766Global L)
+    (h : NewArenaBase L.kern st i) : NewArena766Local L.kern st i := by
+  obtain ⟨hw, h1, ha, hh, -⟩ := hg
+  refine ⟨placeRel766_of hw ha hh st, ?_, authRel766_of hw h1 i, (newEntry_inv h).1⟩
+  cases arenaValue L.kern ⟨st, i, footprint L.kern.P st, []⟩ with
+  | none => trivial
+  | some v => exact placeRel766_of hw ha hh v
+
+/-- The global reading of §76.6 holds, on the departure and on the arrival state, whenever the
+model accepts `newArena` (`NewArenaBase`, with or without the guard of §56) on a state satisfying
+the kernel invariant (§57) and the library invariant `LInv` (§55); generalizes
+`newArena_clause6`. `LInv` gives the registry conjunct, which is not a kernel predicate (§57). -/
+theorem newArena766Global_of_kinv {L : LState} {st i : Nat} (hk : KInv L.kern) (hi : LInv L)
+    (h : NewArenaBase L.kern st i) :
+    NewArena766Global L ∧ NewArena766Global (newArenaEff L st i) := by
+  have hg : NewArena766Global L :=
+    ⟨hk.1, hk.2.1.1.1, hk.2.1.2.1, hk.2.2.1, fun E hE hl => ((hi E hE).2 hl).1⟩
+  exact ⟨hg, (newArena766Global_arrival_iff h).2 hg⟩
+
+/-- The local reading of §76.6 holds whenever the model accepts `newArena` (`NewArenaBase`, with or
+without the guard of §56) on a state satisfying the kernel invariant (§57); generalizes
+`newArena_clause6`. -/
+theorem newArena766Local_of_kinv {s : S3} {st i : Nat} (hk : KInv s) (h : NewArenaBase s st i) :
+    NewArena766Local s st i :=
+  newArena766Local_of_global (L := ⟨s, []⟩) ⟨hk.1, hk.2.1.1.1, hk.2.1.2.1, hk.2.2.1,
+    fun _ hE => by cases hE⟩ h
+
 /-! ## Witnesses on library-reachable states (§78.3, §86, §55, §63)
 
 Runs from `LState.init Examples.st` (§47: static leaves 0 `Init`, 1 and 2 `Uninit`, with root
@@ -2418,6 +2626,95 @@ theorem lReach_inv_conclusion_false :
 contradict `lReach_inv_conclusion_false`. -/
 theorem lReach_inv_hyp_false : ¬ ∀ s, Reachable K0 st s → WF3 s ∧ NoDangling s :=
   fun hK => lReach_inv_conclusion_false fun _ h => lReach_inv hK h
+
+/-! ### `newArena` accepted where §76.6 fails (§76.6, §49.8, §55, §63)
+
+Two runs through the §63 ownership cycle, after which the model accepts `newArena` although the
+state violates `WF3`. -/
+
+/-- After `t7`, `derive(1, [1], Modify)`: authority 7 on the static leaf 1, held by frame 0
+(§60). -/
+def u8 : LState := ⟨deriveEff t7.kern 1 [1] .modify, t7.arenas⟩
+/-- `store(7, 2)`: authority 7 becomes `internal`, held by the arena value 2 (§65). -/
+def u9 : LState := ⟨storeEff u8.kern 7 2, u8.arenas⟩
+/-- `newArena(1, 7)`: storage 1, `internal` 7, arena value 2 (§76). -/
+def u10 : LState := newArenaEff u9 1 7
+
+/-- **The model accepts `newArena` where the global reading of §76.6 fails and the local one
+holds** (§76.6, §49.8, §55, §63). In the library-reachable state `u9`, reached through the §63
+cycle of `arenaInv_broken_by_transfer`, `newArena(1, 7)` is `ok`; `WF3` fails (§49.8: the active
+`internal` 6 of `tE` is held by the unusable place 5) and the live entry `tE` violates `ArenaInv`,
+so the global reading fails on the departure and on the arrival state; the local reading holds,
+since the storage 1, the arena value 2 and `internal` 7 are unaffected by the cycle. -/
+theorem newArena766_global_fails_local_holds :
+    LReach K0 st u9 ∧ NewArenaStep [] 1 7 u9 (.ok u10) ∧ u9.arenas = [tE] ∧ Live u9.kern tE ∧
+    ¬ ArenaInv u9.kern tE ∧ ¬ WF3 u9.kern ∧ ¬ NewArena766Global u9 ∧ ¬ NewArena766Global u10 ∧
+    NewArena766Local u9.kern 1 7 := by
+  have h8 : LReach K0 st u8 := .step arenaInv_broken_by_transfer.1
+    (.kernel (.derive (.ok (by decide))))
+  have h9 : LReach K0 st u9 := .step h8 (.kernel (.store (.ok (by decide))))
+  have hb : NewArenaBase u9.kern 1 7 := by decide
+  have hu : ¬ u9.kern.Usable tE.storage := by decide
+  have hh : ¬ OptP (u9.kern.A[6]?) (fun y => y.active = true → HolderLive u9.kern y.holder) True :=
+    by decide
+  have hw : ¬ WF3 u9.kern := fun hw => hh (authRel766_holder hw 6)
+  have hv : arenaValue u9.kern ⟨1, 7, footprint u9.kern.P 1, []⟩ = some 2 := by decide
+  have hloc : NewArena766Local u9.kern 1 7 := by
+    refine ⟨⟨by decide, by decide, fun h => h.frameOf, by decide, by decide, by decide⟩, ?_,
+      ⟨by decide, by decide, by decide, by decide, by decide⟩, (newEntry_inv hb).1⟩
+    rw [hv]
+    exact ⟨by decide, by decide, fun h => h.frameOf, by decide, by decide, by decide⟩
+  exact ⟨h9, .ok (by decide), by decide, by decide, fun h => hu h.storageUsable, hw,
+    fun h => hw h.1, fun h => hw h.1, hloc⟩
+
+/-- `derive(1, [1], Modify)` after `t3`: authority 6 on the static leaf 1, held by frame 0
+(§60). -/
+def v4 : S3 := deriveEff t3 1 [1] .modify
+/-- `store(6, 5)`: authority 6 becomes `internal`, held by the arena value 5, owned by place 3
+(§65). -/
+def v5 : S3 := storeEff v4 6 5
+/-- `derive(5, [5], Modify)`: authority 7 on the leaf of place 5, held by frame 0 (§60). -/
+def v6 : S3 := deriveEff v5 5 [5] .modify
+/-- `transfer(0, 4)`: places 3, 4 and 5 become unusable through the ownership cycle 3 ↔ 4 (§63
+`ok` effect). -/
+def v7 : LState := ⟨transferEff v6 0 4, []⟩
+/-- `newArena(1, 6)`: storage 1, `internal` 6, arena value 5 (§76). -/
+def v8 : LState := newArenaEff v7 1 6
+
+/-- The three allocations of the run of `arenaInv_broken_by_transfer` are library-reachable
+(§71, Part XIV). -/
+theorem t3_reach : LReach K0 st ⟨t3, []⟩ := by
+  have h1 : LReach K0 st ⟨t1, []⟩ := .step .init
+    (.kernel (KStep.alloc (pr := 0) (ow := 0) (ls := [(none, 0)])
+      (AllocStep.ok (by decide) trivial)))
+  have h2 : LReach K0 st ⟨t2, []⟩ := .step h1
+    (.kernel (KStep.alloc (pr := 0) (ow := 3) (ls := [(none, 0)])
+      (AllocStep.ok (by decide) trivial)))
+  exact .step h2
+    (.kernel (KStep.alloc (pr := 0) (ow := 3) (ls := [(none, 0)])
+      (AllocStep.ok (by decide) trivial)))
+
+/-- **The model accepts `newArena` where both readings of §76.6 fail** (§76.6, §49.8, §55, §63).
+In the library-reachable state `v7`, the §63 cycle makes the arena value 5 unusable, while
+`internal` 6 stays exercisable through authority 7, held by frame 0 (§43). `newArena(1, 6)` is
+`ok` and its entry satisfies `ArenaInv` (§55 does not ask the arena value to be usable), but
+`internal` is held by an unusable place: §49.8 fails at `internal`, so `WF3` and both readings of
+§76.6 fail (the registry is empty, so the global reading fails through its kernel part alone). -/
+theorem newArena766_local_fails :
+    LReach K0 st v7 ∧ NewArenaStep [] 1 6 v7 (.ok v8) ∧ v7.arenas = [] ∧
+    arenaValue v7.kern ⟨1, 6, [1], []⟩ = some 5 ∧ ¬ v7.kern.Usable 5 ∧
+    ArenaInv v7.kern ⟨1, 6, [1], []⟩ ∧ ¬ WF3 v7.kern ∧
+    ¬ NewArena766Global v7 ∧ ¬ NewArena766Global v8 ∧ ¬ NewArena766Local v7.kern 1 6 := by
+  have h4 : LReach K0 st ⟨v4, []⟩ := .step t3_reach (.kernel (.derive (.ok (by decide))))
+  have h5 : LReach K0 st ⟨v5, []⟩ := .step h4 (.kernel (.store (.ok (by decide))))
+  have h6 : LReach K0 st ⟨v6, []⟩ := .step h5 (.kernel (.derive (.ok (by decide))))
+  have h7 : LReach K0 st v7 := .step h6 (.kernel (.transfer (.ok (by decide))))
+  have hb : NewArenaBase v7.kern 1 6 := by decide
+  have hh : ¬ OptP (v7.kern.A[6]?) (fun y => y.active = true → HolderLive v7.kern y.holder) True :=
+    by decide
+  have hw : ¬ WF3 v7.kern := fun hw => hh (authRel766_holder hw 6)
+  exact ⟨h7, .ok (by decide), rfl, by decide, by decide, (newEntry_inv hb).1, hw,
+    fun h => hw h.1, fun h => hw h.1, fun h => hh h.internal.holder⟩
 
 end Witness
 
