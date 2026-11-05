@@ -2052,11 +2052,151 @@ theorem free_slot_init :
   exact ⟨_, .step (.step w3_reach (Arena.KInvB.sound (by decide)).1 h₁)
     (Arena.KInvB.sound (by decide)).1 h₂, rfl, by decide⟩
 
+/-! ### The kernel state reached by `freeSlot` (§36, §57, §69, §89; HandlePool v0.4 annex, D.3)
+
+From `w4`, a frame derives from `internal` over slot place 1, writes it and releases the derived
+authority; `freeSlot(⟨0, 0, 0⟩)` then ends the slot content. The kernel run `k1`–`k5` is the same
+run without the write of slot place 1. The run uses client access to `internal`, whose prevention
+the annex leaves to Spec 9 (inter-specification table: "Empêcher l'usage extérieur des autorités
+internes/compagnes administratives des bibliothèques sûres"). -/
+
+/-- After `derive(3, [1], Modify)` from `internal` (§60): authority 4 over slot place 1. -/
+def v1 : PState := { w4 with kern := deriveEff w4.kern 3 [1] .modify }
+
+/-- After `write` of slot place 1 through authority 4 (§67): the slot content is `Init`. -/
+def v2 : PState := { v1 with kern := write3Eff v1.kern [1] }
+
+/-- After the kernel `release(4)` (§62). -/
+def v3 : PState := { v2 with kern := releaseEff v2.kern 4 }
+
+/-- `v3` is reached by a library run whose steps start from states satisfying `KInv` (§57, §60,
+§62, §67; HandlePool v0.4 annex, D.1, D.3). -/
+theorem v3_reach : PReachI K0 hst v3 := by
+  have h1 : PReachI K0 hst v1 := .step w4_reach (Arena.KInvB.sound (by decide)).1
+    (.kernel (.derive (Guarded.ok (by decide))))
+  have h2 : PReachI K0 hst v2 := .step h1 (Arena.KInvB.sound (by decide)).1
+    (.kernel (.write (a := 4) (Guarded.ok (by decide))))
+  exact .step h2 (Arena.KInvB.sound (by decide)).1
+    (.kernel (.release (Guarded.ok (by decide))))
+
+/-- Kernel run, step 1: `derive(0, [1, 2], Modify)` from `S3.init hst` (§47, §60). -/
+def k1 : S3 := deriveEff (S3.init hst) 0 [1, 2] .modify
+
+/-- Kernel run, step 2: `store(3, 3)` (§65). -/
+def k2 : S3 := storeEff k1 3 3
+
+/-- Kernel run, step 3: `write` of place 4 (§67), the kernel side of the `allocSlot` of `w4`. -/
+def k3 : S3 := write3Eff k2 [4]
+
+/-- Kernel run, step 4: `derive(3, [1], Modify)` (§60). -/
+def k4 : S3 := deriveEff k3 3 [1] .modify
+
+/-- Kernel run, step 5: `release(4)` (§62). -/
+def k5 : S3 := releaseEff k4 4
+
+/-- `k5` is reached from `S3.init hst` by kernel steps O1–O16 alone (§57, §60, §62, §65, §67). -/
+theorem k5_reach : Reachable K0 hst k5 :=
+  .step (.step (.step (.step (.step .init (.derive (Guarded.ok (by decide))))
+    (.store (Guarded.ok (by decide)))) (.write (a := 2) (Guarded.ok (by decide))))
+    (.derive (Guarded.ok (by decide)))) (.release (Guarded.ok (by decide)))
+
+/-- The kernel state of `w4` is `k3` (§57; HandlePool v0.4 annex, D.1, D.3). -/
+theorem k3_eq : k3 = w4.kern := rfl
+
+/-- Kernel states with equal components are equal (§38). -/
+theorem s3_ext {s t : S3} (hF : s.F = t.F) (hn : s.nF = t.nF) (hP : s.P = t.P)
+    (hI : ∀ l, s.I l = t.I l) (hA : s.A = t.A) (hD : ∀ q, s.D q = t.D q)
+    (hd : ∀ q, s.dead q = t.dead q) (hp : ∀ q, s.pin q = t.pin q) : s = t := by
+  cases s; cases t
+  simp only at hF hn hP hA
+  subst hF hn hP hA
+  have e1 : _ := funext hI
+  have e2 : _ := funext hD
+  have e3 : _ := funext hd
+  have e4 : _ := funext hp
+  simp only at e1 e2 e3 e4
+  subst e1 e2 e3 e4
+  rfl
+
+/-- The effect of `release` (§62) commutes with the effect of `write` (§67). -/
+theorem releaseEff_write3Eff (s : S3) (ls : List Nat) (a : Nat) :
+    releaseEff (write3Eff s ls) a = write3Eff (releaseEff s a) ls := by
+  unfold releaseEff write3Eff
+  rcases h : s.A[a]? with _ | x <;> simp
+
+/-- The kernel state of `v3` is `k5` with slot place 1 written (§62, §67). -/
+theorem v3_eq : v3.kern = write3Eff k5 [1] := by
+  show releaseEff (write3Eff v1.kern [1]) 4 = _
+  rw [releaseEff_write3Eff]; rfl
+
+/-- The effect of O12 (§69) at place 1 undoes a write of `[1]` (§67) when the footprint of place 1
+is `[1]`, the leaf was `Uninit`, no dependency is recorded on a part of place 1, no place is owned
+by place 1, and the authorities are unchanged. -/
+theorem endUse_write (Y : S3) (hfp : footprint Y.P 1 = [1]) (hI1 : Y.I 1 = .uninit)
+    (hA : (endUseEff (write3Eff Y [1]) 1).A = Y.A)
+    (hD : ∀ q < Y.P.length, partOf Y.P q 1 → Y.D q = [])
+    (hO : ∀ q < Y.P.length, ¬ OwnedIn Y.P 1 q) :
+    endUseEff (write3Eff Y [1]) 1 = Y := by
+  apply s3_ext
+  · rfl
+  · rfl
+  · rfl
+  · intro l
+    show (if l ∈ footprint Y.P 1 then InitSt.uninit else if l ∈ [1] then .init else Y.I l) = Y.I l
+    rw [hfp]
+    by_cases hl : l = 1
+    · subst hl; simp [hI1]
+    · simp [hl]
+  · exact hA
+  · intro q
+    show (if partOf Y.P q 1 then [] else Y.D q) = Y.D q
+    by_cases hp : partOf Y.P q 1
+    · simp only [hp, ↓reduceIte]; exact (hD q hp.1 hp).symm
+    · simp only [hp, ↓reduceIte]
+  · intro q
+    show (Y.dead q || decide (OwnedIn Y.P 1 q)) = Y.dead q
+    by_cases ho : OwnedIn Y.P 1 q
+    · exact absurd ho (hO q ho.lt)
+    · simp [ho]
+  · intro q; rfl
+
+/-- The effect of O12 (§69) at slot place 1 maps the kernel state of `v3` to `k5` (§62, §67). -/
+theorem v3_endUse_eq : endUseEff v3.kern 1 = k5 := by
+  rw [v3_eq]
+  exact endUse_write k5 (by decide) (by decide) (by decide) (by decide) (by decide)
+
+/-- Record on §36 ("These abstractions remain libraries and add no rights to the kernel") and §89
+("do not modify the authority-discipline kernel"), with HandlePool v0.4 annex, D.3 ("Il ne s'agit
+pas de supposer une invocation de O12 autorisée par simple `MetaRight`"). On `v3`, slot place 1 is
+`Init` and `freeSlot(⟨0, 0, 0⟩)` is accepted; its kernel state is `k5`. Two readings of §36 apply
+to this run, and this theorem chooses neither:
+- reachability reading (every kernel state of a library run lies in `Reachable`, the closure of
+  `S3.init` under O1–O16, §57): this run does not violate it, since `k5` is reached by O1–O16
+  alone (`k5_reach`);
+- step-level reading (the kernel effect of every library step is that of a sequence of accepted
+  kernel steps from the same state, `KSeq`): this theorem does not decide it. `freeSlot` applies
+  the effect of O12 at slot place 1 (`freeSlotEff`) while the kernel `endUse` (§69) is rejected
+  both at slot place 1 and at the storage root 0 (`EndUsePre` fails at both); whether another
+  sequence of kernel steps maps `v3.kern` to `k5` is not shown here.
+The theorem concerns this run only: it does not show that every kernel state of a library run lies
+in `Reachable`. -/
+theorem freeSlot_lands_in_reachable :
+    PReachI K0 hst v3 ∧ v3.kern.I 1 = .init ∧ ¬ EndUsePre K0 v3.kern 1 ∧
+    ¬ EndUsePre K0 v3.kern 0 ∧
+    ∃ L', FreeSlotStep K0 0 ⟨0, 0, 0⟩ v3 (.ok L') ∧ L'.kern = k5 ∧ Reachable K0 hst L'.kern := by
+  have hok : FreeSlotStep K0 0 ⟨0, 0, 0⟩ v3 (.ok _) :=
+    .ok (pl := pl4) (sl := ⟨1, 0, true⟩) rfl (by decide) (by decide) rfl (by decide)
+  have heq : (freeSlotEff v3 0 pl4 0 ⟨1, 0, true⟩).kern = k5 := v3_endUse_eq
+  exact ⟨v3_reach, by decide, by decide, by decide, _, hok, heq, heq ▸ k5_reach⟩
+
 /-! ### Nested pools (HandlePool v0.4 annex, D.2, D.3, D.4)
 
 A second run, from `PState.init Witness.nst` under `Examples.K0` (§47, §48). Pool 1 is nested in
 pool 0: its `internal` is derived from the companion of a resolution of pool 0, over the same
-storage. -/
+storage. That derivation is a client access to an administrative companion, whose prevention D.4
+assigns to Spec 9 ("L'encapsulation qui empêche un client d'accéder directement à une compagne
+administrative appartient à la Spec 9"); this model has no such encapsulation. The entry-route run
+below reaches the same refutations without that access. -/
 
 /-- Statics of the nested-pool witnesses (§47; HandlePool v0.4 annex, D.1): place 0 is the storage,
 with two leaf children 1 and 2 (`Uninit`); place 3 is the value of pool 0 (`Init`); place 4 will
@@ -2101,7 +2241,13 @@ def n5 : PState := { n4 with
 def n6 : PState := { n5 with kern := releaseEff n5.kern 7 }
 
 /-- After `derive(6, [1, 2], Modify)` from the companion of pool 0 (§60): authority 8, the
-`internal` of pool 1. -/
+`internal` of pool 1. This is a client kernel step whose source is the administrative companion 6.
+HandlePool v0.4 annex, D.4 assigns its prevention to Spec 9 ("L'encapsulation qui empêche un client
+d'accéder directement à une compagne administrative appartient à la Spec 9"), and this model has no
+such encapsulation. The entry-route witnesses (`entry_freeSlot_no_companion_desc_false`,
+`entry_resolve_modify_exclusive_false` and their whole-storage variants) derive the `internal` of
+the nested pool from an entry authority instead (D.4: "Les dérivations ordinaires issues d'une
+autorité d'entrée restent permises par le noyau"). -/
 def n7 : PState := { n6 with kern := deriveEff n6.kern 6 [1, 2] .modify }
 
 /-- After `store(8, 4)` (§65): the `internal` of pool 1 is held by place 4. -/
@@ -2152,7 +2298,10 @@ recorded in `n10.res`, and its active strict descendant 8, the `internal` of poo
 The defect is in the contract. D.3 exempts "`internal` et ses ancêtres", and 6 is an ancestor of
 the `internal` of pool 1. So D.3's precondition accepts a step that D.3 itself excludes ("En
 particulier, aucune descendante active d'une compagne ne doit subsister sur cette entrée"), and so
-does D.4 (3) (§43, §69). -/
+does D.4 (3) (§43, §69). The run `n10` relies on client access to a companion (`n7`), whose
+prevention D.4 assigns to Spec 9 encapsulation. The refutation does not depend on that access:
+`entry_freeSlot_no_companion_desc_false` and `entry_whole_freeSlot_no_companion_desc_false` refute
+`FreeGuarantee` on runs whose client kernel steps never have a companion as source. -/
 theorem pool_freeSlot_no_companion_desc_false :
     PReachI K0 nst n10 ∧ KInv n10.kern ∧ ¬ FreeGuarantee K0 n10 ∧
       n10.pools[1]? = some plB10 ∧ Exempt n10.kern plB10.internal 6 := by
@@ -2164,7 +2313,11 @@ theorem pool_freeSlot_no_companion_desc_false :
 
 /-- Contract problem (HandlePool v0.4 annex, D.4): `PoolInv` as the contract states it is false on
 the library-reachable state `n10`, because its item 3 is false there
-(`pool_freeSlot_no_companion_desc_false`; §55, §57). -/
+(`pool_freeSlot_no_companion_desc_false`; §55, §57). The run `n10` relies on client access to a
+companion (`n7`), whose prevention D.4 assigns to Spec 9 encapsulation. The refutation does not
+depend on that access: `entry_freeSlot_no_companion_desc_false` and
+`entry_whole_freeSlot_no_companion_desc_false` also refute `PoolInv` on runs whose client kernel
+steps never have a companion as source. -/
 theorem pool_inv_preserved_false : PReachI K0 nst n10 ∧ ¬ PoolInv K0 n10 :=
   ⟨n10_reach, fun h => pool_freeSlot_no_companion_desc_false.2.2.1 h.2.2⟩
 
@@ -2173,7 +2326,12 @@ compagnes sur l'intégralité du stockage du pool"): `ModifyExclusive` is false 
 library-reachable state. On `n10`, the `Modify` companion 6 of pool 0 is active. Yet
 `resolve(1, ⟨1, 0, 0⟩, Modify)` is accepted and creates the `Modify` companion 9 of pool 1, which
 covers the whole storage of pool 0. The kernel accepts the derivation because 9 descends from 6
-through the `internal` 8 of pool 1 (§43, §50, §60). -/
+through the `internal` 8 of pool 1 (§43, §50, §60). The run `n10` relies on client access to a
+companion (`n7`), whose prevention D.4 assigns to Spec 9 encapsulation. The refutation does not
+depend on that access: `entry_resolve_modify_exclusive_false` and
+`entry_whole_resolve_modify_exclusive_false` refute `ModifyExclusive` on runs whose client kernel
+steps never have a companion as source, the second with a new companion over the whole storage of
+pool 0. -/
 theorem pool_resolve_modify_exclusive_false :
     (⟨0, 5, 6, .modify, [(7, 0, 0)]⟩ : Res) ∈ n10.res ∧ n10.kern.Active 6 ∧
       n10.pools[0]? = some plA4 ∧
@@ -2185,6 +2343,270 @@ theorem pool_resolve_modify_exclusive_false :
     .step n10_reach (Arena.KInvB.sound (by decide)).1 (.resolve hok), fun hM => ?_, by decide⟩
   exact absurd (hM ⟨0, 5, 6, .modify, [(7, 0, 0)]⟩ (by decide) ⟨1, 8, 9, .modify, [(10, 0, 0)]⟩
     (by decide) plA4 (by decide) rfl (by decide) (by decide) rfl ⟨1, by decide, by decide⟩)
+    (by decide)
+
+/-! ### Nested pools through an entry authority (HandlePool v0.4 annex, D.2, D.3, D.4)
+
+A third run, from `PState.init Witness.est` under `Examples.K0` (§47, §48), in which no client
+kernel step (`PStep.kernel`) has a companion as source. Pool 1 is nested in slot 0 of pool 0: its
+`internal` is derived from the entry authority of a resolution of pool 0, which D.4 permits ("Les
+dérivations ordinaires issues d'une autorité d'entrée restent permises par le noyau"). -/
+
+/-- Statics of the entry-route witnesses (§47; HandlePool v0.4 annex, D.1): place 0 is the storage
+of pool 0, with children 1 and 2 (its slots); place 1 has two leaf children 3 and 4 (the slots of
+pool 1); places 0 to 4 are `Uninit`; place 5 is the value of pool 0 (`Init`); place 6 will hold the
+`internal` of pool 1; places 7 and 8 are handle destinations. Root authorities 0 to 4 cover places
+0, 5, 6, 7 and 8. -/
+def est : Statics :=
+  [((none, none, 0), false), ((some 0, none, 0), false), ((some 0, none, 0), false),
+    ((some 1, none, 0), false), ((some 1, none, 0), false),
+    ((none, none, 0), true), ((none, none, 0), false), ((none, none, 0), false),
+    ((none, none, 0), false)]
+
+/-- Initial library state of the entry-route witnesses (§47). -/
+def e0 : PState := PState.init est
+
+/-- After `derive(0, footprint of place 0, Modify)` (§60): authority 5, the `internal` of pool 0. -/
+def e1 : PState := { e0 with kern := deriveEff e0.kern 0 (footprint e0.kern.P 0) .modify }
+
+/-- After `store(5, 5)` (§65): the `internal` of pool 0 is held by place 5. -/
+def e2 : PState := { e1 with kern := storeEff e1.kern 5 5 }
+
+/-- After `newPool(0, 5)` (HandlePool v0.4 annex, D.1): pool 0 over storage 0, slots 1 and 2 free,
+of generation 0 (§47). -/
+def e3 : PState := newPoolEff e2 0 5
+
+/-- Pool 0 of the entry-route run after `newPool` (HandlePool v0.4 annex, D.1; §47). -/
+def peA : Pool := ⟨0, 0, 5, [⟨1, 0, false⟩, ⟨2, 0, false⟩]⟩
+
+/-- After `allocSlot(0, 7)` on slot 0 (HandlePool v0.4 annex, D.3): the handle `⟨0, 0, 0⟩` is
+written into place 7 (§67). -/
+def e4 : PState := allocSlotEff e3 0 peA 0 ⟨1, 0, false⟩ 7
+
+/-- Pool 0 of the entry-route run after `allocSlot` (HandlePool v0.4 annex, D.3; §47). -/
+def peA4 : Pool := ⟨0, 0, 5, [⟨1, 0, true⟩, ⟨2, 0, false⟩]⟩
+
+/-- After `resolve(0, ⟨0, 0, 0⟩, Modify)` (HandlePool v0.4 annex, D.2): the `Modify` companion 6
+of pool 0 over the storage, and the entry authority 7 over slot place 1, that is, leaves 3 and 4
+(§60). -/
+def e5 : PState := { e4 with
+  kern := deriveEff (compS e4.kern peA4 .modify) e4.kern.A.length (footprint e4.kern.P 1) .modify
+  res := e4.res ++ [⟨peA4.id, peA4.internal, e4.kern.A.length, .modify,
+    [(e4.kern.A.length + 1, 0, 0)]⟩] }
+
+/-- After `derive(7, [3, 4], Modify)` from the entry authority 7 (§60; HandlePool v0.4 annex,
+D.4): authority 8, the `internal` of pool 1. -/
+def e6 : PState := { e5 with kern := deriveEff e5.kern 7 [3, 4] .modify }
+
+/-- After `store(8, 6)` (§65): the `internal` of pool 1 is held by place 6. -/
+def e7 : PState := { e6 with kern := storeEff e6.kern 8 6 }
+
+/-- After `newPool(1, 8)` (HandlePool v0.4 annex, D.1): pool 1 over storage place 1, the content of
+slot 0 of pool 0 (§47, §56). -/
+def e8 : PState := newPoolEff e7 1 8
+
+/-- Pool 1 of the entry-route run after `newPool` (HandlePool v0.4 annex, D.1; §47). -/
+def peB : Pool := ⟨1, 1, 8, [⟨3, 0, false⟩, ⟨4, 0, false⟩]⟩
+
+/-- After `allocSlot(1, 8)` on slot 0 of pool 1 (HandlePool v0.4 annex, D.3): the handle
+`⟨1, 0, 0⟩` is written into place 8 (§67). -/
+def e9 : PState := allocSlotEff e8 1 peB 0 ⟨3, 0, false⟩ 8
+
+/-- Pool 1 of the entry-route run after `allocSlot` (HandlePool v0.4 annex, D.3; §47). -/
+def peB9 : Pool := ⟨1, 1, 8, [⟨3, 0, true⟩, ⟨4, 0, false⟩]⟩
+
+/-- `e9` is reached by a library run whose steps start from states satisfying `KInv`; its client
+kernel steps derive from authorities 0 and 7 only (§57, §60, §65, §67; HandlePool v0.4 annex,
+D.1–D.4). -/
+theorem e9_reach : PReachI K0 est e9 := by
+  have h1 : PReachI K0 est e1 := .step .init (Arena.KInvB.sound (by decide)).1
+    (.kernel (.derive (Guarded.ok (by decide))))
+  have h2 : PReachI K0 est e2 := .step h1 (Arena.KInvB.sound (by decide)).1
+    (.kernel (.store (Guarded.ok (by decide))))
+  have h3 : PReachI K0 est e3 := .step h2 (Arena.KInvB.sound (by decide)).1
+    (.newPool (others := []) (Guarded.ok (by decide)))
+  have h4 : PReachI K0 est e4 := .step h3 (Arena.KInvB.sound (by decide)).1
+    (.allocSlot (.ok (pl := peA) rfl (by decide) rfl rfl))
+  have r5 : ResolveStep 0 ⟨0, 0, 0⟩ .modify e4 (.ok e5) :=
+    .ok (pl := peA4) (sl := ⟨1, 0, true⟩) rfl (by decide) (by decide) rfl (by decide)
+  have h5 : PReachI K0 est e5 := .step h4 (Arena.KInvB.sound (by decide)).1 (.resolve r5)
+  have h6 : PReachI K0 est e6 := .step h5 (Arena.KInvB.sound (by decide)).1
+    (.kernel (.derive (Guarded.ok (by decide))))
+  have h7 : PReachI K0 est e7 := .step h6 (Arena.KInvB.sound (by decide)).1
+    (.kernel (.store (Guarded.ok (by decide))))
+  have h8 : PReachI K0 est e8 := .step h7 (Arena.KInvB.sound (by decide)).1
+    (.newPool (others := []) (Guarded.ok (by decide)))
+  exact .step h8 (Arena.KInvB.sound (by decide)).1
+    (.allocSlot (.ok (pl := peB) rfl (by decide) rfl rfl))
+
+/-- Shape of `e9` (HandlePool v0.4 annex, D.2, D.4): the resolution of pool 0, with companion 6 and
+entry authority 7, is recorded; the origin of the `internal` 8 of pool 1 is the entry authority 7,
+not a companion; 6, 7 and 8 are active, and `KInv` holds (§42, §57). -/
+theorem e9_shape :
+    (⟨0, 5, 6, .modify, [(7, 0, 0)]⟩ : Res) ∈ e9.res ∧ e9.kern.org 8 = some 7 ∧
+    e9.kern.Active 6 ∧ e9.kern.Active 7 ∧ e9.kern.Active 8 ∧ KInv e9.kern :=
+  ⟨by decide, by decide, by decide, by decide, by decide, (Arena.KInvB.sound (by decide)).1⟩
+
+/-- Contract problem (HandlePool v0.4 annex, D.3 and D.4, item 3), without client access to a
+companion: `FreeGuarantee` and `PoolInv` are false on the library-reachable state `e9`, which
+satisfies `KInv`. `freeSlot(⟨1, 0, 0⟩)` of pool 1 is accepted on slot place 3, while the entry
+authority 7, an active strict descendant of companion 6 of pool 0, covers place 3. D.3 exempts
+"`internal` et ses ancêtres", and 7 is an ancestor of the `internal` 8 of pool 1 (§43, §69). -/
+theorem entry_freeSlot_no_companion_desc_false :
+    PReachI K0 est e9 ∧ KInv e9.kern ∧ ¬ FreeGuarantee K0 e9 ∧ ¬ PoolInv K0 e9 := by
+  have hG : ¬ FreeGuarantee K0 e9 := fun hG =>
+    hG 1 ⟨1, 0, 0⟩ _
+      (.ok (pl := peB9) (sl := ⟨3, 0, true⟩) rfl (by decide) (by decide) rfl (by decide))
+      peB9 ⟨3, 0, true⟩ (by decide) (by decide) ⟨0, 5, 6, .modify, [(7, 0, 0)]⟩ (by decide) 7
+      (by decide) (by decide) 3 (by decide) (by decide)
+  exact ⟨e9_reach, (Arena.KInvB.sound (by decide)).1, hG, fun h => hG h.2.2⟩
+
+/-- Contract problem (HandlePool v0.4 annex, D.2: "Une compagne `Modify` active bloque les nouvelles
+compagnes sur l'intégralité du stockage du pool"), without client access to a companion: on `e9`,
+the `Modify` companion 6 of pool 0 is active, yet `resolve(1, ⟨1, 0, 0⟩, Modify)` is accepted and
+creates the `Modify` companion 9 of pool 1, which covers place 3 of the storage of pool 0; the
+reached state violates `ModifyExclusive` (§43, §50, §60). -/
+theorem entry_resolve_modify_exclusive_false :
+    ∃ L', ResolveStep 1 ⟨1, 0, 0⟩ .modify e9 (.ok L') ∧ PReachI K0 est L' ∧
+      ¬ ModifyExclusive L' := by
+  have hok : ResolveStep 1 ⟨1, 0, 0⟩ .modify e9 (.ok _) :=
+    .ok (pl := peB9) (sl := ⟨3, 0, true⟩) rfl (by decide) (by decide) rfl (by decide)
+  refine ⟨_, hok, .step e9_reach (Arena.KInvB.sound (by decide)).1 (.resolve hok), fun hM => ?_⟩
+  exact absurd (hM ⟨0, 5, 6, .modify, [(7, 0, 0)]⟩ (by decide) ⟨1, 8, 9, .modify, [(10, 0, 0)]⟩
+    (by decide) peA4 (by decide) rfl (by decide) (by decide) rfl ⟨3, by decide, by decide⟩)
+    (by decide)
+
+/-! ### Nested pools through an entry authority over the whole storage (HandlePool v0.4 annex,
+D.2, D.3, D.4)
+
+A fourth run, from `PState.init Witness.gst` under `Examples.K0` (§47, §48). Pool 0 has a single
+slot whose place covers its whole storage, so the entry authority of its resolution covers that
+storage. The `internal` of pool 1 is derived from that entry authority; no client kernel step has a
+companion as source. -/
+
+/-- Statics of the whole-storage entry-route witnesses (§47; HandlePool v0.4 annex, D.1): place 0 is
+the storage of pool 0, with one child 1 (its only slot); place 1 has two leaf children 2 and 3 (the
+slots of pool 1); places 0 to 3 are `Uninit`; place 4 is the value of pool 0 (`Init`); place 5 will
+hold the `internal` of pool 1; places 6 and 7 are handle destinations. Root authorities 0 to 4
+cover places 0, 4, 5, 6 and 7. -/
+def gst : Statics :=
+  [((none, none, 0), false), ((some 0, none, 0), false),
+    ((some 1, none, 0), false), ((some 1, none, 0), false),
+    ((none, none, 0), true), ((none, none, 0), false), ((none, none, 0), false),
+    ((none, none, 0), false)]
+
+/-- Initial library state of the whole-storage entry-route witnesses (§47). -/
+def g0 : PState := PState.init gst
+
+/-- After `derive(0, footprint of place 0, Modify)` (§60): authority 5, the `internal` of pool 0. -/
+def g1 : PState := { g0 with kern := deriveEff g0.kern 0 (footprint g0.kern.P 0) .modify }
+
+/-- After `store(5, 4)` (§65): the `internal` of pool 0 is held by place 4. -/
+def g2 : PState := { g1 with kern := storeEff g1.kern 5 4 }
+
+/-- After `newPool(0, 5)` (HandlePool v0.4 annex, D.1): pool 0 over storage 0, with the single free
+slot 1, of generation 0 (§47). -/
+def g3 : PState := newPoolEff g2 0 5
+
+/-- Pool 0 of the whole-storage run after `newPool` (HandlePool v0.4 annex, D.1; §47). -/
+def pgA : Pool := ⟨0, 0, 5, [⟨1, 0, false⟩]⟩
+
+/-- After `allocSlot(0, 6)` on slot 0 (HandlePool v0.4 annex, D.3): the handle `⟨0, 0, 0⟩` is
+written into place 6 (§67). -/
+def g4 : PState := allocSlotEff g3 0 pgA 0 ⟨1, 0, false⟩ 6
+
+/-- Pool 0 of the whole-storage run after `allocSlot` (HandlePool v0.4 annex, D.3; §47). -/
+def pgA4 : Pool := ⟨0, 0, 5, [⟨1, 0, true⟩]⟩
+
+/-- After `resolve(0, ⟨0, 0, 0⟩, Modify)` (HandlePool v0.4 annex, D.2): the `Modify` companion 6
+of pool 0 over the storage, and the entry authority 7 over slot place 1, which covers the whole
+storage (§60). -/
+def g5 : PState := { g4 with
+  kern := deriveEff (compS g4.kern pgA4 .modify) g4.kern.A.length (footprint g4.kern.P 1) .modify
+  res := g4.res ++ [⟨pgA4.id, pgA4.internal, g4.kern.A.length, .modify,
+    [(g4.kern.A.length + 1, 0, 0)]⟩] }
+
+/-- After `derive(7, [2, 3], Modify)` from the entry authority 7 (§60; HandlePool v0.4 annex,
+D.4): authority 8, the `internal` of pool 1. -/
+def g6 : PState := { g5 with kern := deriveEff g5.kern 7 [2, 3] .modify }
+
+/-- After `store(8, 5)` (§65): the `internal` of pool 1 is held by place 5. -/
+def g7 : PState := { g6 with kern := storeEff g6.kern 8 5 }
+
+/-- After `newPool(1, 8)` (HandlePool v0.4 annex, D.1): pool 1 over storage place 1, the content of
+the only slot of pool 0 (§47, §56). -/
+def g8 : PState := newPoolEff g7 1 8
+
+/-- Pool 1 of the whole-storage run after `newPool` (HandlePool v0.4 annex, D.1; §47). -/
+def pgB : Pool := ⟨1, 1, 8, [⟨2, 0, false⟩, ⟨3, 0, false⟩]⟩
+
+/-- After `allocSlot(1, 7)` on slot 0 of pool 1 (HandlePool v0.4 annex, D.3): the handle
+`⟨1, 0, 0⟩` is written into place 7 (§67). -/
+def g9 : PState := allocSlotEff g8 1 pgB 0 ⟨2, 0, false⟩ 7
+
+/-- Pool 1 of the whole-storage run after `allocSlot` (HandlePool v0.4 annex, D.3; §47). -/
+def pgB9 : Pool := ⟨1, 1, 8, [⟨2, 0, true⟩, ⟨3, 0, false⟩]⟩
+
+/-- `g9` is reached by a library run whose steps start from states satisfying `KInv`; its client
+kernel steps derive from authorities 0 and 7 only (§57, §60, §65, §67; HandlePool v0.4 annex,
+D.1–D.4). -/
+theorem g9_reach : PReachI K0 gst g9 := by
+  have h1 : PReachI K0 gst g1 := .step .init (Arena.KInvB.sound (by decide)).1
+    (.kernel (.derive (Guarded.ok (by decide))))
+  have h2 : PReachI K0 gst g2 := .step h1 (Arena.KInvB.sound (by decide)).1
+    (.kernel (.store (Guarded.ok (by decide))))
+  have h3 : PReachI K0 gst g3 := .step h2 (Arena.KInvB.sound (by decide)).1
+    (.newPool (others := []) (Guarded.ok (by decide)))
+  have h4 : PReachI K0 gst g4 := .step h3 (Arena.KInvB.sound (by decide)).1
+    (.allocSlot (.ok (pl := pgA) rfl (by decide) rfl rfl))
+  have r5 : ResolveStep 0 ⟨0, 0, 0⟩ .modify g4 (.ok g5) :=
+    .ok (pl := pgA4) (sl := ⟨1, 0, true⟩) rfl (by decide) (by decide) rfl (by decide)
+  have h5 : PReachI K0 gst g5 := .step h4 (Arena.KInvB.sound (by decide)).1 (.resolve r5)
+  have h6 : PReachI K0 gst g6 := .step h5 (Arena.KInvB.sound (by decide)).1
+    (.kernel (.derive (Guarded.ok (by decide))))
+  have h7 : PReachI K0 gst g7 := .step h6 (Arena.KInvB.sound (by decide)).1
+    (.kernel (.store (Guarded.ok (by decide))))
+  have h8 : PReachI K0 gst g8 := .step h7 (Arena.KInvB.sound (by decide)).1
+    (.newPool (others := []) (Guarded.ok (by decide)))
+  exact .step h8 (Arena.KInvB.sound (by decide)).1
+    (.allocSlot (.ok (pl := pgB) rfl (by decide) rfl rfl))
+
+/-- Shape of `g9` (HandlePool v0.4 annex, D.2, D.4): the origin of the `internal` 8 of pool 1 is the
+entry authority 7, whose origin is companion 6; the resolution of pool 0 is recorded and 6 is
+active (§42). -/
+theorem g9_shape : g9.kern.org 8 = some 7 ∧ g9.kern.org 7 = some 6 ∧
+    (⟨0, 5, 6, .modify, [(7, 0, 0)]⟩ : Res) ∈ g9.res ∧ g9.kern.Active 6 := by decide
+
+/-- Contract problem (HandlePool v0.4 annex, D.3 and D.4, item 3), without client access to a
+companion: `FreeGuarantee` and `PoolInv` are false on `g9` (`g9_reach`). `freeSlot(⟨1, 0, 0⟩)` of
+pool 1 is accepted on slot place 2, while the entry authority 7, an active strict descendant of
+companion 6 of pool 0, covers place 2; 7 is an ancestor of the `internal` 8 of pool 1, exempted by
+D.3 (§43, §69). -/
+theorem entry_whole_freeSlot_no_companion_desc_false :
+    ¬ FreeGuarantee K0 g9 ∧ ¬ PoolInv K0 g9 := by
+  have hG : ¬ FreeGuarantee K0 g9 := fun hG =>
+    hG 1 ⟨1, 0, 0⟩ _
+      (.ok (pl := pgB9) (sl := ⟨2, 0, true⟩) rfl (by decide) (by decide) rfl (by decide))
+      pgB9 ⟨2, 0, true⟩ (by decide) (by decide) ⟨0, 5, 6, .modify, [(7, 0, 0)]⟩ (by decide) 7
+      (by decide) (by decide) 2 (by decide) (by decide)
+  exact ⟨hG, fun h => hG h.2.2⟩
+
+/-- Contract problem (HandlePool v0.4 annex, D.2: "Une compagne `Modify` active bloque les nouvelles
+compagnes sur l'intégralité du stockage du pool"), without client access to a companion and in its
+whole-storage reading: on `g9`, the `Modify` companion 6 of pool 0 is active, yet
+`resolve(1, ⟨1, 0, 0⟩, Modify)` is accepted and creates the `Modify` companion 9 of pool 1, whose
+footprint is the whole storage of pool 0; the reached state violates `ModifyExclusive` while 6
+stays active (§43, §50, §60). -/
+theorem entry_whole_resolve_modify_exclusive_false :
+    ∃ L', ResolveStep 1 ⟨1, 0, 0⟩ .modify g9 (.ok L') ∧ PReachI K0 gst L' ∧
+      ¬ ModifyExclusive L' ∧ L'.kern.afp 9 = footprint L'.kern.P pgA4.storage ∧
+      L'.kern.Active 6 := by
+  have hok : ResolveStep 1 ⟨1, 0, 0⟩ .modify g9 (.ok _) :=
+    .ok (pl := pgB9) (sl := ⟨2, 0, true⟩) rfl (by decide) (by decide) rfl (by decide)
+  refine ⟨_, hok, .step g9_reach (Arena.KInvB.sound (by decide)).1 (.resolve hok), fun hM => ?_,
+    by decide, by decide⟩
+  exact absurd (hM ⟨0, 5, 6, .modify, [(7, 0, 0)]⟩ (by decide) ⟨1, 8, 9, .modify, [(10, 0, 0)]⟩
+    (by decide) pgA4 (by decide) rfl (by decide) (by decide) rfl ⟨2, by decide, by decide⟩)
     (by decide)
 
 end Witness
