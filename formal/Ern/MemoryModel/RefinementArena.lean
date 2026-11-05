@@ -309,7 +309,8 @@ theorem storeOps_noDealloc {Ty : Type} (pe : PtrEnc) (s2 : Machine.State) (L : L
 /-! ## The derived operations (§76–§78, §82.2–§82.5, §82.7) -/
 
 /-- R1, R2, R4, R6 for `newArena` (§76 `ok` effect, §82.7): no kernel step and no raw operation
-(metadata only; no read, no write); `Repr` and `LiveCover` hold after it as before it. -/
+(no read, no write; the registry update has no machine realization, reading recorded at
+`arena_realized`); `Repr` and `LiveCover` hold after it as before it. -/
 theorem arena_newArena {Ty : Type} {π : Params Ty} {others : List (List Nat)} {st i : Nat}
     {L L' : LState} {s2 : Machine.State} (h : NewArenaStep others st i L (.ok L')) :
     kexp (.newArena others st i) L = [] ∧ lopsOf π (.newArena others st i) L s2 = [] ∧
@@ -731,13 +732,21 @@ theorem reset_no_access_issued {k : K} {L L₁ L₂ : LState} {i : Nat} {E : Are
   obtain ⟨l, hl⟩ := List.exists_mem_of_ne_nil _ hne
   exact reset_no_access hE hr hp hj ⟨l, by simp [S3.afp, hy, hf, hl], hinv.1.issuedIn e he l hl⟩
 
-/-- §82.7 for translated library runs: the derived operations and their metadata, outside `S₃`,
-are realized by O1–O16 without reintroducing access after invalidation. The run is a labelled
-library run from the initial library state; its memory state is reached from the initial memory
-state by the raw operations of its kernel steps (the machine trace of the run is the trace of its
-kernel steps); and after every legal `reset` in the run, no kernel step of the continuation uses
-an authority derived from `internal` that covered a leaf of the administered storage, so no raw
-operation of the continuation is an access through it. -/
+/-- §82.7 for translated library runs: the kernel steps of the derived operations are realized
+by O1–O16 without reintroducing access after invalidation. The run is a labelled library run from
+the initial library state; its memory state is reached from the initial memory state by the raw
+operations of its kernel steps (the machine trace of the run is the trace of its kernel steps);
+and after every legal `reset` in the run, no kernel step of the continuation uses an authority
+derived from `internal` that covered a leaf of the administered storage, so no raw operation of
+the continuation is an access through it.
+
+The metadata (`available`, `issued`) is not realized: it is library state with no machine
+realization in this model, so the "metadata" part of §82.7 is not covered. This is a reading,
+recorded, not settled by the spec: §46 puts the entries in the library's abstract state, separate
+from `S₃`, and §81 leaves the representation of library metadata to Spec 11; §36, §71.2 and §76.5
+(with the last paragraph of §77) instead speak of metadata kept in storage (`SharedMutable`
+storage updated by `writeShared`, provider metadata, the leaves of the arena value), which would
+require raw writes realizing each metadata update. -/
 theorem arena_realized {Ty : Type} {k : K} {C : Nat → Nat → Prop} {ObR : Machine.ReadOblSpec Ty}
     {ObW : Machine.WriteOblSpec Ty} {statics : Statics} {π : Params Ty} {L : LState}
     {s2 : Machine.State} (h : LSimRun k C ObR ObW statics π L s2) :

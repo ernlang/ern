@@ -2380,6 +2380,60 @@ theorem pinned_address_stable {Ty : Type} {k : K} {π : Params Ty} {op : KOp}
   | unpin => exact hnod fun _ h => nomatch h
   | endUse => exact hnod fun _ h => nomatch h
 
+/-- A write keeps the base of every allocation (§16 ¶3, §13 ¶3: no allocation moves). -/
+theorem baseOf_write (s : Machine.State) (ac : Machine.Access) (w : Nat → UInt8 × Option Nat)
+    (i : Nat) : baseOf (s.write ac w) i = baseOf s i := by
+  simp only [baseOf, write_allocs]
+  split <;> cases s.allocs i <;> rfl
+
+/-- The reads of the copies (§63 effect, §82.3): every read of `copyOps` is the access, in the
+memory state before the copies, to the range of the first leaf of one of the pairs. -/
+theorem copyOps_read {Ty : Type} (L : Layout) (ty : Nat → Ty) :
+    ∀ (s2 : Machine.State) (ps : List (Nat × Nat)) {ac : Machine.Access} {t : Ty},
+      Machine.Op.read ac t ∈ copyOps L ty s2 ps → ∃ q ∈ ps, ac = leafAcc s2 L .read q.1
+  | _, [], _, _, h => nomatch h
+  | s2, (l, l') :: ps, ac, t, h => by
+    rcases List.mem_cons.1 h with h | h
+    · cases h; exact ⟨(l, l'), List.mem_cons_self .., rfl⟩
+    rcases List.mem_cons.1 h with h | h
+    · cases h
+    · obtain ⟨q, hq, rfl⟩ := copyOps_read L ty _ ps h
+      exact ⟨q, List.mem_cons_of_mem _ hq, by simp only [leafAcc, leafAddr, baseOf_write]⟩
+
+/-- The move half of §82.6 on the kernel step (§63.5, §87, §35 ¶2): an `ok` `transfer` moves no
+pinned in-place leaf. A leaf pinned dynamically or by `K.Pinned` before the step is not an
+in-place leaf of the source (the leaves that the step moves), and its initialization state does
+not become `Moved`. -/
+theorem transfer_pinned_not_moved {k : K} {s3 s3' : S3} {src dst l : Nat}
+    (h : TransferStep k src dst s3 (.ok s3')) (hpin : s3.pin l = true ∨ k.Pinned l) :
+    l ∉ footprint s3.P src ∧ (s3'.I l = .moved → s3.I l = .moved) := by
+  obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
+  have hns : l ∉ footprint s3.P src := fun hl => by
+    obtain ⟨h1, h2⟩ := hpre.notPinned l hl
+    rcases hpin with hp | hp
+    · rw [h2] at hp; cases hp
+    · exact h1 hp
+  refine ⟨hns, fun hm => ?_⟩
+  simp only [transferEff] at hm
+  by_cases hd : l ∈ footprint s3.P dst
+  · simp [hd] at hm
+  · simpa [hd, hns] using hm
+
+/-- The move half of §82.6 on the realization (§63.5, §87, §82.3): every read among the raw
+operations realizing an `ok` `transfer`, by which a value is copied into the destination, is the
+access to the range of an in-place leaf of the source that is pinned neither dynamically nor by
+`K.Pinned`. -/
+theorem transfer_reads_unpinned {Ty : Type} {k : K} {π : Params Ty} {s3 s3' : S3}
+    {s2 : Machine.State} {src dst : Nat} (h : TransferStep k src dst s3 (.ok s3'))
+    {ac : Machine.Access} {t : Ty}
+    (hr : Machine.Op.read ac t ∈ opsOf π (.transfer src dst) s3 s2) :
+    ∃ l ∈ footprint s3.P src, (s3.pin l = false ∧ ¬ k.Pinned l) ∧
+      ac = leafAcc s2 π.L .read l := by
+  obtain ⟨⟨l, l'⟩, hq, rfl⟩ := copyOps_read π.L π.ty s2 _ hr
+  obtain ⟨hl, -⟩ := mem_transferPairs.1 hq
+  obtain ⟨h1, h2⟩ := (Guarded.ok_iff.1 h).1.notPinned l hl
+  exact ⟨l, hl, ⟨h2, h1⟩, rfl⟩
+
 /-! ## Decidable sufficient conditions for `WF3` and `NoDangling` (§49, §54)
 
 Bounded forms of the clauses, checked by evaluation on concrete states of a run. Only the direction
@@ -2908,6 +2962,50 @@ theorem H16 :
     (∀ i < 8, (bytesOf fin16.2 π16.L 2 i).2 = some (π16.L 3).alloc) :=
   ⟨sim_of (piOf_ok _ []) (by decide) (by decide) (by decide) run16_ok, by decide, by decide,
     by decide, by decide, by decide⟩
+
+/-! ### A nonempty region whose leaves all have size zero (§82.3, §71.1)
+
+The address rules recorded for §82.3 (empty region: base of the allocation of the effective
+anchor; otherwise: lowest address among the leaves of nonzero size) give no address to a nonempty
+region whose leaves all have size zero. The run below reaches such a region with a layout
+satisfying `LayoutWF`. -/
+
+/-- Frame 1 with locals 0, 1, 2; storage 3 of zero physical size (§71.1), owned by 1, allocated
+from provider 0; `split(3, [[3]])` gives authority 4 on the nonempty region `[3]` (§61). -/
+def opsU : List KOp :=
+  [.enter [] [(none, 0), (none, 0), (none, 0)], .write 0 [0] wv, .alloc 0 1 [(none, 0)],
+   .split 3 [[3]]]
+
+/-- Parameters of the run, fixed once from its final places, storage 3 of size zero (§71.1,
+§82). -/
+def πU : Params Unit := piOf (kernelRun (S3.init []) opsU).P [3]
+
+/-- Final states of the run (§82). -/
+def finU : S3 × Machine.State :=
+  (srun K0 (· = ·) obR obW πU (sinit [] πU) opsU).getD (sinit [] πU)
+
+/-- Every step of the run passes its checks (§49, §54, §60–§75, §82). -/
+theorem runU_ok : (srun K0 (· = ·) obR obW πU (sinit [] πU) opsU).isSome = true := by decide
+
+/-- **A reachable `store` outside the address rules** (gap of the address rules recorded for
+§82.3; §71.1, §65). The run is translated with `Repr` (so the layout satisfies `LayoutWF`), its
+final kernel state is reachable and satisfies `WF3` and `NoDangling`, and `store(4, 2)` is an `ok`
+kernel step from it (§65); `split` then `store` is how the derived `issue` is realized (Part
+XIV). The region of 4 is `[3]`,
+nonempty, and its only leaf has size zero: `PtrDecided` fails, `ptrAddr` is undefined, and the
+obligations of the step (`StepObl`) do not hold, so neither `r6_store` nor `SimRun` covers this
+step (`arena_issue` and `LSimRun` require the same `PtrDecided` for the `store` of an `issue`). -/
+theorem store_zero_size_undecided :
+    ((∃ os, Machine.Exec (· = ·) obR obW os Machine.State.empty finU.2) ∧
+      Repr πU.L πU.rtok finU.1 finU.2 ∧ Access.Reachable K0 [] finU.1) ∧
+    LayoutWF πU.L finU.1 finU.2 ∧ ParamsOK (· = ·) πU ∧ WF3 finU.1 ∧ NoDangling finU.1 ∧
+    StoreStep 4 2 finU.1 (.ok (storeEff finU.1 4 2)) ∧ finU.1.afp 4 = [3] ∧ (πU.L 3).len = 0 ∧
+    ¬ PtrDecided πU.L finU.1 4 ∧ ptrAddr finU.2 πU.L finU.1 4 = none ∧
+    ¬ StepObl K0 (· = ·) obR obW πU (.store 4 2) finU.1 finU.2 := by
+  have h := sim_of (piOf_ok _ [3]) (by decide) (by decide) (by decide) runU_ok
+  have hpd : ¬ PtrDecided πU.L finU.1 4 := by decide
+  exact ⟨h, h.2.1.layout, piOf_ok _ [3], wf3_of_check (by decide), noDangling_of_check (by decide),
+    .ok (by decide), by decide, by decide, hpd, by decide, fun hob => hpd hob.2⟩
 
 end Runs
 
