@@ -1632,9 +1632,15 @@ theorem lInv_stepNG {k : K} {L L' : LState} (h : LStepNG k L L') (hw : WF3 L.ker
   | issue hs => exact lInv_issue hs hi
   | reset hs => exact lInv_reset hs hi
 
-/-- `ArenaInv` holds for every live entry of every library state reachable with or without the
-guard of §56 (§55), given the kernel invariants `WF3` and `NoDangling` on kernel-reachable states
-(§57). -/
+/-- Conditional `ArenaInv` (§55) on library runs with or without the guard of §56: every live
+entry of a reachable library state satisfies `EntryInv`, **provided** every kernel-reachable state
+satisfies `WF3` and `NoDangling` (`hK`). `hK` is part of the main-invariant claim of §57, which is
+false as stated (`Access.reachable_kinv_false`, the §63 ownership cycle). At `(K0, st)`, the
+instance of every witness of this file, both `hK` (`Witness.lReach_inv_hyp_false`) and the
+conclusion (`Witness.lReach_inv_conclusion_false`, `Witness.arenaInv_broken_by_transfer`) are
+false. This theorem is therefore a conditional, not a proof that `ArenaInv` is preserved on
+library runs; the unconditional content is in the per-step lemmas (`lInv_kernel`,
+`lInv_newArena`, `lInv_issue`, `lInv_reset`, `lInv_stepNG`). -/
 theorem lReachNG_inv {k : K} {statics : Statics}
     (hK : ∀ s, Reachable k statics s → WF3 s ∧ NoDangling s) {L : LState}
     (h : LReachNG k statics L) : LInv L := by
@@ -1642,8 +1648,12 @@ theorem lReachNG_inv {k : K} {statics : Statics}
   | init => intro E hE; cases hE
   | step hL hs ih => exact lInv_stepNG hs (hK _ hL.reachable).1 (hK _ (hL.step hs).reachable).2 ih
 
-/-- `ArenaInv` holds for every live entry of every library-reachable state (§55), given the
-kernel invariants `WF3` and `NoDangling` on kernel-reachable states (§57). -/
+/-- Conditional `ArenaInv` (§55) on library-reachable states: every live entry satisfies
+`ArenaInv`, **provided** every kernel-reachable state satisfies `WF3` and `NoDangling` (`hK`, part
+of the §57 claim, false as stated: `Access.reachable_kinv_false`). At `(K0, st)` both `hK` and
+the conclusion are false (`Witness.lReach_inv_hyp_false`, `Witness.lReach_inv_conclusion_false`):
+an accepted `transfer` (§63) makes the storage of a live arena unusable
+(`Witness.arenaInv_broken_by_transfer`). A conditional only (see `lReachNG_inv`). -/
 theorem lReach_inv {k : K} {statics : Statics}
     (hK : ∀ s, Reachable k statics s → WF3 s ∧ NoDangling s) {L : LState}
     (h : LReach k statics L) : ∀ E ∈ L.arenas, Live L.kern E → ArenaInv L.kern E :=
@@ -2225,12 +2235,13 @@ theorem KInvB.sound {s : S3} (h : KInvB s) : KInv s ∧ KAux s := by
     | none => rw [hp] at h'; exact h'.elim
     | some pr => rw [hp] at h'; exact ⟨pr, rfl, h'⟩
 
-/-! ## Witnesses on library-reachable states (§78.3, §86)
+/-! ## Witnesses on library-reachable states (§78.3, §86, §55, §63)
 
 Runs from `LState.init Examples.st` (§47: static leaves 0 `Init`, 1 and 2 `Uninit`, with root
-authorities 0, 1 and 2 held by frame 0) under the test contract `Examples.K0`. Leaf 0 is the arena
-value, leaf 1 the storage, leaf 2 the destination. Every precondition is decided by `decide`;
-`KInv ∧ KAux` of the final states is decided through `KInvB`. -/
+authorities 0, 1 and 2 held by frame 0) under the test contract `Examples.K0`. In the runs for
+§78.3 and §86, leaf 0 is the arena value, leaf 1 the storage, leaf 2 the destination. Every
+precondition is decided by `decide`; `KInv ∧ KAux` of the final states is decided through
+`KInvB`. -/
 
 namespace Witness
 
@@ -2343,6 +2354,70 @@ theorem reissue_reads_former_value :
   have hk := KInvB.sound (s := r8.kern) (by decide)
   exact ⟨h8, hk.1, hk.2, by decide, by decide, by decide, by decide, by decide, by decide,
     by decide, .ok (by decide)⟩
+
+/-! ### `ArenaInv` broken by an accepted `transfer` (§55, §57, §63)
+
+A run from the same initial state in which the storage of a live arena is the destination of an
+accepted `transfer` that closes an ownership cycle (§63 `ok` effect), the recorded §63 defect
+(`Access.reachable_kinv_false`). -/
+
+/-- `alloc(0, 0, [leaf])`: place 3, owned by the static place 0, root authority 3 (§71). -/
+def t1 : S3 := allocEff (S3.init st) 0 [(none, 0)]
+/-- `alloc(0, 3, [leaf])`: place 4, owned by place 3, root authority 4 (§71). -/
+def t2 : S3 := allocEff t1 3 [(none, 0)]
+/-- `alloc(0, 3, [leaf])`: place 5, owned by place 3, root authority 5 (§71). -/
+def t3 : S3 := allocEff t2 3 [(none, 0)]
+/-- `derive(4, [4], Modify)`: authority 6 on the leaf of place 4, held by frame 0 (§60). -/
+def t4 : S3 := deriveEff t3 4 [4] .modify
+/-- `store(6, 5)`: authority 6 becomes `internal`, held by the arena value 5 (§65). -/
+def t5 : LState := ⟨storeEff t4 6 5, []⟩
+/-- `newArena(4, 6)`: storage 4, `internal` 6, arena value 5 (§76). -/
+def t6 : LState := newArenaEff t5 4 6
+/-- `transfer(0, 4)`: the value of place 0 moves into the storage 4; place 3, owned by 0, becomes
+owned by 4, itself owned by 3 (§63 `ok` effect). -/
+def t7 : LState := ⟨transferEff t6.kern 0 4, t6.arenas⟩
+/-- The entry registered by `newArena(4, 6)` (§46, §76). -/
+def tE : ArenaEntry := ⟨4, 6, [4], []⟩
+
+/-- **`ArenaInv` fails on a library-reachable state** (spec problem; §55 item 1, §57, §63). From a
+library-reachable state satisfying `KInv ∧ KAux`, whose only entry is live with usable storage 4,
+`transfer(0, 4)` is accepted (§63) and closes the ownership cycle 3 ↔ 4. The entry stays live
+(`internal` 6 is active, §46), but its storage is no longer usable: §55 item 1 ("`storage`
+designates an existing, usable place") fails. No library step of the run is outside Part XIV. -/
+theorem arenaInv_broken_by_transfer :
+    LReach K0 st t7 ∧ KInv t6.kern ∧ KAux t6.kern ∧ t6.arenas = [tE] ∧ t6.kern.Usable 4 ∧
+    TransferStep K0 0 4 t6.kern (.ok t7.kern) ∧ t7.arenas = [tE] ∧ Live t7.kern tE ∧
+    ¬ t7.kern.Usable tE.storage ∧ ¬ ArenaInv t7.kern tE := by
+  have h1 : LReach K0 st ⟨t1, []⟩ := .step .init
+    (.kernel (KStep.alloc (pr := 0) (ow := 0) (ls := [(none, 0)])
+      (AllocStep.ok (by decide) trivial)))
+  have h2 : LReach K0 st ⟨t2, []⟩ := .step h1
+    (.kernel (KStep.alloc (pr := 0) (ow := 3) (ls := [(none, 0)])
+      (AllocStep.ok (by decide) trivial)))
+  have h3 : LReach K0 st ⟨t3, []⟩ := .step h2
+    (.kernel (KStep.alloc (pr := 0) (ow := 3) (ls := [(none, 0)])
+      (AllocStep.ok (by decide) trivial)))
+  have h4 : LReach K0 st ⟨t4, []⟩ := .step h3 (.kernel (.derive (.ok (by decide))))
+  have h5 : LReach K0 st t5 := .step h4 (.kernel (.store (.ok (by decide))))
+  have h6 : LReach K0 st t6 := .step h5 (.newArena (others := []) (.ok (by decide)))
+  have ht : TransferStep K0 0 4 t6.kern (.ok t7.kern) := .ok (by decide)
+  have hk := KInvB.sound (s := t6.kern) (by decide)
+  have hu : ¬ t7.kern.Usable tE.storage := by decide
+  exact ⟨.step h6 (.kernel (.transfer ht)), hk.1, hk.2, by decide, by decide, ht, by decide,
+    by decide, hu, fun h => hu h.storageUsable⟩
+
+/-- The conclusion of `lReach_inv` is false at `(K0, st)` (§55, §63): some live entry of a
+library-reachable state does not satisfy `ArenaInv` (`arenaInv_broken_by_transfer`). -/
+theorem lReach_inv_conclusion_false :
+    ¬ ∀ L, LReach K0 st L → ∀ E ∈ L.arenas, Live L.kern E → ArenaInv L.kern E := fun h =>
+  let ⟨hr, _, _, _, _, _, ha, hl, _, hn⟩ := arenaInv_broken_by_transfer
+  hn (h t7 hr tE (by rw [ha]; exact List.mem_singleton_self _) hl)
+
+/-- The hypothesis of `lReach_inv` and `lReachNG_inv` is false at `(K0, st)` (§57 as stated,
+§63): some kernel-reachable state violates `WF3` or `NoDangling`; otherwise `lReach_inv` would
+contradict `lReach_inv_conclusion_false`. -/
+theorem lReach_inv_hyp_false : ¬ ∀ s, Reachable K0 st s → WF3 s ∧ NoDangling s :=
+  fun hK => lReach_inv_conclusion_false fun _ h => lReach_inv hK h
 
 end Witness
 
