@@ -689,7 +689,7 @@ def endUseEff (s : S3) (p : Nat) : S3 := cleanup (endUseS s p)
 /-- Leaf whose use ends with the value at `p` (§69.2, §69.4): a leaf of `p` or of storage that
 stops being usable. -/
 def EndingLeaf (s : S3) (p l : Nat) : Prop :=
-  l ∈ footprint s.P p ∨ (s.Usable l ∧ ¬ (endUseS s p).Usable l)
+  l ∈ footprint s.P p ∨ (isLeaf s.P l ∧ s.Usable l ∧ ¬ (endUseS s p).Usable l)
 
 /-- Decidability of `EndingLeaf` (§69). -/
 instance (s : S3) (p l : Nat) : Decidable (EndingLeaf s p l) := by
@@ -792,7 +792,7 @@ def freeEff (s : S3) (p : Nat) : S3 := cleanup (freeS s p)
 /-- Leaf of the released unit (§70.3, §70.4): a leaf of `p` or of storage that stops being
 usable. -/
 def FreedLeaf (s : S3) (p l : Nat) : Prop :=
-  l ∈ footprint s.P p ∨ (s.Usable l ∧ ¬ (freeS s p).Usable l)
+  l ∈ footprint s.P p ∨ (isLeaf s.P l ∧ s.Usable l ∧ ¬ (freeS s p).Usable l)
 
 /-- Decidability of `FreedLeaf` (§70). -/
 instance (s : S3) (p l : Nat) : Decidable (FreedLeaf s p l) := by
