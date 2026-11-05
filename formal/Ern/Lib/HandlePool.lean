@@ -554,11 +554,12 @@ sous ce droit constitue une obligation explicite"; §69 effect). -/
 theorem contentEnd_preserves {k : K} {s : S3} {q i : Nat} (hk : KInv s) (ha : KAux s)
     (hpre : ContentEndPre k s q i) : KInv (endUseEff s q) ∧ KAux (endUseEff s q) := by
   have hw := hk.1
-  refine EndFree.releases_preserve hk ha (EndFree.endUseS_releases s q) rfl rfl rfl
+  refine ⟨EndFree.releases_preserve hk (EndFree.endUseS_releases s q) rfl rfl rfl
     (fun q h => by simp only [endUseS, Bool.or_eq_false_iff] at h; exact h.1)
     (fun q' pl r hq hp => ?_) (fun q' _ x hx => ?_) (contentEnd_anchors hk.2.1.1.2.2.1 hpre)
     (fun r n z pr _ hur hz _ _ hpr hzh _ => ?_)
-    (contentEnd_noDangling hw hk.2.1.2.2 ha hpre)
+    (contentEnd_noDangling hw hk.2.1.2.2 ha hpre),
+    EndFree.releases_preserve_kAux ha (EndFree.endUseS_releases s q) rfl⟩
   · obtain ⟨-, -, -, -, hd⟩ := hw.places q' pl r hq hp
     simp only [endUseS, hd, decide_eq_decide.2 (EndFree.ownedIn_parent hw hq hp)]
   · simp only [endUseS] at hx; split at hx

@@ -3,19 +3,19 @@ import Ern.MemoryModel.Access.Preserve.Common
 /-!
 # Access kernel: `transfer` (O4, §63)
 
-Properties of `transfer` (§63) and its preservation of the kernel invariant `KInv` (§57) with
-`KAux`.
+Properties of `transfer` (§63), its preservation of the kernel invariant `KInv` (§57) and,
+separately, of the auxiliary `KAux` (`transfer_preserves_kAux`, unconditional).
 
 * §63 as written does not preserve `KInv`: `transfer_breaks_kinv` is a reachable state where an
   accepted transfer closes an ownership cycle, breaking holder validity (§49.8) and `NoDangling`
   (§54).
 * With the destination usable in the resulting state (an extra hypothesis, not a clause of §63),
-  `WF3`, `Inv3`, `NoOrphan` and `KAux` are preserved (`transfer_preserves_wf3_inv3_of_dst_usable`),
+  `WF3`, `Inv3` and `NoOrphan` are preserved (`transfer_preserves_wf3_inv3_of_dst_usable`),
   but `AnchorOrderHeld` is not: §63.7 constrains only the moved held authorities, and an authority
   held outside the value whose effective anchor moves with it escapes the check
   (`transfer_preserves_of_dst_usable_fails`, on a state that is not built by kernel steps).
-  With the further hypothesis `HeldAnchored` (also not a clause of the spec), `KInv` and `KAux`
-  are preserved (`transfer_preserves_of_dst_usable_of_heldAnchored`).
+  With the further hypothesis `HeldAnchored` (also not a clause of the spec), `KInv` is preserved
+  (`transfer_preserves_of_dst_usable_of_heldAnchored`).
 * The effect and rejection theorems of §63.
 -/
 
@@ -612,15 +612,21 @@ private theorem transfer_inv3 {k : K} {s : S3} {src dst : Nat} (hwf : WF3 s) (hi
     exact hnd j y₀ hy₀ ya₀ q (fun hu => hq (transfer_usable_fwd hwf hd' hu)) l hl hly₀
 
 /-- With the destination usable in the resulting state, an accepted transfer preserves `WF3`,
-`Inv3`, `NoOrphan` (§57) and `KAux` (§40, §49.7). The hypothesis `hd'` is not a clause of §63:
+`Inv3` and `NoOrphan` (§57). The hypothesis `hd'` is not a clause of §63:
 `transfer_breaks_kinv` shows that §63 does not imply it. -/
 theorem transfer_preserves_wf3_inv3_of_dst_usable {k : K} {s s' : S3} {src dst : Nat}
-    (hinv : KInv s) (haux : KAux s) (h : TransferStep k src dst s (.ok s'))
-    (hd' : s'.Usable dst) : WF3 s' ∧ Inv3 s' ∧ NoOrphan s' ∧ KAux s' := by
+    (hinv : KInv s) (h : TransferStep k src dst s (.ok s'))
+    (hd' : s'.Usable dst) : WF3 s' ∧ Inv3 s' ∧ NoOrphan s' := by
   obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
   have hw' := transfer_wf3 hinv.1 hpre hd'
-  exact ⟨hw', transfer_inv3 hinv.1 hinv.2.1 hpre hd', noOrphan_of_wf3 hw',
-    transfer_rootHeldConv haux⟩
+  exact ⟨hw', transfer_inv3 hinv.1 hinv.2.1 hpre hd', noOrphan_of_wf3 hw'⟩
+
+/-- An accepted transfer preserves the auxiliary `KAux` (`RootHeldConv`, §40, §49.7; §63 `ok`
+effect, third item), with no further hypothesis. -/
+theorem transfer_preserves_kAux {k : K} {s s' : S3} {src dst : Nat} (haux : KAux s)
+    (h : TransferStep k src dst s (.ok s')) : KAux s' := by
+  obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
+  exact transfer_rootHeldConv haux
 
 /-- Auxiliary hypothesis, not a clause of §63 nor of the invariant of §57: every active derived
 authority held by a usable place is among the anchors of that place (§44). `store` (§65) adds
@@ -704,15 +710,15 @@ theorem transfer_preserves_heldAnchored {k : K} {s s' : S3} {src dst : Nat} (hwf
     exact List.mem_append_left _ hxq
 
 /-- With the destination usable in the resulting state and `HeldAnchored`, an accepted transfer
-preserves `KInv` (§57) and `KAux` (§40, §49.7). Neither hypothesis is a clause of §63:
+preserves `KInv` (§57). Neither hypothesis is a clause of §63:
 `transfer_breaks_kinv` shows that §63 does not imply the first, and
 `transfer_preserves_of_dst_usable_fails` that `KInv ∧ KAux` and the first do not suffice. -/
 theorem transfer_preserves_of_dst_usable_of_heldAnchored {k : K} {s s' : S3} {src dst : Nat}
-    (hinv : KInv s) (haux : KAux s) (hheld : HeldAnchored s)
-    (h : TransferStep k src dst s (.ok s')) (hd' : s'.Usable dst) : KInv s' ∧ KAux s' := by
-  obtain ⟨hw', hi', -, ha'⟩ := transfer_preserves_wf3_inv3_of_dst_usable hinv haux h hd'
+    (hinv : KInv s) (hheld : HeldAnchored s)
+    (h : TransferStep k src dst s (.ok s')) (hd' : s'.Usable dst) : KInv s' := by
+  obtain ⟨hw', hi', -⟩ := transfer_preserves_wf3_inv3_of_dst_usable hinv h hd'
   obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
-  exact ⟨kInv_of hw' hi' (transfer_anchorOrderHeld hinv.1 hheld hpre), ha'⟩
+  exact kInv_of hw' hi' (transfer_anchorOrderHeld hinv.1 hheld hpre)
 
 /-! ## §63 as written breaks `KInv` (§49.8, §54) -/
 

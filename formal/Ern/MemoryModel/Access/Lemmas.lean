@@ -828,6 +828,30 @@ theorem RootHeldConv.transport {s s' : S3} (h : RootHeldConv s) (hP : s'.P = s.P
   obtain ⟨pr, hpr, hpr'⟩ := h x z l r hz hzo (hf ▸ hl) hr hlr
   exact ⟨pr, by rw [hP]; exact hpr, hh.trans hpr'⟩
 
+/-- An active authority with no origin is held by the owner of the root place of every leaf it
+covers (the converse of `RootHeld` restricted to active authorities), from `WF3` (§49.4, §49.7),
+`I1` (§50) and `NoDangling` (§54): the root place is usable, so its root `Modify` authority
+(§49.7) covers the leaf, and two distinct active authorities with no origin covering a common leaf
+are unrelated by derivation, so by `I1` that root authority would be `Observe`. -/
+theorem rootHeldConv_active {s : S3} (hw : WF3 s) (h1 : I1 s) (hnd : NoDangling s) :
+    ∀ (x : Nat) (z : Authority) (l r : Nat), s.A[x]? = some z → z.active = true →
+      z.origin = none → l ∈ z.footprint → RootPlace s.P r → partOf s.P l r →
+      ∃ pr, s.P[r]? = some pr ∧ z.holder = pr.owner := by
+  intro x z l r hz za zo hl hr hlr
+  obtain ⟨hlP, hleaf⟩ := hw.footprints x z hz l hl
+  have hlfr : l ∈ footprint s.P r := mem_footprint.2 ⟨hlP, hleaf, hlr⟩
+  have hur : s.Usable r := Decidable.byContradiction fun hu => hnd x z hz za r hu l hlfr hl
+  obtain ⟨i, z', pr, hz', za', zo', zm', hpr, hh', hfp'⟩ := hw.rootHeld r hr hur
+  by_cases hix : i = x
+  · subst hix; rw [hz] at hz'; cases hz'; exact ⟨pr, hpr, hh'⟩
+  · have hancs : ∀ j w, s.A[j]? = some w → w.origin = none → s.ancs j = [] :=
+      fun j w hj hw0 => by
+        have : s.org j = none := by simp [S3.org, hj, hw0]
+        simp [S3.ancs, chain_none this]
+    have := (h1 i x z' z l hix hz' hz za' za ((hfp' l).2 hlfr) hl
+      (by rw [hancs x z hz zo]; simp) (by rw [hancs i z' hz' zo']; simp)).1
+    rw [zm'] at this; cases this
+
 /-- `RootChain` (§49.6) carries over to a state with the same tree of places, the same origin
 chains, the same footprints, and the same root authorities. -/
 theorem RootChain.transport {s s' : S3} (h : RootChain s) (hlen : s'.P.length = s.P.length)

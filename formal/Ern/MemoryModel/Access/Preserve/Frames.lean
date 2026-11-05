@@ -5,7 +5,7 @@ import Ern.MemoryModel.Access.Preserve.Common
 
 Operations O6 `enterFrame` (§72) and O7 `exitFrame` (§73) of
 `specs/ERN_Memory_Model_Specification_v0.md`, with the frame rules of §39 and the parameter and
-reanchoring rules of §45. Both steps preserve the kernel invariant of §57 (`KInv`) together with
+reanchoring rules of §45. Both steps preserve the kernel invariant of §57 (`KInv`) and, separately,
 the auxiliary invariant `KAux`. The file also proves entry protection of parameters (§72.3 and
 the last paragraph of §72), the release of authorities whose holder dies at the exit (§73
 effect, §39), the absence of dangling authorities after the exit (§73, §54), reanchoring to the
@@ -1185,10 +1185,10 @@ theorem exit_anchorOrder (hwf : WF3 s) (hao : AnchorOrder s)
   exact (ancestor_push fun e => hnd (by rw [e]; exact hfF)).symm
 
 /-- After an `ok` exit, no active authority covers a leaf of an unusable place (§73, §54):
-an active authority survives; the root of its chain survives (§73.4) and, by `RootHeldConv`, is
-held by the owner of the root place of the leaf, which is therefore usable after the exit, and so
-is every place containing the leaf. -/
-theorem exit_noDangling (hwf : WF3 s) (hnd : NoDangling s) (hc : RootHeldConv s)
+an active authority survives; the root of its chain survives (§73.4), is active and, by `WF3`,
+`I1` and `NoDangling` (`rootHeldConv_active`), is held by the owner of the root place of the
+leaf, which is therefore usable after the exit, and so is every place containing the leaf. -/
+theorem exit_noDangling (hwf : WF3 s) (h1 : I1 s) (hnd : NoDangling s)
     (h3 : OriginsSurvive s) : NoDangling (exitEff s) := by
   intro j z hz za q hq l hl hlz
   obtain ⟨y₀, hy₀, rfl⟩ := exit_get hz
@@ -1201,9 +1201,9 @@ theorem exit_noDangling (hwf : WF3 s) (hnd : NoDangling s) (hc : RootHeldConv s)
     have hx0o : s.org x0 = none := by simp [S3.org, hz, hzo]
     have hs0 := exit_root_survives h3 (j + 1) j (Nat.lt_succ_self j) hs x0 hx0 hx0o
     have hlz0 : l ∈ z.footprint := (hfz l).2 (mem_footprint.2 ⟨hlP, hleaf, hlr⟩)
-    obtain ⟨pr, hpr, hh⟩ := hc x0 z l r hz hzo hlz0 hr hlr
     unfold Survives at hs0; rw [hz] at hs0
-    obtain ⟨-, hlive⟩ := hs0
+    obtain ⟨zact, hlive⟩ := hs0
+    obtain ⟨pr, hpr, hh⟩ := rootHeldConv_active hwf h1 hnd x0 z l r hz zact hzo hlz0 hr hlr
     rw [hh] at hlive
     obtain ⟨pl, pr', hpl, hpr', e1⟩ := hwf.ownerOf hlr
     rw [hpr] at hpr'; cases hpr'
@@ -1223,26 +1223,38 @@ end Frames
 /-! ## Preservation of the kernel invariant (§57, §72, §73) -/
 
 /-- `enterFrame` preserves the kernel invariant of §57 (`WF3 ∧ Inv3 ∧ AnchorOrderHeld ∧
-NoOrphan`) and the auxiliary `RootHeldConv` (§72). -/
+NoOrphan`) (§72). -/
 theorem enter_preserves {s s' : S3} {ps : List Nat} {ls : LocalShape} (hk : KInv s)
-    (ha : KAux s) (h : EnterStep ps ls s (.ok s')) : KInv s' ∧ KAux s' := by
+    (h : EnterStep ps ls s (.ok s')) : KInv s' := by
   obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
   obtain ⟨hwf, ⟨hb, hao, hnd⟩, -, -⟩ := hk
-  exact ⟨kInv_of (Frames.enter_wf hwf hpre) ⟨Frames.enter_inv3base hwf hb,
+  exact kInv_of (Frames.enter_wf hwf hpre) ⟨Frames.enter_inv3base hwf hb,
     Frames.enter_anchorOrder hwf hao hpre, Frames.enter_noDangling hwf hnd hpre⟩
-    hpre.anchorOrderHeld, Frames.enter_rootHeldConv hwf hpre ha⟩
+    hpre.anchorOrderHeld
+
+/-- `enterFrame` preserves the auxiliary `KAux` (`RootHeldConv`, §40, §49.7; §72) from a `KInv`
+state. -/
+theorem enter_preserves_kAux {s s' : S3} {ps : List Nat} {ls : LocalShape} (hk : KInv s)
+    (ha : KAux s) (h : EnterStep ps ls s (.ok s')) : KAux s' := by
+  obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
+  exact Frames.enter_rootHeldConv hk.1 hpre ha
 
 /-- `exitFrame` preserves the kernel invariant of §57 (`WF3 ∧ Inv3 ∧ AnchorOrderHeld ∧
-NoOrphan`) and the auxiliary `RootHeldConv` (§73). -/
-theorem exit_preserves {k : K} {s s' : S3} (hk : KInv s) (ha : KAux s)
-    (h : ExitStep k s (.ok s')) : KInv s' ∧ KAux s' := by
+NoOrphan`) (§73). -/
+theorem exit_preserves {k : K} {s s' : S3} (hk : KInv s)
+    (h : ExitStep k s (.ok s')) : KInv s' := by
   obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
   obtain ⟨hwf, ⟨hb, hao, hnd⟩, -, -⟩ := hk
-  exact ⟨kInv_of (Frames.exit_wf hwf hpre.hasCaller hpre.origins)
+  exact kInv_of (Frames.exit_wf hwf hpre.hasCaller hpre.origins)
     ⟨Frames.exit_inv3base hb hpre.anchors,
      Frames.exit_anchorOrder hwf hao hpre.anchors hpre.origins,
-     Frames.exit_noDangling hwf hnd ha hpre.origins⟩ hpre.anchorOrderHeld,
-    Frames.exit_rootHeldConv ha hpre.origins⟩
+     Frames.exit_noDangling hwf hb.1 hnd hpre.origins⟩ hpre.anchorOrderHeld
+
+/-- `exitFrame` preserves the auxiliary `KAux` (`RootHeldConv`, §40, §49.7; §73). -/
+theorem exit_preserves_kAux {k : K} {s s' : S3} (ha : KAux s)
+    (h : ExitStep k s (.ok s')) : KAux s' := by
+  obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
+  exact Frames.exit_rootHeldConv ha hpre.origins
 
 /-! ## Determinism (§58, §72, §73) -/
 
@@ -1335,16 +1347,17 @@ theorem exitFrame_releases_all {k : K} {s s' : S3} (hw : WF3 s) (h : ExitStep k 
 
 /-! ## No dangling authority after the exit (§73, §54) -/
 
-/-- `exitFrame_no_dangling` (§73, §54): after an `ok` exit, no active authority covers a leaf of
-a place that is not usable, in particular of a local of the exited frame or of storage dying with
+/-- `exitFrame_no_dangling` (§73, §54): from a state satisfying `WF3` (§49), `I1` (§50) and
+`NoDangling` (§54), clauses of §57, after an `ok` exit no active authority covers a leaf of a
+place that is not usable, in particular of a local of the exited frame or of storage dying with
 it. -/
-theorem exitFrame_no_dangling {k : K} {s s' : S3} (hw : WF3 s) (hnd : NoDangling s)
-    (hc : RootHeldConv s) (h : ExitStep k s (.ok s')) :
+theorem exitFrame_no_dangling {k : K} {s s' : S3} (hw : WF3 s) (h1 : I1 s) (hnd : NoDangling s)
+    (h : ExitStep k s (.ok s')) :
     ∀ q, ¬ s'.Usable q → ∀ (j : Nat) (y : Authority), s'.A[j]? = some y → y.active = true →
       ∀ l ∈ footprint s'.P q, l ∉ y.footprint := by
   obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
   intro q hq j y hy ya
-  exact Frames.exit_noDangling hw hnd hc hpre.origins j y hy ya q hq
+  exact Frames.exit_noDangling hw h1 hnd hpre.origins j y hy ya q hq
 
 /-! ## Reanchoring at the exit (§73.4, §73 `ok` effect, §45) -/
 

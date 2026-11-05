@@ -5,7 +5,8 @@ import Ern.MemoryModel.Access.Preserve.Common
 
 Both effects only make authorities inactive and mark places dead, then release the authorities
 whose holder died (§69, §70 `ok` effects). The shared argument is in namespace `EndFree`; the
-per-operation results state that each step preserves `KInv` (§57) and `KAux` (§40, §49.7), and
+per-operation results state that each step preserves `KInv` (§57), separately the auxiliary `KAux`
+(§40, §49.7), and
 the effects of §69 and §70: the ended place stays usable, its leaves become `Uninit`, transitively
 owned storage and the released unit are dead, pinned leaves block the step (§69.4, §70.4).
 -/
@@ -235,10 +236,10 @@ theorem not_ownedIn_chain {s : S3} (hw : WF3 s) {p q : Nat} (hp : s.Usable p)
 /-! ## The shared preservation argument (§57, §69, §70) -/
 
 /-- Releasing authorities and marking places dead, then releasing the authorities whose holder
-died, preserves `KInv` (§57) and `KAux` (§40, §49.7), provided the death markers respect parts
-(§49.2), usable places keep only valid former anchors (§52, §44), the root authorities of usable
-root places are kept (§49.7), and `NoDangling` (§54) holds afterwards. -/
-theorem releases_preserve {s s₁ : S3} (hk : KInv s) (ha : KAux s) (hr : OnlyReleases s s₁)
+died, preserves `KInv` (§57), provided the death markers respect parts (§49.2), usable places keep
+only valid former anchors (§52, §44), the root authorities of usable root places are kept (§49.7),
+and `NoDangling` (§54) holds afterwards. -/
+theorem releases_preserve {s s₁ : S3} (hk : KInv s) (hr : OnlyReleases s s₁)
     (hP : s₁.P = s.P) (hF : s₁.F = s.F) (hn : s₁.nF = s.nF)
     (hd : ∀ q, s₁.dead q = false → s.dead q = false)
     (hparts : ∀ (q : Nat) (pl : Place) (r : Nat), s.P[q]? = some pl → pl.parent = some r →
@@ -249,7 +250,7 @@ theorem releases_preserve {s s₁ : S3} (hk : KInv s) (ha : KAux s) (hr : OnlyRe
       s.A[i]? = some z → z.active = true → z.origin = none → s.P[r]? = some pr →
       z.holder = pr.owner → (∀ l, l ∈ z.footprint ↔ l ∈ footprint s.P r) → s₁.A[i]? = some z)
     (hnd : WF3 (cleanup s₁) → NoDangling (cleanup s₁)) :
-    KInv (cleanup s₁) ∧ KAux (cleanup s₁) := by
+    KInv (cleanup s₁) := by
   obtain ⟨hw, ⟨⟨i1, i2, -, -⟩, hao, -⟩, haoh, -⟩ := hk
   have hc := hr.trans (cleanup_releases s₁)
   have cP : (cleanup s₁).P = s.P := hP
@@ -295,7 +296,7 @@ theorem releases_preserve {s s₁ : S3} (hk : KInv s) (ha : KAux s) (hr : OnlyRe
       holders := fun a y hy ya => by
         obtain ⟨-, hl⟩ := cleanup_active hy ya
         exact (HolderLive.congr (s := s₁) (s' := cleanup s₁) rfl rfl rfl _).2 hl }
-  refine ⟨kInv_of hw' ⟨⟨?_, ?_, ?_, i4_always _⟩, ?_, hnd hw'⟩ ?_, ?_⟩
+  refine kInv_of hw' ⟨⟨?_, ?_, ?_, i4_always _⟩, ?_, hnd hw'⟩ ?_
   · intro a b x y p hab hx hy xa ya xp yp hnab hnba
     obtain ⟨x₀, hx₀, m₁, -, f₁, -, a₁⟩ := hc.2 a x hx
     obtain ⟨y₀, hy₀, m₂, -, f₂, -, a₂⟩ := hc.2 b y hy
@@ -317,9 +318,16 @@ theorem releases_preserve {s s₁ : S3} (hk : KInv s) (ha : KAux s) (hr : OnlyRe
     refine (hc.effAnchorOK cP cF x _).2 ?_
     rw [S3.pframe_congr cP]
     exact haoh q (hu q ((hU q).1 hq)) x y hy (ea ya) (e.symm.trans hh)
-  · exact RootHeldConv.transport ha cP fun x z' hx ho => by
-      obtain ⟨z, hz, -, e1, e2, e3, -⟩ := hc.2 x z' hx
-      exact ⟨z, hz, e1 ▸ ho, e2, e3⟩
+
+/-- Releasing authorities with the places unchanged, then releasing the authorities whose holder
+died, preserves the auxiliary `KAux` (`RootHeldConv`, §40, §49.7): authorities with no origin keep
+their footprint and holder. -/
+theorem releases_preserve_kAux {s s₁ : S3} (ha : KAux s) (hr : OnlyReleases s s₁)
+    (hP : s₁.P = s.P) : KAux (cleanup s₁) := by
+  have hc := hr.trans (cleanup_releases s₁)
+  exact RootHeldConv.transport ha hP fun x z' hx ho => by
+    obtain ⟨z, hz, -, e1, e2, e3, -⟩ := hc.2 x z' hx
+    exact ⟨z, hz, e1 ▸ ho, e2, e3⟩
 
 end EndFree
 
@@ -375,11 +383,12 @@ theorem EndFree.endUse_anchors {k : K} {s : S3} {p : Nat} (h3 : I3 s) (hpre : En
   obtain ⟨hnh, -, hl⟩ := hc
   exact ⟨y, by rw [endUseEff, cleanup_get, endUseS_get, hy]; simp [hnh, hl], ya⟩
 
-/-- `endUse` preserves `NoDangling` (§54, §69), under `WF3` (§49) and `RootHeldConv` (§40): an
-active authority on a leaf of a place that stops being usable is derived, and blocked by §69.2, or
-a root, held by the owner of the root place of the leaf, which would stay usable. -/
+/-- `endUse` preserves `NoDangling` (§54, §69), under `WF3` (§49) and `I1` (§50): an active
+authority on a leaf of a place that stops being usable is derived, and blocked by §69.2, or a
+root, held by the owner of the root place of the leaf (`rootHeldConv_active`), which would stay
+usable. -/
 theorem EndFree.endUse_noDangling {k : K} {s : S3} {p : Nat} (hw : WF3 s) (hnd : NoDangling s)
-    (ha : RootHeldConv s) (hpre : EndUsePre k s p) (hw' : WF3 (endUseEff s p)) :
+    (h1 : I1 s) (hpre : EndUsePre k s p) (hw' : WF3 (endUseEff s p)) :
     NoDangling (endUseEff s p) := by
   have hU := cleanup_usable (endUseS s p)
   intro j z hz za q hq l hl hlz
@@ -399,7 +408,7 @@ theorem EndFree.endUse_noDangling {k : K} {s : S3} {p : Nat} (hw : WF3 s) (hnd :
     · exact e hlive
   | none =>
     obtain ⟨-, -, r, -, -, -, hr, hlr, -⟩ := hw.rootChain j z l hz₀ hlz hleaf
-    obtain ⟨pr, hpr, hh⟩ := ha j z l r hz₀ hzo hlz hr hlr
+    obtain ⟨pr, hpr, hh⟩ := rootHeldConv_active hw h1 hnd j z l r hz₀ za hzo hlz hr hlr
     have hnown : ¬ OwnedIn s.P p r := fun hown => by
       cases hown with
       | @direct _ o _ hpl ho hpart =>
@@ -418,16 +427,16 @@ theorem EndFree.endUse_noDangling {k : K} {s : S3} {p : Nat} (hw : WF3 s) (hnd :
     have hr₁ : (endUseS s p).Usable r := usable_of_owner hpr hd (hh ▸ hlive)
     exact hl₁ ((hU l).1 (usable_of_partOf hw' (l + 1) l r (Nat.lt_succ_self l) hlr ((hU r).2 hr₁)))
 
-/-- `endUse` preserves the kernel invariant `KInv` (§57) and `KAux` (§40, §49.7) (O12, §69). -/
-theorem endUse_preserves {k : K} {s s' : S3} {p : Nat} (hk : KInv s) (ha : KAux s)
-    (h : EndUseStep k p s (.ok s')) : KInv s' ∧ KAux s' := by
+/-- `endUse` preserves the kernel invariant `KInv` (§57) (O12, §69). -/
+theorem endUse_preserves {k : K} {s s' : S3} {p : Nat} (hk : KInv s)
+    (h : EndUseStep k p s (.ok s')) : KInv s' := by
   obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
   have hw := hk.1
-  refine releases_preserve hk ha (endUseS_releases s p) rfl rfl rfl
+  refine releases_preserve hk (endUseS_releases s p) rfl rfl rfl
     (fun q h => by simp only [endUseS, Bool.or_eq_false_iff] at h; exact h.1)
     (fun q pl r hq hp => ?_) (fun q _ x hx => ?_) (endUse_anchors hk.2.1.1.2.2.1 hpre)
     (fun r i z pr _ hur hz _ _ hpr hzh _ => ?_)
-    (endUse_noDangling hw hk.2.1.2.2 ha hpre)
+    (endUse_noDangling hw hk.2.1.2.2 hk.2.1.1.1 hpre)
   · obtain ⟨-, -, -, -, hd⟩ := hw.places q pl r hq hp
     simp only [endUseS, hd, decide_eq_decide.2 (ownedIn_parent hw hq hp)]
   · simp only [endUseS] at hx; split at hx
@@ -442,12 +451,19 @@ theorem endUse_preserves {k : K} {s s' : S3} {p : Nat} (hk : KInv s) (ha : KAux 
       | place o => rw [ho] at hh; exact hd.2 (.direct hpr ho hh)
     rw [endUseS_get, hz]; simp [hnh]
 
+/-- `endUse` preserves the auxiliary `KAux` (`RootHeldConv`, §40, §49.7; O12, §69 `ok` effect:
+places are unchanged and authorities are only released). -/
+theorem endUse_preserves_kAux {k : K} {s s' : S3} {p : Nat} (ha : KAux s)
+    (h : EndUseStep k p s (.ok s')) : KAux s' := by
+  obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
+  exact releases_preserve_kAux ha (endUseS_releases s p) rfl
+
 /-- `endUse` keeps the anchors of every usable place that is not a part of the ended value, and
-they are valid (§69 `ok` effect, §52), under `KInv` (§57) and `KAux`. -/
-theorem endUse_keeps_dependents {k : K} {s s' : S3} {p : Nat} (hk : KInv s) (ha : KAux s)
+they are valid (§69 `ok` effect, §52), under `KInv` (§57). -/
+theorem endUse_keeps_dependents {k : K} {s s' : S3} {p : Nat} (hk : KInv s)
     (h : EndUseStep k p s (.ok s')) :
     ∀ q, s'.Usable q → ¬ partOf s.P q p → s'.D q = s.D q ∧ ∀ x ∈ s'.D q, s'.Active x := by
-  have hi3 := (endUse_preserves hk ha h).1.2.1.1.2.2.1
+  have hi3 := (endUse_preserves hk h).2.1.1.2.2.1
   obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
   intro q hq hnp
   exact ⟨by simp [endUseEff, cleanup, endUseS, hnp], hi3 q hq⟩
@@ -629,11 +645,12 @@ theorem free_no_dangling {k : K} {s s' : S3} {p auth : Nat} (h : FreeStep k p au
   exact ⟨fun l hl' hf => hc (.inl ⟨l, hl', hf⟩),
     (HolderLive.congr (s := freeS s p) (s' := freeEff s p) rfl rfl rfl _).2 hl⟩
 
-/-- `free` preserves `NoDangling` (§54, §70), under `WF3` (§49) and `RootHeldConv` (§40): an
-active authority on a leaf of a place that stops being usable is derived, and blocked by §70.3,
-or a root, held by the owner of the root place of the leaf, which would stay usable. -/
+/-- `free` preserves `NoDangling` (§54, §70), under `WF3` (§49) and `I1` (§50): an active
+authority on a leaf of a place that stops being usable is derived, and blocked by §70.3, or a
+root, held by the owner of the root place of the leaf (`rootHeldConv_active`), which would stay
+usable. -/
 theorem EndFree.free_noDangling {k : K} {s : S3} {p auth : Nat} (hw : WF3 s) (hnd : NoDangling s)
-    (ha : RootHeldConv s) (hpre : FreePre k s p auth) (hw' : WF3 (freeEff s p)) :
+    (h1 : I1 s) (hpre : FreePre k s p auth) (hw' : WF3 (freeEff s p)) :
     NoDangling (freeEff s p) := by
   have hU := cleanup_usable (freeS s p)
   intro j z hz za q hq l hl hlz
@@ -653,7 +670,7 @@ theorem EndFree.free_noDangling {k : K} {s : S3} {p auth : Nat} (hw : WF3 s) (hn
     · exact e hlive
   | none =>
     obtain ⟨-, -, r, -, -, -, hr, hlr, -⟩ := hw.rootChain j z l hz₀ hlz hleaf
-    obtain ⟨pr, hpr, hh⟩ := ha j z l r hz₀ hzo hlz hr hlr
+    obtain ⟨pr, hpr, hh⟩ := rootHeldConv_active hw h1 hnd j z l r hz₀ za hzo hlz hr hlr
     have hnf : ¬ FreedPlace s.P p r := by
       rintro (hrp | hown)
       · obtain rfl := eq_of_partOf_root hr hrp
@@ -674,17 +691,17 @@ theorem EndFree.free_noDangling {k : K} {s : S3} {p auth : Nat} (hw : WF3 s) (hn
     have hr₁ : (freeS s p).Usable r := usable_of_owner hpr hd (hh ▸ hlive)
     exact hl₁ ((hU l).1 (usable_of_partOf hw' (l + 1) l r (Nat.lt_succ_self l) hlr ((hU r).2 hr₁)))
 
-/-- `free` preserves the kernel invariant `KInv` (§57) and `KAux` (§40, §49.7) (O13, §70). -/
-theorem free_preserves {k : K} {s s' : S3} {p auth : Nat} (hk : KInv s) (ha : KAux s)
-    (h : FreeStep k p auth s (.ok s')) : KInv s' ∧ KAux s' := by
+/-- `free` preserves the kernel invariant `KInv` (§57) (O13, §70). -/
+theorem free_preserves {k : K} {s s' : S3} {p auth : Nat} (hk : KInv s)
+    (h : FreeStep k p auth s (.ok s')) : KInv s' := by
   obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
   have hw := hk.1
   have hroot := rootPlace_of_ownedRoot hpre.ownedRoot
-  refine releases_preserve hk ha (freeS_releases s p) rfl rfl rfl
+  refine releases_preserve hk (freeS_releases s p) rfl rfl rfl
     (fun q h => by simp only [freeS, Bool.or_eq_false_iff] at h; exact h.1)
     (fun q pl r hq hp => ?_) (fun q _ x hx => hx) (free_anchors hk.2.1.1.2.2.1 hpre)
     (fun r i z pr hrp hur hz _ _ hpr hzh hzf => ?_)
-    (free_noDangling hw hk.2.1.2.2 ha hpre)
+    (free_noDangling hw hk.2.1.2.2 hk.2.1.1.1 hpre)
   · obtain ⟨pr, hpr, hlt, -, hd⟩ := hw.places q pl r hq hp
     have hpo : parentOf s.P q = some r := by simp [parentOf, hq, hp]
     have hf : FreedPlace s.P p r ↔ FreedPlace s.P p q := by
@@ -708,6 +725,13 @@ theorem free_preserves {k : K} {s s' : S3} {p auth : Nat} (hk : KInv s) (ha : KA
         | frame f => rw [ho] at hh; exact hh
         | place o => rw [ho] at hh; exact hnf (.inr (.direct hpr ho hh))
     rw [freeS_get, hz]; simp [hc]
+
+/-- `free` preserves the auxiliary `KAux` (`RootHeldConv`, §40, §49.7; O13, §70 `ok` effect:
+places are unchanged and authorities are only released). -/
+theorem free_preserves_kAux {k : K} {s s' : S3} {p auth : Nat} (ha : KAux s)
+    (h : FreeStep k p auth s (.ok s')) : KAux s' := by
+  obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
+  exact releases_preserve_kAux ha (freeS_releases s p) rfl
 
 /-- After `free p` every place of the released unit, `p`, its parts and the storage it owns
 transitively, is marked dead and is not usable (§70 `ok` effect). -/

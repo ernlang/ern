@@ -4,8 +4,8 @@ import Ern.MemoryModel.Access.Preserve.Common
 # Access kernel: `alloc` (O14)
 
 Results on `alloc provider owner shape` of `specs/ERN_Memory_Model_Specification_v0.md` §71 and
-on the outcomes of §58: the `ok` outcome preserves the main invariant of §57 (`KInv`) together
-with its auxiliary `KAux`; it adds exactly one root place and exactly one authority, the root
+on the outcomes of §58: the `ok` outcome preserves the main invariant of §57 (`KInv`) and,
+separately, its auxiliary `KAux`; it adds exactly one root place and exactly one authority, the root
 `Modify` authority of that place, with no origin, held by `owner`, the new leaves `Uninit` (§71,
 `ok`); `fail` happens only when the static preconditions hold and `K.Satisfiable` is false, and
 produces no new state (§58, §71); `alloc` is deterministic; no other kernel operation O1–O16
@@ -580,17 +580,23 @@ end Alloc
 
 /-- `alloc` preserves the main invariant (§57, §58: an `ok` transition preserves the invariants;
 §71.3: the new identities and ownership relations respect `WF3` and `RootHeld`): from a state
-satisfying `KInv` and `KAux`, the `ok` outcome of `alloc` satisfies both. -/
+satisfying `KInv`, the `ok` outcome of `alloc` satisfies `KInv`. -/
 theorem alloc_preserves {k : K} {pr ow : Nat} {ls : LocalShape} {s s' : S3}
-    (hk : KInv s) (ha : KAux s) (h : AllocStep k pr ow ls s (.ok s')) : KInv s' ∧ KAux s' := by
+    (hk : KInv s) (h : AllocStep k pr ow ls s (.ok s')) : KInv s' := by
   cases h with
   | ok hst _ =>
     obtain ⟨hw, ⟨⟨h1, h2, h3, -⟩, hao, hnd⟩, haoh, -⟩ := hk
-    exact ⟨kInv_of (Alloc.wf3 hst hw)
+    exact kInv_of (Alloc.wf3 hst hw)
         ⟨⟨Alloc.i1 hst hw h1, Alloc.i2 hst h2, Alloc.i3 hw h3, i4_always _⟩,
           Alloc.anchorOrder hst hw hao, Alloc.noDangling hst hw hnd⟩
-        (Alloc.anchorOrderHeld hst hw haoh),
-      Alloc.rootHeldConv hst hw ha⟩
+        (Alloc.anchorOrderHeld hst hw haoh)
+
+/-- `alloc` preserves the auxiliary `KAux` (`RootHeldConv`, §40, §49.7; §71 `ok`) from a `KInv`
+state. -/
+theorem alloc_preserves_kAux {k : K} {pr ow : Nat} {ls : LocalShape} {s s' : S3}
+    (hk : KInv s) (ha : KAux s) (h : AllocStep k pr ow ls s (.ok s')) : KAux s' := by
+  cases h with
+  | ok hst _ => exact Alloc.rootHeldConv hst hk.1 ha
 
 /-- The `ok` effect of `alloc` (§71, `ok`): the former places are kept and the nonempty shape is
 appended with fresh identities, every new place owned by `owner`; among the new places exactly

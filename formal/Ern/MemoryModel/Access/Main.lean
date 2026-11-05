@@ -13,9 +13,10 @@ Assembles the per-operation results of `Ern.MemoryModel.Access.Preserve.*` into 
 
 * kernel operations O1–O16 as data, their outcome relation, and the correspondence of `KStep` and
   `Reachable` with the labelled steps and their reflexive-transitive closure (§57, §58);
-* preservation of `KInv` (§57) and `KAux` by every step except `transfer` (§63), and for
-  `transfer` the exact condition: on states satisfying the auxiliary `HeldAnchored`, the step
-  preserves the invariant iff the destination is usable afterwards;
+* preservation of `KInv` (§57) by every step except `transfer` (§63), and for `transfer` the
+  exact condition: on states satisfying the auxiliary `HeldAnchored`, the step preserves `KInv`
+  iff the destination is usable afterwards; separately, preservation of the auxiliary `KAux` by
+  every step;
 * `HeldAnchored` holds initially and is preserved by every step from a `WF3` state;
 * the initial state satisfies the invariant under `StaticsOK` (§47), and its `Init` leaves are the
   declared ones;
@@ -194,39 +195,66 @@ theorem reachable_base_mem {k : K} {statics : Statics} {s : S3} (h : Reachable k
 
 /-! ## Preservation by every step except `transfer` (§57, §58) -/
 
-/-- Every operation other than `transfer` preserves `KInv` (§57) and `KAux` (§40, §49.7) from its
-`ok` outcome, under `DDSound` (§80, used by `split`, §61). -/
+/-- Every operation other than `transfer` preserves `KInv` (§57) from its `ok` outcome, under
+`DDSound` (§80, used by `split`, §61). -/
 theorem op_preserves {k : K} {op : KernelOp} {s s' : S3} (hdd : DDSound k) (hinv : KInv s)
-    (haux : KAux s) (h : op.Step k s (.ok s')) (hnt : ∀ src dst, op ≠ .transfer src dst) :
-    KInv s' ∧ KAux s' := by
+    (h : op.Step k s (.ok s')) (hnt : ∀ src dst, op ≠ .transfer src dst) : KInv s' := by
   cases op with
-  | derive => exact derive_preserves hinv haux h
-  | split => exact split_preserves hdd hinv haux h
-  | release => exact release_preserves hinv haux h
+  | derive => exact derive_preserves hinv h
+  | split => exact split_preserves hdd hinv h
+  | release => exact release_preserves hinv h
   | transfer src dst => exact absurd rfl (hnt src dst)
-  | depend => exact depend_preserves hinv haux h
-  | enter => exact enter_preserves hinv haux h
-  | exit => exact exit_preserves hinv haux h
-  | read => exact read_preserves hinv haux h
-  | write => exact write_preserves hinv haux h
-  | writeShared => exact writeShared_preserves hinv haux h
-  | pin => exact pin_preserves hinv haux h
-  | unpin => exact unpin_preserves hinv haux h
-  | endUse => exact endUse_preserves hinv haux h
-  | free => exact free_preserves hinv haux h
-  | alloc => exact alloc_preserves hinv haux h
-  | store => exact store_preserves hinv haux h
+  | depend => exact depend_preserves hinv h
+  | enter => exact enter_preserves hinv h
+  | exit => exact exit_preserves hinv h
+  | read => exact read_preserves hinv h
+  | write => exact write_preserves hinv h
+  | writeShared => exact writeShared_preserves hinv h
+  | pin => exact pin_preserves hinv h
+  | unpin => exact unpin_preserves hinv h
+  | endUse => exact endUse_preserves hinv h
+  | free => exact free_preserves hinv h
+  | alloc => exact alloc_preserves hinv h
+  | store => exact store_preserves hinv h
 
-/-- Every kernel step from a state satisfying `KInv` (§57) and `KAux` (§40, §49.7) under `DDSound`
-(§80) either preserves both or is an accepted `transfer` (§63), the one exception
-(`transfer_breaks_kinv`). -/
-theorem kstep_preserves {k : K} {s s' : S3} (hdd : DDSound k) (hinv : KInv s) (haux : KAux s)
-    (h : KStep k s s') :
-    (KInv s' ∧ KAux s') ∨ ∃ src dst, TransferStep k src dst s (.ok s') := by
+/-- Every operation, `transfer` included, preserves the auxiliary `KAux` (`RootHeldConv`, §40,
+§49.7; not a clause of §57) from a state satisfying `KInv` (§57) and `KAux` to its `ok`
+outcome. -/
+theorem op_preserves_kAux {k : K} {op : KernelOp} {s s' : S3} (hinv : KInv s) (haux : KAux s)
+    (h : op.Step k s (.ok s')) : KAux s' := by
+  cases op with
+  | derive => exact derive_preserves_rootHeldConv haux h
+  | split => exact split_preserves_rootHeldConv haux h
+  | release => exact release_preserves_rootHeldConv haux h
+  | transfer => exact transfer_preserves_kAux haux h
+  | depend => exact depend_preserves_rootHeldConv haux h
+  | enter => exact enter_preserves_kAux hinv haux h
+  | exit => exact exit_preserves_kAux haux h
+  | read => exact read_preserves_kAux haux h
+  | write => exact write_preserves_kAux haux h
+  | writeShared => exact writeShared_preserves_kAux haux h
+  | pin => exact pin_preserves_kAux haux h
+  | unpin => exact unpin_preserves_kAux haux h
+  | endUse => exact endUse_preserves_kAux haux h
+  | free => exact free_preserves_kAux haux h
+  | alloc => exact alloc_preserves_kAux hinv haux h
+  | store => exact store_preserves_rootHeldConv haux h
+
+/-- Every kernel step from a state satisfying `KInv` (§57) under `DDSound` (§80) either preserves
+`KInv` or is an accepted `transfer` (§63), the one exception (`transfer_breaks_kinv`). -/
+theorem kstep_preserves {k : K} {s s' : S3} (hdd : DDSound k) (hinv : KInv s)
+    (h : KStep k s s') : KInv s' ∨ ∃ src dst, TransferStep k src dst s (.ok s') := by
   obtain ⟨op, hop⟩ := kstep_iff.1 h
   cases op with
   | transfer src dst => exact .inr ⟨src, dst, hop⟩
-  | _ => exact .inl (op_preserves hdd hinv haux hop fun _ _ e => KernelOp.noConfusion e)
+  | _ => exact .inl (op_preserves hdd hinv hop fun _ _ e => KernelOp.noConfusion e)
+
+/-- Every kernel step preserves the auxiliary `KAux` (§40, §49.7) from a state satisfying `KInv`
+(§57) and `KAux`. -/
+theorem kstep_preserves_kAux {k : K} {s s' : S3} (hinv : KInv s) (haux : KAux s)
+    (h : KStep k s s') : KAux s' := by
+  obtain ⟨op, hop⟩ := kstep_iff.1 h
+  exact op_preserves_kAux hinv haux hop
 
 /-! ## `HeldAnchored` is preserved by every step (§44, §65, §63) -/
 
@@ -430,31 +458,26 @@ theorem transfer_dst_usable_of_noDangling {k : K} {s s' : S3} {src dst : Nat} (h
     exact hnd a _ hx' (by split <;> exact xa) dst hu l (by rw [transfer_footprint]; exact hl)
       (by split <;> exact hlx)
 
-/-- On a state satisfying `KInv` (§57), `KAux` (§40, §49.7) and `HeldAnchored` (auxiliary, not a
-clause of §63 nor of §57), an accepted `transfer` (§63) preserves `KInv ∧ KAux` iff its
-destination is usable in the resulting state. The destination usable afterwards is not a clause of
-§63 (`transfer_breaks_kinv`); this states exactly when §57 holds after the step. -/
-theorem transfer_kinv_iff {k : K} {s s' : S3} {src dst : Nat} (hinv : KInv s) (haux : KAux s)
+/-- On a state satisfying `KInv` (§57) and `HeldAnchored` (auxiliary, not a clause of §63 nor of
+§57), an accepted `transfer` (§63) preserves `KInv` iff its destination is usable in the resulting
+state. The destination usable afterwards is not a clause of §63 (`transfer_breaks_kinv`); this
+states exactly when §57 holds after the step. -/
+theorem transfer_kinv_iff {k : K} {s s' : S3} {src dst : Nat} (hinv : KInv s)
     (hheld : HeldAnchored s) (h : TransferStep k src dst s (.ok s')) :
-    KInv s' ∧ KAux s' ↔ s'.Usable dst :=
-  ⟨fun hk => transfer_dst_usable_of_noDangling hinv.1 h hk.1.2.1.2.2,
-    transfer_preserves_of_dst_usable_of_heldAnchored hinv haux hheld h⟩
+    KInv s' ↔ s'.Usable dst :=
+  ⟨fun hk => transfer_dst_usable_of_noDangling hinv.1 h hk.2.1.2.2,
+    transfer_preserves_of_dst_usable_of_heldAnchored hinv hheld h⟩
 
 /-- Every operation, `transfer` included when its destination stays usable (a hypothesis, not a
-clause of §63), preserves `KInv` (§57), `KAux` (§40, §49.7) and `HeldAnchored` (auxiliary) under
-`DDSound` (§80). -/
+clause of §63), preserves `KInv` (§57) and `HeldAnchored` (auxiliary) under `DDSound` (§80). -/
 theorem op_preserves_of_dst_usable {k : K} {op : KernelOp} {s s' : S3} (hdd : DDSound k)
-    (hinv : KInv s) (haux : KAux s) (hheld : HeldAnchored s) (h : op.Step k s (.ok s'))
+    (hinv : KInv s) (hheld : HeldAnchored s) (h : op.Step k s (.ok s'))
     (hdu : ∀ src dst, op = .transfer src dst → s'.Usable dst) :
-    KInv s' ∧ KAux s' ∧ HeldAnchored s' := by
+    KInv s' ∧ HeldAnchored s' := by
   have hh' := op_preserves_heldAnchored hinv.1 hheld h
   cases op with
-  | transfer src dst =>
-    have h' := (transfer_kinv_iff hinv haux hheld h).2 (hdu src dst rfl)
-    exact ⟨h'.1, h'.2, hh'⟩
-  | _ =>
-    have h' := op_preserves hdd hinv haux h fun _ _ e => KernelOp.noConfusion e
-    exact ⟨h'.1, h'.2, hh'⟩
+  | transfer src dst => exact ⟨(transfer_kinv_iff hinv hheld h).2 (hdu src dst rfl), hh'⟩
+  | _ => exact ⟨op_preserves hdd hinv h fun _ _ e => KernelOp.noConfusion e, hh'⟩
 
 /-! ## The initial state (§47) -/
 
@@ -678,15 +701,14 @@ inductive ReachableDU (k : K) (statics : Statics) : S3 → Prop where
   /-- One more step of `KStepDU` (§57). -/
   | step {s s' : S3} : ReachableDU k statics s → KStepDU k s s' → ReachableDU k statics s'
 
-/-- From a state satisfying `KInv` (§57), `KAux` (§40, §49.7) and `HeldAnchored` under
-`DDSound` (§80), the steps of `KStepDU` are exactly the kernel steps whose resulting state
-satisfies `KInv`: the restriction of `ReachableDU` keeps exactly the runs along which §57
-holds. -/
-theorem kstepDU_iff {k : K} {s s' : S3} (hdd : DDSound k) (hinv : KInv s) (haux : KAux s)
+/-- From a state satisfying `KInv` (§57) and `HeldAnchored` (auxiliary) under `DDSound` (§80),
+the steps of `KStepDU` are exactly the kernel steps whose resulting state satisfies `KInv`: the
+restriction of `ReachableDU` keeps exactly the runs along which §57 holds. -/
+theorem kstepDU_iff {k : K} {s s' : S3} (hdd : DDSound k) (hinv : KInv s)
     (hheld : HeldAnchored s) : KStepDU k s s' ↔ KStep k s s' ∧ KInv s' := by
   constructor
   · rintro ⟨op, hop, hdu⟩
-    exact ⟨kstep_iff.2 ⟨op, hop⟩, (op_preserves_of_dst_usable hdd hinv haux hheld hop hdu).1⟩
+    exact ⟨kstep_iff.2 ⟨op, hop⟩, (op_preserves_of_dst_usable hdd hinv hheld hop hdu).1⟩
   · rintro ⟨h, hk⟩
     obtain ⟨op, hop⟩ := kstep_iff.1 h
     refine ⟨op, hop, fun src dst e => ?_⟩
@@ -714,7 +736,8 @@ theorem reachableDU_kinv {k : K} {statics : Statics} {s : S3} (hdd : DDSound k)
   | init => exact init_kinv hst
   | step _ h ih =>
     obtain ⟨op, hop, hdu⟩ := h
-    exact op_preserves_of_dst_usable hdd ih.1 ih.2.1 ih.2.2 hop hdu
+    have h' := op_preserves_of_dst_usable hdd ih.1 ih.2.2 hop hdu
+    exact ⟨h'.1, op_preserves_kAux ih.1 ih.2.1 hop, h'.2⟩
 
 /-! ## Initialization history (§59) -/
 

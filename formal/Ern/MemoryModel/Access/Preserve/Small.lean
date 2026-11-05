@@ -5,8 +5,8 @@ import Ern.MemoryModel.Access.Preserve.Common
 
 Every `ok` step of O5 `depend` (§64), O8 `store` (§65), O9 `read` (§66), O10 `write` (§67), O11
 `writeShared` (§68), O15 `pin` (§74) and O16 `unpin` (§75) preserves the kernel invariant `KInv`
-of §57 and the auxiliary invariant `KAux` (§58: an `ok` transition preserves the relevant
-invariants). Per-invariant lemmas come first, then the clause-level properties of these operations
+of §57 and, separately, the auxiliary invariant `KAux` (§58: an `ok` transition preserves the
+relevant invariants). Per-invariant lemmas come first, then the clause-level properties of these operations
 and their determinism (§58).
 -/
 
@@ -137,11 +137,10 @@ private theorem rootHeldConv_of {s s' : S3} (h : RootHeldConv s) (hP : s'.P = s.
     RootHeldConv s' :=
   h.transport hP fun x z hx hzo => ⟨z, hroot x z hzo hx, hzo, rfl, rfl⟩
 
-/-- The conjuncts of `KInv` (§57) and `KAux` give `KInv ∧ KAux`; `NoOrphan` follows from `WF3`
-(§54). -/
+/-- The conjuncts of `KInv` (§57) give `KInv`; `NoOrphan` follows from `WF3` (§54). -/
 private theorem kinv_of_parts {s : S3} (hb : WF3 s ∧ Inv3base s) (ho : AnchorOrder s)
-    (hn : NoDangling s) (hh : AnchorOrderHeld s) (hc : RootHeldConv s) : KInv s ∧ KAux s :=
-  ⟨kInv_of hb.1 ⟨hb.2, ho, hn⟩ hh, hc⟩
+    (hn : NoDangling s) (hh : AnchorOrderHeld s) : KInv s :=
+  kInv_of hb.1 ⟨hb.2, ho, hn⟩ hh
 
 /-! ## Steps that keep the authorities (§64, §67, §68, §74, §75) -/
 
@@ -217,13 +216,13 @@ theorem depend_preserves_rootHeldConv {s s' : S3} {q x : Nat} (hc : RootHeldConv
   obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
   exact sameA_rootHeldConv hc rfl rfl
 
-/-- `depend` preserves `KInv` (§57) and `KAux` (§58, §64). -/
-theorem depend_preserves {s s' : S3} {q x : Nat} (hinv : KInv s) (haux : KAux s)
-    (h : DependStep q x s (.ok s')) : KInv s' ∧ KAux s' := by
+/-- `depend` preserves `KInv` (§57, §58, §64); the auxiliary `KAux` is preserved by
+`depend_preserves_rootHeldConv`. -/
+theorem depend_preserves {s s' : S3} {q x : Nat} (hinv : KInv s)
+    (h : DependStep q x s (.ok s')) : KInv s' := by
   obtain ⟨hw, ⟨hb, ho, hnd⟩, hh, -⟩ := hinv
   exact kinv_of_parts (depend_preserves_base hw hb h) (depend_preserves_anchorOrder ho h)
     (depend_preserves_noDangling hnd h) (depend_preserves_anchorOrderHeld hh h)
-    (depend_preserves_rootHeldConv haux h)
 
 /-- `depend_preserves_anchor_validity` (§64.2, §52): `I3` is preserved and every authority keeps
 its activity, so a declared dependency extends no lifetime. -/
@@ -351,13 +350,13 @@ theorem store_preserves_rootHeldConv {s s' : S3} {a p : Nat} (hc : RootHeldConv 
   obtain ⟨y, hy, -, ho, -⟩ := store_pre_auth hpre.derivedHeld
   exact rootHeldConv_of hc (store_eqs s a p).1 fun i z hzo hz => (store_root hy ho i z hzo).1 hz
 
-/-- `store` preserves `KInv` (§57) and `KAux` (§58, §65). -/
-theorem store_preserves {s s' : S3} {a p : Nat} (hinv : KInv s) (haux : KAux s)
-    (h : StoreStep a p s (.ok s')) : KInv s' ∧ KAux s' := by
+/-- `store` preserves `KInv` (§57, §58, §65); the auxiliary `KAux` is preserved by
+`store_preserves_rootHeldConv`. -/
+theorem store_preserves {s s' : S3} {a p : Nat} (hinv : KInv s)
+    (h : StoreStep a p s (.ok s')) : KInv s' := by
   obtain ⟨hw, ⟨hb, ho, hnd⟩, -, -⟩ := hinv
   exact kinv_of_parts (store_preserves_base hw hb h) (store_preserves_anchorOrder hw ho h)
     (store_preserves_noDangling hnd h) (store_preserves_anchorOrderHeld h)
-    (store_preserves_rootHeldConv haux h)
 
 /-- `store_writes_one_leaf` (§65.2, §65 `ok` effect): the target is a leaf, it becomes `Init`,
 and no other leaf changes its initialization state. -/
@@ -401,10 +400,15 @@ particular `F`, `P`, `I`, `A` and `D`. -/
 theorem read_preserves_state {s s' : S3} {a : Nat} {ls : List Nat}
     (h : Read3Step a ls s (.ok s')) : s' = s := (Guarded.ok_iff.1 h).2
 
-/-- `read` preserves `KInv` (§57) and `KAux` (§58, §66). -/
-theorem read_preserves {s s' : S3} {a : Nat} {ls : List Nat} (hinv : KInv s) (haux : KAux s)
-    (h : Read3Step a ls s (.ok s')) : KInv s' ∧ KAux s' := by
-  rw [read_preserves_state h]; exact ⟨hinv, haux⟩
+/-- `read` preserves `KInv` (§57, §58, §66). -/
+theorem read_preserves {s s' : S3} {a : Nat} {ls : List Nat} (hinv : KInv s)
+    (h : Read3Step a ls s (.ok s')) : KInv s' := by
+  rw [read_preserves_state h]; exact hinv
+
+/-- `read` preserves the auxiliary `KAux` (§40, §49.7; §66: the state is unchanged). -/
+theorem read_preserves_kAux {s s' : S3} {a : Nat} {ls : List Nat} (haux : KAux s)
+    (h : Read3Step a ls s (.ok s')) : KAux s' := by
+  rw [read_preserves_state h]; exact haux
 
 /-- Determinism of `read` (§58, §66): one outcome. -/
 theorem read_det {a : Nat} {ls : List Nat} {s : S3} {o₁ o₂ : Outcome3 S3}
@@ -439,26 +443,37 @@ theorem write3Eff_preserves_rootHeldConv {s : S3} (ls : List Nat) (h : RootHeldC
     RootHeldConv (write3Eff s ls) :=
   sameA_rootHeldConv h rfl rfl
 
-/-- The write effect preserves `KInv` (§57) and `KAux` (§67, §68 `ok` effects). -/
-private theorem write3Eff_preserves {s : S3} (ls : List Nat) (hinv : KInv s) (haux : KAux s) :
-    KInv (write3Eff s ls) ∧ KAux (write3Eff s ls) := by
+/-- The write effect preserves `KInv` (§57; §67, §68 `ok` effects). -/
+private theorem write3Eff_preserves {s : S3} (ls : List Nat) (hinv : KInv s) :
+    KInv (write3Eff s ls) := by
   obtain ⟨hw, ⟨hb, ho, hnd⟩, hh, -⟩ := hinv
   exact kinv_of_parts (write3Eff_preserves_base ls hw hb) (write3Eff_preserves_anchorOrder ls ho)
     (write3Eff_preserves_noDangling ls hnd) (write3Eff_preserves_anchorOrderHeld ls hh)
-    (write3Eff_preserves_rootHeldConv ls haux)
 
-/-- `write` preserves `KInv` (§57) and `KAux` (§58, §67). -/
-theorem write_preserves {s s' : S3} {a : Nat} {ls : List Nat} (hinv : KInv s) (haux : KAux s)
-    (h : Write3Step a ls s (.ok s')) : KInv s' ∧ KAux s' := by
+/-- `write` preserves `KInv` (§57, §58, §67). -/
+theorem write_preserves {s s' : S3} {a : Nat} {ls : List Nat} (hinv : KInv s)
+    (h : Write3Step a ls s (.ok s')) : KInv s' := by
   obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
-  exact write3Eff_preserves ls hinv haux
+  exact write3Eff_preserves ls hinv
 
-/-- `writeShared` preserves `KInv` (§57) and `KAux` (§58, §68: authorities and I1 do not
-change). -/
+/-- `write` preserves the auxiliary `KAux` (§40, §49.7; §67 `ok` effect: only `I` changes). -/
+theorem write_preserves_kAux {s s' : S3} {a : Nat} {ls : List Nat} (haux : KAux s)
+    (h : Write3Step a ls s (.ok s')) : KAux s' := by
+  obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
+  exact write3Eff_preserves_rootHeldConv ls haux
+
+/-- `writeShared` preserves `KInv` (§57, §58, §68: authorities and I1 do not change). -/
 theorem writeShared_preserves {k : K} {s s' : S3} {a : Nat} {ls : List Nat} (hinv : KInv s)
-    (haux : KAux s) (h : WriteSharedStep k a ls s (.ok s')) : KInv s' ∧ KAux s' := by
+    (h : WriteSharedStep k a ls s (.ok s')) : KInv s' := by
   obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
-  exact write3Eff_preserves ls hinv haux
+  exact write3Eff_preserves ls hinv
+
+/-- `writeShared` preserves the auxiliary `KAux` (§40, §49.7; §68 `ok` effect: only `I`
+changes). -/
+theorem writeShared_preserves_kAux {k : K} {s s' : S3} {a : Nat} {ls : List Nat} (haux : KAux s)
+    (h : WriteSharedStep k a ls s (.ok s')) : KAux s' := by
+  obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
+  exact write3Eff_preserves_rootHeldConv ls haux
 
 /-- `write_exclusive` (§67.1, §67.2, §50): on every leaf of an accepted write, `access` has
 effective `Modify` and no other authority has an effective mode. -/
@@ -518,25 +533,38 @@ theorem pinEff_preserves_rootHeldConv {s : S3} (p : Nat) (b : Bool) (h : RootHel
     RootHeldConv (pinEff s p b) :=
   sameA_rootHeldConv h rfl rfl
 
-/-- The pinning effect preserves `KInv` (§57) and `KAux` (§74, §75 `ok` effects). -/
-private theorem pinEff_preserves {s : S3} (p : Nat) (b : Bool) (hinv : KInv s) (haux : KAux s) :
-    KInv (pinEff s p b) ∧ KAux (pinEff s p b) := by
+/-- The pinning effect preserves `KInv` (§57; §74, §75 `ok` effects). -/
+private theorem pinEff_preserves {s : S3} (p : Nat) (b : Bool) (hinv : KInv s) :
+    KInv (pinEff s p b) := by
   obtain ⟨hw, ⟨hb, ho, hnd⟩, hh, -⟩ := hinv
   exact kinv_of_parts (pinEff_preserves_base p b hw hb) (pinEff_preserves_anchorOrder p b ho)
     (pinEff_preserves_noDangling p b hnd) (pinEff_preserves_anchorOrderHeld p b hh)
-    (pinEff_preserves_rootHeldConv p b haux)
 
-/-- `pin` preserves `KInv` (§57) and `KAux` (§58, §74). -/
-theorem pin_preserves {s s' : S3} {p : Nat} (hinv : KInv s) (haux : KAux s)
-    (h : PinStep p s (.ok s')) : KInv s' ∧ KAux s' := by
+/-- `pin` preserves `KInv` (§57, §58, §74). -/
+theorem pin_preserves {s s' : S3} {p : Nat} (hinv : KInv s)
+    (h : PinStep p s (.ok s')) : KInv s' := by
   obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
-  exact pinEff_preserves p true hinv haux
+  exact pinEff_preserves p true hinv
 
-/-- `unpin` preserves `KInv` (§57) and `KAux` (§58, §75). -/
-theorem unpin_preserves {k : K} {s s' : S3} {p : Nat} (hinv : KInv s) (haux : KAux s)
-    (h : UnpinStep k p s (.ok s')) : KInv s' ∧ KAux s' := by
+/-- `pin` preserves the auxiliary `KAux` (§40, §49.7; §74 `ok` effect: only the pin flags
+change). -/
+theorem pin_preserves_kAux {s s' : S3} {p : Nat} (haux : KAux s)
+    (h : PinStep p s (.ok s')) : KAux s' := by
   obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
-  exact pinEff_preserves p false hinv haux
+  exact pinEff_preserves_rootHeldConv p true haux
+
+/-- `unpin` preserves `KInv` (§57, §58, §75). -/
+theorem unpin_preserves {k : K} {s s' : S3} {p : Nat} (hinv : KInv s)
+    (h : UnpinStep k p s (.ok s')) : KInv s' := by
+  obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
+  exact pinEff_preserves p false hinv
+
+/-- `unpin` preserves the auxiliary `KAux` (§40, §49.7; §75 `ok` effect: only the pin flags
+change). -/
+theorem unpin_preserves_kAux {k : K} {s s' : S3} {p : Nat} (haux : KAux s)
+    (h : UnpinStep k p s (.ok s')) : KAux s' := by
+  obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
+  exact pinEff_preserves_rootHeldConv p false haux
 
 /-- Determinism of `pin` (§58, §74): one outcome. -/
 theorem pin_det {p : Nat} {s : S3} {o₁ o₂ : Outcome3 S3} (h₁ : PinStep p s o₁)

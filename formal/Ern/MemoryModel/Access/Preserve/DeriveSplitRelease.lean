@@ -4,7 +4,7 @@ import Ern.MemoryModel.Access.Preserve.Common
 # Access kernel: preservation by `derive`, `split` and `release`
 
 O1 `derive` (§60), O2 `split` (§61) and O3 `release` (§62) preserve the kernel invariant `KInv`
-(§57) and its auxiliary `KAux`; `split` needs the obligation `DDSound(K)` (§61, §80) for I1 only.
+(§57) and, separately, its auxiliary `KAux`; `split` needs the obligation `DDSound(K)` (§61, §80) for I1 only.
 Per-invariant lemmas, the effects of §61 and §62 on effective modes (§43), the failure of I1 after
 a `split` without `DDSound` (§61, note), and determinism (§58).
 -/
@@ -205,14 +205,15 @@ theorem derive_preserves_rootHeldConv {s s' : S3} {src : Nat} {region : List Nat
   obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
   exact addAuth_rootHeldConv hc rfl
 
-/-- `derive` preserves the kernel invariant `KInv` and `KAux` (§57, §58, §60). -/
+/-- `derive` preserves the kernel invariant `KInv` (§57, §58, §60); the auxiliary `KAux` is
+preserved by `derive_preserves_rootHeldConv`. -/
 theorem derive_preserves {s s' : S3} {src : Nat} {region : List Nat} {m : Mode} (hinv : KInv s)
-    (haux : KAux s) (h : DeriveStep src region m s (.ok s')) : KInv s' ∧ KAux s' := by
+    (h : DeriveStep src region m s (.ok s')) : KInv s' := by
   obtain ⟨hw, ⟨⟨h1, h2, h3, -⟩, hao, hnd⟩, haoh, -⟩ := hinv
-  exact ⟨kInv_of (derive_preserves_wf3 hw h)
+  exact kInv_of (derive_preserves_wf3 hw h)
     ⟨⟨derive_preserves_exclusivity h1 h, derive_preserves_i2 h2 h, derive_preserves_i3 h3 h,
       i4_always _⟩, derive_preserves_anchorOrder hao h, derive_preserves_noDangling hnd h⟩
-    (derive_preserves_anchorOrderHeld haoh h), derive_preserves_rootHeldConv haux h⟩
+    (derive_preserves_anchorOrderHeld haoh h)
 
 /-! ## O2 `split` (§61) -/
 
@@ -328,15 +329,15 @@ theorem split_preserves_rootHeldConv {k : K} {s s' : S3} {src : Nat} {rs : List 
   obtain ⟨x, hx, -, -, hfp⟩ := split_src hp
   exact split_induct RootHeldConv (fun _ _ h _ _ => addAuth_rootHeldConv h rfl) rs s hc hx hfp
 
-/-- `split` preserves the kernel invariant `KInv` and `KAux` (§57, §58, §61) under the obligation
-`DDSound(K)` (§57, §80). -/
+/-- `split` preserves the kernel invariant `KInv` (§57, §58, §61) under the obligation
+`DDSound(K)` (§57, §80); the auxiliary `KAux` is preserved by `split_preserves_rootHeldConv`. -/
 theorem split_preserves {k : K} (hdd : DDSound k) {s s' : S3} {src : Nat} {rs : List (List Nat)}
-    (hinv : KInv s) (haux : KAux s) (h : SplitStep k src rs s (.ok s')) : KInv s' ∧ KAux s' := by
+    (hinv : KInv s) (h : SplitStep k src rs s (.ok s')) : KInv s' := by
   obtain ⟨hw, ⟨⟨h1, h2, h3, -⟩, hao, hnd⟩, haoh, -⟩ := hinv
-  exact ⟨kInv_of (split_preserves_wf3 hw h)
+  exact kInv_of (split_preserves_wf3 hw h)
     ⟨⟨split_preserves_exclusivity hdd h1 h, split_preserves_i2 h2 h, split_preserves_i3 h3 h,
       i4_always _⟩, split_preserves_anchorOrder hao h, split_preserves_noDangling hnd h⟩
-    (split_preserves_anchorOrderHeld haoh h), split_preserves_rootHeldConv haux h⟩
+    (split_preserves_anchorOrderHeld haoh h)
 
 /-- Adding an authority not covering `p` keeps the effective mode of `src` on `p`, through the
 whole `split` (§43, §61 effect). -/
@@ -591,14 +592,15 @@ theorem release_preserves_rootHeldConv {s s' : S3} {a : Nat} (hc : RootHeldConv 
     obtain ⟨z₀, hz₀, -, e1, e2, e3, -⟩ := release_back hx hz
     exact ⟨z₀, hz₀, e1 ▸ hzo, e2, e3⟩
 
-/-- `release` preserves the kernel invariant `KInv` and `KAux` (§57, §58, §62). -/
-theorem release_preserves {s s' : S3} {a : Nat} (hinv : KInv s) (haux : KAux s)
-    (h : ReleaseStep a s (.ok s')) : KInv s' ∧ KAux s' := by
+/-- `release` preserves the kernel invariant `KInv` (§57, §58, §62); the auxiliary `KAux` is
+preserved by `release_preserves_rootHeldConv`. -/
+theorem release_preserves {s s' : S3} {a : Nat} (hinv : KInv s)
+    (h : ReleaseStep a s (.ok s')) : KInv s' := by
   obtain ⟨hw, ⟨⟨h1, h2, h3, -⟩, hao, hnd⟩, haoh, -⟩ := hinv
-  exact ⟨kInv_of (release_preserves_wf3 hw h)
+  exact kInv_of (release_preserves_wf3 hw h)
     ⟨⟨release_preserves_exclusivity h1 h, release_preserves_i2 h2 h, release_preserves_i3 h3 h,
       i4_always _⟩, release_preserves_anchorOrder hao h, release_preserves_noDangling hnd h⟩
-    (release_preserves_anchorOrderHeld haoh h), release_preserves_rootHeldConv haux h⟩
+    (release_preserves_anchorOrderHeld haoh h)
 
 /-- Restoration of rights by `release` (§62 effect, §26, §32): if `b`, derived from `a`, is the
 only active descendant of `a` covering `p`, then before the release `a` has no effective mode on `p`
