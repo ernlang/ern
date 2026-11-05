@@ -32,6 +32,22 @@ the positive twin of each rejection or `fail` (rule 2: the same sequence without
 element, accepted). A case whose obtained verdict differs from the expected one keeps its expected
 verdict and is marked **MISMATCH** with its cause.
 
+Twins that are not literally the same sequence without one faulty step:
+* another handle, entry, target, parameter or identity in place of the faulty one: H30 (the handle
+  of generation 1), H31b (two distinct entries), H33 (the local 4), H34b (pool 0),
+  `resolveMany_atomic` (the valid handle `⟨0, 1, 0⟩`), `pool_shared_right` (a `Modify` parameter),
+  `pool_two_freeSlot_cross` at `newPool` (`internal` 6), `pool_two_on_one_internal`,
+  `arena_on_pool_internal`, `pool_on_arena_internal`, `stack_on_arena_internal`,
+  `arena_on_stack_internal`, `stack_on_pool_internal`, `pool_on_stack_internal` (`internal` 5), W1
+  `fail` (the handle of the live first node);
+* further steps that lift the blocking before the step under test: H31a and H32 (`unresolve`),
+  `pool_free_entry_handle` (`allocSlot` first), W1 `reject` (`unresolve`), W2 (`release` of 12 and
+  11, and the transfer 9 → 16);
+* a faulty element of several steps, removed: `pool_two_freeSlot_cross` at `resolve` (the
+  authority 6 and the steps that use it; removing pool 1 alone leaves the `reject`);
+* no twin stated: H31a for the stale handle `⟨0, 1, 7⟩` (after `unresolve` it is `fail`) and for
+  the `Observe` resolution; only the resolution of the other entry has one.
+
 Local shapes are lists of (parent, kind) (§71.1, §72); `lf` is a root leaf, `pt p` a part of
 place `p`. Places and authorities are list indices (§38): `enterFrame` appends the locals and one
 root authority per local; `alloc` appends the shape and one root authority; `derive` and `split`
@@ -357,7 +373,11 @@ identities are not forbidden merely because their footprints overlap): `ok`, and
 run too. On that twin, the `freeSlot` of pool 1 ends the content of the place 6 (`Init` before,
 `Uninit` after), which is the slot 0 of pool 0, still live at generation 0: `internal` 5 of pool 0
 is an ancestor of the `internal` 6 of pool 1, hence exempt (D.3). Pool 0 cannot resolve that slot
-while pool 1 lives: its `internal` has no effective right on the storage (`reject`, §43 case 3). -/
+while the `internal` 6 of pool 1 is active: its own `internal` 5 has no effective right on the
+storage (`reject`, §43 case 3). Twin of that `reject`: the same sequence without the authority 6
+(its `derive` and `store`) and the steps that use it (pool 1, its slot, the write through 6, its
+`freeSlot`): `allocSlot` then `resolve` in pool 0, `ok`. Dropping only the steps of pool 1 does not
+lift the `reject`: 6 is active from its `derive` on, before pool 1 exists. -/
 theorem pool_two_freeSlot_cross : CRunsTo K0 [] pxo px ∧
     HandlePool.NewPoolStep px.othersP 5 5 px.toP .reject ∧ NewArenaBase px.kern 5 5 ∧
     (∀ l ∈ footprint px.kern.P 5, px.kern.I l = .uninit) ∧
@@ -365,10 +385,12 @@ theorem pool_two_freeSlot_cross : CRunsTo K0 [] pxo px ∧
     pxt.kern.I 6 = .uninit ∧
     pxt.pools = [⟨0, 5, 5, [⟨6, 0, true⟩, ⟨7, 0, false⟩]⟩,
       ⟨1, 5, 6, [⟨6, 1, false⟩, ⟨7, 0, false⟩]⟩] ∧
-    HandlePool.ResolveStep 0 ⟨0, 0, 0⟩ .modify pxt.toP .reject :=
+    HandlePool.ResolveStep 0 ⟨0, 0, 0⟩ .modify pxt.toP .reject ∧
+    CRuns K0 [] (pxo.take 5 ++ [.allocSlot 0 2, .resolve 0 ⟨0, 0, 0⟩ .modify]) :=
   ⟨crunsTo (by decide), crejects (k := K0) (C := px) (o := .newPool 5 5) (by decide), by decide,
     by decide, crunsTo (by decide), by decide, by decide, by decide,
-    crejects (k := K0) (C := pxt) (o := .resolve 0 ⟨0, 0, 0⟩ .modify) (by decide)⟩
+    crejects (k := K0) (C := pxt) (o := .resolve 0 ⟨0, 0, 0⟩ .modify) (by decide),
+    crunsTo (by decide)⟩
 
 /-! ## The guard of §56 across registries -/
 

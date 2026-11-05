@@ -19,6 +19,25 @@ the same sequence without the faulty element, accepted). A case whose obtained v
 the expected one is kept with its expected verdict and marked **MISMATCH** with its cause; no case
 is corrected.
 
+Twins that are not literally the same sequence without one faulty step:
+* another destination, target, parameter or identity in place of the faulty one: H04 (the other
+  element), H13 (`z`), H18 (the local leaf 3), H21 (a `Modify` parameter), H25 (a `Modify`
+  parameter on the static), H29 (a `Modify` parameter), H50 `transfer` (the stored authority on
+  the local 4), H50 `issue` (the value 2), H51 direct form (the view on `u`), S63_8 (the stored
+  authority on the local 6), S56 (`internal` 5), S77_2 (the destination 3 outside the region,
+  `fail`; the available region `[6]`, `ok`);
+* further steps that lift the blocking before the step under test: H11 (`endUse` of `v2` and of
+  the leaf 6), H17 (`endUse` of the block value, then `free` of the storage 4 instead of the leaf
+  5), H19 (`endUse` of the child value), H26 second twin (the contract with `ExternalDone`, then
+  `unpin`), H27b (three `release`), W3 (`endUse` of the structure and of the block values);
+* a pairing given by the material: H05 (its own twin), H21b (H37);
+* a faulty element of several steps, removed: H03, S77_6 (`derive` and `store`), H51 through a
+  helper (the view, or its `store`), H49 (the six steps of the cycle: removing only its stores
+  leaves the `reject`, for another cause);
+* no twin: the `reset` `reject` in the state `h49` of H49, which persists without the cycle
+  (construction defect by rule 2, recorded there); the reception `transfer` `reject` of H16, a
+  **MISMATCH** whose expected verdict is `ok`.
+
 Local shapes are lists of (parent, kind) (§72, §71.1); `lf` is a root leaf, `pt p` a part of `p`.
 Place and authority identities are list indices (§38): `enterFrame` appends the locals and one
 root authority per root local; `alloc` appends the shape and one root authority; `derive` and
@@ -712,16 +731,31 @@ theorem H48 : RunsTo K0 [] h48o h48 ∧ StoreStep 8 6 h48.kern .reject ∧
 def h49o : List Op := h48o ++ [.derive 7 [6] .modify, .store 8 6, .release 9]
 /-- State reached by `h49o` (§57). -/
 def h49 : LState := final K0 [] h49o
+/-- State reached by `h49o` and the `endUse` of the block values 2 and 3, which ends the blocks 5
+and 6 (§69 effect, §57). -/
+def h49e : LState := final K0 [] (h49o ++ [.endUse 2, .endUse 3])
 
 /-- **H49** (material §1 I, class N3). The same cycle, closed through a helper authority, then
 `release` of the helper. Expected (material): to arbitrate. Obtained: `ok`, with a residual
-blocking: the authorities 7 and 8 are exercisable in no mode and `reset` is `reject` (§65 last
-paragraph and §27: `NoLock` is not adopted; §88: indirect blocking compatible with safety may
-remain). **MISMATCH** in form (expected "to arbitrate", obtained `ok`); cause: spec change, spec
-v0 now determines the verdict (§65, §88). -/
+blocking (material §5: held authorities that nobody can exercise block a `reset`): the authorities
+7 and 8 are exercisable in no mode; after the `endUse` of the block values 2 and 3 they stay so,
+active, held by the leaves 5 and 6, derived from `internal` through the blocks and covering the
+leaves 6 and 5, and `reset` is `reject` (§78.2; §65 last paragraph and §27: `NoLock` is not
+adopted; §88: indirect blocking compatible with safety may remain). Twin of that `reject`: the
+same sequence without the cycle (the six steps after `fao`), `ok`. Dropping only one or both
+`store` steps does not lift it: an authority left with the frame still covers its leaf (§78.2, a
+different, releasable cause). The `reset` `reject` in `h49` itself persists in that twin (on
+`fao` the blocks 5 and 6 are still held by the values 2 and 3, §78.2): by rule 2 it is a
+construction defect, kept as a fact and not as the residual blocking of the case. **MISMATCH** in form (expected "to arbitrate", obtained `ok`);
+cause: spec change, spec v0 now determines the verdict (§65, §88). -/
 theorem H49 : RunsTo K0 [] h49o h49 ∧ ¬ h49.kern.ExercisableAt 7 .observe ∧
-    ¬ h49.kern.ExercisableAt 8 .observe ∧ ResetD 0 h49 .reject :=
-  ⟨runsTo (by decide), by decide, by decide, rejects (k := K0) (o := .reset 0) (by decide)⟩
+    ¬ h49.kern.ExercisableAt 8 .observe ∧ ResetD 0 h49 .reject ∧
+    RunsTo K0 [] (h49o ++ [.endUse 2, .endUse 3]) h49e ∧ ¬ h49e.kern.ExercisableAt 7 .observe ∧
+    ¬ h49e.kern.ExercisableAt 8 .observe ∧ ResetD 0 h49e .reject ∧
+    Runs K0 [] (fao ++ [.endUse 2, .endUse 3, .reset 0]) :=
+  ⟨runsTo (by decide), by decide, by decide, rejects (k := K0) (o := .reset 0) (by decide),
+    runsTo (by decide), by decide, by decide, rejects (k := K0) (o := .reset 0) (by decide),
+    runsTo (by decide)⟩
 
 /-- Run of H50, `transfer` part (§72, §60, §65): structure 0 (field 1), structure 2 (field 3),
 local 4; 3, `Modify` on the field 3, stored into the field 1. -/
@@ -776,16 +810,24 @@ the frame's `Modify` on `v`, hence on the storage it owns (§43 case 4, §65.2, 
 the view on another value `u`: `ok`. Through a helper on the element, then its `release`, the
 configuration is reached (`ok`); then `v` can be neither written, nor relieved of the view, nor
 ended (`reject`, §67.1, §62.2, §69.1), while the view stays exercisable in `Observe`; the exit of
-the frame is `ok` (§88: residual blocking). **MISMATCH** in form (expected "to arbitrate", obtained
-`reject` / `ok`); cause: spec change, spec v0 now determines the verdicts (§65.2, §88). -/
+the frame is `ok` (§88: residual blocking). Twins of these three rejections: the same sequence
+without the view on `v` (its `derive` and its `store`), then the write of `v` through its root,
+`ok`, or its `endUse`, `ok`; the same sequence without the `store` of the view, then its
+`release`, `ok`. With only the `store` dropped, the write and the `endUse` stay `reject` for a
+different cause: the view, then held by the frame, is active on `v` (§43 case 4, §67.1, §69.2)
+and releasable. **MISMATCH** in form (expected "to arbitrate", obtained `reject` / `ok`); cause:
+spec change, spec v0 now determines the verdicts (§65.2, §88). -/
 theorem H51 : RunsTo K0 [] h51no h51n ∧ StoreStep 4 4 h51n.kern .reject ∧
     Runs K0 [] (h51p ++ [.derive 2 [2] .observe, .store 4 4]) ∧
     RunsTo K0 [] h51o h51 ∧ (∀ a, Write3Step a [1] h51.kern .reject) ∧
     ReleaseStep 5 h51.kern .reject ∧ EndUseStep K0 1 h51.kern .reject ∧
-    h51.kern.ExercisableAt 5 .observe ∧ Runs K0 [] (h51o ++ [.exit]) :=
+    h51.kern.ExercisableAt 5 .observe ∧ Runs K0 [] (h51o ++ [.exit]) ∧
+    Runs K0 [] (h51p ++ [.derive 3 [4] .modify, .release 4, .write 1 [1]]) ∧
+    Runs K0 [] (h51p ++ [.derive 3 [4] .modify, .derive 1 [1] .observe, .release 4, .release 5]) ∧
+    Runs K0 [] (h51p ++ [.derive 3 [4] .modify, .release 4, .endUse 1]) :=
   ⟨runsTo (by decide), .reject (by decide), runsTo (by decide), runsTo (by decide),
     write_rejected (by decide), .reject (by decide), .reject (by decide), by decide,
-    runsTo (by decide)⟩
+    runsTo (by decide), runsTo (by decide), runsTo (by decide), runsTo (by decide)⟩
 
 /-! ## New cases fixed by spec v0 clauses -/
 

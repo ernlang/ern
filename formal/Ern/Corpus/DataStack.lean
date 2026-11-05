@@ -26,15 +26,20 @@ Each case states the reached state with `DRunsTo`, the verdict of the step under
 relation of its operation on that state (decided by `decide`; `rewind_dead_fails` adds that `fail`
 is the only outcome), and its positive twin (the same sequence without the faulty element,
 accepted). Its docstring gives the expected verdict from its source (DS-v1; the brief; the draft
-DataStack cases of the derivability material, non-normative), the obtained verdict, the class
-(`Lib`: library instance) and the twin. A case whose obtained verdict differs from the expected one
-would be kept with its expected verdict and marked **MISMATCH**; there is none.
+DataStack cases of the derivability material, non-normative, which settle no verdict alone), the
+obtained verdict, the class (`Lib`: library instance) and the twin. A case whose obtained verdict
+differs from the expected one is kept with its expected verdict and marked **MISMATCH**. Two
+verdicts have no settling source and are marked to arbitrate (expected verdict from the source:
+none; **MISMATCH** in form, as `pool_free_entry_handle` in `Ern.Corpus.Lib`): DS05 (`push` without
+room, reading DS-R7) and the third conjunct of DS03 (`grow` of a block that is no block of the
+stack, reading DS-R5).
 
 Readings of DS-v1 (recorded with `Ern.Lib.DataStack`) on which a verdict depends: DS-R5 (`grow` of
-a live block that is not the last one: `fail`; the draft rejected) in DS04; DS-R7 (`push` without
-room: `fail`) in DS05. Every run uses the representation readings R3 (`rewind` as `split` and
-`release` of `internal`, with the right of §36) and R5 (`newStack`: the preconditions of `newArena`
-other than its guard, and the guard of §56). The other verdicts are the same under the alternatives
+a live block that is not the last one: `fail`; the draft rejected) in DS04, and (a `b` that is no
+block: `reject`) in DS03; DS-R7 (`push` without room: `fail`) in DS05. Every run uses the
+representation readings R3 (`rewind` as `split` and `release` of `internal`, with the right of
+§36) and R5 (`newStack`: the preconditions of `newArena` other than its guard, and the guard of
+§56). The other verdicts are the same under the alternatives
 of DS-R1, DS-R2, DS-R3, DS-R6 and R4: the covering authorities lie between the top of the mark and
 the top; the administrative right of §36 holds where a mark is dead or foreign; a foreign mark is
 in no list of the stack; every block grown can be released; the mark removed with an older one is
@@ -478,12 +483,16 @@ def ds03 : DState := dfinal K0 [] ds03o
 
 /-- **DS03** (draft `case_grow`; DS-v1 "grow is in place only (same base, extension into the space
 directly after the block, fail otherwise)"; class Lib). `grow(6, 1)` with one cell after the block;
-then `grow(9, 1)` with no cell left; then `grow(6, 1)` of the replaced block. Expected (draft,
-DS-v1): `ok` (block `⟨0, 3, 9, 5⟩` of the same base and destination, authority 9 on `[2, 3, 4]`),
-`fail`, `reject`. Obtained: `ok` (`release`, `split`, `store`, §62, §61, §65) with that block and
-footprint; `fail` (no room, availability §77.4; readings DS-R5, DS-R6); `reject` (6 is no block of
-the stack). Twin of the `fail` and of the `reject`: `grow(6, 1)` with one cell after the block, the
-`ok` step of this run. -/
+then `grow(9, 1)` with no cell left; then `grow(6, 1)` of the replaced block. Expected (DS-v1):
+`ok` (block `⟨0, 3, 9, 5⟩` of the same base and destination, authority 9 on `[2, 3, 4]`), `fail`;
+for the replaced block, none from the source, to arbitrate: DS-v1 says nothing of a `b` that is no
+block of the stack (the `reject` of the draft `case_grow` is module behaviour, not a source).
+Obtained: `ok` (`release`, `split`, `store`, §62, §61, §65) with that block and footprint; `fail`
+(no room, availability §77.4; readings DS-R5, DS-R6); `reject` (6 is no block of the stack;
+reading DS-R5, which records no alternative for it). Twin of the `fail` and of the `reject`:
+`grow(6, 1)` with one cell after the block, the `ok` step of this run. **MISMATCH** in form for the
+replaced block (expected "to arbitrate", obtained `reject`); cause: open obligation, DS-v1 leaves
+the outcome open and the stack module reads it as `reject` (DataStack reading DS-R5). -/
 theorem DS03 : DRunsTo K0 [] ds03o ds03 ∧
     ds03.stacks = [⟨1, 5, [2, 3, 4], 3, [⟨0, 3, 9, 5⟩], [⟨0, 0, 0⟩, ⟨0, 2, 2⟩]⟩] ∧
     ds03.kern.afp 9 = [2, 3, 4] ∧
@@ -503,10 +512,14 @@ theorem DS04 : DRunsTo K0 [] ds01o ds01 ∧ GrowStep K0 0 6 1 ds01 .fail ∧
 /-- State reached by `setup1` (§57; DS-v1): stack 0 with 3 cells, top 0. -/
 def ds05 : DState := dfinal K0 [] setup1
 
-/-- **DS05** (draft `case_static_before_fail`, `push 0 4 5`; brief "push with no room (fail)"; DS-v1
-"push … use[s] the derived issue of Part XIV"; class Lib). `push` of 4 cells into 5 on a stack of
-3 cells. Expected: `fail`. Obtained: `fail` (static checks of §77.1, §77.2 hold, then no room;
-availability §77.4, reading DS-R7). Twin: `push` of the 3 cells, `ok`. -/
+/-- **DS05** (draft `case_static_before_fail`, `push 0 4 5`; DS-v1 "push and grow use the derived
+issue"; class Lib). `push` of 4 cells into 5 on a stack of 3 cells. Expected: none from the source,
+to arbitrate: DS-v1 does not settle a `push` without room; reading DS-R7 gives `fail`
+(availability, §77.4), its recorded alternative `reject` ("region belongs to the administered
+storage", §77.2, static). Obtained: `fail` (static checks of §77.1, §77.2 hold, then no room;
+availability §77.4, reading DS-R7). Twin: `push` of the 3 cells, `ok`. **MISMATCH** in form
+(expected "to arbitrate", obtained `fail`); cause: open obligation, DS-v1 leaves the outcome open
+and the stack module reads it as `fail` (DataStack reading DS-R7). -/
 theorem DS05 : DRunsTo K0 [] setup1 ds05 ∧ PushStep K0 0 4 5 ds05 .fail ∧
     DRuns K0 [] (setup1 ++ [.push 0 3 5]) :=
   ⟨druns (by decide), dfails (k := K0) (o := .push 0 4 5) (by decide), druns (by decide)⟩
