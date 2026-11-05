@@ -1,0 +1,17 @@
+{
+  "tool_use_id": "ad066e1466b12adbd",
+  "agent_id": "ad066e1466b12adbd",
+  "subagent_type": "workflow-subagent",
+  "files": [
+    "formal/Ern/MemoryModel/Access/Lemmas.lean"
+  ],
+  "token_usage": {
+    "input_tokens": 66,
+    "cache_creation_tokens": 217657,
+    "cache_read_tokens": 5953272,
+    "output_tokens": 62433,
+    "api_call_count": 33
+  },
+  "started_at": "2026-11-05T17:14:15.607204+01:00",
+  "completed_at": "2026-11-05T17:23:20.499757+01:00"
+}
