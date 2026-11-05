@@ -1,0 +1,17 @@
+{
+  "tool_use_id": "a6b6d9f489acae686",
+  "agent_id": "a6b6d9f489acae686",
+  "subagent_type": "workflow-subagent",
+  "files": [
+    "formal/Ern/MemoryModel/Refinement.lean"
+  ],
+  "token_usage": {
+    "input_tokens": 224,
+    "cache_creation_tokens": 575832,
+    "cache_read_tokens": 47188627,
+    "output_tokens": 274266,
+    "api_call_count": 112
+  },
+  "started_at": "2026-11-05T17:33:44.631225+01:00",
+  "completed_at": "2026-11-05T18:15:57.755451+01:00"
+}

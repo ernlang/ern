@@ -1,0 +1,17 @@
+{
+  "tool_use_id": "ae18a42178a72b901",
+  "agent_id": "ae18a42178a72b901",
+  "subagent_type": "workflow-subagent",
+  "files": [
+    "formal/Ern/MemoryModel/Access/Preserve/Alloc.lean"
+  ],
+  "token_usage": {
+    "input_tokens": 86,
+    "cache_creation_tokens": 242890,
+    "cache_read_tokens": 7940491,
+    "output_tokens": 81271,
+    "api_call_count": 43
+  },
+  "started_at": "2026-11-05T17:33:44.649602+01:00",
+  "completed_at": "2026-11-05T17:45:54.933737+01:00"
+}

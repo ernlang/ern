@@ -1,0 +1,17 @@
+{
+  "tool_use_id": "a190b85789e5c4ab5",
+  "agent_id": "a190b85789e5c4ab5",
+  "subagent_type": "workflow-subagent",
+  "files": [
+    "formal/Ern/MemoryModel/Access/Preserve/EndFree.lean"
+  ],
+  "token_usage": {
+    "input_tokens": 96,
+    "cache_creation_tokens": 277601,
+    "cache_read_tokens": 10191892,
+    "output_tokens": 91772,
+    "api_call_count": 48
+  },
+  "started_at": "2026-11-05T17:33:44.634435+01:00",
+  "completed_at": "2026-11-05T17:47:46.370667+01:00"
+}

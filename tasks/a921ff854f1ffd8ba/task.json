@@ -1,0 +1,17 @@
+{
+  "tool_use_id": "a921ff854f1ffd8ba",
+  "agent_id": "a921ff854f1ffd8ba",
+  "subagent_type": "workflow-subagent",
+  "files": [
+    "formal/Ern/MemoryModel/Arena.lean"
+  ],
+  "token_usage": {
+    "input_tokens": 156,
+    "cache_creation_tokens": 467413,
+    "cache_read_tokens": 25888951,
+    "output_tokens": 209364,
+    "api_call_count": 78
+  },
+  "started_at": "2026-11-05T17:33:44.612696+01:00",
+  "completed_at": "2026-11-05T18:04:37.903057+01:00"
+}
