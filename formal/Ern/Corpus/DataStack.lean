@@ -31,19 +31,24 @@ obtained verdict, the class (`Lib`: library instance) and the twin. A case whose
 differs from the expected one is kept with its expected verdict and marked **MISMATCH**. Two
 verdicts have no settling source and are marked to arbitrate (expected verdict from the source:
 none; **MISMATCH** in form, as `pool_free_entry_handle` in `Ern.Corpus.Lib`): DS05 (`push` without
-room, reading DS-R7) and the third conjunct of DS03 (`grow` of a block that is no block of the
+room, reading DS-R7) and the third `grow` of DS03 (`grow` of a block that is no block of the
 stack, reading DS-R5).
 
 Readings of DS-v1 (recorded with `Ern.Lib.DataStack`) on which a verdict depends: DS-R5 (`grow` of
 a live block that is not the last one: `fail`; the draft rejected) in DS04, and (a `b` that is no
-block: `reject`) in DS03; DS-R7 (`push` without room: `fail`) in DS05. Every run uses the
-representation readings R3 (`rewind` as `split` and `release` of `internal`, with the right of
-§36) and R5 (`newStack`: the preconditions of `newArena` other than its guard, and the guard of
-§56). The other verdicts are the same under the alternatives
-of DS-R1, DS-R2, DS-R3, DS-R6 and R4: the covering authorities lie between the top of the mark and
-the top; the administrative right of §36 holds where a mark is dead or foreign; a foreign mark is
-in no list of the stack; every block grown can be released; the mark removed with an older one is
-both later in the list and of a higher top.
+block: `reject`; alternative `fail`) in DS03; DS-R7 (`push` without room: `fail`) in DS05. The runs
+use the representation reading R3 (`rewind` as `split` and `release` of `internal`, with the right
+of §36) and the readings DS-R9 at every `newStack` (formerly R5: the preconditions of `newArena`
+other than its guard, §76.5 included, and the guard of §56), DS-R10 at every `mark` (formerly R6:
+no right required) and DS-R11 at every `grow` (formerly R7: the recorded destination), which change
+verdicts or arrival states in other programs but not here. The other verdicts are the same under
+the alternatives of DS-R1, DS-R2, DS-R3, DS-R6, DS-R9, DS-R10, DS-R11 and R4: the covering
+authorities lie between the top of the mark and the top; the administrative right of §36 holds
+where a mark is dead or foreign; a foreign mark is in no list of the stack; every block grown can
+be released; the alternative of DS-R9 only drops §76.5, and the one rejected `newStack` (DS07)
+fails the guard of §56 alone; `AdminRight` holds on the stack of every `mark`; the block of every
+`grow` is held by its recorded destination (no block value is transferred); the mark removed with
+an older one is both later in the list and of a higher top.
 
 Not encoded: the draft `case_rewind_reading` (re-encoded with the library, `Witness.reading_above`);
 the draft `case_static_before_fail` other than its `push` without room (its `Init`-destination
@@ -460,7 +465,7 @@ def ds02o : List DOp := ds01o ++ [.kernel (.release 7), .rewind 0 ⟨0, 1, 2⟩,
 /-- State reached by `ds02o` (§57; DS-v1). -/
 def ds02 : DState := dfinal K0 [] ds02o
 
-/-- **DS02** (draft `case_aba`; DS-v1 "marks carry stack identity and a fresh mark identifier";
+/-- **DS02** (draft `case_aba`; DS-v1 "Marks carry stack identity and a fresh mark identifier";
 "rewind m fails on a dead … mark"; class Lib). ABA: the top is back at 2, the top of the removed
 mark `⟨0, 1, 2⟩`, and a new mark `⟨0, 2, 2⟩` is live there. Expected (DS-v1, draft): `rewind` of the
 removed mark `fail`, of the new mark `ok`. Obtained: `fail`, with no other outcome (§58;
@@ -489,10 +494,12 @@ for the replaced block, none from the source, to arbitrate: DS-v1 says nothing o
 block of the stack (the `reject` of the draft `case_grow` is module behaviour, not a source).
 Obtained: `ok` (`release`, `split`, `store`, §62, §61, §65) with that block and footprint; `fail`
 (no room, availability §77.4; readings DS-R5, DS-R6); `reject` (6 is no block of the stack;
-reading DS-R5, which records no alternative for it). Twin of the `fail` and of the `reject`:
-`grow(6, 1)` with one cell after the block, the `ok` step of this run. **MISMATCH** in form for the
-replaced block (expected "to arbitrate", obtained `reject`); cause: open obligation, DS-v1 leaves
-the outcome open and the stack module reads it as `reject` (DataStack reading DS-R5). -/
+reading DS-R5, whose recorded alternative, `fail` by analogy with DS-v1 "rewind m fails on a dead
+or foreign mark", gives `fail` here: this conjunct is its example). Twin of the `fail` and of the
+`reject`: `grow(6, 1)` with one cell after the block, the `ok` step of this run. **MISMATCH** in
+form for the replaced block (expected "to arbitrate", obtained `reject`); cause: open obligation,
+DS-v1 leaves the outcome open and the stack module reads it as `reject` (DataStack reading DS-R5).
+-/
 theorem DS03 : DRunsTo K0 [] ds03o ds03 ∧
     ds03.stacks = [⟨1, 5, [2, 3, 4], 3, [⟨0, 3, 9, 5⟩], [⟨0, 0, 0⟩, ⟨0, 2, 2⟩]⟩] ∧
     ds03.kern.afp 9 = [2, 3, 4] ∧
@@ -531,8 +538,8 @@ def ds06o : List DOp :=
 /-- State reached by `ds06o` (§57; DS-v1). -/
 def ds06 : DState := dfinal K0 [] ds06o
 
-/-- **DS06** (brief "rewind of a dead mark (fail)"; DS-v1 "rewind m fails on a dead … mark" and
-"removes m and every mark above it"; class Lib). `rewind ⟨0, 1, 1⟩` after `rewind ⟨0, 0, 0⟩`
+/-- **DS06** (DS-v1, brief obligation 6: "rewind m fails on a dead or foreign mark" and "removes
+m and every mark above it"; class Lib). `rewind ⟨0, 1, 1⟩` after `rewind ⟨0, 0, 0⟩`
 removed it as a later mark. Expected (DS-v1): `fail`. Obtained: `fail`, with no other outcome (§58;
 `rewind_dead_fails`); both marks are gone. Twin: the same sequence without `rewind ⟨0, 0, 0⟩`:
 `rewind ⟨0, 1, 1⟩`, `ok`. -/
@@ -579,8 +586,8 @@ def ds08o : List DOp := setup2 ++ [.mark 0, .push 0 1 5, .push 1 1 12, .mark 1]
 /-- State reached by `ds08o` (§57; DS-v1). -/
 def ds08 : DState := dfinal K0 [] ds08o
 
-/-- **DS08** (draft `case_stacks`, second part; brief "rewind … of a foreign mark (fail)"; DS-v1
-"marks carry stack identity"; "rewind m fails on a dead or foreign mark"; class Lib). Each stack
+/-- **DS08** (draft `case_stacks`, second part; DS-v1, brief obligation 6: "Marks carry stack
+identity"; "rewind m fails on a dead or foreign mark"; class Lib). Each stack
 has its own top, blocks and marks. `rewind ⟨0, 0, 0⟩` of stack 0 while block 10 lives; `rewind` of
 stack 0 to the mark `⟨1, 1, 1⟩` of stack 1; `rewind` of stack 1 to its mark, then a new `push` on
 it. Expected (draft, DS-v1): `reject`, `fail`, `ok`. Obtained: `reject` (§43 case 3, §61.1),
@@ -647,11 +654,11 @@ def ds10o : List DOp :=
 def ds10 : DState := dfinal K0 [] ds10o
 
 /-- **DS10** (multi-stack frame scenario, right on each stack value; §36 "`MetaRight` requires
-`Modify` exercisable on the administering value", §77.1; DS-v1 "push … use[s] the derived issue";
-class Lib). The callee, without a right on the stack value 8, pushes two cells of stack 1 into its
-local 14. Expected (§36, §77.1): `reject`. Obtained: `reject`: `MetaRight` fails for stack 1, while
-the callee has `Modify` on the destination 14. Twin: the same sequence with the parameter 12
-(`Modify` on the stack value 8) passed at entry, `ok`. -/
+`Modify` exercisable on the administering value", §77.1; DS-v1 "push and grow use the derived
+issue"; class Lib). The callee, without a right on the stack value 8, pushes two cells of stack 1
+into its local 14. Expected (§36, §77.1): `reject`. Obtained: `reject`: `MetaRight` fails for stack
+1, while the callee has `Modify` on the destination 14. Twin: the same sequence with the parameter
+12 (`Modify` on the stack value 8) passed at entry, `ok`. -/
 theorem DS10 : DRunsTo K0 [] ds10o ds10 ∧ PushStep K0 1 2 14 ds10 .reject ∧
     ds10.stacks[1]? = some ⟨9, 9, [10, 11], 0, [], []⟩ ∧
     ¬ MetaRight ds10.kern (Stack.entry ⟨9, 9, [10, 11], 0, [], []⟩) ∧

@@ -40,13 +40,17 @@ Twins that are not literally the same sequence without one faulty step:
   `arena_on_pool_internal`, `pool_on_arena_internal`, `stack_on_arena_internal`,
   `arena_on_stack_internal`, `stack_on_pool_internal`, `pool_on_stack_internal` (`internal` 5), W1
   `fail` (the handle of the live first node);
-* further steps that lift the blocking before the step under test: H31a and H32 (`unresolve`),
-  `pool_free_entry_handle` (`allocSlot` first), W1 `reject` (`unresolve`), W2 (`release` of 12 and
-  11, and the transfer 9 → 16);
+* further steps that lift the blocking before the step under test: H31a (`unresolve 5`, for the
+  other entry and for the `Observe` resolution) and H32 (`unresolve`), `pool_free_entry_handle`
+  (`allocSlot` first), W1 `reject` (`unresolve`), W2 (`release` of 12 and 11, and the transfer
+  9 → 16);
 * a faulty element of several steps, removed: `pool_two_freeSlot_cross` at `resolve` (the
   authority 6 and the steps that use it; removing pool 1 alone leaves the `reject`);
-* no twin stated: H31a for the stale handle `⟨0, 1, 7⟩` (after `unresolve` it is `fail`) and for
-  the `Observe` resolution; only the resolution of the other entry has one.
+* no positive twin: the `reject` of H31a for the stale handle `⟨0, 1, 7⟩`: after `unresolve 5`
+  its resolution is `fail`, the defined failure of a stale generation (§89), stated in H31a; the
+  twin is a defined failure, not an accepted run. The step has two faults (the companion and the
+  stale generation), so no accepted twin exists and rule 2's first sentence is unmet; rule 2 does
+  not say how to class such a step: open for arbitration.
 
 Local shapes are lists of (parent, kind) (§71.1, §72); `lf` is a root leaf, `pt p` a part of
 place `p`. Places and authorities are list indices (§38): `enterFrame` appends the locals and one
@@ -106,22 +110,37 @@ def h31o : List COp := pb ++ [.allocSlot 0 2, .allocSlot 0 3, .resolve 0 ⟨0, 0
 /-- State reached by `h31o` (§57). -/
 def h31 : CState := cfinal K0 [] h31o
 
+/-- State reached by `h31o` and the `unresolve` of the companion 5 (HandlePool v0.4 annex, D.2;
+§57): the twin state of the H31a rejections. -/
+def h31u : CState := cfinal K0 [] (h31o ++ [.unresolve 5])
+
 /-- **H31a** (material §1 G, class Lib). Two simultaneous `resolve Modify`, whatever the handles.
 Expected (material, exclusivity of the pool value): the second `reject`. Obtained: `reject` for
 the other entry, for a stale handle and for an `Observe` resolution: the active `Modify` companion
 5 leaves `internal` no effective mode on the storage, so the companion of the second resolution
 cannot be derived (§43 case 3, §60.2; HandlePool v0.4 annex, D.2: "Une compagne `Modify` active
-bloque les nouvelles compagnes"). Twin, after `unresolve` of the first: `ok`. -/
+bloque les nouvelles compagnes"). Twins, after `unresolve 5` of the first: the resolution of the
+other entry, `ok`; the `Observe` resolution of `⟨0, 0, 0⟩`, `ok`. No positive twin for the stale
+handle `⟨0, 1, 7⟩`: in the state `h31u` after `unresolve 5` its resolution is `fail`, the defined
+failure of a stale generation (§89: "a stale identity or generation leads to defined failure"; as
+in H30), stated as the last conjunct; the twin is a defined failure, not an accepted run. The
+step has two faults (the active companion and the stale generation), so no accepted twin exists:
+material rule 2 ("Chaque rejet a un jumeau minimal accepté") is unmet for it, and rule 2 does not
+say how to class it; open for arbitration. -/
 theorem H31a : CRunsTo K0 [] h31o h31 ∧
     HandlePool.ResolveStep 0 ⟨0, 1, 0⟩ .modify h31.toP .reject ∧
     HandlePool.ResolveStep 0 ⟨0, 1, 7⟩ .modify h31.toP .reject ∧
     HandlePool.ResolveStep 0 ⟨0, 0, 0⟩ .observe h31.toP .reject ∧
-    CRuns K0 [] (h31o ++ [.unresolve 5, .resolve 0 ⟨0, 1, 0⟩ .modify]) :=
+    CRuns K0 [] (h31o ++ [.unresolve 5, .resolve 0 ⟨0, 1, 0⟩ .modify]) ∧
+    CRuns K0 [] (h31o ++ [.unresolve 5, .resolve 0 ⟨0, 0, 0⟩ .observe]) ∧
+    CRunsTo K0 [] (h31o ++ [.unresolve 5]) h31u ∧
+    HandlePool.ResolveStep 0 ⟨0, 1, 7⟩ .modify h31u.toP .fail :=
   ⟨crunsTo (by decide),
     crejects (k := K0) (C := h31) (o := .resolve 0 ⟨0, 1, 0⟩ .modify) (by decide),
     crejects (k := K0) (C := h31) (o := .resolve 0 ⟨0, 1, 7⟩ .modify) (by decide),
     crejects (k := K0) (C := h31) (o := .resolve 0 ⟨0, 0, 0⟩ .observe) (by decide),
-    crunsTo (by decide)⟩
+    crunsTo (by decide), crunsTo (by decide), crunsTo (by decide),
+    cfails (k := K0) (C := h31u) (o := .resolve 0 ⟨0, 1, 7⟩ .modify) (by decide)⟩
 
 /-- Run of H31b (HandlePool v0.4 annex, D.3): both slots allocated, handles in 2 and 3. -/
 def h31bo : List COp := pb ++ [.allocSlot 0 2, .allocSlot 0 3]
