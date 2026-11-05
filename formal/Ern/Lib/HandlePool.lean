@@ -960,8 +960,9 @@ def NoStale (L : PState) : Prop :=
   ∀ r ∈ L.res, ∀ e ∈ r.entries, L.kern.Active e.1 → ∃ pl ∈ L.pools, pl.id = r.pool ∧
     ∃ sl, pl.slots[e.2.1]? = some sl ∧ sl.gen = e.2.2 ∧ sl.live = true
 
-/-- Exclusivity of companions (HandlePool v0.4 annex, D.2; non-normative library contract): two
-distinct active companions of a pool are both `Observe` (§43, §50). -/
+/-- Exclusivity of companions, same-pool restriction (HandlePool v0.4 annex, D.2; non-normative
+library contract): two distinct active companions of a pool are both `Observe` (§43, §50). The
+contract's sentence also covers the companions of other pools (`ModifyExclusive`). -/
 def CompExcl (L : PState) : Prop :=
   ∀ r₁ ∈ L.res, ∀ r₂ ∈ L.res, r₁.pool = r₂.pool → r₁.comp ≠ r₂.comp →
     L.kern.Active r₁.comp → L.kern.Active r₂.comp → r₁.mode = .observe ∧ r₂.mode = .observe
@@ -1434,18 +1435,41 @@ def EntriesDisjoint (L : PState) : Prop :=
     ∀ (a b : Nat) (sa sb : Slot), pl.slots[a]? = some sa → pl.slots[b]? = some sb → a ≠ b →
       ∀ l ∈ footprint L.kern.P sa.place, l ∉ footprint L.kern.P sb.place
 
-/-- `PoolInv`, item 3, the transition guarantee (HandlePool v0.4 annex, D.4; non-normative library
-contract): `freeSlot` never succeeds while an active descendant of a companion of the pool covers
-the slot concerned (§43, §69). -/
+/-- `PoolInv`, item 3, the transition guarantee, as the contract states it (HandlePool v0.4 annex,
+D.4: "`freeSlot` n'aboutit jamais si une descendante active d'une compagne couvre le slot
+concerné"; non-normative library contract): `freeSlot` never succeeds while an active strict
+descendant of a companion covers the slot concerned (§43, §69). The contract does not restrict the
+companion to the pool of the slot. This guarantee is false on a library-reachable state
+(`Witness.pool_freeSlot_no_companion_desc_false`): D.3 exempts "`internal` et ses ancêtres", which
+may include a companion of another pool. -/
 def FreeGuarantee (k : K) (L : PState) : Prop :=
+  ∀ (j : Nat) (h : Handle) (L' : PState), FreeSlotStep k j h L (.ok L') →
+    ∀ (pl : Pool) (sl : Slot), L.pools[j]? = some pl → pl.slots[h.slot]? = some sl →
+      ∀ r ∈ L.res, ∀ x, L.kern.Active x → r.comp ∈ L.kern.ancs x →
+        ∀ l ∈ L.kern.afp x, l ∉ footprint L.kern.P sl.place
+
+/-- Same-pool restriction of the transition guarantee (HandlePool v0.4 annex, D.4, item 3;
+non-normative library contract). This is not the contract's statement (`FreeGuarantee`): only the
+companions of the slot's pool are quantified (`r.pool = pl.id`). On that point it is weaker; it also
+covers the companion itself, and on that point it is stronger (§43, §69). -/
+def FreeGuaranteeSamePool (k : K) (L : PState) : Prop :=
   ∀ (j : Nat) (h : Handle) (L' : PState), FreeSlotStep k j h L (.ok L') →
     ∀ (pl : Pool) (sl : Slot), L.pools[j]? = some pl → pl.slots[h.slot]? = some sl →
       ∀ r ∈ L.res, r.pool = pl.id → ∀ x, L.kern.Active x → (x = r.comp ∨ r.comp ∈ L.kern.ancs x) →
         ∀ l ∈ L.kern.afp x, l ∉ footprint L.kern.P sl.place
 
-/-- `PoolInv` (HandlePool v0.4 annex, D.4, as corrected; non-normative library contract): entry
-disjointness, `pool_no_stale_access`, and the transition guarantee of `freeSlot` (§55, §57). -/
+/-- `PoolInv` as the contract states it (HandlePool v0.4 annex, D.4, as corrected; non-normative
+library contract): entry disjointness, `pool_no_stale_access`, and the transition guarantee of
+`freeSlot` (§55, §57). It is false on a library-reachable state
+(`Witness.pool_inv_preserved_false`). -/
 def PoolInv (k : K) (L : PState) : Prop := EntriesDisjoint L ∧ NoStale L ∧ FreeGuarantee k L
+
+/-- Same-pool restriction of `PoolInv` (HandlePool v0.4 annex, D.4; non-normative library
+contract): items 1 and 2 as the contract states them, item 3 restricted to the companions of the
+slot's pool (`FreeGuaranteeSamePool`). This is not the contract's statement (`PoolInv`) (§55,
+§57). -/
+def PoolInvSamePool (k : K) (L : PState) : Prop :=
+  EntriesDisjoint L ∧ NoStale L ∧ FreeGuaranteeSamePool k L
 
 /-- `EntriesDisjoint` follows from the ghost well-formedness (HandlePool v0.4 annex, D.4, item 1)
 (§40). -/
@@ -1456,11 +1480,12 @@ theorem entriesDisjoint_of {L : PState} (hwf : PoolWF L) : EntriesDisjoint L := 
     fun a b sa sb ha hb hab => hok.disjoint a b sa.place sb.place
       (by simp [Pool.shape, ha]) (by simp [Pool.shape, hb]) hab⟩
 
-/-- The transition guarantee follows from the ghost well-formedness (HandlePool v0.4 annex, D.4,
-item 3): an active descendant of a companion of the pool is younger than `internal`, so it is
-neither `internal` nor one of its ancestors, and `ContentEndPre` forbids it to cover the entry (§43,
-§69). -/
-theorem freeGuarantee_of {k : K} {L : PState} (hwf : PoolWF L) : FreeGuarantee k L := by
+/-- The same-pool transition guarantee follows from the ghost well-formedness (HandlePool v0.4
+annex, D.4, item 3, restricted to the slot's pool): an active descendant of a companion of the pool
+is younger than `internal`, so it is neither `internal` nor one of its ancestors, and
+`ContentEndPre` forbids it to cover the entry (§43, §69). -/
+theorem freeGuaranteeSamePool_of {k : K} {L : PState} (hwf : PoolWF L) :
+    FreeGuaranteeSamePool k L := by
   intro j h L' hst pl sl hpj hsl r hr hrp x hx hxr l hl hlq
   cases hst with
   | @ok pl' sl' hpj' _ _ hsl' hpre =>
@@ -1478,37 +1503,53 @@ theorem freeGuarantee_of {k : K} {L : PState} (hwf : PoolWF L) : FreeGuarantee k
     · omega
     · have := chain_lt h'; omega
 
-/-- `pool_inv_preserved` (HandlePool v0.4 annex, D.4): `PoolInv` holds on every state of a library
-run whose steps start from states satisfying `KInv` (§57); with `PReach.toI`, on every
-library-reachable state under the guarantee of §57. -/
-theorem pool_inv_preserved {k : K} {statics : Statics} {L : PState} (h : PReachI k statics L) :
-    PoolInv k L :=
+/-- `pool_inv_preserved`, same-pool restriction (HandlePool v0.4 annex, D.4): `PoolInvSamePool`
+holds on every state of a library run whose steps start from states satisfying `KInv` (§57); with
+`PReach.toI`, on every library-reachable state under the guarantee of §57. This is not the
+contract's statement: `PoolInv` is false on such a state (`Witness.pool_inv_preserved_false`). -/
+theorem pool_inv_preserved_same_pool {k : K} {statics : Statics} {L : PState}
+    (h : PReachI k statics L) : PoolInvSamePool k L :=
   have ⟨_, hwf, hns, _⟩ := pReachI_inv h
-  ⟨entriesDisjoint_of hwf, hns, freeGuarantee_of hwf⟩
+  ⟨entriesDisjoint_of hwf, hns, freeGuaranteeSamePool_of hwf⟩
 
 /-- `pool_entries_disjoint` (HandlePool v0.4 annex, D.4, item 1; §40). -/
 theorem pool_entries_disjoint {k : K} {statics : Statics} {L : PState} (h : PReachI k statics L) :
     EntriesDisjoint L :=
-  (pool_inv_preserved h).1
+  (pool_inv_preserved_same_pool h).1
 
 /-- `pool_no_stale_access` (HandlePool v0.4 annex, D.4, item 2): on every state of a library run
 (`PReachI`), an active entry authority designates a live slot at its current generation (§89). -/
 theorem pool_no_stale_access {k : K} {statics : Statics} {L : PState} (h : PReachI k statics L) :
     NoStale L :=
-  (pool_inv_preserved h).2.1
+  (pool_inv_preserved_same_pool h).2.1
 
-/-- `pool_freeSlot_no_companion_desc` (HandlePool v0.4 annex, D.4, item 3): on every state of a
-library run (`PReachI`), `freeSlot` never succeeds while an active descendant of a companion of the
-pool covers the slot (§43, §69). -/
-theorem pool_freeSlot_no_companion_desc {k : K} {statics : Statics} {L : PState}
-    (h : PReachI k statics L) : FreeGuarantee k L :=
-  (pool_inv_preserved h).2.2
+/-- `pool_freeSlot_no_companion_desc`, same-pool restriction (HandlePool v0.4 annex, D.4, item 3):
+on every state of a library run (`PReachI`), `freeSlot` never succeeds while the companion of a
+resolution of the pool, or an active descendant of it, covers the slot (§43, §69). This is not the
+contract's statement: `FreeGuarantee` is false on such a state
+(`Witness.pool_freeSlot_no_companion_desc_false`). -/
+theorem pool_freeSlot_no_companion_desc_same_pool {k : K} {statics : Statics} {L : PState}
+    (h : PReachI k statics L) : FreeGuaranteeSamePool k L :=
+  (pool_inv_preserved_same_pool h).2.2
 
-/-- `pool_resolve_modify_exclusive` (HandlePool v0.4 annex, D.2: "La propriété d'exclusivité
-concerne toutes les suites d'opérations admises du noyau"): on every state of a library run
-(`PReachI`), whatever its kernel steps, an active `Modify` companion of a pool is its only active
-companion (§43, §50). -/
-theorem pool_resolve_modify_exclusive {k : K} {statics : Statics} {L : PState}
+/-- Exclusivity of a `Modify` companion, as the contract states it (HandlePool v0.4 annex, D.2:
+"Une compagne `Modify` active bloque les nouvelles compagnes sur l'intégralité du stockage du pool";
+non-normative library contract): an active `Modify` companion of a pool is the only active
+companion that covers a leaf of that pool's storage (§43, §50). The contract does not restrict the
+other companions to the same pool. This property is false on a library-reachable state
+(`Witness.pool_resolve_modify_exclusive_false`). -/
+def ModifyExclusive (L : PState) : Prop :=
+  ∀ r₁ ∈ L.res, ∀ r₂ ∈ L.res, ∀ pl ∈ L.pools, r₁.pool = pl.id → L.kern.Active r₁.comp →
+    L.kern.Active r₂.comp → r₁.mode = .modify →
+    (∃ l ∈ L.kern.afp r₂.comp, l ∈ footprint L.kern.P pl.storage) → r₁.comp = r₂.comp
+
+/-- `pool_resolve_modify_exclusive`, same-pool restriction (HandlePool v0.4 annex, D.2: "La
+propriété d'exclusivité concerne toutes les suites d'opérations admises du noyau"): on every state
+of a library run (`PReachI`), whatever its kernel steps, an active `Modify` companion of a pool is
+the only active companion of that pool (§43, §50). This is not the contract's statement:
+`ModifyExclusive`, which also covers the companions of other pools, is false on such a state
+(`Witness.pool_resolve_modify_exclusive_false`). -/
+theorem pool_resolve_modify_exclusive_same_pool {k : K} {statics : Statics} {L : PState}
     (h : PReachI k statics L) :
     ∀ r₁ ∈ L.res, ∀ r₂ ∈ L.res, r₁.pool = r₂.pool → L.kern.Active r₁.comp →
       L.kern.Active r₂.comp → r₁.mode = .modify → r₁.comp = r₂.comp := by
@@ -2010,6 +2051,141 @@ theorem free_slot_init :
     .kernel (.write (a := 4) (Guarded.ok (by decide)))
   exact ⟨_, .step (.step w3_reach (Arena.KInvB.sound (by decide)).1 h₁)
     (Arena.KInvB.sound (by decide)).1 h₂, rfl, by decide⟩
+
+/-! ### Nested pools (HandlePool v0.4 annex, D.2, D.3, D.4)
+
+A second run, from `PState.init Witness.nst` under `Examples.K0` (§47, §48). Pool 1 is nested in
+pool 0: its `internal` is derived from the companion of a resolution of pool 0, over the same
+storage. -/
+
+/-- Statics of the nested-pool witnesses (§47; HandlePool v0.4 annex, D.1): place 0 is the storage,
+with two leaf children 1 and 2 (`Uninit`); place 3 is the value of pool 0 (`Init`); place 4 will
+hold the `internal` of pool 1; places 5 and 6 are handle destinations. Root authorities 0 to 4
+cover places 0, 3, 4, 5 and 6. -/
+def nst : Statics :=
+  [((none, none, 0), false), ((some 0, none, 0), false), ((some 0, none, 0), false),
+    ((none, none, 0), true), ((none, none, 0), false), ((none, none, 0), false),
+    ((none, none, 0), false)]
+
+/-- Initial library state of the nested-pool witnesses (§47). -/
+def n0 : PState := PState.init nst
+
+/-- After `derive(0, [1, 2], Modify)` (§60): authority 5, the `internal` of pool 0. -/
+def n1 : PState := { n0 with kern := deriveEff n0.kern 0 [1, 2] .modify }
+
+/-- After `store(5, 3)` (§65): the `internal` of pool 0 is held by place 3. -/
+def n2 : PState := { n1 with kern := storeEff n1.kern 5 3 }
+
+/-- After `newPool(0, 5)` (HandlePool v0.4 annex, D.1): pool 0 over storage 0, slots 1 and 2 free,
+of generation 0 (§47). -/
+def n3 : PState := newPoolEff n2 0 5
+
+/-- Pool 0 after `newPool` (HandlePool v0.4 annex, D.1; §47). -/
+def plA : Pool := ⟨0, 0, 5, [⟨1, 0, false⟩, ⟨2, 0, false⟩]⟩
+
+/-- After `allocSlot(0, 5)` on slot 0 (HandlePool v0.4 annex, D.3): the handle `⟨0, 0, 0⟩` is
+written into place 5 (§67). -/
+def n4 : PState := allocSlotEff n3 0 plA 0 ⟨1, 0, false⟩ 5
+
+/-- Pool 0 after `allocSlot` (HandlePool v0.4 annex, D.3; §47). -/
+def plA4 : Pool := ⟨0, 0, 5, [⟨1, 0, true⟩, ⟨2, 0, false⟩]⟩
+
+/-- After `resolve(0, ⟨0, 0, 0⟩, Modify)` (HandlePool v0.4 annex, D.2): the `Modify` companion 6
+of pool 0 over the storage, and the entry authority 7 over slot place 1 (§60). -/
+def n5 : PState := { n4 with
+  kern := deriveEff (compS n4.kern plA4 .modify) n4.kern.A.length (footprint n4.kern.P 1) .modify
+  res := n4.res ++ [⟨plA4.id, plA4.internal, n4.kern.A.length, .modify,
+    [(n4.kern.A.length + 1, 0, 0)]⟩] }
+
+/-- After the kernel `release(7)` of the entry authority (§62); companion 6 stays active. -/
+def n6 : PState := { n5 with kern := releaseEff n5.kern 7 }
+
+/-- After `derive(6, [1, 2], Modify)` from the companion of pool 0 (§60): authority 8, the
+`internal` of pool 1. -/
+def n7 : PState := { n6 with kern := deriveEff n6.kern 6 [1, 2] .modify }
+
+/-- After `store(8, 4)` (§65): the `internal` of pool 1 is held by place 4. -/
+def n8 : PState := { n7 with kern := storeEff n7.kern 8 4 }
+
+/-- After `newPool(0, 8)` (HandlePool v0.4 annex, D.1): pool 1 over the same storage 0 (§47, §56). -/
+def n9 : PState := newPoolEff n8 0 8
+
+/-- Pool 1 after `newPool` (HandlePool v0.4 annex, D.1; §47). -/
+def plB : Pool := ⟨1, 0, 8, [⟨1, 0, false⟩, ⟨2, 0, false⟩]⟩
+
+/-- After `allocSlot(1, 6)` on slot 0 of pool 1 (HandlePool v0.4 annex, D.3): the handle
+`⟨1, 0, 0⟩` is written into place 6 (§67). -/
+def n10 : PState := allocSlotEff n9 1 plB 0 ⟨1, 0, false⟩ 6
+
+/-- Pool 1 after `allocSlot` (HandlePool v0.4 annex, D.3; §47). -/
+def plB10 : Pool := ⟨1, 0, 8, [⟨1, 0, true⟩, ⟨2, 0, false⟩]⟩
+
+/-- `n10` is reached by a library run whose steps start from states satisfying `KInv` (§57, §60,
+§62, §65, §67; HandlePool v0.4 annex, D.1–D.3). -/
+theorem n10_reach : PReachI K0 nst n10 := by
+  have h1 : PReachI K0 nst n1 := .step .init (Arena.KInvB.sound (by decide)).1
+    (.kernel (.derive (Guarded.ok (by decide))))
+  have h2 : PReachI K0 nst n2 := .step h1 (Arena.KInvB.sound (by decide)).1
+    (.kernel (.store (Guarded.ok (by decide))))
+  have h3 : PReachI K0 nst n3 := .step h2 (Arena.KInvB.sound (by decide)).1
+    (.newPool (others := []) (Guarded.ok (by decide)))
+  have h4 : PReachI K0 nst n4 := .step h3 (Arena.KInvB.sound (by decide)).1
+    (.allocSlot (.ok (pl := plA) rfl (by decide) rfl rfl))
+  have r5 : ResolveStep 0 ⟨0, 0, 0⟩ .modify n4 (.ok n5) :=
+    .ok (pl := plA4) (sl := ⟨1, 0, true⟩) rfl (by decide) (by decide) rfl (by decide)
+  have h5 : PReachI K0 nst n5 := .step h4 (Arena.KInvB.sound (by decide)).1 (.resolve r5)
+  have h6 : PReachI K0 nst n6 := .step h5 (Arena.KInvB.sound (by decide)).1
+    (.kernel (.release (Guarded.ok (by decide))))
+  have h7 : PReachI K0 nst n7 := .step h6 (Arena.KInvB.sound (by decide)).1
+    (.kernel (.derive (Guarded.ok (by decide))))
+  have h8 : PReachI K0 nst n8 := .step h7 (Arena.KInvB.sound (by decide)).1
+    (.kernel (.store (Guarded.ok (by decide))))
+  have h9 : PReachI K0 nst n9 := .step h8 (Arena.KInvB.sound (by decide)).1
+    (.newPool (others := []) (Guarded.ok (by decide)))
+  exact .step h9 (Arena.KInvB.sound (by decide)).1
+    (.allocSlot (.ok (pl := plB) rfl (by decide) rfl rfl))
+
+/-- Contract problem (HandlePool v0.4 annex, D.3 and D.4, item 3): the transition guarantee as the
+contract states it (`FreeGuarantee`) is false on a library-reachable state satisfying `KInv`. On
+`n10`, `freeSlot(⟨1, 0, 0⟩)` of pool 1 is accepted on slot place 1. Yet companion 6 of pool 0 is
+recorded in `n10.res`, and its active strict descendant 8, the `internal` of pool 1, covers place 1.
+The defect is in the contract. D.3 exempts "`internal` et ses ancêtres", and 6 is an ancestor of
+the `internal` of pool 1. So D.3's precondition accepts a step that D.3 itself excludes ("En
+particulier, aucune descendante active d'une compagne ne doit subsister sur cette entrée"), and so
+does D.4 (3) (§43, §69). -/
+theorem pool_freeSlot_no_companion_desc_false :
+    PReachI K0 nst n10 ∧ KInv n10.kern ∧ ¬ FreeGuarantee K0 n10 ∧
+      n10.pools[1]? = some plB10 ∧ Exempt n10.kern plB10.internal 6 := by
+  refine ⟨n10_reach, (Arena.KInvB.sound (by decide)).1, fun hG => ?_, by decide, Or.inr (by decide)⟩
+  exact hG 1 ⟨1, 0, 0⟩ _
+    (.ok (pl := plB10) (sl := ⟨1, 0, true⟩) rfl (by decide) (by decide) rfl (by decide))
+    plB10 ⟨1, 0, true⟩ (by decide) (by decide) ⟨0, 5, 6, .modify, [(7, 0, 0)]⟩ (by decide) 8
+    (by decide) (by decide) 1 (by decide) (by decide)
+
+/-- Contract problem (HandlePool v0.4 annex, D.4): `PoolInv` as the contract states it is false on
+the library-reachable state `n10`, because its item 3 is false there
+(`pool_freeSlot_no_companion_desc_false`; §55, §57). -/
+theorem pool_inv_preserved_false : PReachI K0 nst n10 ∧ ¬ PoolInv K0 n10 :=
+  ⟨n10_reach, fun h => pool_freeSlot_no_companion_desc_false.2.2.1 h.2.2⟩
+
+/-- Contract problem (HandlePool v0.4 annex, D.2: "Une compagne `Modify` active bloque les nouvelles
+compagnes sur l'intégralité du stockage du pool"): `ModifyExclusive` is false on a
+library-reachable state. On `n10`, the `Modify` companion 6 of pool 0 is active. Yet
+`resolve(1, ⟨1, 0, 0⟩, Modify)` is accepted and creates the `Modify` companion 9 of pool 1, which
+covers the whole storage of pool 0. The kernel accepts the derivation because 9 descends from 6
+through the `internal` 8 of pool 1 (§43, §50, §60). -/
+theorem pool_resolve_modify_exclusive_false :
+    (⟨0, 5, 6, .modify, [(7, 0, 0)]⟩ : Res) ∈ n10.res ∧ n10.kern.Active 6 ∧
+      n10.pools[0]? = some plA4 ∧
+      ∃ L', ResolveStep 1 ⟨1, 0, 0⟩ .modify n10 (.ok L') ∧ PReachI K0 nst L' ∧
+        ¬ ModifyExclusive L' ∧ L'.kern.afp 9 = footprint L'.kern.P plA4.storage := by
+  have hok : ResolveStep 1 ⟨1, 0, 0⟩ .modify n10 (.ok _) :=
+    .ok (pl := plB10) (sl := ⟨1, 0, true⟩) rfl (by decide) (by decide) rfl (by decide)
+  refine ⟨by decide, by decide, by decide, _, hok,
+    .step n10_reach (Arena.KInvB.sound (by decide)).1 (.resolve hok), fun hM => ?_, by decide⟩
+  exact absurd (hM ⟨0, 5, 6, .modify, [(7, 0, 0)]⟩ (by decide) ⟨1, 8, 9, .modify, [(10, 0, 0)]⟩
+    (by decide) plA4 (by decide) rfl (by decide) (by decide) rfl ⟨1, by decide, by decide⟩)
+    (by decide)
 
 end Witness
 
