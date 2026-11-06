@@ -1,4 +1,5 @@
 import Ern.MemoryModel.Arena
+import Ern.MemoryModel.Access.HolderCover
 
 /-!
 # Handle pool: a library instance of the access discipline (non-normative)
@@ -2044,6 +2045,34 @@ theorem freeSlot_meta_disjoint {k : K} {statics : Statics} (hdd : DDSound k)
     have hn : l ∉ metaLeaves L.kern pl := fun h => hdis l h hl
     show (write3Eff L.kern (metaLeaves L.kern pl)).I l = L.kern.I l
     simp [write3Eff, hn]
+
+/-- HandlePool v0.5, D.1 and HP5-1 as amended by arbitration Q3 (decision of 2026-11-06): on every
+library-reachable state, under `DDSound` (§80) and `StaticsOK` (§47), no leaf of an entry of a
+live pool (`internal` active, §46 analogue) is a metadata leaf, a leaf of the pool value. An entry
+lies in the storage (D.1), whose leaves are those of `internal` (§76.3, `PoolOK.fpEq`); a shared
+leaf would make `internal` `SelfLock` (§63.8), which `NoSelfLock` excludes on reachable states
+(§63.8, §65.3; `reachable_noSelfLock`). No ownership of the storage by the pool value is assumed
+(§46). -/
+theorem pool_entries_meta_disjoint {k : K} {statics : Statics} (hdd : DDSound k)
+    (hst : StaticsOK statics) {L : PState} (hr : PReach k statics L) {pl : Pool}
+    (hpl : pl ∈ L.pools) (ha : L.kern.Active pl.internal) {sl : Slot} (hsl : sl ∈ pl.slots) :
+    ∀ l ∈ footprint L.kern.P sl.place, l ∉ metaLeaves L.kern pl := by
+  intro l hlq hl
+  have hok := (pReach_poolWF hr).pools _ (List.mem_map_of_mem hpl)
+  have hin := hok.slotIn sl.place (List.mem_map_of_mem hsl) l hlq
+  obtain ⟨y, hy, ya⟩ := ha
+  have hly : l ∈ y.footprint := by
+    have := (hok.fpEq l).2 hin; simpa [Pool.shape, S3.afp, hy] using this
+  unfold metaLeaves at hl
+  cases hv : Arena.arenaValue L.kern pl.entry with
+  | none => rw [hv] at hl; simp at hl
+  | some v =>
+    rw [hv] at hl
+    have hhold : y.holder = .place v := by
+      simp only [Arena.arenaValue, Pool.entry, hy] at hv
+      revert hv; cases y.holder <;> simp
+    exact (reachable_noSelfLock hdd hst (pReach_reachable hdd hst hr)).elim hy ya hly
+      (by rw [hhold]; exact hl)
 
 /-! ## Rights required by `allocSlot`, `freeSlot`, `newPool` (HandlePool v0.5, D.1, D.3) -/
 

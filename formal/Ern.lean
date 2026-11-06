@@ -10,6 +10,7 @@ import Ern.Corpus.Runner
 import Ern.Lib.DataStack
 import Ern.Lib.HandlePool
 import Ern.MemoryModel.Access.Basic
+import Ern.MemoryModel.Access.HolderCover
 import Ern.MemoryModel.Access.Invariants
 import Ern.MemoryModel.Access.Lemmas
 import Ern.MemoryModel.Access.Main
