@@ -6,16 +6,17 @@ import Ern.Lib.DataStack
 # Combined library runner (test module)
 
 A computable executor for the library corpus cases of
-`specs/ERN_Memory_Model_Specification_v0.md`, over one combined library state: the kernel state
+`specs/ERN_Memory_Model_Specification_v0.1.md`, over one combined library state: the kernel state
 `S₃` shared by the arena registry of `Ern.MemoryModel.Arena` (Part XIV, §46), the pool registry of
-`Ern.Lib.HandlePool` (contract "HandlePool v0.4 annex", non-normative) and the stack registry of
-`Ern.Lib.DataStack` (contract "DS-v1", non-normative), with the fresh pool identity, the ghost
+`Ern.Lib.HandlePool` (contract "HandlePool v0.5", non-normative) and the stack registry of
+`Ern.Lib.DataStack` (contract "DS-v2", non-normative), with the fresh pool identity, the ghost
 resolutions and the fresh mark identifier of those modules (§38: administrative states of library
 abstractions are separate from `S₃`). This module is a test module: no model or library module
 imports it.
 
 * `COp`: the kernel operations O1–O16 (§60–§75), the arena operations O17–O19 (§76–§78), the pool
-  operations and the stack operations, with their arguments.
+  operations and the stack operations, with their arguments; `unpin` takes the identity of a
+  dynamic pinning obligation (§74, §75).
 * `CRel k C o`: the relation of `o`, read on the projection of `C` it acts on (`toL`, `toP`, `toD`):
   the relation of `Ern.Corpus.OpRel` for O1–O16, `issue`, `reset`; `NewArenaStep`, `NewPoolStep`,
   `NewStackStep` with the internals of all other live registries as their guard parameter (§56,
@@ -23,11 +24,10 @@ imports it.
 * `cstep k C o`: the computed outcome (§58); `cstep_sound`: it is an outcome of `CRel`, `ok`,
   `reject` and `fail` alike.
 * `crun`, `cfinal`, `CRunsTo`: a run from `CState.init statics` (§47) whose steps are all `ok`
-  reaches a library-reachable state (`CReach`) whose kernel state is reached by kernel steps O1–O16
-  and ends of slot contents (`HandlePool.XReach`): `freeSlot` is not a kernel `endUse`
-  (HandlePool v0.4 annex, D.3), and `allocSlot` is a kernel `write` (§67) when some authority can
-  write its destination, which `crun` checks. `CRunsTo.reachable`: a run without `freeSlot` ends
-  in a state kernel-`Reachable` (§57).
+  reaches a library-reachable state (`CReach`) whose kernel state is reachable by O1–O16 (§57):
+  the kernel part of every library step is a finite sequence of kernel steps (HandlePool v0.5,
+  HP5-7; `freeSlot` has no kernel effect, HP5-1), and `allocSlot` is a kernel `write` (§67) when
+  some authority can write its destination, which `crun` checks.
 -/
 
 namespace Ern.Corpus.LibRunner
@@ -37,8 +37,8 @@ open Ern.MemoryModel Ern.MemoryModel.Access Ern.MemoryModel.Arena Ern.Corpus Ern
 /-! ## Combined library state (§38, §46, §47, §56) -/
 
 /-- The combined library state (§38, §46): the kernel state `S₃`, the arena registry (§46), the
-pool registry, the next fresh pool identity and the ghost resolutions (HandlePool v0.4 annex, D.1,
-D.2), the stack registry and the next fresh mark identifier (DS-v1). -/
+pool registry, the next fresh pool identity and the ghost resolutions (HandlePool v0.5, D.1,
+D.2), the stack registry and the next fresh mark identifier (DS-v2). -/
 structure CState where
   kern : S3
   arenas : List ArenaEntry
@@ -54,43 +54,44 @@ def CState.init (statics : Statics) : CState := ⟨S3.init statics, [], [], 0, [
 /-- The arena library state of `C` (§46). -/
 def CState.toL (C : CState) : LState := ⟨C.kern, C.arenas⟩
 
-/-- The pool library state of `C` (§38; HandlePool v0.4 annex, D.1). -/
+/-- The pool library state of `C` (§38; HandlePool v0.5, D.1). -/
 def CState.toP (C : CState) : HandlePool.PState := ⟨C.kern, C.pools, C.nId, C.res⟩
 
-/-- The stack library state of `C` (§38; DS-v1). -/
+/-- The stack library state of `C` (§38; DS-v2). -/
 def CState.toD (C : CState) : DataStack.DState := ⟨C.kern, C.stacks, C.fresh⟩
 
 /-- `C` with its kernel state and arena registry replaced (§46). -/
 def CState.setL (C : CState) (L : LState) : CState := { C with kern := L.kern, arenas := L.arenas }
 
-/-- `C` with its kernel state and pool library state replaced (§38; HandlePool v0.4 annex). -/
+/-- `C` with its kernel state and pool library state replaced (§38; HandlePool v0.5). -/
 def CState.setP (C : CState) (P : HandlePool.PState) : CState :=
   { C with kern := P.kern, pools := P.pools, nId := P.nId, res := P.res }
 
-/-- `C` with its kernel state and stack library state replaced (§38; DS-v1). -/
+/-- `C` with its kernel state and stack library state replaced (§38; DS-v2). -/
 def CState.setD (C : CState) (D : DataStack.DState) : CState :=
   { C with kern := D.kern, stacks := D.stacks, fresh := D.fresh }
 
 /-- The registries of live administrations other than the arena registry (§56, §76.4): the live
-pools (HandlePool v0.4 annex, D.1) and the live stacks (DS-v1). -/
+pools (HandlePool v0.5, D.1) and the live stacks (DS-v2). -/
 def CState.othersA (C : CState) : List (List Nat) :=
   [HandlePool.liveInternals C.kern C.pools, DataStack.stackInternals C.kern C.stacks]
 
-/-- The registries of live administrations other than the pool registry (§56; HandlePool v0.4
-annex, D.1): the live arenas (§46) and the live stacks (DS-v1). -/
+/-- The registries of live administrations other than the pool registry (§56; HandlePool v0.5,
+D.1): the live arenas (§46) and the live stacks (DS-v2). -/
 def CState.othersP (C : CState) : List (List Nat) :=
   [Arena.liveInternals C.kern C.arenas, DataStack.stackInternals C.kern C.stacks]
 
-/-- The registries of live administrations other than the stack registry (§56; DS-v1): the live
-arenas (§46) and the live pools (HandlePool v0.4 annex, D.1). -/
+/-- The registries of live administrations other than the stack registry (§56; DS-v2): the live
+arenas (§46) and the live pools (HandlePool v0.5, D.1). -/
 def CState.othersD (C : CState) : List (List Nat) :=
   [Arena.liveInternals C.kern C.arenas, HandlePool.liveInternals C.kern C.pools]
 
-/-! ## Operations and their relations (§58, §60–§78; HandlePool v0.4 annex; DS-v1) -/
+/-! ## Operations and their relations (§58, §60–§78; HandlePool v0.5; DS-v2) -/
 
 /-- An operation of a library run: the kernel operations O1–O16 (§60–§75), the arena operations
-O17–O19 (§76–§78), the pool operations (HandlePool v0.4 annex, D.1–D.3; pools and slots named by
-their registry index) and the stack operations (DS-v1; stacks named by their registry index). -/
+O17–O19 (§76–§78), the pool operations (HandlePool v0.5, D.1–D.3; pools and slots named by
+their registry index) and the stack operations (DS-v2; stacks named by their registry index);
+`unpin` takes the identity of a dynamic pinning obligation, its index in `S3.pins` (§74, §75). -/
 inductive COp where
   | derive (src : Nat) (region : List Nat) (m : Mode)
   | split (src : Nat) (rs : List (List Nat))
@@ -103,7 +104,7 @@ inductive COp where
   | write (a : Nat) (ls : List Nat)
   | writeShared (a : Nat) (ls : List Nat)
   | pin (p : Nat)
-  | unpin (p : Nat)
+  | unpin (o : Nat)
   | endUse (p : Nat)
   | free (p auth : Nat)
   | alloc (provider owner : Nat) (ls : LocalShape)
@@ -137,7 +138,7 @@ def LiftR {σ : Type} (R : Outcome3 σ → Prop) (emb : σ → CState) : Outcome
   | .reject => R .reject
   | .fail => R .fail
 
-/-- The relation of `o` from `C` (§58, §60–§78; HandlePool v0.4 annex; DS-v1), on the projection
+/-- The relation of `o` from `C` (§58, §60–§78; HandlePool v0.5; DS-v2), on the projection
 it acts on: `OpRel` of `Ern.Corpus` for O1–O16, `issue` and `reset`; `newArena`, `newPool`,
 `newStack` with the internals of every other live registry as their guard parameter (§56,
 §76.4); the relations of the pool and stack modules. -/
@@ -153,7 +154,7 @@ def CRel (k : K) (C : CState) : COp → Outcome3 CState → Prop
   | .write a ls => LiftR (OpRel k C.toL (.write a ls)) C.setL
   | .writeShared a ls => LiftR (OpRel k C.toL (.writeShared a ls)) C.setL
   | .pin p => LiftR (OpRel k C.toL (.pin p)) C.setL
-  | .unpin p => LiftR (OpRel k C.toL (.unpin p)) C.setL
+  | .unpin o => LiftR (OpRel k C.toL (.unpin o)) C.setL
   | .endUse p => LiftR (OpRel k C.toL (.endUse p)) C.setL
   | .free p a => LiftR (OpRel k C.toL (.free p a)) C.setL
   | .alloc pr ow ls => LiftR (OpRel k C.toL (.alloc pr ow ls)) C.setL
@@ -166,22 +167,16 @@ def CRel (k : K) (C : CState) : COp → Outcome3 CState → Prop
   | .resolve j h m => LiftR (HandlePool.ResolveStep j h m C.toP) C.setP
   | .resolveMany j hs m => LiftR (HandlePool.ResolveManyStep k j hs m C.toP) C.setP
   | .unresolve c => LiftR (HandlePool.UnresolveStep c C.toP) C.setP
-  | .freeSlot j h => LiftR (HandlePool.FreeSlotStep k j h C.toP) C.setP
+  | .freeSlot j h => LiftR (HandlePool.FreeSlotStep j h C.toP) C.setP
   | .newStack st i => LiftR (DataStack.NewStackStep C.othersD st i C.toD) C.setD
   | .push j n d => LiftR (DataStack.PushStep k j n d C.toD) C.setD
   | .mark j => LiftR (DataStack.MarkStep j C.toD) C.setD
   | .rewind j m => LiftR (DataStack.RewindStep k j m C.toD) C.setD
   | .grow j b e => LiftR (DataStack.GrowStep k j b e C.toD) C.setD
 
-/-- The operations that are not kernel steps O1–O16 nor sequences of them: `freeSlot` ends a slot
-content under `ContentEndPre` (HandlePool v0.4 annex, D.3; §69 effect). -/
-def COp.kernelOnly : COp → Bool
-  | .freeSlot .. => false
-  | _ => true
-
 /-! ## Executor -/
 
-/-- The first free slot of a slot list and its index (HandlePool v0.4 annex, D.3: "`ok` choisit un
+/-- The first free slot of a slot list and its index (HandlePool v0.5, D.3: "`ok` choisit un
 slot libre"; the lowest index is chosen, one of the outcomes the relation allows). -/
 def firstFree : List HandlePool.Slot → Option (Nat × HandlePool.Slot)
   | [] => none
@@ -191,7 +186,7 @@ def firstFree : List HandlePool.Slot → Option (Nat × HandlePool.Slot)
 def writer (s : S3) (dst : Nat) : Option Nat :=
   (List.range s.A.length).find? fun a => decide (Write3Pre s a [dst])
 
-/-- The kernel-side check of a step of `crun` (§67; HandlePool v0.4 annex, D.3): the handle write
+/-- The kernel-side check of a step of `crun` (§67; HandlePool v0.5, D.3): the handle write
 of `allocSlot` is a kernel `write` by some authority. -/
 def COp.kok (C : CState) : COp → Bool
   | .allocSlot _ dst => (writer C.kern dst).isSome
@@ -202,7 +197,7 @@ variable (k : K) [∀ r r', Decidable (k.DeclaredDisjoint r r')] [DecidablePred 
   [DecidablePred k.Pinned] [DecidablePred k.ExternalDone] [DecidablePred k.Deallocable]
   [∀ p a, Decidable (k.FreeCompat p a)] [∀ p ls s, Decidable (k.Satisfiable p ls s)]
 
-/-- Computed outcome of `allocSlot(pool j, dst)` (HandlePool v0.4 annex, D.3; §58). -/
+/-- Computed outcome of `allocSlot(pool j, dst)` (HandlePool v0.5, D.3; §58). -/
 def allocSlotOut (P : HandlePool.PState) (j dst : Nat) : Outcome3 HandlePool.PState :=
   match P.pools[j]? with
   | none => .reject
@@ -213,14 +208,15 @@ def allocSlotOut (P : HandlePool.PState) (j dst : Nat) : Outcome3 HandlePool.PSt
       | none => .fail
     else .reject
 
-/-- Computed outcome of `resolve(h, m)` on pool `j` (HandlePool v0.4 annex, D.2; §58). -/
+/-- Computed outcome of `resolve(h, m)` on pool `j` (HandlePool v0.5, D.2, HP5-5: the handle is
+checked before the right; §58). -/
 def resolveOut (P : HandlePool.PState) (j : Nat) (h : HandlePool.Handle) (m : Mode) :
     Outcome3 HandlePool.PState :=
   match P.pools[j]? with
   | none => .reject
   | some pl =>
-    if HandlePool.ResolveRight P.kern pl m then
-      if HandlePool.HandleOK pl h then
+    if HandlePool.HandleOK P.kern pl h then
+      if HandlePool.ResolveRight P.kern pl m then
         match pl.slots[h.slot]? with
         | some sl =>
           if DerivePre (HandlePool.compS P.kern pl m) P.kern.A.length
@@ -232,17 +228,18 @@ def resolveOut (P : HandlePool.PState) (j : Nat) (h : HandlePool.Handle) (m : Mo
                 [(P.kern.A.length + 1, h.slot, h.gen)]⟩] }
           else .reject
         | none => .reject
-      else .fail
-    else .reject
+      else .reject
+    else .fail
 
-/-- Computed outcome of `resolveMany(hs, m)` on pool `j` (HandlePool v0.4 annex, D.2; §58). -/
+/-- Computed outcome of `resolveMany(hs, m)` on pool `j` (HandlePool v0.5, D.2, HP5-5: the batch
+is checked before the right; §58). -/
 def resolveManyOut (P : HandlePool.PState) (j : Nat) (hs : List HandlePool.Handle) (m : Mode) :
     Outcome3 HandlePool.PState :=
   match P.pools[j]? with
   | none => .reject
   | some pl =>
-    if HandlePool.ResolveRight P.kern pl m then
-      if HandlePool.BatchOK pl hs m then
+    if HandlePool.BatchOK P.kern pl hs m then
+      if HandlePool.ResolveRight P.kern pl m then
         if HandlePool.EntriesPre k m (HandlePool.compS P.kern pl m) P.kern.A.length
             (HandlePool.entryRegions P.kern pl hs) then
           .ok { P with
@@ -251,10 +248,10 @@ def resolveManyOut (P : HandlePool.PState) (j : Nat) (hs : List HandlePool.Handl
             res := P.res ++ [⟨pl.id, pl.internal, P.kern.A.length, m,
               HandlePool.batchEntries P.kern.A.length hs⟩] }
         else .reject
-      else .fail
-    else .reject
+      else .reject
+    else .fail
 
-/-- Computed outcome of `unresolve(c)` (HandlePool v0.4 annex, D.2; §58). -/
+/-- Computed outcome of `unresolve(c)` (HandlePool v0.5, D.2; §58). -/
 def unresolveOut (P : HandlePool.PState) (c : Nat) : Outcome3 HandlePool.PState :=
   match HandlePool.findRes P c with
   | none => .reject
@@ -263,24 +260,26 @@ def unresolveOut (P : HandlePool.PState) (c : Nat) : Outcome3 HandlePool.PState 
     | none => .reject
     | some s' => .ok { P with kern := s' }
 
-/-- Computed outcome of `freeSlot(h)` on pool `j` (HandlePool v0.4 annex, D.3; §58). -/
+/-- Computed outcome of `freeSlot(h)` on pool `j` (HandlePool v0.5, D.3, HP5-1, HP5-1': the
+content conditions; outcome order of HP5-1'': the handle, pool liveness included, before the
+administration right; §58). -/
 def freeSlotOut (P : HandlePool.PState) (j : Nat) (h : HandlePool.Handle) :
     Outcome3 HandlePool.PState :=
   match P.pools[j]? with
   | none => .reject
   | some pl =>
-    if HandlePool.AdminRight P.kern pl then
-      if HandlePool.HandleOK pl h then
+    if HandlePool.HandleOK P.kern pl h then
+      if HandlePool.AdminRight P.kern pl then
         match pl.slots[h.slot]? with
         | some sl =>
-          if HandlePool.ContentEndPre k P.kern sl.place pl.internal then
+          if HandlePool.FreeContentOK P pl sl.place then
             .ok (HandlePool.freeSlotEff P j pl h.slot sl)
           else .reject
         | none => .reject
-      else .fail
-    else .reject
+      else .reject
+    else .fail
 
-/-- Computed outcome of `push(j, size, dst)` (DS-v1; Part XIV, §77; §58). -/
+/-- Computed outcome of `push(j, size, dst)` (DS-v2; Part XIV, §77; §58). -/
 def pushOut (D : DataStack.DState) (j size dst : Nat) : Outcome3 DataStack.DState :=
   match D.stacks[j]? with
   | none => .reject
@@ -298,19 +297,23 @@ def pushOut (D : DataStack.DState) (j size dst : Nat) : Outcome3 DataStack.DStat
       else .fail
     else .reject
 
-/-- Computed outcome of `mark(j)` (DS-v1; §58). -/
+/-- Computed outcome of `mark(j)` (DS-v2, DS2-1: `AdminRight` required, §36; §58). -/
 def markOut (D : DataStack.DState) (j : Nat) : Outcome3 DataStack.DState :=
   match D.stacks[j]? with
   | none => .reject
-  | some st => .ok ⟨D.kern, D.stacks.set j (DataStack.markMeta j st D.fresh), D.fresh + 1⟩
+  | some st =>
+    if DataStack.AdminRight D.kern st then
+      .ok ⟨D.kern, D.stacks.set j (DataStack.markMeta j st D.fresh), D.fresh + 1⟩
+    else .reject
 
-/-- Computed outcome of `rewind(j, m)` (DS-v1; Part XIV, §78; §58). -/
+/-- Computed outcome of `rewind(j, m)` (DS-v2, DS2-3, DS2-4, DS2-6: a missing stack and a dead or
+foreign mark `fail` before the right; Part XIV, §78; §58). -/
 def rewindOut (D : DataStack.DState) (j : Nat) (m : DataStack.Mark) :
     Outcome3 DataStack.DState :=
   match D.stacks[j]? with
-  | none => .reject
+  | none => .fail
   | some st =>
-    if DataStack.LiveMark j st m then
+    if DataStack.LiveMark D.kern j st m then
       if DataStack.AdminRight D.kern st then
         if SplitPre k D.kern st.internal [DataStack.above st m] then
           if ReleasePre (splitEff D.kern st.internal [DataStack.above st m])
@@ -322,7 +325,8 @@ def rewindOut (D : DataStack.DState) (j : Nat) (m : DataStack.Mark) :
       else .reject
     else .fail
 
-/-- Computed outcome of `grow(j, b, extra)` (DS-v1; Part XIV, §77; §58). -/
+/-- Computed outcome of `grow(j, b, extra)` (DS-v2, DS2-2: into the place that holds `b`; DS2-5:
+`extra` may be zero; Part XIV, §77; §58). -/
 def growOut (D : DataStack.DState) (j b extra : Nat) : Outcome3 DataStack.DState :=
   match D.stacks[j]? with
   | none => .reject
@@ -330,28 +334,30 @@ def growOut (D : DataStack.DState) (j b extra : Nat) : Outcome3 DataStack.DState
     match st.block b with
     | none => .reject
     | some x =>
-      if extra = 0 then .reject else
       if ReleasePre D.kern b then
-        if IssueStatic (releaseEff D.kern b) st.entry
-            (DataStack.cellsOf st x.base (x.size + extra)) x.dst then
-          if DataStack.InPlace st x extra then
-            if SplitPre k (releaseEff D.kern b) st.internal
-                [DataStack.cellsOf st x.base (x.size + extra)] then
-              if StorePre (splitEff (releaseEff D.kern b) st.internal
-                  [DataStack.cellsOf st x.base (x.size + extra)])
-                  (releaseEff D.kern b).A.length x.dst then
-                .ok ⟨storeEff (splitEff (releaseEff D.kern b) st.internal
+        match DataStack.holderPlace D.kern b with
+        | none => .reject
+        | some d =>
+          if IssueStatic (releaseEff D.kern b) st.entry
+              (DataStack.cellsOf st x.base (x.size + extra)) d then
+            if DataStack.InPlace st x extra then
+              if SplitPre k (releaseEff D.kern b) st.internal
+                  [DataStack.cellsOf st x.base (x.size + extra)] then
+                if StorePre (splitEff (releaseEff D.kern b) st.internal
                     [DataStack.cellsOf st x.base (x.size + extra)])
-                    (releaseEff D.kern b).A.length x.dst,
-                  D.stacks.set j (DataStack.growMeta st x extra (releaseEff D.kern b).A.length),
-                  D.fresh⟩
+                    (releaseEff D.kern b).A.length d then
+                  .ok ⟨storeEff (splitEff (releaseEff D.kern b) st.internal
+                      [DataStack.cellsOf st x.base (x.size + extra)])
+                      (releaseEff D.kern b).A.length d,
+                    D.stacks.set j (DataStack.growMeta st x extra (releaseEff D.kern b).A.length d),
+                    D.fresh⟩
+                else .reject
               else .reject
-            else .reject
-          else .fail
-        else .reject
+            else .fail
+          else .reject
       else .reject
 
-/-- The computed outcome of `o` from `C` (§58, §60–§78; HandlePool v0.4 annex; DS-v1): the
+/-- The computed outcome of `o` from `C` (§58, §60–§78; HandlePool v0.5; DS-v2): the
 executor of `Ern.Corpus` on the arena projection for O1–O16, `issue` and `reset`; the guard of §56
 over all registries for the creation operations; the pool and stack executors above. -/
 def cstep (C : CState) : COp → Outcome3 CState
@@ -366,7 +372,7 @@ def cstep (C : CState) : COp → Outcome3 CState
   | .write a ls => liftO C.setL (lstep k C.toL (.write a ls))
   | .writeShared a ls => liftO C.setL (lstep k C.toL (.writeShared a ls))
   | .pin p => liftO C.setL (lstep k C.toL (.pin p))
-  | .unpin p => liftO C.setL (lstep k C.toL (.unpin p))
+  | .unpin o => liftO C.setL (lstep k C.toL (.unpin o))
   | .endUse p => liftO C.setL (lstep k C.toL (.endUse p))
   | .free p a => liftO C.setL (lstep k C.toL (.free p a))
   | .alloc pr ow ls => liftO C.setL (lstep k C.toL (.alloc pr ow ls))
@@ -384,7 +390,7 @@ def cstep (C : CState) : COp → Outcome3 CState
   | .resolve j h m => liftO C.setP (resolveOut C.toP j h m)
   | .resolveMany j hs m => liftO C.setP (resolveManyOut k C.toP j hs m)
   | .unresolve c => liftO C.setP (unresolveOut C.toP c)
-  | .freeSlot j h => liftO C.setP (freeSlotOut k C.toP j h)
+  | .freeSlot j h => liftO C.setP (freeSlotOut C.toP j h)
   | .newStack st i =>
     if DataStack.NewStackPre C.kern C.stacks C.othersD st i then
       .ok (C.setD (DataStack.newStackEff C.toD st i))
@@ -417,7 +423,7 @@ def cfinal (statics : Statics) (os : List COp) : CState :=
 end Exec
 
 /-- Combined library states reachable from `CState.init statics` (§47) by `ok` steps of the kernel
-and of the three libraries (Part XIV; HandlePool v0.4 annex; DS-v1). -/
+and of the three libraries (Part XIV; HandlePool v0.5; DS-v2). -/
 inductive CReach (k : K) (statics : Statics) : CState → Prop where
   | init : CReach k statics (CState.init statics)
   | step {C C' : CState} {o : COp} : CReach k statics C → CRel k C o (.ok C') →
@@ -429,15 +435,14 @@ variable (k : K) [∀ r r', Decidable (k.DeclaredDisjoint r r')] [DecidablePred 
   [∀ p a, Decidable (k.FreeCompat p a)] [∀ p ls s, Decidable (k.Satisfiable p ls s)]
 
 /-- A run of `os` from `CState.init statics` (§47) has only `ok` steps and reaches `C`; `C` is
-library-reachable, and its kernel state is reached by kernel steps O1–O16 and ends of slot contents
-(§57; HandlePool v0.4 annex, D.3). -/
+library-reachable, and its kernel state is reachable by O1–O16 (§57; HandlePool v0.5, HP5-7). -/
 structure CRunsTo (statics : Statics) (os : List COp) (C : CState) : Prop where
   /-- Every step is `ok` and the run ends in `C`. -/
   run : crun k (CState.init statics) os = some C
   /-- `C` is library-reachable. -/
   creach : CReach k statics C
-  /-- The kernel state of `C` is reached by kernel steps and ends of slot contents. -/
-  xreach : HandlePool.XReach k statics C.kern
+  /-- The kernel state of `C` is reachable from `S3.init statics` by O1–O16 (§57). -/
+  reach : Reachable k statics C.kern
 
 /-- The run of `os` from `CState.init statics` has only `ok` steps (§47, §57). -/
 abbrev CRuns (statics : Statics) (os : List COp) : Prop :=
@@ -462,7 +467,7 @@ theorem liftR_guarded {σ : Type} {p : Prop} [Decidable p] {x : σ} {emb : σ �
   · next h => exact ⟨x, .ok h, rfl⟩
   · next h => exact .reject h
 
-/-- `firstFree` finds a free slot at its index (HandlePool v0.4 annex, D.3). -/
+/-- `firstFree` finds a free slot at its index (HandlePool v0.5, D.3). -/
 theorem firstFree_some : ∀ {l : List HandlePool.Slot} {i : Nat} {sl : HandlePool.Slot},
     firstFree l = some (i, sl) → l[i]? = some sl ∧ sl.live = false
   | [], _, _, h => by simp [firstFree] at h
@@ -481,7 +486,7 @@ theorem firstFree_some : ∀ {l : List HandlePool.Slot} {i : Nat} {sl : HandlePo
       obtain ⟨rfl, rfl⟩ := h
       exact ⟨rfl, by simpa using hx⟩
 
-/-- When `firstFree` finds nothing, every slot is live (HandlePool v0.4 annex, D.3). -/
+/-- When `firstFree` finds nothing, every slot is live (HandlePool v0.5, D.3). -/
 theorem firstFree_none : ∀ {l : List HandlePool.Slot}, firstFree l = none →
     ∀ sl ∈ l, sl.live = true
   | [], _, _, h => by cases h
@@ -508,7 +513,7 @@ variable {k : K} [∀ r r', Decidable (k.DeclaredDisjoint r r')] [DecidablePred 
   [DecidablePred k.Pinned] [DecidablePred k.ExternalDone] [DecidablePred k.Deallocable]
   [∀ p a, Decidable (k.FreeCompat p a)] [∀ p ls s, Decidable (k.Satisfiable p ls s)]
 
-/-- `allocSlotOut` is an outcome of `AllocSlotStep` (HandlePool v0.4 annex, D.3; §58). -/
+/-- `allocSlotOut` is an outcome of `AllocSlotStep` (HandlePool v0.5, D.3; §58). -/
 theorem allocSlotOut_sound (P : HandlePool.PState) (j dst : Nat) :
     HandlePool.AllocSlotStep j dst P (allocSlotOut P j dst) := by
   unfold allocSlotOut
@@ -522,7 +527,7 @@ theorem allocSlotOut_sound (P : HandlePool.PState) (j dst : Nat) :
       · next he => exact .fail hj hs (firstFree_none he)
     · next hs => exact .static hj hs
 
-/-- `resolveOut` is an outcome of `ResolveStep` (HandlePool v0.4 annex, D.2; §58). -/
+/-- `resolveOut` is an outcome of `ResolveStep` (HandlePool v0.5, D.2; §58). -/
 theorem resolveOut_sound (P : HandlePool.PState) (j : Nat) (h : HandlePool.Handle) (m : Mode) :
     HandlePool.ResolveStep j h m P (resolveOut P j h m) := by
   unfold resolveOut
@@ -530,26 +535,26 @@ theorem resolveOut_sound (P : HandlePool.PState) (j : Nat) (h : HandlePool.Handl
   · next hj => exact .noPool hj
   · next pl hj =>
     split
-    · next hr =>
+    · next hok =>
       split
-      · next hok =>
+      · next hr =>
         split
         · next sl hsl =>
           split
-          · next hd => exact .ok hj hr hok hsl hd
-          · next hd => exact .noEntry hj hr hok hsl hd
+          · next hd => exact .ok hj hok hr hsl hd
+          · next hd => exact .noEntry hj hok hr hsl hd
         · next hsl =>
           exfalso
-          have := hok.2
+          have := hok.2.2
           rw [hsl] at this
           exact this
-      · next hok => exact .fail hj hr hok
-    · next hr => exact .noRight hj hr
+      · next hr => exact .noRight hj hok hr
+    · next hok => exact .fail hj hok
 
 omit [DecidablePred k.SharedMutable] [DecidablePred k.Pinned] [DecidablePred k.ExternalDone]
   [DecidablePred k.Deallocable] [∀ p a, Decidable (k.FreeCompat p a)]
   [∀ p ls s, Decidable (k.Satisfiable p ls s)] in
-/-- `resolveManyOut` is an outcome of `ResolveManyStep` (HandlePool v0.4 annex, D.2; §58). -/
+/-- `resolveManyOut` is an outcome of `ResolveManyStep` (HandlePool v0.5, D.2; §58). -/
 theorem resolveManyOut_sound (P : HandlePool.PState) (j : Nat) (hs : List HandlePool.Handle)
     (m : Mode) : HandlePool.ResolveManyStep k j hs m P (resolveManyOut k P j hs m) := by
   unfold resolveManyOut
@@ -557,16 +562,16 @@ theorem resolveManyOut_sound (P : HandlePool.PState) (j : Nat) (hs : List Handle
   · next hj => exact .noPool hj
   · next pl hj =>
     split
-    · next hr =>
+    · next hb =>
       split
-      · next hb =>
+      · next hr =>
         split
-        · next he => exact .ok hj hr hb he
-        · next he => exact .noEntries hj hr hb he
-      · next hb => exact .fail hj hr hb
-    · next hr => exact .noRight hj hr
+        · next he => exact .ok hj hb hr he
+        · next he => exact .noEntries hj hb hr he
+      · next hr => exact .noRight hj hb hr
+    · next hb => exact .fail hj hb
 
-/-- `unresolveOut` is an outcome of `UnresolveStep` (HandlePool v0.4 annex, D.2; §58). -/
+/-- `unresolveOut` is an outcome of `UnresolveStep` (HandlePool v0.5, D.2; §58). -/
 theorem unresolveOut_sound (P : HandlePool.PState) (c : Nat) :
     HandlePool.UnresolveStep c P (unresolveOut P c) := by
   unfold unresolveOut
@@ -577,37 +582,34 @@ theorem unresolveOut_sound (P : HandlePool.PState) (c : Nat) :
     · next hr => exact .reject hf hr
     · next s' hr => exact .ok hf hr
 
-omit [∀ r r', Decidable (k.DeclaredDisjoint r r')] [DecidablePred k.SharedMutable]
-  [DecidablePred k.ExternalDone] [DecidablePred k.Deallocable] [∀ p a, Decidable (k.FreeCompat p a)]
-  [∀ p ls s, Decidable (k.Satisfiable p ls s)] in
-/-- `freeSlotOut` is an outcome of `FreeSlotStep` (HandlePool v0.4 annex, D.3; §58). -/
+/-- `freeSlotOut` is an outcome of `FreeSlotStep` (HandlePool v0.5, D.3, HP5-1''; §58). -/
 theorem freeSlotOut_sound (P : HandlePool.PState) (j : Nat) (h : HandlePool.Handle) :
-    HandlePool.FreeSlotStep k j h P (freeSlotOut k P j h) := by
+    HandlePool.FreeSlotStep j h P (freeSlotOut P j h) := by
   unfold freeSlotOut
   split
   · next hj => exact .noPool hj
   · next pl hj =>
     split
-    · next hr =>
+    · next hok =>
       split
-      · next hok =>
+      · next hr =>
         split
         · next sl hsl =>
           split
-          · next he => exact .ok hj hr hok hsl he
-          · next he => exact .noEnd hj hr hok hsl he
+          · next hc => exact .ok hj hok hr hsl hc
+          · next hc => exact .noContent hj hok hr hsl hc
         · next hsl =>
           exfalso
-          have := hok.2
+          have := hok.2.2
           rw [hsl] at this
           exact this
-      · next hok => exact .fail hj hr hok
-    · next hr => exact .noRight hj hr
+      · next hr => exact .noRight hj hok hr
+    · next hok => exact .fail hj hok
 
 omit [DecidablePred k.SharedMutable] [DecidablePred k.Pinned] [DecidablePred k.ExternalDone]
   [DecidablePred k.Deallocable] [∀ p a, Decidable (k.FreeCompat p a)]
   [∀ p ls s, Decidable (k.Satisfiable p ls s)] in
-/-- `pushOut` is an outcome of `PushStep` (DS-v1; §58). -/
+/-- `pushOut` is an outcome of `PushStep` (DS-v2; §58). -/
 theorem pushOut_sound (D : DataStack.DState) (j size dst : Nat) :
     DataStack.PushStep k j size dst D (pushOut k D j size dst) := by
   unfold pushOut
@@ -627,18 +629,21 @@ theorem pushOut_sound (D : DataStack.DState) (j size dst : Nat) :
       · next hn => exact .fail hj hs hn
     · next hs => exact .static hj hs
 
-/-- `markOut` is an outcome of `MarkStep` (DS-v1; §58). -/
+/-- `markOut` is an outcome of `MarkStep` (DS-v2; §58). -/
 theorem markOut_sound (D : DataStack.DState) (j : Nat) :
     DataStack.MarkStep j D (markOut D j) := by
   unfold markOut
   split
   · next hj => exact .noStack hj
-  · next st hj => exact .ok hj
+  · next st hj =>
+    split
+    · next ha => exact .ok hj ha
+    · next ha => exact .static hj ha
 
 omit [DecidablePred k.SharedMutable] [DecidablePred k.Pinned] [DecidablePred k.ExternalDone]
   [DecidablePred k.Deallocable] [∀ p a, Decidable (k.FreeCompat p a)]
   [∀ p ls s, Decidable (k.Satisfiable p ls s)] in
-/-- `rewindOut` is an outcome of `RewindStep` (DS-v1; §58). -/
+/-- `rewindOut` is an outcome of `RewindStep` (DS-v2; §58). -/
 theorem rewindOut_sound (D : DataStack.DState) (j : Nat) (m : DataStack.Mark) :
     DataStack.RewindStep k j m D (rewindOut k D j m) := by
   unfold rewindOut
@@ -661,7 +666,7 @@ theorem rewindOut_sound (D : DataStack.DState) (j : Nat) (m : DataStack.Mark) :
 omit [DecidablePred k.SharedMutable] [DecidablePred k.Pinned] [DecidablePred k.ExternalDone]
   [DecidablePred k.Deallocable] [∀ p a, Decidable (k.FreeCompat p a)]
   [∀ p ls s, Decidable (k.Satisfiable p ls s)] in
-/-- `growOut` is an outcome of `GrowStep` (DS-v1; §58). -/
+/-- `growOut` is an outcome of `GrowStep` (DS-v2; §58). -/
 theorem growOut_sound (D : DataStack.DState) (j b extra : Nat) :
     DataStack.GrowStep k j b extra D (growOut k D j b extra) := by
   unfold growOut
@@ -672,11 +677,10 @@ theorem growOut_sound (D : DataStack.DState) (j b extra : Nat) :
     · next hb => exact .noBlock hj hb
     · next x hb =>
       split
-      · next he => exact .noExtra hj hb he
-      · next he =>
-        have hp : 0 < extra := Nat.pos_of_ne_zero he
+      · next h0 =>
         split
-        · next h0 =>
+        · next hh => exact .noHolder hj hb (.ok h0) hh
+        · next d hh =>
           split
           · next hs =>
             split
@@ -684,14 +688,14 @@ theorem growOut_sound (D : DataStack.DState) (j b extra : Nat) :
               split
               · next h1 =>
                 split
-                · next h2 => exact .ok hj hb hp (.ok h0) hs hi (.ok h1) (.ok h2)
-                · next h2 => exact .store hj hb hp (.ok h0) hs hi (.ok h1) (.reject h2)
-              · next h1 => exact .split hj hb hp (.ok h0) hs hi (.reject h1)
-            · next hi => exact .fail hj hb hp (.ok h0) hs hi
-          · next hs => exact .static hj hb hp (.ok h0) hs
-        · next h0 => exact .release hj hb hp (.reject h0)
+                · next h2 => exact .ok hj hb (.ok h0) hh hs hi (.ok h1) (.ok h2)
+                · next h2 => exact .store hj hb (.ok h0) hh hs hi (.ok h1) (.reject h2)
+              · next h1 => exact .split hj hb (.ok h0) hh hs hi (.reject h1)
+            · next hi => exact .fail hj hb (.ok h0) hh hs hi
+          · next hs => exact .static hj hb (.ok h0) hh hs
+      · next h0 => exact .release hj hb (.reject h0)
 
-/-- **Step soundness** (§58, §60–§78; HandlePool v0.4 annex; DS-v1): the computed outcome of `o`
+/-- **Step soundness** (§58, §60–§78; HandlePool v0.5; DS-v2): the computed outcome of `o`
 from `C` is an outcome of the relation of `o` on the projected state, `ok`, `reject` and `fail`
 alike. -/
 theorem cstep_sound (C : CState) (o : COp) : CRel k C o (cstep k C o) := by
@@ -743,14 +747,7 @@ theorem coks {C : CState} {o : COp} (h : verdictOf (cstep k C o) = .ok) :
 
 end Sound
 
-/-! ## Kernel side of library steps (§57; Part XIV; HandlePool v0.4 annex, D.3; DS-v1) -/
-
-/-- A sequence of kernel steps from a reachable state ends in a reachable state (§57). -/
-theorem reachable_kseq {k : K} {statics : Statics} {s s' : S3} (hr : Reachable k statics s)
-    (h : HandlePool.KSeq k s s') : Reachable k statics s' := by
-  induction h with
-  | refl => exact hr
-  | tail _ hs ih => exact .step ih hs
+/-! ## Kernel side of library steps (§57; Part XIV; HandlePool v0.5, HP5-7; DS-v2) -/
 
 /-- The kernel part of an arena library step is a sequence of kernel steps (Part XIV, §57:
 `newArena` changes no kernel component, `issue` is `split` then `store`, `reset` is `derive` then
@@ -767,86 +764,83 @@ theorem LStep.kseq {k : K} {L L' : LState} (h : LStep k L L') :
     cases hs with
     | ok _ hd hrl _ => exact (HandlePool.KSeq.single (.derive hd)).tail (.release hrl)
 
-/-- The kernel part of an `ok` step of the combined library (§57; Part XIV; HandlePool v0.4
-annex, D.2, D.3; DS-v1): a finite sequence of kernel steps O1–O16 when the step passes the check
-`kok`, except for `freeSlot`, whose kernel part is the end of a slot content under
-`ContentEndPre`. -/
+/-- The kernel part of an `ok` step of the combined library (§57; Part XIV; HandlePool v0.5,
+D.2, D.3, HP5-7; DS-v2): a finite sequence of kernel steps O1–O16 when the step passes the check
+`kok`; `newPool`, `freeSlot` (no kernel effect, HP5-1), `newStack` and `mark` are the identity. -/
 theorem crel_kside {k : K} {C C' : CState} {o : COp} (h : CRel k C o (.ok C'))
-    (hw : o.kok C = true) :
-    HandlePool.KSeq k C.kern C'.kern ∨ (o.kernelOnly = false ∧
-      ∃ q i, HandlePool.ContentEndPre k C.kern q i ∧ C'.kern = endUseEff C.kern q) := by
+    (hw : o.kok C = true) : HandlePool.KSeq k C.kern C'.kern := by
   cases o with
   | newPool st i =>
     obtain ⟨x, hx, rfl⟩ := h
     obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hx
-    exact .inl (.refl _)
+    exact .refl _
   | allocSlot j d =>
     obtain ⟨x, hx, rfl⟩ := h
     cases hx with
     | ok =>
       simp only [COp.kok, Option.isSome_iff_exists] at hw
       obtain ⟨a, ha⟩ := hw
-      exact .inl (.single (.write (a := a) (Guarded.ok (writer_sound ha))))
+      exact .single (.write (a := a) (Guarded.ok (writer_sound ha)))
   | resolve j h m =>
     obtain ⟨x, hx, rfl⟩ := h
     cases hx with
-    | ok _ hR _ _ hE =>
-      exact .inl ((HandlePool.KSeq.single (.derive (Guarded.ok hR))).tail (.derive (Guarded.ok hE)))
+    | ok _ _ hR _ hE =>
+      exact (HandlePool.KSeq.single (.derive (Guarded.ok hR))).tail (.derive (Guarded.ok hE))
   | resolveMany j hs m =>
     obtain ⟨x, hx, rfl⟩ := h
     cases hx with
-    | ok _ hR _ hE =>
-      exact .inl ((HandlePool.KSeq.single (.derive (Guarded.ok hR))).trans
-        (HandlePool.entries_kseq hE))
+    | ok _ _ hR hE =>
+      exact (HandlePool.KSeq.single (.derive (Guarded.ok hR))).trans
+        (HandlePool.entries_kseq hE)
   | unresolve c =>
     obtain ⟨x, hx, rfl⟩ := h
     cases hx with
-    | ok _ hr => exact .inl (HandlePool.releaseAll_kseq hr)
+    | ok _ hr => exact HandlePool.releaseAll_kseq hr
   | freeSlot j h =>
     obtain ⟨x, hx, rfl⟩ := h
     cases hx with
-    | ok _ _ _ _ hE => exact .inr ⟨rfl, _, _, hE, rfl⟩
+    | ok => exact .refl _
   | newStack st i =>
     obtain ⟨x, hx, rfl⟩ := h
     obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hx
-    exact .inl (.refl _)
+    exact .refl _
   | push j n d =>
     obtain ⟨x, hx, rfl⟩ := h
     cases hx with
-    | ok _ _ _ hsp hst => exact .inl ((HandlePool.KSeq.single (.split hsp)).tail (.store hst))
+    | ok _ _ _ hsp hst => exact (HandlePool.KSeq.single (.split hsp)).tail (.store hst)
   | mark j =>
     obtain ⟨x, hx, rfl⟩ := h
     cases hx with
-    | ok _ => exact .inl (.refl _)
+    | ok _ _ => exact .refl _
   | rewind j m =>
     obtain ⟨x, hx, rfl⟩ := h
     cases hx with
-    | ok _ _ _ hsp hrl => exact .inl ((HandlePool.KSeq.single (.split hsp)).tail (.release hrl))
+    | ok _ _ _ hsp hrl => exact (HandlePool.KSeq.single (.split hsp)).tail (.release hrl)
   | grow j b e =>
     obtain ⟨x, hx, rfl⟩ := h
     cases hx with
-    | ok _ _ _ hrl _ _ hsp hst =>
-      exact .inl (((HandlePool.KSeq.single (.release hrl)).tail (.split hsp)).tail (.store hst))
+    | ok _ _ hrl _ _ _ hsp hst =>
+      exact ((HandlePool.KSeq.single (.release hrl)).tail (.split hsp)).tail (.store hst)
   | newArena st i =>
     obtain ⟨x, hx, rfl⟩ := h
-    exact .inl (LStep.kseq (.newArena hx))
+    exact LStep.kseq (.newArena hx)
   | _ =>
     obtain ⟨x, hx, rfl⟩ := h
-    exact .inl (LStep.kseq (opRel_ok hx))
+    exact LStep.kseq (opRel_ok hx)
 
 section RunSound
 variable {k : K} [∀ r r', Decidable (k.DeclaredDisjoint r r')] [DecidablePred k.SharedMutable]
   [DecidablePred k.Pinned] [DecidablePred k.ExternalDone] [DecidablePred k.Deallocable]
   [∀ p a, Decidable (k.FreeCompat p a)] [∀ p ls s, Decidable (k.Satisfiable p ls s)]
 
-/-- A completed run from a library-reachable state whose kernel state is reached by kernel steps
-and ends of slot contents ends in such a state (§57; Part XIV; HandlePool v0.4 annex; DS-v1). -/
+/-- A completed run from a library-reachable state whose kernel state is reachable ends in such a
+state (§57; Part XIV; HandlePool v0.5, HP5-7; DS-v2). -/
 theorem crun_reach {statics : Statics} :
     ∀ {C C' : CState} {os : List COp}, CReach k statics C →
-      HandlePool.XReach k statics C.kern → crun k C os = some C' →
-      CReach k statics C' ∧ HandlePool.XReach k statics C'.kern
-  | _, _, [], hC, hX, h => by cases h; exact ⟨hC, hX⟩
-  | C, _, o :: os, hC, hX, h => by
+      Reachable k statics C.kern → crun k C os = some C' →
+      CReach k statics C' ∧ Reachable k statics C'.kern
+  | _, _, [], hC, hr, h => by cases h; exact ⟨hC, hr⟩
+  | C, _, o :: os, hC, hr, h => by
     unfold crun at h
     have hs := cstep_sound (k := k) C o
     cases e : cstep k C o with
@@ -854,42 +848,14 @@ theorem crun_reach {statics : Statics} :
       rw [e] at h hs
       dsimp only at h
       split at h
-      · next hw =>
-        refine crun_reach (.step hC hs) ?_ h
-        rcases crel_kside hs hw with hk | ⟨-, q, i, hpre, he⟩
-        · exact hX.kseq hk
-        · rw [he]; exact .step hX (.contentEnd hpre)
+      · next hw => exact crun_reach (.step hC hs) ((crel_kside hs hw).reachable hr) h
       · cases h
     | reject => rw [e] at h; cases h
     | fail => rw [e] at h; cases h
 
-/-- A completed run without `freeSlot` from a kernel-reachable state ends in a kernel-reachable
-state (§57; Part XIV; HandlePool v0.4 annex; DS-v1). -/
-theorem crun_reachable {statics : Statics} :
-    ∀ {C C' : CState} {os : List COp}, Reachable k statics C.kern →
-      os.all COp.kernelOnly = true → crun k C os = some C' → Reachable k statics C'.kern
-  | _, _, [], hr, _, h => by cases h; exact hr
-  | C, _, o :: os, hr, ho, h => by
-    simp only [List.all_cons, Bool.and_eq_true] at ho
-    unfold crun at h
-    have hs := cstep_sound (k := k) C o
-    cases e : cstep k C o with
-    | ok C₁ =>
-      rw [e] at h hs
-      dsimp only at h
-      split at h
-      · next hw =>
-        refine crun_reachable ?_ ho.2 h
-        rcases crel_kside hs hw with hk | ⟨hf, -⟩
-        · exact reachable_kseq hr hk
-        · rw [ho.1] at hf; cases hf
-      · cases h
-    | reject => rw [e] at h; cases h
-    | fail => rw [e] at h; cases h
-
-/-- **Run soundness** (§47, §57; Part XIV; HandlePool v0.4 annex; DS-v1): when the run of `os` from
+/-- **Run soundness** (§47, §57; Part XIV; HandlePool v0.5; DS-v2): when the run of `os` from
 `CState.init statics` completes, it reaches `cfinal k statics os`, which is library-reachable and
-whose kernel state is reached by kernel steps O1–O16 and ends of slot contents. -/
+whose kernel state is reachable by O1–O16. -/
 theorem crunsTo {statics : Statics} {os : List COp}
     (h : (crun k (CState.init statics) os).isSome = true) : CRuns k statics os := by
   have hr : crun k (CState.init statics) os = some (cfinal k statics os) := by
@@ -897,15 +863,8 @@ theorem crunsTo {statics : Statics} {os : List COp}
     cases e : crun k (CState.init statics) os with
     | none => rw [e] at h; cases h
     | some C => rfl
-  obtain ⟨hc, hx⟩ := crun_reach .init .init hr
-  exact ⟨hr, hc, hx⟩
-
-/-- A completed run without `freeSlot` reaches a kernel-reachable state (§57; Part XIV;
-HandlePool v0.4 annex; DS-v1). -/
-theorem CRunsTo.reachable {statics : Statics} {os : List COp} {C : CState}
-    (h : CRunsTo k statics os C) (ho : os.all COp.kernelOnly = true) :
-    Reachable k statics C.kern :=
-  crun_reachable .init ho h.run
+  obtain ⟨hc, hk⟩ := crun_reach .init .init hr
+  exact ⟨hr, hc, hk⟩
 
 end RunSound
 
