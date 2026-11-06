@@ -1,4 +1,5 @@
 import Ern.Corpus.LibRunner
+import Ern.MemoryModel.Access.TransferSource
 
 /-!
 # Corpus: library cases (test module)
@@ -18,13 +19,15 @@ module imports it.
   storage (`pool_two_freeSlot_cross`).
 * The guard of §56 across registries: a second administration (arena, pool, stack) on the
   `internal` of a live administration of another registry, or of the same registry for pools.
-* The usage scenarios W1 and W2 of material §5b (W3 is in `Ern.Corpus.MM3H`).
+* The usage scenarios W1 and W2 of material §5b (W3 is in `Ern.Corpus.MM3H`); W2 also checks
+  decision Q17 (2026-11-06) on its move (`Ern.MemoryModel.Access.TransferSource`).
 
 Each case is a run from `CState.init statics` (§47) by the combined runner
 (`Ern.Corpus.LibRunner`): `CRunsTo k statics os C` states that every step is `ok`, that `C` is
-library-reachable and that its kernel state is reachable by O1–O16 (§57; `freeSlot` has no kernel
-effect, HandlePool v0.5, HP5-1). The verdict of the step under test is stated with the relation of
-its operation on the projected state (`ResolveStep`, `FreeSlotStep`, `NewPoolStep`,
+library-reachable and that its kernel state is reachable by O1–O16 (§57; the kernel part of
+`freeSlot` is the write of its metadata leaves, the leaves of the pool value, §67; HandlePool v0.5,
+HP5-1 with the Q3 decision of 2026-11-06). The verdict of the step under test is stated with the
+relation of its operation on the projected state (`ResolveStep`, `FreeSlotStep`, `NewPoolStep`,
 `NewArenaStep`, `NewStackStep`, `StoreStep`, `TransferStep`, …) and decided by `decide`. Each
 docstring gives the expected verdict from the case's source, the obtained verdict, the class
 (material §0, rule 5: `Lib` library instance) and the positive twin of each rejection or `fail`
@@ -417,12 +420,14 @@ is written through 6; then `freeSlot` of slot 0 of pool 1. Historical verdict of
 `internal` 5 of pool 0, an ancestor of the `internal` 6 of pool 1, is exempt). New verdict:
 `reject` (HandlePool v0.5, HP5-1: no leaf of the entry may be `Init`; the leaf 6 is `Init`).
 Obtained: `reject`. Twin without the write: `ok`; the leaf 6 stays `Uninit` and the slot 0 of
-pool 0 stays live at generation 0 (`freeSlot` has no kernel effect, HP5-1). On that state pool 0
-cannot resolve its slot while the `internal` 6 of pool 1 is active: its own `internal` 5 has no
-effective right on the storage (`reject`, §43 case 3). Twin of that `reject`: the same sequence
-without the authority 6 (its `derive` and `store`) and the steps that use it (pool 1, its slot, its
-`freeSlot`): `allocSlot` then `resolve` in pool 0, `ok`. Dropping only the steps of pool 1 does not
-lift the `reject`: 6 is active from its `derive` on, before pool 1 exists. -/
+pool 0 stays live at generation 0 (the kernel write of `freeSlot` covers only the leaf 4, the value
+of pool 1, which holds its `internal` 6; HandlePool v0.5, HP5-1 with the Q3 decision of
+2026-11-06). On that state pool 0 cannot resolve its slot while the `internal` 6 of pool 1 is
+active: its own `internal` 5 has no effective right on the storage (`reject`, §43 case 3). Twin of
+that `reject`: the same sequence without the authority 6 (its `derive` and `store`) and the steps
+that use it (pool 1, its slot, its `freeSlot`): `allocSlot` then `resolve` in pool 0, `ok`.
+Dropping only the steps of pool 1 does not lift the `reject`: 6 is active from its `derive` on,
+before pool 1 exists. -/
 theorem pool_two_freeSlot_cross : CRunsTo K0 [] pxo px ∧
     HandlePool.NewPoolStep px.othersP 5 5 px.toP .reject ∧ NewArenaBase px.kern 5 5 ∧
     (∀ l ∈ footprint px.kern.P 5, px.kern.I l = .uninit) ∧
@@ -625,6 +630,12 @@ def w2o : List COp := [.enter [] [lf, lf, lf, lf, lf, lf, lf], .write 0 [0], .wr
 def w2 : CState := cfinal K0 [] w2o
 /-- State after `w2o` and the release of the read view 12 (§57). -/
 def w2a : CState := cfinal K0 [] (w2o ++ [.release 12])
+/-- Kernel state after the first transfer of the move from `w2a`, the field 9 into 16 (§63 `ok`
+effect). -/
+def w2b : S3 := transferEff w2a.kern 9 16
+/-- Kernel state after the move from `w2a`: the transfer 9 → 16, then 12 → 19 (§63 `ok`
+effect). -/
+def w2m : S3 := transferEff w2b 12 19
 
 /-- **W2** (material §5b, ECS archetype and sparse set; class Lib, not given by the material).
 Expected (material): disjoint reads and writes `ok`; `resolveMany` `ok`; the move of a row (the
@@ -648,16 +659,60 @@ over `source`: the exercisable authority on which that right rests and its origi
 its origins are exempt, the read view 12 is released and the authorities of `resolveMany` cover
 the entity storage only. Obtained: `ok`. Limit of the case: in this run of one frame the move
 exercises its right through the column authority 11 itself, so the variant no longer expresses a
-move by another system while the view lives; whether the case needs another revision is left to
-the user. On the literal reading (the view = the read view 12 alone, expected `ok` after its
-release), spec v0 rejected this move, the MISMATCH of the v0 edition; under v0.1 that reading
-obtains its expected verdicts as well. -/
+move by another system while the view lives. On the literal reading (the view = the read view 12
+alone, expected `ok` after its release), spec v0 rejected this move, the MISMATCH of the v0
+edition; under v0.1 that reading obtains its expected verdicts as well.
+
+Decision Q17, validated by the owner on 2026-11-06: the exemption of v0.1 §63.4 is accepted. The
+expected property of the move in `w2a` is reformulated accordingly. For each transfer of the move,
+with the authority grounding its `Modify` right over the source in the state before it (`Grounds`:
+the root 7 for 9 → 16 from `w2a`, the column authority 10 being released; 11 for 12 → 19 from
+`w2b`), in the state after the transfer: (a) no active authority outside the grounding chain
+(`RightChain`: 7 for the field 9, 7 having no origin; 11 and its origin 7 for the field 12) covers
+a source leaf; (b) every access of that chain to a source leaf is rejected. Obtained, by
+`transfer_source_q17` on these reachable states (§57; §63.4, §43, §50): (a) holds; (b) holds for
+reads, through every authority (the source leaves are `Moved`: §66.1, §41, §53), and for writes
+and shared writes through a strict origin-chain ancestor of the grounding authority (7 on the
+field 12, §67.1, §68.2, §43 case 3; the root 7 has none). A write through the grounding authority
+itself is `ok` after the move, a re-initialization of the `Moved` leaf: 11 on the field 12, and 7
+on the field 9 (§67 has no `Init` precondition and `Moved` forbids reads only, §41, §53; the
+finding of `TransferSourceWitness.write_through_ground_accepted`). For these two writes the
+obtained `ok` differs from (b) as worded (every access of the chain rejected): **MISMATCH**, cause:
+Q17 (b) and §67, §68 disagree on writes through the grounding authority itself; the resolution
+(restricting Q17 (b) to reads and to strict ancestors, or a spec rule) is left to the owner. The
+case is not reclassified. -/
 theorem W2 : CRunsTo K0 [] w2o w2 ∧ TransferStep K0 12 19 w2.kern .reject ∧
     CRuns K0 [] (w2o ++ [.release 12, .release 11, .transfer 9 16, .transfer 12 19]) ∧
     CRunsTo K0 [] (w2o ++ [.release 12]) w2a ∧ ActiveDerivedOutside w2a.kern 12 11 ∧
     Grounds w2a.kern .modify 12 11 ∧
-    CRuns K0 [] (w2o ++ [.release 12, .transfer 9 16, .transfer 12 19]) :=
-  ⟨crunsTo (by decide), crejects (k := K0) (C := w2) (o := .transfer 12 19) (by decide),
-    crunsTo (by decide), crunsTo (by decide), by decide, by decide, crunsTo (by decide)⟩
+    CRuns K0 [] (w2o ++ [.release 12, .transfer 9 16, .transfer 12 19]) ∧
+    TransferStep K0 9 16 w2a.kern (.ok w2b) ∧ Grounds w2a.kern .modify 9 7 ∧ w2b.ancs 7 = [] ∧
+    TransferStep K0 12 19 w2b (.ok w2m) ∧ Grounds w2b .modify 12 11 ∧ w2m.ancs 11 = [7] ∧
+    Reachable K0 [] w2b ∧ Reachable K0 [] w2m ∧
+    ((∀ (x : Nat) (y : Authority) (l : Nat), w2b.A[x]? = some y → y.active = true →
+        l ∈ y.footprint → l ∈ footprint w2b.P 9 → RightChain w2b 7 x) ∧
+      ∀ (ls : List Nat) (l : Nat), l ∈ ls → l ∈ footprint w2b.P 9 →
+        (∀ (a : Nat) (o : Outcome3 S3), Read3Step a ls w2b o → o = .reject) ∧
+        (∀ x ∈ w2b.ancs 7, ∀ o : Outcome3 S3, Write3Step x ls w2b o → o = .reject) ∧
+        (∀ x ∈ w2b.ancs 7, ∀ o : Outcome3 S3, WriteSharedStep K0 x ls w2b o → o = .reject)) ∧
+    ((∀ (x : Nat) (y : Authority) (l : Nat), w2m.A[x]? = some y → y.active = true →
+        l ∈ y.footprint → l ∈ footprint w2m.P 12 → RightChain w2m 11 x) ∧
+      ∀ (ls : List Nat) (l : Nat), l ∈ ls → l ∈ footprint w2m.P 12 →
+        (∀ (a : Nat) (o : Outcome3 S3), Read3Step a ls w2m o → o = .reject) ∧
+        (∀ x ∈ w2m.ancs 11, ∀ o : Outcome3 S3, Write3Step x ls w2m o → o = .reject) ∧
+        (∀ x ∈ w2m.ancs 11, ∀ o : Outcome3 S3, WriteSharedStep K0 x ls w2m o → o = .reject)) ∧
+    w2m.I 9 = .moved ∧ w2m.I 12 = .moved ∧ Write3Step 11 [12] w2m (.ok (write3Eff w2m [12])) ∧
+    Write3Step 7 [9] w2m (.ok (write3Eff w2m [9])) := by
+  have ha : CRunsTo K0 [] (w2o ++ [.release 12]) w2a := crunsTo (by decide)
+  have hb : TransferStep K0 9 16 w2a.kern (.ok w2b) := .ok (by decide)
+  have hm : TransferStep K0 12 19 w2b (.ok w2m) := .ok (by decide)
+  have hrb : Reachable K0 [] w2b := .step ha.reach (.transfer hb)
+  have hst : StaticsOK [] := by decide
+  exact ⟨crunsTo (by decide), crejects (k := K0) (C := w2) (o := .transfer 12 19) (by decide),
+    crunsTo (by decide), ha, by decide, by decide, crunsTo (by decide), hb, by decide, by decide,
+    hm, by decide, by decide, hrb, .step hrb (.transfer hm),
+    transfer_source_q17 (KD.ddSound {}) hst ha.reach hb (by decide),
+    transfer_source_q17 (KD.ddSound {}) hst hrb hm (by decide),
+    by decide, by decide, .ok (by decide), .ok (by decide)⟩
 
 end Ern.Corpus.Lib

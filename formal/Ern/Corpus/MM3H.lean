@@ -794,7 +794,13 @@ in no mode, `reset` is `reject` (§78.2: the blocks 5 and 6 are active and cover
 6), as in that baseline; the `endUse` of the block values 2 and 3 is `reject`, against the `ok` of
 that baseline, decided by the v0.1 amendment of §69.2 (last sentence: the block 5, made inactive by
 the `endUse` of 2, keeps its active descendant 8, held by the leaf 6; the block 6 keeps 7, held by
-the leaf 5), which overrides the baseline for these two steps. This residual blocking
+the leaf 5), which overrides the baseline for these two steps. Decision H49, validated by the owner
+on 2026-11-06: the rejections of `endUse 2` and `endUse 3` are accepted; the witnesses and the
+justification by I2 are kept. Justification by I2 (§51, last sentences): the effect of `endUse 2`
+(§69 `ok` effect, `endUseEff`), applied by the v0 baseline, makes the block authority 5, held by
+the value 2, inactive while its derived authority 8 (origin 5) stays active, a state that violates
+I2; likewise the effect of `endUse 3` makes the block authority 6, held by the value 3, inactive
+while 7 (origin 6) stays active. The residual blocking
 is allowed: `NoLock` is not adopted (§65 last paragraph, §27) and indirect blocking compatible with
 safety may remain (§88). Obtained: the same. Twin of the two `endUse` rejections: the same sequence
 without the cycle (the six steps after `fao`), then both `endUse` and `reset`, `ok`. The `reset`
@@ -804,9 +810,25 @@ theorem H49 : RunsTo K0 [] h49o h49 ∧ ¬ h49.kern.ExercisableAt 7 .observe ∧
     ¬ h49.kern.ExercisableAt 8 .observe ∧ ResetD 0 h49 .reject ∧
     EndUseStep K0 2 h49.kern .reject ∧ ¬ EndUseKeptDesc h49.kern 2 ∧
     EndUseStep K0 3 h49.kern .reject ∧ ¬ EndUseKeptDesc h49.kern 3 ∧
-    Runs K0 [] (fao ++ [.endUse 2, .endUse 3, .reset 0]) :=
-  ⟨runsTo (by decide), by decide, by decide, rejects (k := K0) (o := .reset 0) (by decide),
-    .reject (by decide), by decide, .reject (by decide), by decide, runsTo (by decide)⟩
+    Runs K0 [] (fao ++ [.endUse 2, .endUse 3, .reset 0]) ∧
+    h49.kern.Active 5 ∧ (endUseEff h49.kern 2).Active 8 ∧ (endUseEff h49.kern 2).org 8 = some 5 ∧
+    ¬ (endUseEff h49.kern 2).Active 5 ∧ ¬ I2 (endUseEff h49.kern 2) ∧
+    h49.kern.Active 6 ∧ (endUseEff h49.kern 3).Active 7 ∧ (endUseEff h49.kern 3).org 7 = some 6 ∧
+    ¬ (endUseEff h49.kern 3).Active 6 ∧ ¬ I2 (endUseEff h49.kern 3) := by
+  have nI2 : ∀ {s : S3} {b a : Nat}, s.Active b → s.org b = some a → ¬ s.Active a → ¬ I2 s := by
+    intro s b a ⟨y, hy, ya⟩ ho hna h
+    simp only [S3.org, hy, Option.bind_some] at ho
+    obtain ⟨x, hx, -, -, xa⟩ := h b y a hy ho
+    exact hna ⟨x, hx, xa ya⟩
+  have h8 : (endUseEff h49.kern 2).Active 8 := by decide
+  have o8 : (endUseEff h49.kern 2).org 8 = some 5 := by decide
+  have n5 : ¬ (endUseEff h49.kern 2).Active 5 := by decide
+  have h7 : (endUseEff h49.kern 3).Active 7 := by decide
+  have o7 : (endUseEff h49.kern 3).org 7 = some 6 := by decide
+  have n6 : ¬ (endUseEff h49.kern 3).Active 6 := by decide
+  exact ⟨runsTo (by decide), by decide, by decide, rejects (k := K0) (o := .reset 0) (by decide),
+    .reject (by decide), by decide, .reject (by decide), by decide, runsTo (by decide),
+    by decide, h8, o8, n5, nI2 h8 o8 n5, by decide, h7, o7, n6, nI2 h7 o7 n6⟩
 
 /-- Run of H50, `transfer` part (§72, §60, §65): structure 0 (field 1), structure 2 (field 3),
 local 4; 3, `Modify` on the field 3, stored into the field 1. -/
