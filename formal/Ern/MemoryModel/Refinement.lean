@@ -1906,12 +1906,12 @@ theorem allocOps_live {Ty : Type} (pl : Placement) (g : Nat → Geom) (rtok : Na
       · cases ha; rfl
       · exact h i a ha
 
-/-- Realization of the initial state (§82 preamble, §47, §82.6, §10 ¶5): under the well-formedness
-of the statics declaration (`StaticsOK`, a hypothesis recorded for §47), a valid placement and
-geometries, the layout obligations of the statics and the parametric obligations of the
-initializing writes, the creations of the static allocations followed by the writes of the static
-leaves declared `Init` form an execution of `ok` raw steps from the empty state (§9 ¶9), and
-`Repr` holds between `S3.init statics` and the reached state. -/
+/-- Realization of the initial state (§82 preamble, §47, §82.6, §10 ¶5): under the acyclic
+ownership of statics that §47 requires (`StaticsOK`, §47), a valid placement and geometries, the
+layout obligations of the statics and the parametric obligations of the initializing writes, the
+creations of the static allocations followed by the writes of the static leaves declared `Init`
+form an execution of `ok` raw steps from the empty state (§9 ¶9), and `Repr` holds between
+`S3.init statics` and the reached state. -/
 theorem repr_init {Ty : Type} {C : Nat → Nat → Prop} {ObR : Machine.ReadOblSpec Ty}
     {ObW : Machine.WriteOblSpec Ty} {L : Layout} {rtok : Nat → Nat} {pl : Placement}
     {g : Nat → Geom} {ty : Nat → Ty} {ival : Nat → Nat → UInt8 × Option Nat} {statics : Statics}
@@ -2436,7 +2436,8 @@ and well-formed statics (`StaticsOK`, §47) (`Access.reachable_kinv`), and so do
 (`Access.reachable_i5`). The per-step results above therefore hold there without invariant
 hypotheses. -/
 
-/-- R1 on reachable states (§82.2, §66, §15, §57): `r1_read` without invariant hypothesis. -/
+/-- R1 on reachable states (§82.2, §66, §15, §57): under `DDSound` (§80) and `StaticsOK` (§47),
+`r1_read` without invariant hypothesis. -/
 theorem r1_read_reachable {Ty : Type} {k : K} {statics : Statics} {ObR : Machine.ReadOblSpec Ty}
     {ty : Nat → Ty} {L : Layout} {rtok : Nat → Nat} {s3 : S3} {s2 : Machine.State} {a : Nat}
     {ls : List Nat} (hdd : DDSound k) (hst : StaticsOK statics)
@@ -2448,9 +2449,11 @@ theorem r1_read_reachable {Ty : Type} {k : K} {statics : Statics} {ObR : Machine
         (.ok (al.bytesAt (L l).off (L l).len)) :=
   r1_read hR (reachable_kinv hdd hst hr).1 hpre hl hob
 
-/-- R6 on reachable states (§82 preamble, §57): `r6` without invariant hypothesis. For `read`,
-`write` and `writeShared`, the execution is that of the reads and writes of R1 and R2
-(`readOps`, `writeOps`, §82.2). -/
+/-- R6 on reachable states (§82 preamble, §57): under `DDSound` (§80) and `StaticsOK` (§47),
+`r6` without invariant hypothesis. For `read`, `write` and `writeShared`, the execution is that of
+the reads and writes of R1 and R2 (`readOps`, `writeOps`, §82.2). The further conclusions of
+`r6_read`, `r6_exit`, `r6_free` and `r6_alloc` on reachable states: `r6_read_reachable`,
+`r6_exit_reachable`, `r6_free_reachable`, `r6_alloc_reachable`. -/
 theorem r6_reachable {Ty : Type} {k : K} {statics : Statics} {C : Nat → Nat → Prop}
     {ObR : Machine.ReadOblSpec Ty} {ObW : Machine.WriteOblSpec Ty} {π : Params Ty} {op : KOp}
     {s3 s3' : S3} {s2 : Machine.State} (hdd : DDSound k) (hst : StaticsOK statics)
@@ -2461,8 +2464,72 @@ theorem r6_reachable {Ty : Type} {k : K} {statics : Statics} {C : Nat → Nat �
   have hk := reachable_kinv hdd hst hr
   r6 hπ hR hk.1 hk.2.1.2.2 h hob
 
-/-- R4 on reachable states (§82.5, §54, §57): `r4_no_dead_cover` without invariant
-hypothesis. -/
+/-- Realization of `read` on reachable states (§82 preamble, §82.2, §66, §57): under `DDSound`
+(§80) and `StaticsOK` (§47), and the parametric obligations along the reads (§20.3), `r6_read`
+without invariant hypothesis, its conclusion in full: the reads form an execution of `ok` raw steps, leave the memory state unchanged, and `Repr` holds
+after the step. -/
+theorem r6_read_reachable {Ty : Type} {k : K} {statics : Statics} {C : Nat → Nat → Prop}
+    {ObR : Machine.ReadOblSpec Ty} {ObW : Machine.WriteOblSpec Ty} {ty : Nat → Ty} {L : Layout}
+    {rtok : Nat → Nat} {s3 s3' : S3} {s2 : Machine.State} {a : Nat} {ls : List Nat}
+    (hdd : DDSound k) (hst : StaticsOK statics) (hr : Access.Reachable k statics s3)
+    (hR : Repr L rtok s3 s2) (h : Read3Step a ls s3 (.ok s3'))
+    (hob : OblAlong ObR ObW s2 (readOps s2 L ty ls)) :
+    Machine.Exec C ObR ObW (readOps s2 L ty ls) s2 (run s2 (readOps s2 L ty ls)) ∧
+      run s2 (readOps s2 L ty ls) = s2 ∧ Repr L rtok s3' (run s2 (readOps s2 L ty ls)) :=
+  r6_read hR (reachable_kinv hdd hst hr).1 h hob
+
+/-- Realization of `exitFrame` on reachable states (§82 preamble, §82.5, §73, §57): under
+`DDSound` (§80) and `StaticsOK` (§47), and tokens compatible with themselves (§17.2), `r6_exit`
+without invariant hypothesis, its conclusion in full: the deallocations are `ok` raw steps, the allocations of the root places directly owned by
+the exiting frame are dead afterwards, and `Repr` holds after the step. -/
+theorem r6_exit_reachable {Ty : Type} {k : K} {statics : Statics} {C : Nat → Nat → Prop}
+    {ObR : Machine.ReadOblSpec Ty} {ObW : Machine.WriteOblSpec Ty} {L : Layout}
+    {rtok : Nat → Nat} {s3 s3' : S3} {s2 : Machine.State} (hdd : DDSound k)
+    (hst : StaticsOK statics) (hr : Access.Reachable k statics s3) (hR : Repr L rtok s3 s2)
+    (h : ExitStep k s3 (.ok s3')) (htc : ∀ r, C (rtok r) (rtok r)) :
+    Machine.Exec C ObR ObW (exitOps L rtok s3) s2 (run s2 (exitOps (Ty := Ty) L rtok s3)) ∧
+      (∀ r ∈ exitRoots s3, AllocP (run s2 (exitOps (Ty := Ty) L rtok s3)) (L r).alloc
+        (·.live = false)) ∧
+      Repr L rtok s3' (run s2 (exitOps (Ty := Ty) L rtok s3)) :=
+  r6_exit hR (reachable_kinv hdd hst hr).1 h htc
+
+/-- Realization of `free` on reachable states (§82 preamble, §82.4, §70, §17, §57): under
+`DDSound` (§80) and `StaticsOK` (§47), and the instantiation of `K.FreeCompat` (§80), `r6_free`
+without invariant hypothesis, its conclusion in full: the deallocation is an `ok` raw step, the
+allocation of the place is dead afterwards, and `Repr` holds after the step. -/
+theorem r6_free_reachable {Ty : Type} {k : K} {statics : Statics} {C : Nat → Nat → Prop}
+    {ObR : Machine.ReadOblSpec Ty} {ObW : Machine.WriteOblSpec Ty} {L : Layout}
+    {rtok : Nat → Nat} {s3 s3' : S3} {s2 : Machine.State} {p auth : Nat} (hdd : DDSound k)
+    (hst : StaticsOK statics) (hr : Access.Reachable k statics s3) (hR : Repr L rtok s3 s2)
+    (h : FreeStep k p auth s3 (.ok s3'))
+    (hinst : k.FreeCompat p auth → FreeCompatInst C rtok p auth) :
+    Machine.Exec C ObR ObW (freeOps L p auth) s2 (run s2 (freeOps (Ty := Ty) L p auth)) ∧
+      AllocP (run s2 (freeOps (Ty := Ty) L p auth)) (L p).alloc (·.live = false) ∧
+      Repr L rtok s3' (run s2 (freeOps (Ty := Ty) L p auth)) :=
+  have hk := reachable_kinv hdd hst hr
+  r6_free hR hk.1 hk.2.1.2.2 h hinst
+
+/-- Realization of `alloc` on reachable states (§82 preamble, §82.4, §71, §9 ¶11, §57): under
+`DDSound` (§80) and `StaticsOK` (§47), a valid placement and geometries and the layout
+obligations of the new places, `r6_alloc` without invariant hypothesis, its conclusion in full:
+one allocation is created (`oneRoot`, §71), by an `ok` raw step, and `Repr` holds after the
+step. -/
+theorem r6_alloc_reachable {Ty : Type} {k : K} {statics : Statics} {C : Nat → Nat → Prop}
+    {ObR : Machine.ReadOblSpec Ty} {ObW : Machine.WriteOblSpec Ty} {L : Layout}
+    {rtok : Nat → Nat} {s3 s3' : S3} {s2 : Machine.State} {pr ow : Nat} {ls : LocalShape}
+    {pl : Placement} {g : Nat → Geom} (hdd : DDSound k) (hst : StaticsOK statics)
+    (hr : Access.Reachable k statics s3) (hR : Repr L rtok s3 s2)
+    (h : AllocStep k pr ow ls s3 (.ok s3')) (hpl : PlacementOK pl) (hg : GeomOK g)
+    (hlay : NewLayout L (allocP s3 ow ls) s3.P.length s2.next g (rootIdx ls.toShape)) :
+    (allocOps (Ty := Ty) pl g rtok s3.P.length s2 (rootIdx ls.toShape)).length = 1 ∧
+    Machine.Exec C ObR ObW (allocOps pl g rtok s3.P.length s2 (rootIdx ls.toShape)) s2
+        (run s2 (allocOps (Ty := Ty) pl g rtok s3.P.length s2 (rootIdx ls.toShape))) ∧
+      Repr L rtok s3' (run s2 (allocOps (Ty := Ty) pl g rtok s3.P.length s2
+        (rootIdx ls.toShape))) :=
+  r6_alloc hR (reachable_kinv hdd hst hr).1 h hpl hg hlay
+
+/-- R4 on reachable states (§82.5, §54, §57): under `DDSound` (§80) and `StaticsOK` (§47),
+`r4_no_dead_cover` without invariant hypothesis. -/
 theorem r4_no_dead_cover_reachable {k : K} {statics : Statics} {L : Layout} {rtok : Nat → Nat}
     {s3 : S3} {s2 : Machine.State} (hdd : DDSound k) (hst : StaticsOK statics)
     (hr : Access.Reachable k statics s3) (hR : Repr L rtok s3 s2) {j : Nat} {y : Authority}
@@ -2472,8 +2539,8 @@ theorem r4_no_dead_cover_reachable {k : K} {statics : Statics} {L : Layout} {rto
   have hk := reachable_kinv hdd hst hr
   r4_no_dead_cover hR hk.1 hk.2.1.2.2 hy ya hl
 
-/-- Dependencies and storage on reachable states (§82.5, §52, §57): `r4_anchors` without
-invariant hypothesis. -/
+/-- Dependencies and storage on reachable states (§82.5, §52, §57): under `DDSound` (§80) and
+`StaticsOK` (§47), `r4_anchors` without invariant hypothesis. -/
 theorem r4_anchors_reachable {k : K} {statics : Statics} {L : Layout} {rtok : Nat → Nat}
     {s3 : S3} {s2 : Machine.State} (hdd : DDSound k) (hst : StaticsOK statics)
     (hr : Access.Reachable k statics s3) (hR : Repr L rtok s3 s2) {q x : Nat}
@@ -2483,8 +2550,8 @@ theorem r4_anchors_reachable {k : K} {statics : Statics} {L : Layout} {rtok : Na
   have hk := reachable_kinv hdd hst hr
   r4_anchors hR hk.1 hk.2.1.1.2.2.1 hk.2.1.2.2 hq hx
 
-/-- `freeSound_derived` on reachable states (§82.4, §70.2, §80, §57), without invariant
-hypothesis. -/
+/-- `freeSound_derived` on reachable states (§82.4, §70.2, §80, §57): under `DDSound` (§80) and
+`StaticsOK` (§47), without invariant hypothesis. -/
 theorem freeSound_derived_reachable {k : K} {statics : Statics} {C : Nat → Nat → Prop}
     {L : Layout} {rtok : Nat → Nat} {s3 : S3} {s2 : Machine.State} {p auth : Nat}
     (hdd : DDSound k) (hst : StaticsOK statics) (hr : Access.Reachable k statics s3)
@@ -2494,8 +2561,8 @@ theorem freeSound_derived_reachable {k : K} {statics : Statics} {C : Nat → Nat
   have hk := reachable_kinv hdd hst hr
   freeSound_derived hR hk.1 hk.2.1.2.2 hpre hinst
 
-/-- Pointer soundness of `store` on reachable states (§82.2, §82.3, §57): `pointer_sound_store`
-without invariant hypothesis. -/
+/-- Pointer soundness of `store` on reachable states (§82.2, §82.3, §57): under `DDSound` (§80)
+and `StaticsOK` (§47), `pointer_sound_store` without invariant hypothesis. -/
 theorem pointer_sound_store_reachable {Ty : Type} {k : K} {statics : Statics} {ty : Nat → Ty}
     {pe : PtrEnc} {L : Layout} {rtok : Nat → Nat} {s3 s3' : S3} {s2 : Machine.State}
     {a p ad : Nat} (hdd : DDSound k) (hst : StaticsOK statics)
@@ -2514,8 +2581,8 @@ theorem pointer_sound_store_reachable {Ty : Type} {k : K} {statics : Statics} {t
   have hk := reachable_kinv hdd hst hr
   pointer_sound_store hR hk.1 hk.2.1.2.2 h had hsz henc
 
-/-- `exclusive_bytes` on reachable states (§82.8, §50, §23, §57), without the hypothesis
-`I1`. -/
+/-- `exclusive_bytes` on reachable states (§82.8, §50, §23, §57): under `DDSound` (§80) and
+`StaticsOK` (§47), without the hypothesis `I1`. -/
 theorem exclusive_bytes_reachable {k : K} {statics : Statics} {L : Layout} {s3 : S3}
     {s2 : Machine.State} (hdd : DDSound k) (hst : StaticsOK statics)
     (hr : Access.Reachable k statics s3) (hlw : LayoutWF L s3 s2) {a b l l' : Nat}
@@ -2526,10 +2593,11 @@ theorem exclusive_bytes_reachable {k : K} {statics : Statics} {L : Layout} {s3 :
     effective s3 b l' = none :=
   exclusive_bytes hlw (reachable_kinv hdd hst hr).2.1.1.1 hl hlf hl' hlf' ha hab hsame hover
 
-/-- `pinned_address_stable` on reachable states (§82.6, §74, §75, §57): a leaf covered by an
-active dynamic pinning obligation or pinned by `K.Pinned` belongs to a usable place (`I5`), so
-its allocation is live before the step; it stays live, with the same address, after the raw
-operations of the step. No invariant or liveness hypothesis. -/
+/-- `pinned_address_stable` on reachable states (§82.6, §74, §75, §57), under `DDSound` (§80) and
+`StaticsOK` (§47): a leaf covered by an active dynamic pinning obligation or pinned by
+`K.Pinned` belongs to a usable place (`I5`), so its allocation is live before the step; it stays
+live, with the same address, after the raw operations of the step. No invariant or liveness
+hypothesis. -/
 theorem pinned_address_stable_reachable {Ty : Type} {k : K} {statics : Statics} {π : Params Ty}
     {op : KOp} {s3 s3' : S3} {s2 : Machine.State} (hdd : DDSound k) (hst : StaticsOK statics)
     (hr : Access.Reachable k statics s3) (hR : Repr π.L π.rtok s3 s2)
@@ -2921,8 +2989,8 @@ def wv : Nat → Nat → UInt8 × Option Nat := fun l i => ((10 * l + i).toUInt8
 def decodedAt (π : Params Unit) (s2 : Machine.State) (l : Nat) : Nat :=
   π.pe.decode (bytesOf s2 π.L l)
 
-/-- A successful translated run from `S3.init statics` gives the conclusions of `simulation` for
-its final states (§82 preamble). -/
+/-- Under `StaticsOK` (§47), a successful translated run from `S3.init statics` gives the
+conclusions of `simulation` for its final states (§82 preamble). -/
 theorem sim_of {statics : Statics} {π : Params Unit} {ops : List KOp}
     (hπ : ParamsOK (· = ·) π) (hst : StaticsOK statics)
     (hlay : NewLayout π.L (S3.init statics).P 0 0 π.geom (rootIdx (statics.map (·.1))))
