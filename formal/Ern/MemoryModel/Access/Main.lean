@@ -9,19 +9,18 @@ import Ern.MemoryModel.Access.Preserve.Alloc
 # Access kernel: steps, reachable states and the main invariant
 
 Assembles the per-operation results of `Ern.MemoryModel.Access.Preserve.*` into the statements of
-§57, §58 and §59 of `specs/ERN_Memory_Model_Specification_v0.md`:
+§57, §58 and §59 of `specs/ERN_Memory_Model_Specification_v0.1.md`:
 
 * kernel operations O1–O16 as data, their outcome relation, and the correspondence of `KStep` and
   `Reachable` with the labelled steps and their reflexive-transitive closure (§57, §58);
-* preservation of `KInv` (§57) by every step except `transfer` (§63), and for `transfer` the
-  exact condition: on states satisfying the auxiliary `HeldAnchored`, the step preserves `KInv`
-  iff the destination is usable afterwards; separately, preservation of the auxiliary `KAux` by
-  every step;
-* `HeldAnchored` holds initially and is preserved by every step from a `WF3` state;
-* the initial state satisfies the invariant under `StaticsOK` (§47), and its `Init` leaves are the
-  declared ones;
-* the main invariant on reachable states (§57) is false as stated (`reachable_kinv_false`); it
-  holds on runs whose transfers keep the destination usable (`reachableDU_kinv`);
+* preservation of `KInv` (§57) by every step, `transfer` (§63) included, from states satisfying
+  `KInv` and the auxiliary `HeldAnchored`; preservation of the auxiliaries `KAux` and
+  `HeldAnchored` by every step; preservation of `I5` (§57) by every step from a `WF3` state;
+* the initial state satisfies the invariant and the auxiliaries under `StaticsOK` (§47), and its
+  `Init` leaves are the declared ones;
+* the main invariant on reachable states (§57, `reachable_kinv`) and `I5` on reachable states
+  (`reachable_i5`); the ownership-cycle run of §63 is rejected by §63.9
+  (`reachable_cycle_rejected`);
 * §59: only writes and transfers make a leaf `Init`, and every `Init` leaf of a reached state was
   declared or written on the run; §39: frame 0 stays at the bottom of the stack; §58: only `alloc`
   fails.
@@ -55,8 +54,8 @@ inductive KernelOp where
   | writeShared (a : Nat) (ls : List Nat)
   /-- O15 `pin` (§74). -/
   | pin (p : Nat)
-  /-- O16 `unpin` (§75). -/
-  | unpin (p : Nat)
+  /-- O16 `unpin` (§75), designating the dynamic pinning obligation of identity `o`. -/
+  | unpin (o : Nat)
   /-- O12 `endUse` (§69). -/
   | endUse (p : Nat)
   /-- O13 `free` (§70). -/
@@ -79,7 +78,7 @@ def KernelOp.Step (k : K) : KernelOp → S3 → Outcome3 S3 → Prop
   | .write a ls => Write3Step a ls
   | .writeShared a ls => WriteSharedStep k a ls
   | .pin p => PinStep p
-  | .unpin p => UnpinStep k p
+  | .unpin o => UnpinStep k o
   | .endUse p => EndUseStep k p
   | .free p auth => FreeStep k p auth
   | .alloc pr ow ls => AllocStep k pr ow ls
@@ -193,17 +192,18 @@ theorem reachable_base_mem {k : K} {statics : Statics} {s : S3} (h : Reachable k
     0 ∈ s.F :=
   List.mem_of_getLast? (reachable_base h)
 
-/-! ## Preservation by every step except `transfer` (§57, §58) -/
+/-! ## Preservation by every step (§57, §58) -/
 
-/-- Every operation other than `transfer` preserves `KInv` (§57) from its `ok` outcome, under
-`DDSound` (§80, used by `split`, §61). -/
+/-- Every operation, `transfer` included, preserves `KInv` (§57) from a state satisfying `KInv`
+and the auxiliary `HeldAnchored` (not a clause of §57, used by `transfer`, §63) to its `ok`
+outcome, under `DDSound` (§80, used by `split`, §61). -/
 theorem op_preserves {k : K} {op : KernelOp} {s s' : S3} (hdd : DDSound k) (hinv : KInv s)
-    (h : op.Step k s (.ok s')) (hnt : ∀ src dst, op ≠ .transfer src dst) : KInv s' := by
+    (hheld : HeldAnchored s) (h : op.Step k s (.ok s')) : KInv s' := by
   cases op with
   | derive => exact derive_preserves hinv h
   | split => exact split_preserves hdd hinv h
   | release => exact release_preserves hinv h
-  | transfer src dst => exact absurd rfl (hnt src dst)
+  | transfer => exact transfer_preserves hinv hheld h
   | depend => exact depend_preserves hinv h
   | enter => exact enter_preserves hinv h
   | exit => exact exit_preserves hinv h
@@ -240,14 +240,41 @@ theorem op_preserves_kAux {k : K} {op : KernelOp} {s s' : S3} (hinv : KInv s) (h
   | alloc => exact alloc_preserves_kAux hinv haux h
   | store => exact store_preserves_rootHeldConv haux h
 
-/-- Every kernel step from a state satisfying `KInv` (§57) under `DDSound` (§80) either preserves
-`KInv` or is an accepted `transfer` (§63), the one exception (`transfer_breaks_kinv`). -/
-theorem kstep_preserves {k : K} {s s' : S3} (hdd : DDSound k) (hinv : KInv s)
-    (h : KStep k s s') : KInv s' ∨ ∃ src dst, TransferStep k src dst s (.ok s') := by
-  obtain ⟨op, hop⟩ := kstep_iff.1 h
+/-- Every operation preserves `I5` (§57: every leaf pinned statically or by an active obligation
+of §74 belongs to a usable place) from a `WF3` state (§49) to its `ok` outcome. `WF3` is used by
+`transfer` (§63.9), `endUse` (§69) and `free` (§70). -/
+theorem op_preserves_i5 {k : K} {op : KernelOp} {s s' : S3} (hw : WF3 s) (h5 : I5 k s)
+    (h : op.Step k s (.ok s')) : I5 k s' := by
   cases op with
-  | transfer src dst => exact .inr ⟨src, dst, hop⟩
-  | _ => exact .inl (op_preserves hdd hinv hop fun _ _ e => KernelOp.noConfusion e)
+  | derive => exact derive_preserves_i5 h5 h
+  | split => exact split_preserves_i5 h5 h
+  | release => exact release_preserves_i5 h5 h
+  | transfer => exact transfer_preserves_i5 hw h5 h
+  | depend => exact depend_preserves_i5 h5 h
+  | enter => exact enter_preserves_i5 h5 h
+  | exit => exact exit_preserves_i5 h5 h
+  | read => exact read_preserves_i5 h5 h
+  | write => exact write_preserves_i5 h5 h
+  | writeShared => exact writeShared_preserves_i5 h5 h
+  | pin => exact pin_preserves_i5 h5 h
+  | unpin => exact unpin_preserves_i5 h5 h
+  | endUse => exact endUse_preserves_i5 hw h5 h
+  | free => exact free_preserves_i5 hw h5 h
+  | alloc => exact alloc_preserves_i5 h5 h
+  | store => exact store_preserves_i5 h5 h
+
+/-- Every kernel step preserves `KInv` (§57) from a state satisfying `KInv` and the auxiliary
+`HeldAnchored` (not a clause of §57), under `DDSound` (§80). -/
+theorem kstep_preserves {k : K} {s s' : S3} (hdd : DDSound k) (hinv : KInv s)
+    (hheld : HeldAnchored s) (h : KStep k s s') : KInv s' := by
+  obtain ⟨op, hop⟩ := kstep_iff.1 h
+  exact op_preserves hdd hinv hheld hop
+
+/-- Every kernel step preserves `I5` (§57, §74) from a `WF3` state (§49). -/
+theorem kstep_preserves_i5 {k : K} {s s' : S3} (hw : WF3 s) (h5 : I5 k s) (h : KStep k s s') :
+    I5 k s' := by
+  obtain ⟨op, hop⟩ := kstep_iff.1 h
+  exact op_preserves_i5 hw h5 hop
 
 /-- Every kernel step preserves the auxiliary `KAux` (§40, §49.7) from a state satisfying `KInv`
 (§57) and `KAux`. -/
@@ -280,7 +307,8 @@ private theorem getElem?_append_cases {α : Type} {l E : List α} {x : Nat} {y :
   · rw [List.getElem?_append_left hx] at h; exact .inl h
   · rw [List.getElem?_append_right (by omega)] at h; exact .inr (List.mem_of_getElem? h)
 
-/-- Every operation preserves `HeldAnchored` from a `WF3` state (§44; §60–§75 `ok` effects): new
+/-- Every operation preserves the auxiliary `HeldAnchored` (not a clause of §57) from a `WF3`
+state (§44; §60–§75 `ok` effects): new
 authorities are held by frames or have no origin; `store` anchors what it stores (§65); a
 `transfer` moves an authority with the anchors of its holder (§63); `exitFrame` maps a surviving
 anchor to itself (§73); the other steps only release authorities or keep the anchors of the
@@ -376,7 +404,7 @@ theorem op_preserves_heldAnchored {k : K} {op : KernelOp} {s s' : S3} (hw : WF3 
     obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
     exact heldAnchored_of_step hw hh fun x y q hy ya ho hhq =>
       .inr ⟨y, hy, ya, ho, hhq, fun _ hx => hx⟩
-  | unpin p =>
+  | unpin o =>
     obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
     exact heldAnchored_of_step hw hh fun x y q hy ya ho hhq =>
       .inr ⟨y, hy, ya, ho, hhq, fun _ hx => hx⟩
@@ -429,55 +457,12 @@ theorem op_preserves_heldAnchored {k : K} {op : KernelOp} {s s' : S3} (hw : WF3 
         · rename_i e; subst e; exact List.mem_append_left _ hx
         · exact hx
 
-/-- `HeldAnchored` is preserved by every kernel step from a `WF3` state (§44, §49, §57). -/
+/-- The auxiliary `HeldAnchored` (not a clause of §57) is preserved by every kernel step from a
+`WF3` state (§44, §49). -/
 theorem kstep_preserves_heldAnchored {k : K} {s s' : S3} (hw : WF3 s) (hh : HeldAnchored s)
     (h : KStep k s s') : HeldAnchored s' := by
   obtain ⟨op, hop⟩ := kstep_iff.1 h
   exact op_preserves_heldAnchored hw hh hop
-
-/-! ## The transfer step (§63, §57) -/
-
-/-- After an accepted `transfer` (§63) from a `WF3` state (§49), `NoDangling` (§54) of the
-resulting state forces the destination to be usable: an authority of the current frame with
-`Modify` over the destination (§63.1) still covers its leaves. -/
-theorem transfer_dst_usable_of_noDangling {k : K} {s s' : S3} {src dst : Nat} (hw : WF3 s)
-    (h : TransferStep k src dst s (.ok s')) (hnd : NoDangling s') : s'.Usable dst := by
-  obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
-  refine Decidable.byContradiction fun hu => ?_
-  obtain ⟨a, -, -, hall⟩ := hpre.dstRight
-  obtain ⟨l, hl⟩ := exists_mem_footprint hw (s.P.length - dst + 1) dst (by omega)
-    hpre.dstUsable.lt
-  have hal := hall l hl
-  cases he : effective s a l with
-  | none => rw [he] at hal; exact hal
-  | some e =>
-    obtain ⟨x, hx, xa, hlx, -⟩ := effective_some he
-    have hx' : (transferEff s src dst).A[a]? = some (if heldIn s.P src x.holder then
-        { x with holder := mvTo s.P src dst x.holder } else x) := by
-      rw [transfer_A_get, hx]; rfl
-    exact hnd a _ hx' (by split <;> exact xa) dst hu l (by rw [transfer_footprint]; exact hl)
-      (by split <;> exact hlx)
-
-/-- On a state satisfying `KInv` (§57) and `HeldAnchored` (auxiliary, not a clause of §63 nor of
-§57), an accepted `transfer` (§63) preserves `KInv` iff its destination is usable in the resulting
-state. The destination usable afterwards is not a clause of §63 (`transfer_breaks_kinv`); this
-states exactly when §57 holds after the step. -/
-theorem transfer_kinv_iff {k : K} {s s' : S3} {src dst : Nat} (hinv : KInv s)
-    (hheld : HeldAnchored s) (h : TransferStep k src dst s (.ok s')) :
-    KInv s' ↔ s'.Usable dst :=
-  ⟨fun hk => transfer_dst_usable_of_noDangling hinv.1 h hk.2.1.2.2,
-    transfer_preserves_of_dst_usable_of_heldAnchored hinv hheld h⟩
-
-/-- Every operation, `transfer` included when its destination stays usable (a hypothesis, not a
-clause of §63), preserves `KInv` (§57) and `HeldAnchored` (auxiliary) under `DDSound` (§80). -/
-theorem op_preserves_of_dst_usable {k : K} {op : KernelOp} {s s' : S3} (hdd : DDSound k)
-    (hinv : KInv s) (hheld : HeldAnchored s) (h : op.Step k s (.ok s'))
-    (hdu : ∀ src dst, op = .transfer src dst → s'.Usable dst) :
-    KInv s' ∧ HeldAnchored s' := by
-  have hh' := op_preserves_heldAnchored hinv.1 hheld h
-  cases op with
-  | transfer src dst => exact ⟨(transfer_kinv_iff hinv hheld h).2 (hdu src dst rfl), hh'⟩
-  | _ => exact ⟨op_preserves hdd hinv h fun _ _ e => KernelOp.noConfusion e, hh'⟩
 
 /-! ## The initial state (§47) -/
 
@@ -575,8 +560,9 @@ private theorem init_root_inj {statics : Statics} {j j' i : Nat}
     (h' : (rootIdx (statics.map (·.1)))[j']? = some i) : j = j' :=
   Frames.getElem?_inj_of_lt ((Frames.range_pairwise_lt _).filter _) h h'
 
-/-- The initial state satisfies `KInv` (§57), `KAux` (§40, §49.7) and `HeldAnchored` (auxiliary)
-for a well-formed statics declaration (§47; `StaticsOK` is a hypothesis, not stated by §47). -/
+/-- The initial state satisfies `KInv` (§57) and the auxiliaries `KAux` (§40, §49.7) and
+`HeldAnchored` (not clauses of §57) for a well-formed statics declaration (`StaticsOK`, §47:
+acyclic ownership of statics; §49, ordering of identifiers). -/
 theorem init_kinv {statics : Statics} (hst : StaticsOK statics) :
     KInv (S3.init statics) ∧ KAux (S3.init statics) ∧ HeldAnchored (S3.init statics) := by
   have hus : ∀ i, i < statics.length → (S3.init statics).Usable i :=
@@ -679,65 +665,44 @@ theorem init_statics (statics : Statics) (l : Nat) :
 
 /-! ## Reachable states (§57) -/
 
-/-- §57 as stated is false: under a contract satisfying `DDSound` (§80) and well-formed statics
-(§47), a reachable state violates `KInv`, after an accepted `transfer` (§63,
-`transfer_breaks_kinv`). -/
-theorem reachable_kinv_false : ¬ ∀ (k : K) (statics : Statics) (s : S3), DDSound k →
-    StaticsOK statics → Reachable k statics s → KInv s := by
-  intro hall
-  obtain ⟨hdd, s, s', hr, -, -, ht, hn⟩ := transfer_breaks_kinv
-  exact hn (hall _ _ _ hdd (by decide) (.step hr (.transfer ht)))
-
-/-- A kernel step whose `transfer`, if it is one, leaves its destination usable (§63). The
-condition is a hypothesis on runs, not a clause of §63 nor of §57. -/
-def KStepDU (k : K) (s s' : S3) : Prop :=
-  ∃ op : KernelOp, op.Step k s (.ok s') ∧ ∀ src dst, op = .transfer src dst → s'.Usable dst
-
-/-- States reached from `S3.init statics` by runs whose transfers keep the destination usable
-(§57, restricted by the hypothesis of `KStepDU`, which is not a clause of §63). -/
-inductive ReachableDU (k : K) (statics : Statics) : S3 → Prop where
-  /-- The initial state (§47). -/
-  | init : ReachableDU k statics (S3.init statics)
-  /-- One more step of `KStepDU` (§57). -/
-  | step {s s' : S3} : ReachableDU k statics s → KStepDU k s s' → ReachableDU k statics s'
-
-/-- From a state satisfying `KInv` (§57) and `HeldAnchored` (auxiliary) under `DDSound` (§80),
-the steps of `KStepDU` are exactly the kernel steps whose resulting state satisfies `KInv`: the
-restriction of `ReachableDU` keeps exactly the runs along which §57 holds. -/
-theorem kstepDU_iff {k : K} {s s' : S3} (hdd : DDSound k) (hinv : KInv s)
-    (hheld : HeldAnchored s) : KStepDU k s s' ↔ KStep k s s' ∧ KInv s' := by
-  constructor
-  · rintro ⟨op, hop, hdu⟩
-    exact ⟨kstep_iff.2 ⟨op, hop⟩, (op_preserves_of_dst_usable hdd hinv hheld hop hdu).1⟩
-  · rintro ⟨h, hk⟩
-    obtain ⟨op, hop⟩ := kstep_iff.1 h
-    refine ⟨op, hop, fun src dst e => ?_⟩
-    subst e
-    exact transfer_dst_usable_of_noDangling hinv.1 hop hk.2.1.2.2
-
-/-- A state of `ReachableDU` is reachable (§57). -/
-theorem ReachableDU.reachable {k : K} {statics : Statics} {s : S3}
-    (h : ReachableDU k statics s) : Reachable k statics s := by
-  induction h with
-  | init => exact .init
-  | step _ h ih =>
-    obtain ⟨op, hop, -⟩ := h
-    exact .step ih (kstep_iff.2 ⟨op, hop⟩)
-
-/-- The main invariant of §57 (`WF3 ∧ Inv3 ∧ AnchorOrderHeld ∧ NoOrphan`, with `KAux` and
-`HeldAnchored`) on the states reached by runs whose transfers keep the destination usable, under
-`DDSound` (§80) and well-formed statics (`StaticsOK`, a hypothesis not stated by §47). The
-restriction of the runs is not a clause of §63: without it the statement is false
-(`reachable_kinv_false`). -/
-theorem reachableDU_kinv {k : K} {statics : Statics} {s : S3} (hdd : DDSound k)
-    (hst : StaticsOK statics) (h : ReachableDU k statics s) :
+/-- `KInv` (§57) and the auxiliaries `KAux` and `HeldAnchored` (not clauses of §57) hold on every
+state reachable from `S3.init statics` under `DDSound` (§80), for well-formed statics
+(`StaticsOK`, §47). -/
+theorem reachable_inv {k : K} {statics : Statics} {s : S3} (hdd : DDSound k)
+    (hst : StaticsOK statics) (h : Reachable k statics s) :
     KInv s ∧ KAux s ∧ HeldAnchored s := by
   induction h with
   | init => exact init_kinv hst
   | step _ h ih =>
-    obtain ⟨op, hop, hdu⟩ := h
-    have h' := op_preserves_of_dst_usable hdd ih.1 ih.2.2 hop hdu
-    exact ⟨h'.1, op_preserves_kAux ih.1 ih.2.1 hop, h'.2⟩
+    exact ⟨kstep_preserves hdd ih.1 ih.2.2 h, kstep_preserves_kAux ih.1 ih.2.1 h,
+      kstep_preserves_heldAnchored ih.1.1 ih.2.2 h⟩
+
+/-- The main invariant of §57: on states reachable from `S3.init statics` under `DDSound(K)`
+(§80), `WF3 ∧ Inv3 ∧ AnchorOrderHeld ∧ NoOrphan` holds, for well-formed statics (`StaticsOK`,
+§47). -/
+theorem reachable_kinv {k : K} {statics : Statics} {s : S3} (hdd : DDSound k)
+    (hst : StaticsOK statics) (h : Reachable k statics s) : KInv s :=
+  (reachable_inv hdd hst h).1
+
+/-- `I5` (§57) on reachable states: under `DDSound` (§80) and `StaticsOK` (§47), if `K.Pinned`
+meets its obligation on the initial state (§57, §80), every leaf pinned statically or by an
+active obligation (§74) belongs to a usable place in every reachable state. -/
+theorem reachable_i5 {k : K} {statics : Statics} {s : S3} (hdd : DDSound k)
+    (hst : StaticsOK statics) (h0 : I5 k (S3.init statics)) (h : Reachable k statics s) :
+    I5 k s := by
+  induction h with
+  | init => exact h0
+  | step hr h ih => exact kstep_preserves_i5 (reachable_kinv hdd hst hr).1 ih h
+
+open TransferWitness in
+/-- The ownership-cycle run of §63 is rejected by §63.9: `cyc2` is reachable under a contract
+with `DDSound` (§80), `transfer(0, 3)` from it is rejected because its destination would not be
+usable, and the resulting state of that transfer, which violates `KInv` (§49.8, §54), is not
+reachable (§57). -/
+theorem reachable_cycle_rejected : Reachable Examples.K0 cycStatics cyc2 ∧
+    TransferStep Examples.K0 0 3 cyc2 .reject ∧ ¬ Reachable Examples.K0 cycStatics cyc3 := by
+  obtain ⟨hdd, hr, -, -, -, -, hrej, hn⟩ := transfer_cycle_rejected
+  exact ⟨hr, hrej, fun h => hn (reachable_kinv hdd (by decide) h)⟩
 
 /-! ## Initialization history (§59) -/
 

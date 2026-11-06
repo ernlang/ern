@@ -3,7 +3,7 @@ import Ern.MemoryModel.Access.Basic
 /-!
 # Access kernel: operations O1–O16
 
-The sixteen kernel operations of `specs/ERN_Memory_Model_Specification_v0.md` §60–§75. Each
+The sixteen kernel operations of `specs/ERN_Memory_Model_Specification_v0.1.md` §60–§75. Each
 operation has a precondition structure with one named field per clause item (or per condition of
 an item), each field citing its clause; a `Decidable` instance; an effect function; and a step
 relation over `Outcome3` (§58). Every operation except `alloc` is `Guarded` (`ok` or `reject`);
@@ -31,6 +31,9 @@ structure DerivePre (s : S3) (src : Nat) (region : List Nat) (m : Mode) : Prop w
   active : s.Active src
   /-- §60.1: `ExercisableAt(s, source, mode)`. -/
   exercisable : s.ExercisableAt src m
+  /-- §60.1: every authority of the origin chain of `source`, its effective anchor included, is
+  active. -/
+  chainActive : ∀ x ∈ s.ancs src, s.Active x
   /-- §60.2: the leaves of `region` exist. -/
   leaves : ∀ l ∈ region, l < s.P.length ∧ isLeaf s.P l
   /-- §60.2: the leaves of `region` belong to the footprint of `source`. -/
@@ -48,15 +51,15 @@ structure DerivePre (s : S3) (src : Nat) (region : List Nat) (m : Mode) : Prop w
 /-- Decidability of the preconditions of `derive` (§60). -/
 instance (s : S3) (src : Nat) (region : List Nat) (m : Mode) :
     Decidable (DerivePre s src region m) :=
-  decidable_of_iff (s.Active src ∧ s.ExercisableAt src m ∧
+  decidable_of_iff (s.Active src ∧ s.ExercisableAt src m ∧ (∀ x ∈ s.ancs src, s.Active x) ∧
     (∀ l ∈ region, l < s.P.length ∧ isLeaf s.P l) ∧ (∀ l ∈ region, l ∈ s.afp src) ∧
     (∀ l ∈ region, Allows (effective s src l) m) ∧
     (∀ b ∈ List.range s.A.length, OptP (s.A[b]?) (fun y => y.active = true →
       b ∉ src :: s.ancs src → (∃ l ∈ region, l ∈ y.footprint) → y.mode = .observe ∧ m = .observe)
       True) ∧
     s.top ∈ s.F)
-    ⟨fun ⟨a, b, c, d, e, f, g⟩ => ⟨a, b, c, d, e, f, g⟩,
-     fun ⟨a, b, c, d, e, f, g⟩ => ⟨a, b, c, d, e, f, g⟩⟩
+    ⟨fun ⟨a, b, c, d, e, f, g, h⟩ => ⟨a, b, c, d, e, f, g, h⟩,
+     fun ⟨a, b, c, d, e, f, g, h⟩ => ⟨a, b, c, d, e, f, g, h⟩⟩
 
 /-- `derive` as a relation (§60). -/
 def DeriveStep (src : Nat) (region : List Nat) (m : Mode) (s : S3) : Outcome3 S3 → Prop :=
@@ -298,8 +301,11 @@ structure TransferPre (k : K) (s : S3) (src dst : Nat) : Prop where
   dstNotInit : ∀ l ∈ footprint s.P dst, s.I l ≠ .init
   /-- §63.3: source and destination footprints are disjoint. -/
   disjoint : ¬ overlap s.P src dst
-  /-- §63.4: no active derived authority covers a source leaf from outside the source. -/
-  noOutsideDerived : ∀ j ∈ List.range s.A.length, ¬ ActiveDerivedOutside s src j
+  /-- §63.4: no active derived authority covers a source leaf from outside the source, except the
+  authorities through which the step exercises its `Modify` right over the source: some authority
+  grounding that right and its origin chain. -/
+  noOutsideDerived : ∃ g ∈ List.range s.A.length, Grounds s .modify src g ∧
+    ∀ j ∈ List.range s.A.length, ActiveDerivedOutside s src j → RightChain s g j
   /-- §63.5: no in-place source leaf is pinned, statically or dynamically. -/
   notPinned : ∀ l ∈ footprint s.P src, ¬ k.Pinned l ∧ s.pin l = false
   /-- §63.6: dependencies of the usable places following the value are valid. -/
@@ -313,6 +319,8 @@ structure TransferPre (k : K) (s : S3) (src dst : Nat) : Prop where
         EffAnchorOK (transferEff s src dst) x ((transferEff s src dst).pframe q)) True
   /-- §63.8: local self-blocking prevention. -/
   noSelfLock : NoLocalSelfLock s src dst
+  /-- §63.9: `destination` is usable in the resulting state. -/
+  dstUsableAfter : (transferEff s src dst).Usable dst
 
 /-- Decidability of the preconditions of `transfer` (§63). -/
 instance (k : K) [DecidablePred k.Pinned] (s : S3) (src dst : Nat) :
@@ -320,16 +328,19 @@ instance (k : K) [DecidablePred k.Pinned] (s : S3) (src dst : Nat) :
   decidable_of_iff (s.Usable src ∧ s.Usable dst ∧ HasRight s .modify src ∧
     HasRight s .modify dst ∧ SameShape s.P src dst ∧ (∀ l ∈ footprint s.P src, s.I l = .init) ∧
     (∀ l ∈ footprint s.P dst, s.I l ≠ .init) ∧ ¬ overlap s.P src dst ∧
-    (∀ j ∈ List.range s.A.length, ¬ ActiveDerivedOutside s src j) ∧
+    (∃ g ∈ List.range s.A.length, Grounds s .modify src g ∧
+      ∀ j ∈ List.range s.A.length, ActiveDerivedOutside s src j → RightChain s g j) ∧
     (∀ l ∈ footprint s.P src, ¬ k.Pinned l ∧ s.pin l = false) ∧
     (∀ x ∈ movedDeps s src, s.Active x) ∧ AnchorOrder (transferEff s src dst) ∧
     (∀ x ∈ List.range s.A.length, AnchorMoves s src x →
       ∀ q ∈ List.range s.P.length, (transferEff s src dst).Usable q →
         OptP ((transferEff s src dst).A[x]?) (fun y => y.active = true → y.holder = .place q →
           EffAnchorOK (transferEff s src dst) x ((transferEff s src dst).pframe q)) True) ∧
-    NoLocalSelfLock s src dst)
-    ⟨fun ⟨a, b, c, d, e, f, g, h, i, j, l, m, n, o⟩ => ⟨a, b, c, d, e, f, g, h, i, j, l, m, n, o⟩,
-     fun ⟨a, b, c, d, e, f, g, h, i, j, l, m, n, o⟩ => ⟨a, b, c, d, e, f, g, h, i, j, l, m, n, o⟩⟩
+    NoLocalSelfLock s src dst ∧ (transferEff s src dst).Usable dst)
+    ⟨fun ⟨a, b, c, d, e, f, g, h, i, j, l, m, n, o, p⟩ =>
+      ⟨a, b, c, d, e, f, g, h, i, j, l, m, n, o, p⟩,
+     fun ⟨a, b, c, d, e, f, g, h, i, j, l, m, n, o, p⟩ =>
+      ⟨a, b, c, d, e, f, g, h, i, j, l, m, n, o, p⟩⟩
 
 /-- `transfer` as a relation (§63). -/
 def TransferStep (k : K) (src dst : Nat) (s : S3) : Outcome3 S3 → Prop :=
@@ -458,8 +469,9 @@ def rootIdx (ls : List (Option Nat × Option Nat × Nat)) : List Nat :=
 def enterP (s : S3) (ls : LocalShape) : List Place := shapeP s.P (.frame s.nF) ls.toShape
 
 /-- Effect of `enterFrame(params, locals)` (§72, `ok` effect): a new frame `nF` is pushed; the
-parameters are now held by it; locals are appended (uninitialized, no anchor, alive, unpinned)
-with one active root `Modify` authority per root local, held by the new frame. -/
+parameters are now held by it; locals are appended (uninitialized, no anchor, alive) with one
+active root `Modify` authority per root local, held by the new frame; pinning obligations are
+unchanged. -/
 def enterEff (s : S3) (ps : List Nat) (ls : LocalShape) : S3 :=
   { F := s.nF :: s.F, nF := s.nF + 1, P := enterP s ls
     I := fun l => if s.P.length ≤ l then .uninit else s.I l
@@ -469,7 +481,7 @@ def enterEff (s : S3) (ps : List Nat) (ls : LocalShape) : S3 :=
           shapeOwner ls.toShape (.frame s.nF) i, true⟩
     D := fun q => if s.P.length ≤ q then [] else s.D q
     dead := fun q => if s.P.length ≤ q then false else s.dead q
-    pin := fun q => if s.P.length ≤ q then false else s.pin q }
+    pins := s.pins }
 
 /-- Origin protection on entry for parameter `p` in state `s'` (§72.3): if `p` is a `Modify`
 authority with direct origin `o`, `o` is exercisable in no mode. -/
@@ -731,8 +743,15 @@ structure EndUsePre (k : K) (s : S3) (p : Nat) : Prop where
   usable : s.Usable p
   /-- §69.1: exercisable `Modify` over `place`. -/
   right : HasRight s .modify p
-  /-- §69.2: no active derived authority over an ending leaf is held outside the dying places. -/
-  access : ∀ j ∈ List.range s.A.length, EndUseAccessOK s p j
+  /-- §69.2: no active derived authority over an ending leaf is held outside the dying places,
+  except the authorities through which the step exercises its `Modify` right over `place`: some
+  authority grounding that right and its origin chain. -/
+  access : ∃ g ∈ List.range s.A.length, Grounds s .modify p g ∧
+    ∀ j ∈ List.range s.A.length, RightChain s g j ∨ EndUseAccessOK s p j
+  /-- §69.2, last sentence: no authority that the effect makes inactive has an active descendant
+  that the effect does not make inactive. -/
+  keptDesc : ∀ a ∈ List.range s.A.length, ∀ j ∈ List.range s.A.length, s.Active a →
+    ¬ (endUseEff s p).Active a → a ∈ s.ancs j → ¬ (endUseEff s p).Active j
   /-- §69.3: no place usable after the effect depends on an authority held by `place`, its root,
   or an authority whose holder dies. -/
   anchors : ∀ q ∈ List.range s.P.length, (endUseS s p).Usable q →
@@ -743,11 +762,14 @@ structure EndUsePre (k : K) (s : S3) (p : Nat) : Prop where
 /-- Decidability of the preconditions of `endUse` (§69). -/
 instance (k : K) [DecidablePred k.Pinned] (s : S3) (p : Nat) : Decidable (EndUsePre k s p) :=
   decidable_of_iff (s.Usable p ∧ HasRight s .modify p ∧
-    (∀ j ∈ List.range s.A.length, EndUseAccessOK s p j) ∧
+    (∃ g ∈ List.range s.A.length, Grounds s .modify p g ∧
+      ∀ j ∈ List.range s.A.length, RightChain s g j ∨ EndUseAccessOK s p j) ∧
+    (∀ a ∈ List.range s.A.length, ∀ j ∈ List.range s.A.length, s.Active a →
+      ¬ (endUseEff s p).Active a → a ∈ s.ancs j → ¬ (endUseEff s p).Active j) ∧
     (∀ q ∈ List.range s.P.length, (endUseS s p).Usable q →
       ∀ x ∈ (endUseS s p).D q, EndUseAnchorOK s p x) ∧
     (∀ l ∈ List.range s.P.length, EndingLeaf s p l → s.pin l = false ∧ ¬ k.Pinned l))
-    ⟨fun ⟨a, b, c, d, e⟩ => ⟨a, b, c, d, e⟩, fun ⟨a, b, c, d, e⟩ => ⟨a, b, c, d, e⟩⟩
+    ⟨fun ⟨a, b, c, d, e, f⟩ => ⟨a, b, c, d, e, f⟩, fun ⟨a, b, c, d, e, f⟩ => ⟨a, b, c, d, e, f⟩⟩
 
 /-- `endUse` as a relation (§69). -/
 def EndUseStep (k : K) (p : Nat) (s : S3) : Outcome3 S3 → Prop :=
@@ -829,9 +851,15 @@ structure FreePre (k : K) (s : S3) (p auth : Nat) : Prop where
   freeCompat : k.FreeCompat p auth
   /-- §70.3: exercisable `Modify` over `place`. -/
   right : HasRight s .modify p
-  /-- §70.3: no active derivative over the footprint being freed is held outside dying
-  holders. -/
-  access : ∀ j ∈ List.range s.A.length, FreeAccessOK s p j
+  /-- §70.3: no active derivative over the footprint being freed is held outside dying holders,
+  except the authorities through which the step exercises its `Modify` right over `place`: some
+  authority grounding that right and its origin chain. -/
+  access : ∃ g ∈ List.range s.A.length, Grounds s .modify p g ∧
+    ∀ j ∈ List.range s.A.length, RightChain s g j ∨ FreeAccessOK s p j
+  /-- §70.3, last sentence: no authority that the effect makes inactive has an active descendant
+  that the effect does not make inactive. -/
+  keptDesc : ∀ a ∈ List.range s.A.length, ∀ j ∈ List.range s.A.length, s.Active a →
+    ¬ (freeEff s p).Active a → a ∈ s.ancs j → ¬ (freeEff s p).Active j
   /-- §70.3: no surviving place is anchored to an authority of the released unit or of its dead
   holders. -/
   anchors : ∀ q ∈ List.range s.P.length, (freeS s p).Usable q → ∀ x ∈ s.D q, FreeAnchorOK s p x
@@ -843,11 +871,15 @@ instance (k : K) [DecidablePred k.Pinned] [DecidablePred k.Deallocable]
     [∀ p a, Decidable (k.FreeCompat p a)] (s : S3) (p auth : Nat) :
     Decidable (FreePre k s p auth) :=
   decidable_of_iff (OwnedRoot s p ∧ k.Deallocable p ∧ k.FreeCompat p auth ∧
-    HasRight s .modify p ∧ (∀ j ∈ List.range s.A.length, FreeAccessOK s p j) ∧
+    HasRight s .modify p ∧
+    (∃ g ∈ List.range s.A.length, Grounds s .modify p g ∧
+      ∀ j ∈ List.range s.A.length, RightChain s g j ∨ FreeAccessOK s p j) ∧
+    (∀ a ∈ List.range s.A.length, ∀ j ∈ List.range s.A.length, s.Active a →
+      ¬ (freeEff s p).Active a → a ∈ s.ancs j → ¬ (freeEff s p).Active j) ∧
     (∀ q ∈ List.range s.P.length, (freeS s p).Usable q → ∀ x ∈ s.D q, FreeAnchorOK s p x) ∧
     (∀ l ∈ List.range s.P.length, FreedLeaf s p l → s.pin l = false ∧ ¬ k.Pinned l))
-    ⟨fun ⟨a, b, c, d, e, f, g⟩ => ⟨a, b, c, d, e, f, g⟩,
-     fun ⟨a, b, c, d, e, f, g⟩ => ⟨a, b, c, d, e, f, g⟩⟩
+    ⟨fun ⟨a, b, c, d, e, f, g, h⟩ => ⟨a, b, c, d, e, f, g, h⟩,
+     fun ⟨a, b, c, d, e, f, g, h⟩ => ⟨a, b, c, d, e, f, g, h⟩⟩
 
 /-- `free` as a relation (§70). -/
 def FreeStep (k : K) (p auth : Nat) (s : S3) : Outcome3 S3 → Prop :=
@@ -865,6 +897,8 @@ structure AllocStatic (k : K) (s : S3) (provider owner : Nat) (ls : LocalShape) 
   /-- §71.1 with the `ok` outcome of §71 ("a new storage root"): exactly one element has no
   parent. -/
   oneRoot : (rootIdx ls.toShape).length = 1
+  /-- §71.2: the provider is a usable place. -/
+  providerUsable : s.Usable provider
   /-- §71.2: all leaves of the provider are `Init`. -/
   providerInit : ∀ l ∈ footprint s.P provider, s.I l = .init
   /-- §71.2: metadata updates are permitted through exercisable `Modify` on the provider or a
@@ -880,12 +914,12 @@ structure AllocStatic (k : K) (s : S3) (provider owner : Nat) (ls : LocalShape) 
 instance (k : K) [DecidablePred k.SharedMutable] (s : S3) (provider owner : Nat)
     (ls : LocalShape) : Decidable (AllocStatic k s provider owner ls) :=
   decidable_of_iff (ls ≠ [] ∧ ShapeOK s.P.length ls.toShape ∧ (rootIdx ls.toShape).length = 1 ∧
-    (∀ l ∈ footprint s.P provider, s.I l = .init) ∧
+    s.Usable provider ∧ (∀ l ∈ footprint s.P provider, s.I l = .init) ∧
     (HasRight s .modify provider ∨
       ∃ via ∈ List.range s.A.length, WriteSharedPre k s via (footprint s.P provider)) ∧
     HasRight s .modify owner ∧ s.Usable owner)
-    ⟨fun ⟨a, b, c, d, e, f, g⟩ => ⟨a, b, c, d, e, f, g⟩,
-     fun ⟨a, b, c, d, e, f, g⟩ => ⟨a, b, c, d, e, f, g⟩⟩
+    ⟨fun ⟨a, b, c, d, e, f, g, h⟩ => ⟨a, b, c, d, e, f, g, h⟩,
+     fun ⟨a, b, c, d, e, f, g, h⟩ => ⟨a, b, c, d, e, f, g, h⟩⟩
 
 /-- Places after `alloc` (§71, `ok` outcome): the elements of the shape appended, owned by
 `owner`. -/
@@ -893,8 +927,8 @@ def allocP (s : S3) (owner : Nat) (ls : LocalShape) : List Place :=
   shapeP s.P (.place owner) ls.toShape
 
 /-- Effect of `alloc` (§71, `ok` outcome): a new storage root of fresh identities owned by
-`owner`, its leaves `Uninit`, no anchor, alive, unpinned, with a root `Modify` authority with no
-origin held by `owner`. -/
+`owner`, its leaves `Uninit`, no anchor, alive, with a root `Modify` authority with no origin held
+by `owner`; pinning obligations are unchanged. -/
 def allocEff (s : S3) (owner : Nat) (ls : LocalShape) : S3 :=
   { s with
     P := allocP s owner ls
@@ -903,8 +937,7 @@ def allocEff (s : S3) (owner : Nat) (ls : LocalShape) : S3 :=
       ⟨.modify, none, footprint (allocP s owner ls) (s.P.length + i),
         shapeOwner ls.toShape (.place owner) i, true⟩
     D := fun q => if s.P.length ≤ q then [] else s.D q
-    dead := fun q => if s.P.length ≤ q then false else s.dead q
-    pin := fun q => if s.P.length ≤ q then false else s.pin q }
+    dead := fun q => if s.P.length ≤ q then false else s.dead q }
 
 /-- `alloc provider owner shape` as a relation (§71 outcomes, §58): `reject` when a static
 precondition fails; `fail`, state unchanged, when `K.Satisfiable` is false; `ok` otherwise. -/
@@ -930,32 +963,41 @@ instance (s : S3) (p : Nat) : Decidable (PinPre s p) :=
   decidable_of_iff (s.Usable p ∧ HasRight s .modify p)
     ⟨fun ⟨a, b⟩ => ⟨a, b⟩, fun ⟨a, b⟩ => ⟨a, b⟩⟩
 
-/-- Effect of `pin` (`b = true`, §74) and `unpin` (`b = false`, §75): the dynamic pinning flag of
-the leaves of `place`. -/
-def pinEff (s : S3) (p : Nat) (b : Bool) : S3 :=
-  { s with pin := fun l => if l ∈ footprint s.P p then b else s.pin l }
+/-- Effect of `pin` (§74, `ok` effect): an active dynamic pinning obligation of fresh identity
+`|pins|` is installed on the leaves of `place`. -/
+def pinEff (s : S3) (p : Nat) : S3 :=
+  { s with pins := s.pins ++ [⟨p, footprint s.P p, true⟩] }
 
 /-- `pin` as a relation (§74). -/
-def PinStep (p : Nat) (s : S3) : Outcome3 S3 → Prop := Guarded (PinPre s p) (pinEff s p true)
+def PinStep (p : Nat) (s : S3) : Outcome3 S3 → Prop := Guarded (PinPre s p) (pinEff s p)
 
-/-- Preconditions of `unpin` (§75). -/
-structure UnpinPre (k : K) (s : S3) (p : Nat) : Prop where
-  /-- §75: `place` is usable. -/
-  usable : s.Usable p
+/-- Effect of `unpin` (§75, `ok` effect): the designated obligation `o` ends, and only that
+one. -/
+def unpinEff (s : S3) (o : Nat) : S3 :=
+  { s with pins := s.pins.modify o fun ob => { ob with active := false } }
+
+/-- Preconditions of `unpin o` (§75), `o` the identity of a dynamic pinning obligation. -/
+structure UnpinPre (k : K) (s : S3) (o : Nat) : Prop where
+  /-- §75: `unpin` designates an active dynamic pinning obligation. -/
+  active : OptP (s.pins[o]?) (fun ob => ob.active = true) False
+  /-- §75: `place`, on which the obligation was installed by `pin`, is usable. -/
+  usable : OptP (s.pins[o]?) (fun ob => s.Usable ob.place) False
   /-- §75: exercisable `Modify` over `place`. -/
-  right : HasRight s .modify p
-  /-- §75: `K.ExternalDone(place)`. -/
-  externalDone : k.ExternalDone p
+  right : OptP (s.pins[o]?) (fun ob => HasRight s .modify ob.place) False
+  /-- §75: `K.ExternalDone`, applied to the obligation. -/
+  externalDone : k.ExternalDone o
 
 /-- Decidability of the preconditions of `unpin` (§75). -/
-instance (k : K) [DecidablePred k.ExternalDone] (s : S3) (p : Nat) :
-    Decidable (UnpinPre k s p) :=
-  decidable_of_iff (s.Usable p ∧ HasRight s .modify p ∧ k.ExternalDone p)
-    ⟨fun ⟨a, b, c⟩ => ⟨a, b, c⟩, fun ⟨a, b, c⟩ => ⟨a, b, c⟩⟩
+instance (k : K) [DecidablePred k.ExternalDone] (s : S3) (o : Nat) :
+    Decidable (UnpinPre k s o) :=
+  decidable_of_iff (OptP (s.pins[o]?) (fun ob => ob.active = true) False ∧
+    OptP (s.pins[o]?) (fun ob => s.Usable ob.place) False ∧
+    OptP (s.pins[o]?) (fun ob => HasRight s .modify ob.place) False ∧ k.ExternalDone o)
+    ⟨fun ⟨a, b, c, d⟩ => ⟨a, b, c, d⟩, fun ⟨a, b, c, d⟩ => ⟨a, b, c, d⟩⟩
 
 /-- `unpin` as a relation (§75). -/
-def UnpinStep (k : K) (p : Nat) (s : S3) : Outcome3 S3 → Prop :=
-  Guarded (UnpinPre k s p) (pinEff s p false)
+def UnpinStep (k : K) (o : Nat) (s : S3) : Outcome3 S3 → Prop :=
+  Guarded (UnpinPre k s o) (unpinEff s o)
 
 /-! ## Kernel steps (§57, §58) -/
 
@@ -976,7 +1018,7 @@ inductive KStep (k : K) : S3 → S3 → Prop where
   | writeShared {s s' : S3} {a : Nat} {ls : List Nat} :
       WriteSharedStep k a ls s (.ok s') → KStep k s s'
   | pin {s s' : S3} {p : Nat} : PinStep p s (.ok s') → KStep k s s'
-  | unpin {s s' : S3} {p : Nat} : UnpinStep k p s (.ok s') → KStep k s s'
+  | unpin {s s' : S3} {o : Nat} : UnpinStep k o s (.ok s') → KStep k s s'
   | endUse {s s' : S3} {p : Nat} : EndUseStep k p s (.ok s') → KStep k s s'
   | free {s s' : S3} {p auth : Nat} : FreeStep k p auth s (.ok s') → KStep k s s'
   | alloc {s s' : S3} {pr ow : Nat} {ls : LocalShape} :

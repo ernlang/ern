@@ -5,9 +5,9 @@ import Ern.MemoryModel.Access.Preserve.Common
 
 Every `ok` step of O5 `depend` (§64), O8 `store` (§65), O9 `read` (§66), O10 `write` (§67), O11
 `writeShared` (§68), O15 `pin` (§74) and O16 `unpin` (§75) preserves the kernel invariant `KInv`
-of §57 and, separately, the auxiliary invariant `KAux` (§58: an `ok` transition preserves the
-relevant invariants). Per-invariant lemmas come first, then the clause-level properties of these operations
-and their determinism (§58).
+of §57, separately the auxiliary invariant `KAux`, and the pinning invariant `I5` of §57 (§58: an
+`ok` transition preserves the relevant invariants). Per-invariant lemmas come first, then the
+clause-level properties of these operations and their determinism (§58).
 -/
 
 namespace Ern.MemoryModel.Access
@@ -137,6 +137,28 @@ private theorem rootHeldConv_of {s s' : S3} (h : RootHeldConv s) (hP : s'.P = s.
     RootHeldConv s' :=
   h.transport hP fun x z hx hzo => ⟨z, hroot x z hzo hx, hzo, rfl, rfl⟩
 
+/-- `I5` (§57) carries over to a state with the same places, stack and death markers whose
+dynamically pinned leaves (§74) were pinned before or belong to a usable place before. -/
+private theorem i5_of {k : K} {s s' : S3} (h : I5 k s) (hP : s'.P = s.P) (hF : s'.F = s.F)
+    (hd : s'.dead = s.dead)
+    (hpin : ∀ l, s'.pin l = true → s.pin l = true ∨ ∃ q, s.Usable q ∧ l ∈ footprint s.P q) :
+    I5 k s' := by
+  intro l hl
+  have hq : ∃ q, s.Usable q ∧ l ∈ footprint s.P q := by
+    rcases hl with hk | hs
+    · exact h l (.inl hk)
+    · rcases hpin l hs with hs | hq
+      · exact h l (.inr hs)
+      · exact hq
+  obtain ⟨q, hq, hlq⟩ := hq
+  exact ⟨q, (S3.Usable.congr hP hF hd).2 hq, by rw [hP]; exact hlq⟩
+
+/-- `I5` (§57) carries over to a state with the same places, stack, death markers and pinning
+obligations (§74). -/
+private theorem i5_same {k : K} {s s' : S3} (h : I5 k s) (hP : s'.P = s.P) (hF : s'.F = s.F)
+    (hd : s'.dead = s.dead) (hpins : s'.pins = s.pins) : I5 k s' :=
+  i5_of h hP hF hd fun l hl => .inl (by rw [← S3.pin_congr hpins]; exact hl)
+
 /-- The conjuncts of `KInv` (§57) give `KInv`; `NoOrphan` follows from `WF3` (§54). -/
 private theorem kinv_of_parts {s : S3} (hb : WF3 s ∧ Inv3base s) (ho : AnchorOrder s)
     (hn : NoDangling s) (hh : AnchorOrderHeld s) : KInv s :=
@@ -223,6 +245,13 @@ theorem depend_preserves {s s' : S3} {q x : Nat} (hinv : KInv s)
   obtain ⟨hw, ⟨hb, ho, hnd⟩, hh, -⟩ := hinv
   exact kinv_of_parts (depend_preserves_base hw hb h) (depend_preserves_anchorOrder ho h)
     (depend_preserves_noDangling hnd h) (depend_preserves_anchorOrderHeld hh h)
+
+/-- `depend` preserves `I5` (§57, §64 `ok` effect): places, stack, death markers and pinning
+obligations are unchanged. -/
+theorem depend_preserves_i5 {k : K} {s s' : S3} {q x : Nat} (h5 : I5 k s)
+    (h : DependStep q x s (.ok s')) : I5 k s' := by
+  obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
+  exact i5_same h5 rfl rfl rfl rfl
 
 /-- `depend_preserves_anchor_validity` (§64.2, §52): `I3` is preserved and every authority keeps
 its activity, so a declared dependency extends no lifetime. -/
@@ -358,6 +387,14 @@ theorem store_preserves {s s' : S3} {a p : Nat} (hinv : KInv s)
   exact kinv_of_parts (store_preserves_base hw hb h) (store_preserves_anchorOrder hw ho h)
     (store_preserves_noDangling hnd h) (store_preserves_anchorOrderHeld h)
 
+/-- `store` preserves `I5` (§57, §65 `ok` effect): places, stack, death markers and pinning
+obligations are unchanged. -/
+theorem store_preserves_i5 {k : K} {s s' : S3} {a p : Nat} (h5 : I5 k s)
+    (h : StoreStep a p s (.ok s')) : I5 k s' := by
+  obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
+  obtain ⟨hP, hF, -, hd⟩ := store_eqs s a p
+  exact i5_same h5 hP hF hd (pins_storeEff s a p)
+
 /-- `store_writes_one_leaf` (§65.2, §65 `ok` effect): the target is a leaf, it becomes `Init`,
 and no other leaf changes its initialization state. -/
 theorem store_writes_one_leaf {s s' : S3} {a p : Nat} (h : StoreStep a p s (.ok s')) :
@@ -409,6 +446,11 @@ theorem read_preserves {s s' : S3} {a : Nat} {ls : List Nat} (hinv : KInv s)
 theorem read_preserves_kAux {s s' : S3} {a : Nat} {ls : List Nat} (haux : KAux s)
     (h : Read3Step a ls s (.ok s')) : KAux s' := by
   rw [read_preserves_state h]; exact haux
+
+/-- `read` preserves `I5` (§57; §66: the state is unchanged). -/
+theorem read_preserves_i5 {k : K} {s s' : S3} {a : Nat} {ls : List Nat} (h5 : I5 k s)
+    (h : Read3Step a ls s (.ok s')) : I5 k s' := by
+  rw [read_preserves_state h]; exact h5
 
 /-- Determinism of `read` (§58, §66): one outcome. -/
 theorem read_det {a : Nat} {ls : List Nat} {s : S3} {o₁ o₂ : Outcome3 S3}
@@ -475,6 +517,18 @@ theorem writeShared_preserves_kAux {k : K} {s s' : S3} {a : Nat} {ls : List Nat}
   obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
   exact write3Eff_preserves_rootHeldConv ls haux
 
+/-- `write` preserves `I5` (§57; §67 `ok` effect: only `I` changes). -/
+theorem write_preserves_i5 {k : K} {s s' : S3} {a : Nat} {ls : List Nat} (h5 : I5 k s)
+    (h : Write3Step a ls s (.ok s')) : I5 k s' := by
+  obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
+  exact i5_same h5 rfl rfl rfl rfl
+
+/-- `writeShared` preserves `I5` (§57; §68 `ok` effect: only `I` changes). -/
+theorem writeShared_preserves_i5 {k : K} {s s' : S3} {a : Nat} {ls : List Nat} (h5 : I5 k s)
+    (h : WriteSharedStep k a ls s (.ok s')) : I5 k s' := by
+  obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
+  exact i5_same h5 rfl rfl rfl rfl
+
 /-- `write_exclusive` (§67.1, §67.2, §50): on every leaf of an accepted write, `access` has
 effective `Modify` and no other authority has an effective mode. -/
 theorem write_exclusive {s s' : S3} {a : Nat} {ls : List Nat} (h : Write3Step a ls s (.ok s')) :
@@ -504,74 +558,120 @@ theorem writeShared_det {k : K} {a : Nat} {ls : List Nat} {s : S3} {o₁ o₂ : 
 
 /-! ## O15 `pin`, O16 `unpin` (§74, §75) -/
 
-/-- The pinning effect preserves `WF3` (§49) and `I1`–`I4` (§50–§53): only the pin flags change
-(§74, §75 `ok` effects). -/
-theorem pinEff_preserves_base {s : S3} (p : Nat) (b : Bool) (hw : WF3 s) (hi : Inv3base s) :
-    WF3 (pinEff s p b) ∧ Inv3base (pinEff s p b) :=
+/-- The effect of `pin` preserves `WF3` (§49) and `I1`–`I4` (§50–§53): only the pinning
+obligations change (§74 `ok` effect). -/
+theorem pinEff_preserves_base {s : S3} (p : Nat) (hw : WF3 s) (hi : Inv3base s) :
+    WF3 (pinEff s p) ∧ Inv3base (pinEff s p) :=
   sameA_base hw hi rfl rfl rfl rfl rfl fun q hq x hx => hi.2.2.1 q hq x hx
 
-/-- The pinning effect preserves `AnchorOrder` (§44): only the pin flags change (§74, §75). -/
-theorem pinEff_preserves_anchorOrder {s : S3} (p : Nat) (b : Bool) (hao : AnchorOrder s) :
-    AnchorOrder (pinEff s p b) :=
+/-- The effect of `pin` preserves `AnchorOrder` (§44): only the pinning obligations change
+(§74). -/
+theorem pinEff_preserves_anchorOrder {s : S3} (p : Nat) (hao : AnchorOrder s) :
+    AnchorOrder (pinEff s p) :=
   anchorOrder_of (s := s) rfl rfl rfl (effAnchorOK_of_A rfl rfl rfl) fun q hq x hx =>
     hao q hq x hx
 
-/-- The pinning effect preserves `NoDangling` (§54): only the pin flags change (§74, §75). -/
-theorem pinEff_preserves_noDangling {s : S3} (p : Nat) (b : Bool) (hnd : NoDangling s) :
-    NoDangling (pinEff s p b) :=
+/-- The effect of `pin` preserves `NoDangling` (§54): only the pinning obligations change
+(§74). -/
+theorem pinEff_preserves_noDangling {s : S3} (p : Nat) (hnd : NoDangling s) :
+    NoDangling (pinEff s p) :=
   noDangling_skel hnd (skel_of_A rfl) rfl rfl rfl
 
-/-- The pinning effect preserves `AnchorOrderHeld` (§44): only the pin flags change (§74,
-§75). -/
-theorem pinEff_preserves_anchorOrderHeld {s : S3} (p : Nat) (b : Bool) (h : AnchorOrderHeld s) :
-    AnchorOrderHeld (pinEff s p b) :=
+/-- The effect of `pin` preserves `AnchorOrderHeld` (§44): only the pinning obligations change
+(§74). -/
+theorem pinEff_preserves_anchorOrderHeld {s : S3} (p : Nat) (h : AnchorOrderHeld s) :
+    AnchorOrderHeld (pinEff s p) :=
   sameA_anchorOrderHeld h rfl rfl rfl rfl
 
-/-- The pinning effect preserves `RootHeldConv` (§40, §49.7): only the pin flags change (§74,
-§75). -/
-theorem pinEff_preserves_rootHeldConv {s : S3} (p : Nat) (b : Bool) (h : RootHeldConv s) :
-    RootHeldConv (pinEff s p b) :=
+/-- The effect of `pin` preserves `RootHeldConv` (§40, §49.7): only the pinning obligations
+change (§74). -/
+theorem pinEff_preserves_rootHeldConv {s : S3} (p : Nat) (h : RootHeldConv s) :
+    RootHeldConv (pinEff s p) :=
   sameA_rootHeldConv h rfl rfl
 
-/-- The pinning effect preserves `KInv` (§57; §74, §75 `ok` effects). -/
-private theorem pinEff_preserves {s : S3} (p : Nat) (b : Bool) (hinv : KInv s) :
-    KInv (pinEff s p b) := by
-  obtain ⟨hw, ⟨hb, ho, hnd⟩, hh, -⟩ := hinv
-  exact kinv_of_parts (pinEff_preserves_base p b hw hb) (pinEff_preserves_anchorOrder p b ho)
-    (pinEff_preserves_noDangling p b hnd) (pinEff_preserves_anchorOrderHeld p b hh)
+/-- The effect of `unpin` preserves `WF3` (§49) and `I1`–`I4` (§50–§53): only the pinning
+obligations change (§75 `ok` effect). -/
+theorem unpinEff_preserves_base {s : S3} (o : Nat) (hw : WF3 s) (hi : Inv3base s) :
+    WF3 (unpinEff s o) ∧ Inv3base (unpinEff s o) :=
+  sameA_base hw hi rfl rfl rfl rfl rfl fun q hq x hx => hi.2.2.1 q hq x hx
+
+/-- The effect of `unpin` preserves `AnchorOrder` (§44): only the pinning obligations change
+(§75). -/
+theorem unpinEff_preserves_anchorOrder {s : S3} (o : Nat) (hao : AnchorOrder s) :
+    AnchorOrder (unpinEff s o) :=
+  anchorOrder_of (s := s) rfl rfl rfl (effAnchorOK_of_A rfl rfl rfl) fun q hq x hx =>
+    hao q hq x hx
+
+/-- The effect of `unpin` preserves `NoDangling` (§54): only the pinning obligations change
+(§75). -/
+theorem unpinEff_preserves_noDangling {s : S3} (o : Nat) (hnd : NoDangling s) :
+    NoDangling (unpinEff s o) :=
+  noDangling_skel hnd (skel_of_A rfl) rfl rfl rfl
+
+/-- The effect of `unpin` preserves `AnchorOrderHeld` (§44): only the pinning obligations change
+(§75). -/
+theorem unpinEff_preserves_anchorOrderHeld {s : S3} (o : Nat) (h : AnchorOrderHeld s) :
+    AnchorOrderHeld (unpinEff s o) :=
+  sameA_anchorOrderHeld h rfl rfl rfl rfl
+
+/-- The effect of `unpin` preserves `RootHeldConv` (§40, §49.7): only the pinning obligations
+change (§75). -/
+theorem unpinEff_preserves_rootHeldConv {s : S3} (o : Nat) (h : RootHeldConv s) :
+    RootHeldConv (unpinEff s o) :=
+  sameA_rootHeldConv h rfl rfl
 
 /-- `pin` preserves `KInv` (§57, §58, §74). -/
 theorem pin_preserves {s s' : S3} {p : Nat} (hinv : KInv s)
     (h : PinStep p s (.ok s')) : KInv s' := by
   obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
-  exact pinEff_preserves p true hinv
+  obtain ⟨hw, ⟨hb, ho, hnd⟩, hh, -⟩ := hinv
+  exact kinv_of_parts (pinEff_preserves_base p hw hb) (pinEff_preserves_anchorOrder p ho)
+    (pinEff_preserves_noDangling p hnd) (pinEff_preserves_anchorOrderHeld p hh)
 
-/-- `pin` preserves the auxiliary `KAux` (§40, §49.7; §74 `ok` effect: only the pin flags
-change). -/
+/-- `pin` preserves the auxiliary `KAux` (§40, §49.7; §74 `ok` effect: only the pinning
+obligations change). -/
 theorem pin_preserves_kAux {s s' : S3} {p : Nat} (haux : KAux s)
     (h : PinStep p s (.ok s')) : KAux s' := by
   obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
-  exact pinEff_preserves_rootHeldConv p true haux
+  exact pinEff_preserves_rootHeldConv p haux
+
+/-- `pin` preserves `I5` (§57, §74): the leaves of the new obligation belong to `place`, usable
+by the precondition of §74; the other components read by `I5` are unchanged. -/
+theorem pin_preserves_i5 {k : K} {s s' : S3} {p : Nat} (h5 : I5 k s)
+    (h : PinStep p s (.ok s')) : I5 k s' := by
+  obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
+  refine i5_of h5 rfl rfl rfl fun l hl => ?_
+  rw [pin_pinEff, Bool.or_eq_true, decide_eq_true_iff] at hl
+  exact hl.imp_right fun hlp => ⟨p, hpre.usable, hlp⟩
 
 /-- `unpin` preserves `KInv` (§57, §58, §75). -/
-theorem unpin_preserves {k : K} {s s' : S3} {p : Nat} (hinv : KInv s)
-    (h : UnpinStep k p s (.ok s')) : KInv s' := by
+theorem unpin_preserves {k : K} {s s' : S3} {o : Nat} (hinv : KInv s)
+    (h : UnpinStep k o s (.ok s')) : KInv s' := by
   obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
-  exact pinEff_preserves p false hinv
+  obtain ⟨hw, ⟨hb, ho, hnd⟩, hh, -⟩ := hinv
+  exact kinv_of_parts (unpinEff_preserves_base o hw hb) (unpinEff_preserves_anchorOrder o ho)
+    (unpinEff_preserves_noDangling o hnd) (unpinEff_preserves_anchorOrderHeld o hh)
 
-/-- `unpin` preserves the auxiliary `KAux` (§40, §49.7; §75 `ok` effect: only the pin flags
-change). -/
-theorem unpin_preserves_kAux {k : K} {s s' : S3} {p : Nat} (haux : KAux s)
-    (h : UnpinStep k p s (.ok s')) : KAux s' := by
+/-- `unpin` preserves the auxiliary `KAux` (§40, §49.7; §75 `ok` effect: only the pinning
+obligations change). -/
+theorem unpin_preserves_kAux {k : K} {s s' : S3} {o : Nat} (haux : KAux s)
+    (h : UnpinStep k o s (.ok s')) : KAux s' := by
   obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
-  exact pinEff_preserves_rootHeldConv p false haux
+  exact unpinEff_preserves_rootHeldConv o haux
+
+/-- `unpin` preserves `I5` (§57, §75): it only ends an obligation, so every leaf pinned after it
+was pinned before. -/
+theorem unpin_preserves_i5 {k : K} {s s' : S3} {o : Nat} (h5 : I5 k s)
+    (h : UnpinStep k o s (.ok s')) : I5 k s' := by
+  obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
+  exact i5_of h5 rfl rfl rfl fun _ hl => .inl (pin_of_pin_unpinEff hl)
 
 /-- Determinism of `pin` (§58, §74): one outcome. -/
 theorem pin_det {p : Nat} {s : S3} {o₁ o₂ : Outcome3 S3} (h₁ : PinStep p s o₁)
     (h₂ : PinStep p s o₂) : o₁ = o₂ := Guarded.det h₁ h₂
 
 /-- Determinism of `unpin` (§58, §75): one outcome. -/
-theorem unpin_det {k : K} {p : Nat} {s : S3} {o₁ o₂ : Outcome3 S3} (h₁ : UnpinStep k p s o₁)
-    (h₂ : UnpinStep k p s o₂) : o₁ = o₂ := Guarded.det h₁ h₂
+theorem unpin_det {k : K} {o : Nat} {s : S3} {o₁ o₂ : Outcome3 S3} (h₁ : UnpinStep k o s o₁)
+    (h₂ : UnpinStep k o s o₂) : o₁ = o₂ := Guarded.det h₁ h₂
 
 end Ern.MemoryModel.Access

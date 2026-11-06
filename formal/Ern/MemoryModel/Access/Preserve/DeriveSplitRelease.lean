@@ -3,10 +3,12 @@ import Ern.MemoryModel.Access.Preserve.Common
 /-!
 # Access kernel: preservation by `derive`, `split` and `release`
 
-O1 `derive` (§60), O2 `split` (§61) and O3 `release` (§62) preserve the kernel invariant `KInv`
-(§57) and, separately, its auxiliary `KAux`; `split` needs the obligation `DDSound(K)` (§61, §80) for I1 only.
-Per-invariant lemmas, the effects of §61 and §62 on effective modes (§43), the failure of I1 after
-a `split` without `DDSound` (§61, note), and determinism (§58).
+O1 `derive` (§60), O2 `split` (§61) and O3 `release` (§62) of
+`specs/ERN_Memory_Model_Specification_v0.1.md` preserve the kernel invariant `KInv` (§57),
+separately its auxiliary `KAux`, and I5 (§57); `split` needs the obligation `DDSound(K)` (§61,
+§80) for I1 only, and `release` needs `WF3` (§49) for I2 (§51). Per-invariant lemmas, the effects
+of §61 and §62 on effective modes (§43), the failure of I1 after a `split` without `DDSound` (§61,
+note), and determinism (§58).
 -/
 
 namespace Ern.MemoryModel.Access
@@ -61,6 +63,15 @@ private theorem effAnchorOK_addAuth {s : S3} {y₀ : Authority} {x : Nat} {fd : 
   rw [he, hH, addAuth_lt (Nat.lt_of_le_of_lt (effAnchor_le s x) hx)]
   exact Iff.rfl
 
+/-- A step that keeps the places, the stack, the death markers and the pinning obligations keeps
+usability, footprints and pinned leaves, hence preserves I5 (§57; §40, §74). -/
+private theorem i5_congr {k : K} {s s' : S3} (hP : s'.P = s.P) (hF : s'.F = s.F)
+    (hd : s'.dead = s.dead) (hpin : s'.pins = s.pins) (h5 : I5 k s) : I5 k s' := by
+  intro l hl
+  rw [S3.pin_congr hpin] at hl
+  obtain ⟨q, hq, hlq⟩ := h5 l hl
+  exact ⟨q, (S3.Usable.congr hP hF hd).2 hq, by rw [hP]; exact hlq⟩
+
 /-! ## Additions of one derived authority (§60, §61) -/
 
 /-- Adding an active authority derived from `src`, within its footprint and held by a live holder,
@@ -92,16 +103,18 @@ private theorem addAuth_wf3 {s : S3} (hwf : WF3 s) {src : Nat} {x : Authority} {
     · exact (live _).2 (hwf.holders a y hy' ya)
     · exact (live _).2 hl
 
-/-- Adding an authority derived from `src` with a mode not above the mode of `src` and a footprint
-within its footprint preserves `I2` (§51). -/
+/-- Adding an authority derived from an active `src` with a mode not above the mode of `src` and a
+footprint within its footprint preserves `I2` (§51: the active new authority has an active
+origin). -/
 private theorem addAuth_i2 {s : S3} (h2 : I2 s) {src : Nat} {x : Authority} {m : Mode}
-    {fp : List Nat} {hd : Holder} (hx : s.A[src]? = some x) (hm : m.le x.mode)
-    (hfp : ∀ p ∈ fp, p ∈ x.footprint) : I2 (s.addAuth ⟨m, some src, fp, hd, true⟩) := by
+    {fp : List Nat} {hd : Holder} (hx : s.A[src]? = some x) (xa : x.active = true)
+    (hm : m.le x.mode) (hfp : ∀ p ∈ fp, p ∈ x.footprint) :
+    I2 (s.addAuth ⟨m, some src, fp, hd, true⟩) := by
   intro b y a hb ho
   rcases addAuth_get hb with ⟨-, hb''⟩ | ⟨rfl, rfl⟩
   · obtain ⟨x₁, hx₁, h⟩ := h2 b y a hb'' ho
     exact ⟨x₁, by rw [addAuth_lt (lt_of_getElem? hx₁)]; exact hx₁, h⟩
-  · cases ho; exact ⟨x, by rw [addAuth_lt (lt_of_getElem? hx)]; exact hx, hm, hfp⟩
+  · cases ho; exact ⟨x, by rw [addAuth_lt (lt_of_getElem? hx)]; exact hx, hm, hfp, fun _ => xa⟩
 
 /-- An addition keeps the anchors and their activity, so it preserves `I3` (§52). -/
 private theorem addAuth_i3 {s : S3} (h3 : I3 s) (y₀ : Authority) : I3 (s.addAuth y₀) :=
@@ -164,12 +177,13 @@ theorem derive_preserves_exclusivity {s s' : S3} {src : Nat} {region : List Nat}
   exact addAuth_I1 h1 hx hp.modeOK
 
 /-- `derive` preserves I2 (§51, §60.1, §60.2): the derived mode does not exceed the own mode of the
-source, whatever the region, and the region is within the footprint of the source. -/
+source, whatever the region, the region is within the footprint of the source, and the source,
+origin of the new active authority, is active. -/
 theorem derive_preserves_i2 {s s' : S3} {src : Nat} {region : List Nat} {m : Mode} (h2 : I2 s)
     (h : DeriveStep src region m s (.ok s')) : I2 s' := by
   obtain ⟨hp, rfl⟩ := Guarded.ok_iff.1 h
-  obtain ⟨x, hx, -, hm⟩ := exercisableAt_mode hp.exercisable
-  exact addAuth_i2 h2 hx hm fun p hp' => afp_eq hx ▸ hp.within p hp'
+  obtain ⟨x, hx, xa, hm⟩ := exercisableAt_mode hp.exercisable
+  exact addAuth_i2 h2 hx xa hm fun p hp' => afp_eq hx ▸ hp.within p hp'
 
 /-- `derive` preserves I3 (§52, §60 effect: no anchor is created or removed). -/
 theorem derive_preserves_i3 {s s' : S3} {src : Nat} {region : List Nat} {m : Mode} (h3 : I3 s)
@@ -214,6 +228,13 @@ theorem derive_preserves {s s' : S3} {src : Nat} {region : List Nat} {m : Mode} 
     ⟨⟨derive_preserves_exclusivity h1 h, derive_preserves_i2 h2 h, derive_preserves_i3 h3 h,
       i4_always _⟩, derive_preserves_anchorOrder hao h, derive_preserves_noDangling hnd h⟩
     (derive_preserves_anchorOrderHeld haoh h)
+
+/-- `derive` preserves I5 (§57, §60 effect): it keeps the places, the stack, the death markers and
+the pinning obligations, with no hypothesis on `K.Pinned`. -/
+theorem derive_preserves_i5 {k : K} {s s' : S3} {src : Nat} {region : List Nat} {m : Mode}
+    (h5 : I5 k s) (h : DeriveStep src region m s (.ok s')) : I5 k s' := by
+  obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
+  exact i5_congr (s := s) rfl rfl rfl rfl h5
 
 /-! ## O2 `split` (§61) -/
 
@@ -281,13 +302,13 @@ theorem split_preserves_exclusivity {k : K} (hdd : DDSound k) {s s' : S3} {src :
     (hp.disjoint.imp fun {r r'} hd => hd.elim id (hdd r r'))
 
 /-- `split` preserves I2 (§51, §61.1, §61.2): the new authorities are `Modify`, as the source
-exercisable in `Modify`, and lie within its footprint. -/
+exercisable in `Modify`, lie within its footprint, and have the active source as origin. -/
 theorem split_preserves_i2 {k : K} {s s' : S3} {src : Nat} {rs : List (List Nat)} (h2 : I2 s)
     (h : SplitStep k src rs s (.ok s')) : I2 s' := by
   obtain ⟨hp, rfl⟩ := Guarded.ok_iff.1 h
-  obtain ⟨x, hx, -, hm, hfp⟩ := split_src hp
-  exact split_induct I2 (fun _ _ h2 hx hfp => addAuth_i2 h2 hx (by rw [hm]; exact Mode.le_refl _)
-    hfp) rs s h2 hx hfp
+  obtain ⟨x, hx, xa, hm, hfp⟩ := split_src hp
+  exact split_induct I2 (fun _ _ h2 hx hfp => addAuth_i2 h2 hx xa
+    (by rw [hm]; exact Mode.le_refl _) hfp) rs s h2 hx hfp
 
 /-- `split` preserves I3 (§52, §61 effect: no anchor changes). -/
 theorem split_preserves_i3 {k : K} {s s' : S3} {src : Nat} {rs : List (List Nat)} (h3 : I3 s)
@@ -338,6 +359,13 @@ theorem split_preserves {k : K} (hdd : DDSound k) {s s' : S3} {src : Nat} {rs : 
     ⟨⟨split_preserves_exclusivity hdd h1 h, split_preserves_i2 h2 h, split_preserves_i3 h3 h,
       i4_always _⟩, split_preserves_anchorOrder hao h, split_preserves_noDangling hnd h⟩
     (split_preserves_anchorOrderHeld haoh h)
+
+/-- `split` preserves I5 (§57, §61 effect): it keeps the places, the stack, the death markers and
+the pinning obligations, with no hypothesis on `K.Pinned`. -/
+theorem split_preserves_i5 {k : K} {s s' : S3} {src : Nat} {rs : List (List Nat)} (h5 : I5 k s)
+    (h : SplitStep k src rs s (.ok s')) : I5 k s' := by
+  obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
+  exact i5_congr (s := s) rfl rfl rfl rfl h5
 
 /-- Adding an authority not covering `p` keeps the effective mode of `src` on `p`, through the
 whole `split` (§43, §61 effect). -/
@@ -524,16 +552,32 @@ theorem release_preserves_exclusivity {s s' : S3} {a : Nat} (h1 : I1 s)
   rw [release_ancs hx] at hnab hnba; rw [m₁, m₂]
   exact h1 a' b' x₀ y₀ p hab hx₀ hy₀ (ac₁ xa').1 (ac₂ ya').1 (f₁ ▸ xp) (f₂ ▸ yp) hnab hnba
 
-/-- `release` preserves I2 (§51, §62 effect): origins, modes and footprints are unchanged. -/
-theorem release_preserves_i2 {s s' : S3} {a : Nat} (h2 : I2 s)
+/-- `release` preserves I2 (§51, §62.3, §62 effect): origins, modes and footprints are unchanged,
+and the released authority is the origin of no active authority, since it has no active
+descendant (§62.3) and, under `WF3` (§49.5, last paragraph of §49: origins precede), the origin of
+an authority is one of its ancestors. -/
+theorem release_preserves_i2 {s s' : S3} {a : Nat} (hw : WF3 s) (h2 : I2 s)
     (h : ReleaseStep a s (.ok s')) : I2 s' := by
   obtain ⟨hp, rfl⟩ := Guarded.ok_iff.1 h
   obtain ⟨x, hx, -⟩ := hp.active
   intro b y o hb ho
-  obtain ⟨y₀, hy₀, m₀, e', f₀, -⟩ := release_back hx hb
-  obtain ⟨x₁, hx₁, hm, hh⟩ := h2 b y₀ o hy₀ (e' ▸ ho)
+  obtain ⟨y₀, hy₀, m₀, e', f₀, -, ea⟩ := release_back hx hb
+  have ho₀ : y₀.origin = some o := e' ▸ ho
+  obtain ⟨x₁, hx₁, hm, hh, hact⟩ := h2 b y₀ o hy₀ ho₀
   obtain ⟨x₁', hx₁', em, -, ef, -⟩ := release_fwd hx hx₁
-  exact ⟨x₁', hx₁', by rw [m₀, em]; exact hm, fun p hp' => by rw [ef]; exact hh p (f₀ ▸ hp')⟩
+  refine ⟨x₁', hx₁', by rw [m₀, em]; exact hm, fun p hp' => by rw [ef]; exact hh p (f₀ ▸ hp'),
+    fun ya => ?_⟩
+  have y₀a := (ea ya).1
+  rw [release_get hx] at hx₁'
+  split at hx₁'
+  · rename_i e; subst e
+    have hanc : a ∈ s.ancs b := by
+      unfold S3.ancs
+      rw [chain_cons (by simp [S3.org, hy₀, ho₀]) (hw.origins b y₀ a hy₀ ho₀)]
+      exact List.mem_cons_self ..
+    exact absurd ⟨y₀, hy₀, y₀a⟩
+      (hp.noActiveDesc b (List.mem_range.2 (lt_of_getElem? hy₀)) hanc)
+  · rw [hx₁] at hx₁'; cases hx₁'; exact hact y₀a
 
 /-- `release` preserves I3 (§52, §62.3, §62.4): no usable place but the holding place keeps the
 released authority as anchor, and the effect removes it from the holding place. -/
@@ -598,9 +642,16 @@ theorem release_preserves {s s' : S3} {a : Nat} (hinv : KInv s)
     (h : ReleaseStep a s (.ok s')) : KInv s' := by
   obtain ⟨hw, ⟨⟨h1, h2, h3, -⟩, hao, hnd⟩, haoh, -⟩ := hinv
   exact kInv_of (release_preserves_wf3 hw h)
-    ⟨⟨release_preserves_exclusivity h1 h, release_preserves_i2 h2 h, release_preserves_i3 h3 h,
+    ⟨⟨release_preserves_exclusivity h1 h, release_preserves_i2 hw h2 h, release_preserves_i3 h3 h,
       i4_always _⟩, release_preserves_anchorOrder hao h, release_preserves_noDangling hnd h⟩
     (release_preserves_anchorOrderHeld haoh h)
+
+/-- `release` preserves I5 (§57, §62 effect): it keeps the places, the stack, the death markers
+and the pinning obligations, with no hypothesis on `K.Pinned`. -/
+theorem release_preserves_i5 {k : K} {s s' : S3} {a : Nat} (h5 : I5 k s)
+    (h : ReleaseStep a s (.ok s')) : I5 k s' := by
+  obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
+  exact i5_congr (release_P s a) (release_F s a) (release_dead s a) (pins_releaseEff s a) h5
 
 /-- Restoration of rights by `release` (§62 effect, §26, §32): if `b`, derived from `a`, is the
 only active descendant of `a` covering `p`, then before the release `a` has no effective mode on `p`

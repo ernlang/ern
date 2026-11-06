@@ -1,10 +1,11 @@
 /-!
 # Access kernel: state and derived notions
 
-Abstract authority machine of `specs/ERN_Memory_Model_Specification_v0.md`, Parts IV–VII:
+Abstract authority machine of `specs/ERN_Memory_Model_Specification_v0.1.md`, Parts IV–VII:
 frames (§39), places, leaves and footprints (§40), initialization states (§41), authorities
-(§42), the state `S3` (§38), the external contract `K` (§48, §80), and the derived notions that
-the operations of §60–§75 read: usability (§40), effective modes and exercisability (§43),
+(§42), dynamic pinning obligations (§74, §75), the state `S3` (§38), the external contract `K`
+(§48, §80), and the derived notions that the operations of §60–§75 read: usability (§40),
+effective modes, exercisability and the grounding of a right (§43; §63.4, §69.2, §70.3),
 effective anchors and anchor order (§44), outcomes (§58).
 
 Identities of places and authorities are list indices; index order represents acyclicity of
@@ -128,9 +129,17 @@ structure Authority where
   active : Bool
 deriving DecidableEq, Repr
 
+/-- Dynamic pinning obligation (§74, §75): the place `pin` was applied to, the leaves it pins, and
+whether it is still active. Its identity is its index in `S3.pins`. -/
+structure PinOb where
+  place : Nat
+  leaves : List Nat
+  active : Bool
+deriving DecidableEq, Repr
+
 /-- State `S3` (§38). `F`, `P`, `I`, `A`, `D` are the components of §38. `nF` (next fresh frame
-identity, §39), `dead` (death marker of places, §40) and `pin` (dynamic pinning of leaves, §74)
-are auxiliary information that creates no right (§38). -/
+identity, §39), `dead` (death marker of places, §40) and `pins` (dynamic pinning obligations,
+§74, §75) are auxiliary information that creates no right (§38). -/
 structure S3 where
   F : Frames
   nF : Nat
@@ -139,7 +148,10 @@ structure S3 where
   A : List Authority
   D : Nat → List Nat
   dead : Nat → Bool
-  pin : Nat → Bool
+  pins : List PinOb
+
+/-- Leaf `l` is dynamically pinned (§74): an active pinning obligation covers it. -/
+def S3.pin (s : S3) (l : Nat) : Bool := s.pins.any fun o => o.active && o.leaves.contains l
 
 /-- Shape of the locals of `enterFrame` (§72) and of an allocation (§71.1): each element is an
 optional structural parent (a place index) and a `kind`. Every element is owned by the holder
@@ -147,9 +159,10 @@ receiving the shape. -/
 abbrev LocalShape := List (Option Nat × Nat)
 
 /-- External contract `K` (§48, §80): `DeclaredDisjoint` on regions (§23, §61.3);
-`SharedMutable` and `Pinned` on leaves (§68.1, §63.5); `ExternalDone` and `Deallocable` on places
-(§75, §70.2); `FreeCompat place auth` (§70.2); `Satisfiable provider shape s` (§71). Obligations of
-`K` are hypotheses of theorems, never fields. -/
+`SharedMutable` and `Pinned` on leaves (§68.1, §63.5); `ExternalDone` on dynamic pinning
+obligations, by identity (§75); `Deallocable` on places (§70.2); `FreeCompat place auth` (§70.2);
+`Satisfiable provider shape s` (§71). Obligations of `K` are hypotheses of theorems, never
+fields. -/
 structure K where
   DeclaredDisjoint : List Nat → List Nat → Prop
   SharedMutable : Nat → Prop
@@ -761,6 +774,25 @@ def HasRight (s : S3) (m : Mode) (q : Nat) : Prop :=
 /-- Decidability of `HasRight` (§43). -/
 instance (s : S3) (m : Mode) (q : Nat) : Decidable (HasRight s m q) := by
   unfold HasRight; infer_instance
+
+/-- Authority `g` grounds the right `HasRight(s, m, q)` (§43; §63.4, §69.2, §70.3: "the
+exercisable authority on which that right rests"): it is exercisable at `m` and its effective mode
+permits `m` on every leaf of `q`'s footprint. -/
+def Grounds (s : S3) (m : Mode) (q g : Nat) : Prop :=
+  g ∈ List.range s.A.length ∧ s.ExercisableAt g m ∧
+    ∀ l ∈ footprint s.P q, Allows (effective s g l) m
+
+/-- Decidability of `Grounds` (§63.4, §69.2, §70.3). -/
+instance (s : S3) (m : Mode) (q g : Nat) : Decidable (Grounds s m q g) := by
+  unfold Grounds; infer_instance
+
+/-- Authority `j` is the grounding authority `g` or belongs to its origin chain (§63.4, §69.2,
+§70.3: "the exercisable authority on which that right rests and its origin chain"). -/
+def RightChain (s : S3) (g j : Nat) : Prop := j = g ∨ j ∈ s.ancs g
+
+/-- Decidability of `RightChain` (§63.4, §69.2, §70.3). -/
+instance (s : S3) (g j : Nat) : Decidable (RightChain s g j) := by
+  unfold RightChain; infer_instance
 
 /-! ## Dependencies and anchors (§44) -/
 

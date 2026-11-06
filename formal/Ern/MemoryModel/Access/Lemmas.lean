@@ -4,11 +4,12 @@ import Ern.MemoryModel.Access.Invariants
 # Access kernel: shared lemmas
 
 Lemmas shared by the preservation proofs of the kernel operations of
-`specs/ERN_Memory_Model_Specification_v0.md` §60–§75: origin and parent chains (§40, §42),
-footprints and frames of places (§40), effective modes (§43) and their exclusivity under `I1`
-(§50), additions of authorities (§42, §60, §61), states with the same authorities up to holders
-(§63), consequences of `WF3` (§49), usability (§40), root places (§40, §49.6, §49.7), the shape of
-`transfer` (§63), and `NoOrphan` from `WF3` (§54).
+`specs/ERN_Memory_Model_Specification_v0.1.md` §60–§75: origin and parent chains (§40, §42),
+footprints and frames of places (§40), effective modes (§43), the grounding of a right (§43,
+§63.4, §69.2, §70.3), exclusivity under `I1` (§50), active origins under `I2` (§51), additions of
+authorities (§42, §60, §61), states with the same authorities up to holders (§63), consequences
+of `WF3` (§49), usability (§40), root places (§40, §49.6, §49.7), the shape of `transfer` (§63),
+`NoOrphan` from `WF3` (§54), and dynamic pinning obligations (§74, §75).
 -/
 
 namespace Ern.MemoryModel.Access
@@ -126,6 +127,20 @@ theorem chain_trans {org : Nat → Option Nat} (hlt : ∀ i o, org i = some o �
       rcases List.mem_cons.1 hr with rfl | hr
       · exact List.mem_cons_of_mem _ ho
       · exact List.mem_cons_of_mem _ (chain_trans hlt n p (by omega) r hr o ho)
+
+/-- An element of a chain is the link of the start or belongs to the chain of that link (§40,
+§42). -/
+theorem mem_chain {org : Nat → Option Nat} {i x : Nat} (h : x ∈ chain org i) :
+    ∃ o, org i = some o ∧ o < i ∧ (x = o ∨ x ∈ chain org o) := by
+  cases ho : org i with
+  | none => rw [chain_none ho] at h; simp at h
+  | some o =>
+    rcases Nat.lt_or_ge o i with hlt | hge
+    · rw [chain_cons ho hlt] at h; exact ⟨o, rfl, hlt, List.mem_cons.1 h⟩
+    · exfalso
+      cases i with
+      | zero => simp [chain, chainF] at h
+      | succ k => simp [chain, chainF, ho, Nat.not_lt.2 hge] at h
 
 /-! ## Footprints and frames of places (§40) -/
 
@@ -301,6 +316,14 @@ theorem allows_effOf {m m' : Mode} {ds : List Mode} (h : Allows (effOf m ds) m')
     · exact .inr ⟨hn, Mode.le_observe h⟩
   · exact h.elim
 
+/-! ## Grounding of a right (§43, §63.4, §69.2, §70.3) -/
+
+/-- `HasRight(s, m, q)` holds exactly when some authority grounds it (§43; §63.4, §69.2,
+§70.3). -/
+theorem hasRight_iff_grounds {s : S3} {m : Mode} {q : Nat} :
+    HasRight s m q ↔ ∃ g, Grounds s m q g :=
+  ⟨fun ⟨g, hg, he, hl⟩ => ⟨g, hg, he, hl⟩, fun ⟨g, hg, he, hl⟩ => ⟨g, hg, he, hl⟩⟩
+
 /-! ## Consequences of `I1` (§50) -/
 
 /-- Under `I1`, two distinct authorities with present effective modes on a leaf have compatible
@@ -344,6 +367,31 @@ theorem Compat.symm {m₁ m₂ : Mode} (h : Compat m₁ m₂) : Compat m₂ m₁
 /-- `I4` holds in every state (§53, first sentence): a read requires `Init` on every leaf read
 (§66.1). -/
 theorem i4_always (s : S3) : I4 s := fun _ _ l hl hm h => by rw [h.init l hl] at hm; cases hm
+
+/-! ## Consequences of `I2` (§51) -/
+
+/-- Under `I2`, the origin of an active derived authority is active (§51). -/
+theorem I2.origin_active {s : S3} (h2 : I2 s) {b a : Nat} {y : Authority}
+    (hb : s.A[b]? = some y) (ho : y.origin = some a) (ya : y.active = true) : s.Active a := by
+  obtain ⟨x, hx, -, -, hxa⟩ := h2 b y a hb ho; exact ⟨x, hx, hxa ya⟩
+
+/-- Under `I2`, every authority of the origin chain of an active authority below `n` is active
+(§51; §44, §60.1). -/
+theorem I2.ancs_active_lt {s : S3} (h2 : I2 s) :
+    ∀ n j, j < n → s.Active j → ∀ x ∈ s.ancs j, s.Active x
+  | 0, _, h, _, _, _ => absurd h (Nat.not_lt_zero _)
+  | n + 1, j, hj, ⟨y, hy, ya⟩, x, hx => by
+    obtain ⟨o, ho, hlt, hx⟩ := mem_chain hx
+    have hoa : s.Active o := h2.origin_active hy (by simpa [S3.org, hy] using ho) ya
+    rcases hx with rfl | hx
+    · exact hoa
+    · exact I2.ancs_active_lt h2 n o (by omega) hoa x hx
+
+/-- Under `I2`, every authority of the origin chain of an active authority, its effective anchor
+included, is active (§51; §44, §60.1). -/
+theorem I2.ancs_active {s : S3} (h2 : I2 s) {j : Nat} (hj : s.Active j) :
+    ∀ x ∈ s.ancs j, s.Active x :=
+  h2.ancs_active_lt (j + 1) j (Nat.lt_succ_self j) hj
 
 /-! ## Additions of authorities (§42, §60, §61) -/
 
@@ -530,10 +578,11 @@ theorem SameSkel.i1 {s s' : S3} (h : SameSkel s s') (h1 : I1 s) : I1 s' := by
 theorem SameSkel.i2 {s s' : S3} (h : SameSkel s s') (h2 : I2 s) : I2 s' := by
   intro b y a hb ho
   obtain ⟨y₀, hy₀, e⟩ := h.get hb; simp [skel] at e
-  obtain ⟨x₀, hx₀, hm, hh⟩ := h2 b y₀ a hy₀ (e.2.1 ▸ ho)
+  obtain ⟨x₀, hx₀, hm, hh, ha⟩ := h2 b y₀ a hy₀ (e.2.1 ▸ ho)
   obtain ⟨x', hx', e'⟩ := h.get' hx₀; simp [skel] at e'
   exact ⟨x', hx', by rw [e.1, e'.1]; exact hm,
-    fun p hp => by rw [e'.2.2.1]; exact hh p (e.2.2.1 ▸ hp)⟩
+    fun p hp => by rw [e'.2.2.1]; exact hh p (e.2.2.1 ▸ hp),
+    fun ya => by rw [e'.2.2.2]; exact ha (e.2.2.2 ▸ ya)⟩
 
 /-- The origin clause of `WF3` depends only on the skeletons (§49.5). -/
 theorem SameSkel.origins {s s' : S3} (h : SameSkel s s')
@@ -940,14 +989,14 @@ theorem addAuth_I1 {s : S3} (ht : I1 s) {src : Nat} {x : Authority} {m : Mode} {
       (fun e => hnba (e ▸ List.mem_cons_self ..)) fun e => hnba (List.mem_cons_of_mem _ e)
   · exact absurd rfl hab
 
-/-- Adding an active authority derived from `src`, with a mode not above the mode of `src`, a
-footprint within the footprint of `src`, a mode permitted by the effective mode of `src` on each
-leaf, and a live holder, preserves `WF3` (§49) and `I1`–`I4` (§50–§53). Shared by `derive` (§60)
-and `split` (§61). -/
+/-- Adding an active authority derived from an active `src`, with a mode not above the mode of
+`src`, a footprint within the footprint of `src`, a mode permitted by the effective mode of `src`
+on each leaf, and a live holder, preserves `WF3` (§49) and `I1`–`I4` (§50–§53). Shared by
+`derive` (§60.1: `source` is active) and `split` (§61.1). -/
 theorem addAuth_preserves {s : S3} (hwf : WF3 s) (hinv : Inv3base s) {src : Nat} {x : Authority}
-    {m : Mode} {fp : List Nat} {hd : Holder} (hx : s.A[src]? = some x) (hm : m.le x.mode)
-    (hfp : ∀ p ∈ fp, p ∈ x.footprint) (hal : ∀ p ∈ fp, Allows (effective s src p) m)
-    (hl : HolderLive s hd) :
+    {m : Mode} {fp : List Nat} {hd : Holder} (hx : s.A[src]? = some x) (hxa : x.active = true)
+    (hm : m.le x.mode) (hfp : ∀ p ∈ fp, p ∈ x.footprint)
+    (hal : ∀ p ∈ fp, Allows (effective s src p) m) (hl : HolderLive s hd) :
     WF3 (s.addAuth ⟨m, some src, fp, hd, true⟩) ∧
       Inv3base (s.addAuth ⟨m, some src, fp, hd, true⟩) := by
   obtain ⟨i1, i2, i3, -⟩ := hinv
@@ -979,7 +1028,7 @@ theorem addAuth_preserves {s : S3} (hwf : WF3 s) (hinv : Inv3base s) {src : Nat}
     · obtain ⟨x₁, hx₁, h⟩ := i2 b y a hb'' ho
       exact ⟨x₁, by rw [addAuth_lt (lt_of_getElem? hx₁)]; exact hx₁, h⟩
     · cases ho
-      exact ⟨x, by rw [addAuth_lt hs]; exact hx, hm, hfp⟩
+      exact ⟨x, by rw [addAuth_lt hs]; exact hx, hm, hfp, fun _ => hxa⟩
 
 /-! ## Shape of `transfer` (§63) -/
 
@@ -1435,5 +1484,105 @@ theorem noOrphan_of_wf3 {s : S3} (hw : WF3 s) : NoOrphan s := by
   · rw [← ht]; exact dropLoops_nodup _ _ (Nat.le_refl _)
   · rw [← ht, dropLoops_getLast]; exact hlast
   · rw [← ht]; exact dropLoops_linked _ hlink
+
+/-! ## Dynamic pinning obligations (§74, §75) -/
+
+/-- Leaf `l` is dynamically pinned exactly when an active obligation, of some identity `i`, covers
+it (§74). -/
+theorem S3.pin_iff {s : S3} {l : Nat} : s.pin l = true ↔
+    ∃ (i : Nat) (ob : PinOb), s.pins[i]? = some ob ∧ ob.active = true ∧ l ∈ ob.leaves := by
+  simp only [S3.pin, List.any_eq_true, Bool.and_eq_true, List.contains_iff_mem]
+  constructor
+  · rintro ⟨ob, hob, ha, hl⟩
+    obtain ⟨i, hi⟩ := List.mem_iff_getElem?.1 hob
+    exact ⟨i, ob, hi, ha, hl⟩
+  · rintro ⟨i, ob, hi, ha, hl⟩; exact ⟨ob, List.mem_iff_getElem?.2 ⟨i, hi⟩, ha, hl⟩
+
+/-- Dynamic pinning depends only on the obligations (§74). -/
+theorem S3.pin_congr {s s' : S3} (h : s'.pins = s.pins) : s'.pin = s.pin := by
+  funext l; simp only [S3.pin, h]
+
+/-- After `pin p`, a leaf is pinned when it was, or when it is a leaf of `p` (§74 `ok`
+effect). -/
+theorem pin_pinEff (s : S3) (p l : Nat) :
+    (pinEff s p).pin l = (s.pin l || decide (l ∈ footprint s.P p)) := by
+  simp [S3.pin, pinEff]
+
+/-- Element `j` of `l.modify i f` (§75 `ok` effect), proved without classical reasoning. -/
+private theorem getElem?_modify' {α : Type} (f : α → α) :
+    ∀ (l : List α) (i j : Nat), (l.modify i f)[j]? = if i = j then (l[j]?).map f else l[j]?
+  | [], i, j => by rw [List.modify_nil]; split <;> rfl
+  | _ :: _, 0, 0 => rfl
+  | _ :: _, 0, _ + 1 => by rw [List.modify_zero_cons]; split <;> first | rfl | (exfalso; omega)
+  | _ :: _, _ + 1, 0 => rfl
+  | _ :: l, i + 1, j + 1 => by
+    rw [List.modify_succ_cons, List.getElem?_cons_succ, List.getElem?_cons_succ,
+      getElem?_modify' f l i j]
+    split <;> split <;> first | rfl | (exfalso; omega)
+
+/-- The obligations after `unpin o`: obligation `o` is inactive, the others are unchanged (§75
+`ok` effect). -/
+theorem pins_unpinEff (s : S3) (o i : Nat) :
+    (unpinEff s o).pins[i]? =
+      if o = i then (s.pins[i]?).map fun ob => { ob with active := false } else s.pins[i]? :=
+  getElem?_modify' _ s.pins o i
+
+/-- After `unpin o`, a leaf is pinned exactly when an active obligation other than `o` covers it
+(§75 `ok` effect: a leaf stays pinned while another active obligation covers it). -/
+theorem pin_unpinEff_iff {s : S3} {o l : Nat} :
+    (unpinEff s o).pin l = true ↔
+      ∃ (i : Nat) (ob : PinOb), i ≠ o ∧ s.pins[i]? = some ob ∧ ob.active = true ∧
+        l ∈ ob.leaves := by
+  rw [S3.pin_iff]
+  constructor
+  · rintro ⟨i, ob, hi, ha, hl⟩
+    rw [pins_unpinEff] at hi
+    split at hi
+    · cases h : s.pins[i]? with
+      | none => rw [h] at hi; cases hi
+      | some ob' => rw [h] at hi; cases hi; cases ha
+    · exact ⟨i, ob, Ne.symm ‹_›, hi, ha, hl⟩
+  · rintro ⟨i, ob, hne, hi, ha, hl⟩
+    refine ⟨i, ob, ?_, ha, hl⟩
+    rw [pins_unpinEff]; split
+    · exact absurd (Eq.symm ‹_›) hne
+    · exact hi
+
+/-- `unpin` only lifts pins (§75 `ok` effect). -/
+theorem pin_of_pin_unpinEff {s : S3} {o l : Nat} (h : (unpinEff s o).pin l = true) :
+    s.pin l = true := by
+  obtain ⟨i, ob, -, hi, ha, hl⟩ := pin_unpinEff_iff.1 h
+  exact S3.pin_iff.2 ⟨i, ob, hi, ha, hl⟩
+
+/-- `derive` keeps the pinning obligations (§60 `ok` effect). -/
+theorem pins_deriveEff (s : S3) (src : Nat) (region : List Nat) (m : Mode) :
+    (deriveEff s src region m).pins = s.pins := rfl
+/-- `split` keeps the pinning obligations (§61 `ok` effect). -/
+theorem pins_splitEff (s : S3) (src : Nat) (rs : List (List Nat)) :
+    (splitEff s src rs).pins = s.pins := rfl
+/-- `release` keeps the pinning obligations (§62 `ok` effect). -/
+theorem pins_releaseEff (s : S3) (a : Nat) : (releaseEff s a).pins = s.pins := by
+  unfold releaseEff; split <;> rfl
+/-- `transfer` keeps the pinning obligations (§63 `ok` effect). -/
+theorem pins_transferEff (s : S3) (src dst : Nat) : (transferEff s src dst).pins = s.pins := rfl
+/-- `depend` keeps the pinning obligations (§64 `ok` effect). -/
+theorem pins_dependEff (s : S3) (q x : Nat) : (dependEff s q x).pins = s.pins := rfl
+/-- `store` keeps the pinning obligations (§65 `ok` effect). -/
+theorem pins_storeEff (s : S3) (a p : Nat) : (storeEff s a p).pins = s.pins := by
+  unfold storeEff; split <;> rfl
+/-- `enterFrame` keeps the pinning obligations (§72 `ok` effect). -/
+theorem pins_enterEff (s : S3) (ps : List Nat) (ls : LocalShape) :
+    (enterEff s ps ls).pins = s.pins := rfl
+/-- `exitFrame` keeps the pinning obligations (§73 `ok` effect). -/
+theorem pins_exitEff (s : S3) : (exitEff s).pins = s.pins := rfl
+/-- `write` and `writeShared` keep the pinning obligations (§67, §68 `ok` effects). -/
+theorem pins_write3Eff (s : S3) (ls : List Nat) : (write3Eff s ls).pins = s.pins := rfl
+/-- `endUse` keeps the pinning obligations (§69 `ok` effect). -/
+theorem pins_endUseEff (s : S3) (p : Nat) : (endUseEff s p).pins = s.pins := rfl
+/-- `free` keeps the pinning obligations (§70 `ok` effect). -/
+theorem pins_freeEff (s : S3) (p : Nat) : (freeEff s p).pins = s.pins := rfl
+/-- `alloc` keeps the pinning obligations (§71 `ok` outcome). -/
+theorem pins_allocEff (s : S3) (owner : Nat) (ls : LocalShape) :
+    (allocEff s owner ls).pins = s.pins := rfl
 
 end Ern.MemoryModel.Access

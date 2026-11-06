@@ -3,9 +3,9 @@ import Ern.MemoryModel.Access.Preserve.Common
 /-!
 # Access kernel: `alloc` (O14)
 
-Results on `alloc provider owner shape` of `specs/ERN_Memory_Model_Specification_v0.md` §71 and
-on the outcomes of §58: the `ok` outcome preserves the main invariant of §57 (`KInv`) and,
-separately, its auxiliary `KAux`; it adds exactly one root place and exactly one authority, the root
+Results on `alloc provider owner shape` of `specs/ERN_Memory_Model_Specification_v0.1.md` §71
+and on the outcomes of §58: the `ok` outcome preserves the main invariant of §57 (`KInv`),
+separately its auxiliary `KAux`, and `I5` (§57); it adds exactly one root place and exactly one authority, the root
 `Modify` authority of that place, with no origin, held by `owner`, the new leaves `Uninit` (§71,
 `ok`); `fail` happens only when the static preconditions hold and `K.Satisfiable` is false, and
 produces no new state (§58, §71); `alloc` is deterministic; no other kernel operation O1–O16
@@ -487,7 +487,8 @@ theorem i1 (hst : AllocStatic k s pr ow ls) (hw : WF3 s) (h1 : I1 s) :
     have := fp_new_ge (s := s) (ow := ow) (ls := ls) xp; omega
   · exact absurd rfl hab
 
-/-- `alloc` preserves `I2` (§51, §71 `ok`): the new authority has no origin. -/
+/-- `alloc` preserves `I2` (§51, §71 `ok`): the new authority has no origin, and the former
+authorities keep their origins, with their modes, footprints and activity. -/
 theorem i2 (hst : AllocStatic k s pr ow ls) (h2 : I2 s) : I2 (allocEff s ow ls) := by
   intro b y a hb ho
   rcases allocA_get hst hb with ⟨-, hb'⟩ | ⟨-, rfl⟩
@@ -598,6 +599,18 @@ theorem alloc_preserves_kAux {k : K} {pr ow : Nat} {ls : LocalShape} {s s' : S3}
   cases h with
   | ok hst _ => exact Alloc.rootHeldConv hst hk.1 ha
 
+/-- `alloc` preserves `I5` (§57; §71 `ok`, §74): the pinning obligations are unchanged, and a
+place usable before the step stays usable with the same footprint. No other invariant is
+needed. -/
+theorem alloc_preserves_i5 {k : K} {pr ow : Nat} {ls : LocalShape} {s s' : S3}
+    (h5 : I5 k s) (h : AllocStep k pr ow ls s (.ok s')) : I5 k s' := by
+  cases h with
+  | ok hst _ =>
+    intro l hl
+    rw [S3.pin_congr (pins_allocEff s ow ls)] at hl
+    obtain ⟨q, hq, hlq⟩ := h5 l hl
+    exact ⟨q, Alloc.usable_old hq, (Alloc.footprint_old hst.shapeOK hq.lt l).2 hlq⟩
+
 /-- The `ok` effect of `alloc` (§71, `ok`): the former places are kept and the nonempty shape is
 appended with fresh identities, every new place owned by `owner`; among the new places exactly
 one, `|P|`, is a root place (a new storage root); exactly one authority is added, at the fresh
@@ -655,7 +668,7 @@ theorem fail_only_alloc (k : K) (s : S3) :
     (∀ a ls, ¬ Write3Step a ls s .fail) ∧
     (∀ a ls, ¬ WriteSharedStep k a ls s .fail) ∧
     (∀ p, ¬ PinStep p s .fail) ∧
-    (∀ p, ¬ UnpinStep k p s .fail) ∧
+    (∀ o, ¬ UnpinStep k o s .fail) ∧
     (∀ p, ¬ EndUseStep k p s .fail) ∧
     (∀ p auth, ¬ FreeStep k p auth s .fail) ∧
     (∀ a p, ¬ StoreStep a p s .fail) :=

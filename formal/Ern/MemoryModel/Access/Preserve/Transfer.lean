@@ -3,19 +3,19 @@ import Ern.MemoryModel.Access.Preserve.Common
 /-!
 # Access kernel: `transfer` (O4, §63)
 
-Properties of `transfer` (§63), its preservation of the kernel invariant `KInv` (§57) and,
-separately, of the auxiliary `KAux` (`transfer_preserves_kAux`, unconditional).
+Properties of `transfer` (§63 of `specs/ERN_Memory_Model_Specification_v0.1.md`), its
+preservation of the kernel invariant `KInv` (§57), of the auxiliary `KAux`
+(`transfer_preserves_kAux`), of the auxiliary `HeldAnchored` (`transfer_preserves_heldAnchored`)
+and of `I5` (`transfer_preserves_i5`).
 
-* §63 as written does not preserve `KInv`: `transfer_breaks_kinv` is a reachable state where an
-  accepted transfer closes an ownership cycle, breaking holder validity (§49.8) and `NoDangling`
-  (§54).
-* With the destination usable in the resulting state (an extra hypothesis, not a clause of §63),
-  `WF3`, `Inv3` and `NoOrphan` are preserved (`transfer_preserves_wf3_inv3_of_dst_usable`),
-  but `AnchorOrderHeld` is not: §63.7 constrains only the moved held authorities, and an authority
-  held outside the value whose effective anchor moves with it escapes the check
-  (`transfer_preserves_of_dst_usable_fails`, on a state that is not built by kernel steps).
-  With the further hypothesis `HeldAnchored` (also not a clause of the spec), `KInv` is preserved
-  (`transfer_preserves_of_dst_usable_of_heldAnchored`).
+* With §63.9 (the destination is usable in the resulting state), `WF3`, `Inv3` and `NoOrphan` are
+  preserved (`transfer_preserves_wf3_inv3`). `AnchorOrderHeld` needs more: §63.7 constrains only
+  the moved held authorities, and an authority held outside the value whose effective anchor
+  moves with it escapes the check (`transfer_preserves_of_dst_usable_fails`, on a state that is not
+  built by kernel steps). With the auxiliary `HeldAnchored` (not a clause of §57), `KInv` is
+  preserved (`transfer_preserves`).
+* A transfer that would close an ownership cycle, and break `KInv`, is rejected by §63.9
+  (`transfer_cycle_rejected`).
 * The effect and rejection theorems of §63.
 -/
 
@@ -169,7 +169,8 @@ private instance (s : S3) : Decidable (I1B s) := by unfold I1B; infer_instance
 /-- `I2` (§51), bounded form. -/
 private def I2B (s : S3) : Prop :=
   ∀ b ∈ List.range s.A.length, OptP (s.A[b]?) (fun y => OptP y.origin (fun a =>
-    OptP (s.A[a]?) (fun x => y.mode.le x.mode ∧ ∀ p ∈ y.footprint, p ∈ x.footprint) False) True)
+    OptP (s.A[a]?) (fun x => y.mode.le x.mode ∧ (∀ p ∈ y.footprint, p ∈ x.footprint) ∧
+      (y.active = true → x.active = true)) False) True)
     True
 
 /-- Decidability of `I2B` (§51). -/
@@ -483,7 +484,7 @@ private theorem transfer_effAnchorOK_unmoved {s : S3} {src dst x : Nat} {z : Aut
     rw [hh] at hm'
     exact transfer_pframe_unmoved (fun ho => hm' (.inr ho))
 
-/-! ## Preservation under extra hypotheses (§57, §63) -/
+/-! ## Preservation (§57, §63) -/
 
 /-- §49.7 (`RootHeld`) after a transfer of a usable `src`: the holder of a root authority and the
 owner of its root place change together (§40, §63 `ok` effect, third item). -/
@@ -522,11 +523,11 @@ private theorem transfer_rootHeldConv {s : S3} {src dst : Nat} (hr : RootHeldCon
   refine ⟨_, by rw [transfer_P_get, hpr]; rfl, ?_⟩
   by_cases hc : heldIn s.P src pr.owner <;> simp [hc, hh]
 
-/-- `WF3` (§49) after an accepted transfer whose destination is usable in the resulting state.
-Only §49.8 (holder validity) uses the destination's usability. -/
+/-- `WF3` (§49) after an accepted transfer. Only §49.8 (holder validity) uses §63.9, the
+destination usable in the resulting state. -/
 private theorem transfer_wf3 {k : K} {s : S3} {src dst : Nat} (hwf : WF3 s)
-    (hpre : TransferPre k s src dst) (hd' : (transferEff s src dst).Usable dst) :
-    WF3 (transferEff s src dst) := by
+    (hpre : TransferPre k s src dst) : WF3 (transferEff s src dst) := by
+  have hd' := hpre.dstUsableAfter
   have sk := transfer_skel s src dst
   have hdl := hpre.dstUsable.lt
   refine ⟨hwf.frames, ?_, ⟨?_, ?_, fun q hq => hq.frameOf⟩, fun a x hx l hl => ?_,
@@ -584,13 +585,12 @@ private theorem transfer_wf3 {k : K} {s : S3} {src dst : Nat} (hwf : WF3 s)
         | frame f => rw [hh] at hl; exact hl
         | place p => rw [hh] at hl; exact transfer_usable_fwd hwf hd' hl
 
-/-- `Inv3` (§57) after an accepted transfer whose destination is usable in the resulting state.
-`I1`, `I2` (§50, §51): no authority changes but its holder; `I3` (§52): kept anchors come from
-usable places, moved ones are checked by §63.6; `AnchorOrder` is §63.6; `NoDangling` (§54): no
-usable place becomes unusable. -/
+/-- `Inv3` (§57) after an accepted transfer. `I1`, `I2` (§50, §51): no authority changes but its
+holder; `I3` (§52): kept anchors come from usable places, moved ones are checked by §63.6;
+`AnchorOrder` is §63.6; `NoDangling` (§54): with §63.9, no usable place becomes unusable. -/
 private theorem transfer_inv3 {k : K} {s : S3} {src dst : Nat} (hwf : WF3 s) (hinv : Inv3 s)
-    (hpre : TransferPre k s src dst) (hd' : (transferEff s src dst).Usable dst) :
-    Inv3 (transferEff s src dst) := by
+    (hpre : TransferPre k s src dst) : Inv3 (transferEff s src dst) := by
+  have hd' := hpre.dstUsableAfter
   have sk := transfer_skel s src dst
   obtain ⟨⟨i1, i2, i3, -⟩, -, hnd⟩ := hinv
   refine ⟨⟨sk.i1 i1, sk.i2 i2, fun q hq x hx => ?_, i4_always _⟩, hpre.anchorOrder, ?_⟩
@@ -611,15 +611,12 @@ private theorem transfer_inv3 {k : K} {s : S3} {src dst : Nat} (hwf : WF3 s) (hi
     rw [transfer_footprint] at hl
     exact hnd j y₀ hy₀ ya₀ q (fun hu => hq (transfer_usable_fwd hwf hd' hu)) l hl hly₀
 
-/-- With the destination usable in the resulting state, an accepted transfer preserves `WF3`,
-`Inv3` and `NoOrphan` (§57). The hypothesis `hd'` is not a clause of §63:
-`transfer_breaks_kinv` shows that §63 does not imply it. -/
-theorem transfer_preserves_wf3_inv3_of_dst_usable {k : K} {s s' : S3} {src dst : Nat}
-    (hinv : KInv s) (h : TransferStep k src dst s (.ok s'))
-    (hd' : s'.Usable dst) : WF3 s' ∧ Inv3 s' ∧ NoOrphan s' := by
+/-- An accepted transfer preserves `WF3`, `Inv3` and `NoOrphan` (§57; §63, with §63.9). -/
+theorem transfer_preserves_wf3_inv3 {k : K} {s s' : S3} {src dst : Nat} (hinv : KInv s)
+    (h : TransferStep k src dst s (.ok s')) : WF3 s' ∧ Inv3 s' ∧ NoOrphan s' := by
   obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
-  have hw' := transfer_wf3 hinv.1 hpre hd'
-  exact ⟨hw', transfer_inv3 hinv.1 hinv.2.1 hpre hd', noOrphan_of_wf3 hw'⟩
+  have hw' := transfer_wf3 hinv.1 hpre
+  exact ⟨hw', transfer_inv3 hinv.1 hinv.2.1 hpre, noOrphan_of_wf3 hw'⟩
 
 /-- An accepted transfer preserves the auxiliary `KAux` (`RootHeldConv`, §40, §49.7; §63 `ok`
 effect, third item), with no further hypothesis. -/
@@ -628,7 +625,7 @@ theorem transfer_preserves_kAux {k : K} {s s' : S3} {src dst : Nat} (haux : KAux
   obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
   exact transfer_rootHeldConv haux
 
-/-- Auxiliary hypothesis, not a clause of §63 nor of the invariant of §57: every active derived
+/-- Auxiliary invariant, not a clause of §57 nor of §63: every active derived
 authority held by a usable place is among the anchors of that place (§44). `store` (§65) adds
 the stored authority to the anchors of its target, and the `ok` effect of §63 moves an
 authority held by a part `r` of the source together with the anchors of `r`. -/
@@ -709,18 +706,27 @@ theorem transfer_preserves_heldAnchored {k : K} {s s' : S3} {src dst : Nat} (hwf
     rw [transfer_D]; simp only [hqs, ↓reduceIte]
     exact List.mem_append_left _ hxq
 
-/-- With the destination usable in the resulting state and `HeldAnchored`, an accepted transfer
-preserves `KInv` (§57). Neither hypothesis is a clause of §63:
-`transfer_breaks_kinv` shows that §63 does not imply the first, and
-`transfer_preserves_of_dst_usable_fails` that `KInv ∧ KAux` and the first do not suffice. -/
-theorem transfer_preserves_of_dst_usable_of_heldAnchored {k : K} {s s' : S3} {src dst : Nat}
-    (hinv : KInv s) (hheld : HeldAnchored s)
-    (h : TransferStep k src dst s (.ok s')) (hd' : s'.Usable dst) : KInv s' := by
-  obtain ⟨hw', hi', -⟩ := transfer_preserves_wf3_inv3_of_dst_usable hinv h hd'
+/-- On a state satisfying `KInv` and the auxiliary `HeldAnchored`, an accepted transfer preserves
+`KInv` (§57; §63). `HeldAnchored` is not a clause of §57: `transfer_preserves_of_dst_usable_fails`
+shows that `KInv ∧ KAux` does not suffice on states not built by kernel steps. -/
+theorem transfer_preserves {k : K} {s s' : S3} {src dst : Nat} (hinv : KInv s)
+    (hheld : HeldAnchored s) (h : TransferStep k src dst s (.ok s')) : KInv s' := by
+  obtain ⟨hw', hi', -⟩ := transfer_preserves_wf3_inv3 hinv h
   obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
   exact kInv_of hw' hi' (transfer_anchorOrderHeld hinv.1 hheld hpre)
 
-/-! ## §63 as written breaks `KInv` (§49.8, §54) -/
+/-- An accepted transfer preserves `I5` (§57; §63 `ok` effect, §74), from a `WF3` state (§49):
+the pinning obligations, the leaves and the footprints are unchanged, and with §63.9 every usable
+place stays usable. `WF3` is used only for the last point. -/
+theorem transfer_preserves_i5 {k : K} {s s' : S3} {src dst : Nat} (hwf : WF3 s) (h5 : I5 k s)
+    (h : TransferStep k src dst s (.ok s')) : I5 k s' := by
+  obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
+  intro l hl
+  rw [S3.pin_congr (pins_transferEff s src dst)] at hl
+  obtain ⟨q, hq, hlq⟩ := h5 l hl
+  exact ⟨q, transfer_usable_fwd hwf hpre.dstUsableAfter hq, by rw [transfer_footprint]; exact hlq⟩
+
+/-! ## §63.9 rejects the ownership-cycle run (§49.8, §54) -/
 
 namespace TransferWitness
 
@@ -739,7 +745,8 @@ def cyc1 : S3 := allocEff cyc0 0 [(none, 0)]
 authority 3 held by place 2. -/
 def cyc2 : S3 := allocEff cyc1 2 [(none, 0)]
 
-/-- After `transfer(0, 3)` (§63): place 2 is now owned by place 3, which is owned by place 2. -/
+/-- The effect of `transfer(0, 3)` on `cyc2` (§63 `ok` effect): place 2 would be owned by place 3,
+which is owned by place 2. -/
 def cyc3 : S3 := transferEff cyc2 0 3
 
 /-- `cyc2` is reached from `S3.init cycStatics` by two `alloc` steps (§57, §71). -/
@@ -751,11 +758,8 @@ theorem cyc2_reachable : Reachable Examples.K0 cycStatics cyc2 :=
 /-- `cyc2` satisfies `KInv` and `KAux` (§57, §49.7). -/
 theorem cyc2_kInv : KInv cyc2 ∧ KAux cyc2 := kInvAux_of_bounded (by decide)
 
-/-- `transfer(0, 3)` is accepted in `cyc2`: all eight preconditions of §63 hold. -/
-theorem cyc2_transfer : TransferStep Examples.K0 0 3 cyc2 (.ok cyc3) := .ok (by decide)
-
-/-- In `cyc3`, places 2 and 3 own each other and are unusable (§40); root authority 2 is active,
-held by the unusable place 3 and covers the leaf of the unusable place 2. -/
+/-- In `cyc3`, places 2 and 3 own each other and are unusable (§40; §63.9 fails); root authority
+2 is active, held by the unusable place 3 and covers the leaf of the unusable place 2. -/
 theorem cyc3_cycle : ¬ cyc3.Usable 2 ∧ ¬ cyc3.Usable 3 ∧ cyc3.Active 2 ∧
     OptP (cyc3.A[2]?) (fun y => y.holder = .place 3 ∧ 2 ∈ y.footprint) False := by decide
 
@@ -774,21 +778,36 @@ theorem cyc3_not_wf3_noDangling : ¬ WF3 cyc3 ∧ ¬ NoDangling cyc3 := by
 end TransferWitness
 
 open TransferWitness in
-/-- §63 as written does not preserve the kernel invariant (§57, §58): under a contract with
-`DDSound` (§80), from a reachable state satisfying `KInv ∧ KAux`, an accepted `transfer` reaches
-a state violating `KInv` (holder validity §49.8 and `NoDangling` §54 fail,
-`cyc3_not_wf3_noDangling`). -/
-theorem transfer_breaks_kinv : DDSound Examples.K0 ∧ ∃ s s', Reachable Examples.K0 cycStatics s ∧
-    KInv s ∧ KAux s ∧ TransferStep Examples.K0 0 3 s (.ok s') ∧ ¬ KInv s' :=
-  ⟨fun _ _ h => (h : False).elim, cyc2, cyc3, cyc2_reachable, cyc2_kInv.1, cyc2_kInv.2,
-    cyc2_transfer, fun h => cyc3_not_wf3_noDangling.1 h.1⟩
+/-- The ownership-cycle run of §63 is rejected by §63.9 alone: under a contract with `DDSound`
+(§80), in a reachable state satisfying `KInv ∧ KAux`, `transfer(0, 3)` satisfies §63.1–§63.8, its
+destination is not usable in the resulting state (§63.9 fails), so the step is rejected; that
+state would violate `KInv` (holder validity §49.8, `cyc3_not_wf3_noDangling`). -/
+theorem transfer_cycle_rejected : DDSound Examples.K0 ∧ Reachable Examples.K0 cycStatics cyc2 ∧
+    KInv cyc2 ∧ KAux cyc2 ∧
+    (cyc2.Usable 0 ∧ cyc2.Usable 3 ∧ HasRight cyc2 .modify 0 ∧ HasRight cyc2 .modify 3 ∧
+      SameShape cyc2.P 0 3 ∧ (∀ l ∈ footprint cyc2.P 0, cyc2.I l = .init) ∧
+      (∀ l ∈ footprint cyc2.P 3, cyc2.I l ≠ .init) ∧ ¬ overlap cyc2.P 0 3 ∧
+      (∃ g ∈ List.range cyc2.A.length, Grounds cyc2 .modify 0 g ∧
+        ∀ j ∈ List.range cyc2.A.length, ActiveDerivedOutside cyc2 0 j → RightChain cyc2 g j) ∧
+      (∀ l ∈ footprint cyc2.P 0, ¬ Examples.K0.Pinned l ∧ cyc2.pin l = false) ∧
+      (∀ x ∈ movedDeps cyc2 0, cyc2.Active x) ∧ AnchorOrder cyc3 ∧
+      (∀ x ∈ List.range cyc2.A.length, AnchorMoves cyc2 0 x →
+        ∀ q ∈ List.range cyc2.P.length, cyc3.Usable q →
+          OptP (cyc3.A[x]?) (fun y => y.active = true → y.holder = .place q →
+            EffAnchorOK cyc3 x (cyc3.pframe q)) True) ∧
+      NoLocalSelfLock cyc2 0 3) ∧
+    ¬ cyc3.Usable 3 ∧ TransferStep Examples.K0 0 3 cyc2 .reject ∧ ¬ KInv cyc3 :=
+  ⟨fun _ _ h => (h : False).elim, cyc2_reachable, cyc2_kInv.1, cyc2_kInv.2, by decide,
+    cyc3_cycle.2.1, .reject fun hpre => cyc3_cycle.2.1 hpre.dstUsableAfter,
+    fun h => cyc3_not_wf3_noDangling.1 h.1⟩
 
-/-! ## The destination's usability does not suffice (§44, §63.7)
+/-! ## `KInv ∧ KAux` does not suffice without `HeldAnchored` (§44, §63.7)
 
-§63.7 checks `AnchorOrderHeld` only for the moved held authorities. In `ahx`, the derived
-authority 6 is held by place 2, outside the transferred value, without being among its anchors
-(`HeldAnchored` fails), and its effective anchor, the root 3 held by the source, moves with the
-value to a younger frame. The state is not built by kernel steps: in such runs a derived
+The transfer below satisfies every precondition of §63, §63.9 included. §63.7 checks
+`AnchorOrderHeld` only for the moved held authorities. In `ahx`, the derived authority 6 is held
+by place 2, outside the transferred value, without being among its anchors (`HeldAnchored`
+fails), and its effective anchor, the root 3 held by the source, moves with the value to a
+younger frame. The state is not built by kernel steps: in such runs a derived
 authority is held by a place only through `store` (§65), which also anchors it there. -/
 
 namespace TransferWitness
@@ -811,7 +830,7 @@ def ahx : S3 where
     ⟨.modify, some 3, [3], .place 2, true⟩]
   D := fun _ => []
   dead := fun _ => false
-  pin := fun _ => false
+  pins := []
 
 /-- `transfer(1, 4)` from `ahx` (§63, `ok` effect). -/
 def ahx' : S3 := transferEff ahx 1 4
@@ -819,10 +838,10 @@ def ahx' : S3 := transferEff ahx 1 4
 end TransferWitness
 
 open TransferWitness in
-/-- With `KInv ∧ KAux` and the destination usable in the resulting state, an accepted transfer
-can still break `AnchorOrderHeld` (§44, §54): in `ahx'`, authority 6 is held by place 2 of frame
-0 and its effective anchor, the root 3, is now held by the destination in frame 1. `HeldAnchored`
-fails in `ahx`. -/
+/-- From a state satisfying `KInv ∧ KAux`, an accepted transfer (§63, its destination usable in
+the resulting state by §63.9) can still break `AnchorOrderHeld` (§44, §54): in `ahx'`, authority
+6 is held by place 2 of frame 0 and its effective anchor, the root 3, is now held by the
+destination in frame 1. `HeldAnchored` fails in `ahx`. -/
 theorem transfer_preserves_of_dst_usable_fails : ∃ s s', KInv s ∧ KAux s ∧ ¬ HeldAnchored s ∧
     TransferStep Examples.K0 1 4 s (.ok s') ∧ s'.Usable 4 ∧ ¬ AnchorOrderHeld s' := by
   have hk := kInvAux_of_bounded (s := ahx) (by decide)

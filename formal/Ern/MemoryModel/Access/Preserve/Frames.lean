@@ -4,9 +4,10 @@ import Ern.MemoryModel.Access.Preserve.Common
 # Access kernel: preservation by `enterFrame` and `exitFrame`
 
 Operations O6 `enterFrame` (§72) and O7 `exitFrame` (§73) of
-`specs/ERN_Memory_Model_Specification_v0.md`, with the frame rules of §39 and the parameter and
-reanchoring rules of §45. Both steps preserve the kernel invariant of §57 (`KInv`) and, separately,
-the auxiliary invariant `KAux`. The file also proves entry protection of parameters (§72.3 and
+`specs/ERN_Memory_Model_Specification_v0.1.md`, with the frame rules of §39 and the parameter and
+reanchoring rules of §45. Both steps preserve the kernel invariant of §57 (`KInv`, with the active
+origins of `I2`, §51) and, separately, the auxiliary invariant `KAux` (not a clause of §57) and
+`I5` (§57). The file also proves entry protection of parameters (§72.3 and
 the last paragraph of §72), the release of authorities whose holder dies at the exit (§73
 effect, §39), the absence of dangling authorities after the exit (§73, §54), reanchoring to the
 first surviving active origin (§73.4, §73 effect), and determinism of both steps (§58).
@@ -665,10 +666,12 @@ theorem enter_inv3base (hwf : WF3 s) (hinv : Inv3base s) :
   refine ⟨enter_i1 hwf i1, ?_, ?_, i4_always _⟩
   · intro b y a hb ho
     rcases enter_get hb with ⟨-, y₀, hy₀, rfl⟩ | ⟨-, _, -, rfl⟩
-    · obtain ⟨x₁, hx₁, hm, hh⟩ := i2 b y₀ a hy₀ (by split at ho <;> exact ho)
-      refine ⟨_, by rw [enter_lt (lt_of_getElem? hx₁), hx₁]; rfl, ?_, fun p hp => ?_⟩
+    · obtain ⟨x₁, hx₁, hm, hh, ha⟩ := i2 b y₀ a hy₀ (by split at ho <;> exact ho)
+      refine ⟨_, by rw [enter_lt (lt_of_getElem? hx₁), hx₁]; rfl, ?_, fun p hp => ?_, fun ya => ?_⟩
       · split <;> split <;> exact hm
       · have := hh p (by split at hp <;> exact hp)
+        split <;> exact this
+      · have := ha (by split at ya <;> exact ya)
         split <;> exact this
     · cases ho
   · intro q hq x hx
@@ -866,6 +869,15 @@ theorem exitG_origin {F₀ : Frames} {a : Nat} {y : Authority} :
     · rename_i o ho; exact .inr ⟨hs, by simp [ho], rfl⟩
   · exact .inl rfl
 
+/-- The origin of a surviving authority after the exit is the first surviving ancestor of its
+chain (§73 `ok` effect, third item; §73.4). -/
+theorem exitG_origin_surv {F₀ : Frames} {a o : Nat} {y : Authority} (hs : Survives s F₀ a)
+    (h : (exitG s F₀ a y).origin = some o) : firstSurv s F₀ (s.ancs a) = some o := by
+  unfold exitG at h; simp only [hs, ↓reduceIte] at h
+  cases hy : y.origin with
+  | none => simp only [hy] at h; cases h
+  | some _ => simpa only [hy] using h
+
 /-- After the exit, surviving ancestors of an authority are still its ancestors (§73.4). -/
 theorem exit_ancs_keep :
     ∀ n x, x < n → ∀ w ∈ s.ancs x, Survives s s.F.tail w → w ∈ (exitEff s).ancs x
@@ -1005,7 +1017,7 @@ theorem i2_chain (h2 : I2 s) :
         · exact h
         · rw [he] at hz; simp at hz
       rw [he] at hz
-      obtain ⟨x, hx, hm, hh⟩ := h2 b y o hy ho
+      obtain ⟨x, hx, hm, hh, -⟩ := h2 b y o hy ho
       rcases List.mem_cons.1 hz with rfl | hz
       · exact ⟨x, hx, hm, hh⟩
       · obtain ⟨x', hx', hm', hh'⟩ := i2_chain h2 n o (by omega) x z hx hz
@@ -1080,8 +1092,9 @@ theorem exit_rootHeldConv (hc : RootHeldConv s) (h3 : OriginsSurvive s) :
 /-! ## `exitFrame` preserves `Inv3` (§50–§54, §57, §73) -/
 
 /-- `exitFrame` preserves `I1`–`I4` (§50–§53, §73): surviving ancestors stay ancestors, a
-reanchored origin is an ancestor, and every anchor of a place still usable is replaced by a
-surviving authority. -/
+reanchored origin is an ancestor, the origin of an authority active after the exit is its first
+surviving ancestor, hence active (§51, §73.4), and every anchor of a place still usable is
+replaced by a surviving authority. -/
 theorem exit_inv3base (hinv : Inv3base s)
     (hR1 : ∀ q ∈ List.range s.P.length, ({ s with F := s.F.tail } : S3).Usable q →
       ∀ x ∈ s.D q, firstSurv s s.F.tail (x :: s.ancs x) ≠ none) :
@@ -1101,17 +1114,22 @@ theorem exit_inv3base (hinv : Inv3base s)
     · exact exit_ancs_keep (a + 1) a (Nat.lt_succ_self a) b hm sb
   · obtain ⟨y₀, hy₀, rfl⟩ := exit_get hb
     obtain ⟨ym, yf, -⟩ := exitG_same s s.F.tail b y₀
+    -- An authority active after the exit survives, and its origin, its first surviving
+    -- ancestor, survives too, so it stays active (§51 with §73.4).
+    have hact : ∀ {x₁ : Authority}, s.A[a]? = some x₁ →
+        (exitG s s.F.tail b y₀).active = true → (exitG s s.F.tail a x₁).active = true :=
+      fun hx₁ ya => exitG_surv hx₁ (firstSurv_some (exitG_origin_surv (exitG_active ya) ho)).2
     rcases exitG_origin (s := s) (F₀ := s.F.tail) (a := b) (y := y₀) with e' | ⟨-, -, e'⟩
-    · obtain ⟨x₁, hx₁, hm, hh⟩ := i2 b y₀ a hy₀ (e' ▸ ho)
+    · obtain ⟨x₁, hx₁, hm, hh, -⟩ := i2 b y₀ a hy₀ (e' ▸ ho)
       obtain ⟨xm, xf, -⟩ := exitG_same s s.F.tail a x₁
       exact ⟨_, lift hx₁, by rw [ym, xm]; exact hm, fun p hp => by
-        rw [xf]; exact hh p (yf ▸ hp)⟩
-    · rw [e'] at ho
+        rw [xf]; exact hh p (yf ▸ hp), hact hx₁⟩
+    · have ho' := ho; rw [e'] at ho'
       obtain ⟨x₁, hx₁, hm, hh⟩ := i2_chain i2 (b + 1) b (Nat.lt_succ_self b) y₀ a hy₀
-        (firstSurv_some ho).1
+        (firstSurv_some ho').1
       obtain ⟨xm, xf, -⟩ := exitG_same s s.F.tail a x₁
       exact ⟨_, lift hx₁, by rw [ym, xm]; exact hm, fun p hp => by
-        rw [xf]; exact hh p (yf ▸ hp)⟩
+        rw [xf]; exact hh p (yf ▸ hp), hact hx₁⟩
   · have hq₁ : ({ s with F := s.F.tail } : S3).Usable q := exit_usable_iff.1 hq
     simp only [exitEff, List.mem_map] at hx
     obtain ⟨x₀, hx₀, rfl⟩ := hx
@@ -1255,6 +1273,33 @@ theorem exit_preserves_kAux {k : K} {s s' : S3} (ha : KAux s)
     (h : ExitStep k s (.ok s')) : KAux s' := by
   obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
   exact Frames.exit_rootHeldConv ha hpre.origins
+
+/-! ## Preservation of `I5` (§57, §72, §73) -/
+
+/-- `enterFrame` preserves `I5` (§57; §72 `ok` effect): the pinning obligations are unchanged,
+and an existing usable place stays usable with the same footprint. -/
+theorem enter_preserves_i5 {k : K} {s s' : S3} {ps : List Nat} {ls : LocalShape} (h5 : I5 k s)
+    (h : EnterStep ps ls s (.ok s')) : I5 k s' := by
+  obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
+  intro l hl
+  rw [S3.pin_congr (pins_enterEff s ps ls)] at hl
+  obtain ⟨q, hq, hlq⟩ := h5 l hl
+  exact ⟨q, Frames.enter_usable_old hq, (Frames.enter_footprint_old hpre.localsOK hq.lt l).2 hlq⟩
+
+/-- `exitFrame` preserves `I5` (§57; §73.3, §73 `ok` effect): the pinning obligations and the
+places are unchanged, and a usable place that becomes unusable has no pinned leaf (§73.3). -/
+theorem exit_preserves_i5 {k : K} {s s' : S3} (h5 : I5 k s) (h : ExitStep k s (.ok s')) :
+    I5 k s' := by
+  obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
+  intro l hl
+  rw [S3.pin_congr (pins_exitEff s)] at hl
+  obtain ⟨q, hq, hlq⟩ := h5 l hl
+  by_cases hu : ({ s with F := s.F.tail } : S3).Usable q
+  · exact ⟨q, Frames.exit_usable_iff.2 hu, hlq⟩
+  · have hnp := hpre.notPinned q (List.mem_range.2 hq.lt) hq hu l hlq
+    rcases hl with hk | hp
+    · exact absurd hk hnp.2
+    · rw [hnp.1] at hp; cases hp
 
 /-! ## Determinism (§58, §72, §73) -/
 

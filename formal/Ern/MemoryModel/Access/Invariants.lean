@@ -3,9 +3,10 @@ import Ern.MemoryModel.Access.Ops
 /-!
 # Access kernel: invariants, initial state, reachability
 
-`WF3` (§49), `I1`–`I4` (§50–§53), `NoDangling` and `NoOrphan` (§54), `Inv3` (§57), the declared
-statics and `S3.init` (§47), `StaticPinnedBottom` (§75), and reachability from `S3.init statics`
-under the kernel steps O1–O16 (§57). `AnchorOrder` and `AnchorOrderHeld` (§44) are in
+Invariants of `specs/ERN_Memory_Model_Specification_v0.1.md`: `WF3` (§49), `I1`–`I4` (§50–§53),
+`NoDangling` and `NoOrphan` (§54), `Inv3` and `I5` (§57), the declared statics and `S3.init`
+(§47), `StaticPinnedBottom` (§75), and reachability from `S3.init statics` under the kernel steps
+O1–O16 (§57). `AnchorOrder` and `AnchorOrderHeld` (§44) are in
 `Ern.MemoryModel.Access.Basic`, since operations read them.
 -/
 
@@ -83,10 +84,12 @@ def I1 (s : S3) : Prop :=
     a ∉ s.ancs b → b ∉ s.ancs a → x.mode = .observe ∧ y.mode = .observe
 
 /-- `I2` (§51): the origin of a derived authority exists; the derived mode does not exceed the
-origin's and the derived footprint is within the origin's. -/
+origin's, the derived footprint is within the origin's, and the origin of an active derived
+authority is valid, that is, active. -/
 def I2 (s : S3) : Prop :=
   ∀ (b : Nat) (y : Authority) (a : Nat), s.A[b]? = some y → y.origin = some a →
-    ∃ x : Authority, s.A[a]? = some x ∧ y.mode.le x.mode ∧ ∀ p ∈ y.footprint, p ∈ x.footprint
+    ∃ x : Authority, s.A[a]? = some x ∧ y.mode.le x.mode ∧ (∀ p ∈ y.footprint, p ∈ x.footprint) ∧
+      (y.active = true → x.active = true)
 
 /-- `I3` (§52): every anchor of a usable place is valid (active). -/
 def I3 (s : S3) : Prop := ∀ q, s.Usable q → ∀ x ∈ s.D q, s.Active x
@@ -105,6 +108,12 @@ def NoDangling (s : S3) : Prop :=
 
 /-- `Inv3 = I1 ∧ I2 ∧ I3 ∧ I4 ∧ AnchorOrder ∧ NoDangling` (§57). -/
 def Inv3 (s : S3) : Prop := Inv3base s ∧ AnchorOrder s ∧ NoDangling s
+
+/-- `I5` (§57): every pinned leaf, statically (`K.Pinned`) or dynamically (an active pinning
+obligation, §74), belongs to a usable place. A specialized obligation of `K.Pinned`, not a
+conjunct of the main invariant (§57). -/
+def I5 (k : K) (s : S3) : Prop :=
+  ∀ l, (k.Pinned l ∨ s.pin l = true) → ∃ q, s.Usable q ∧ l ∈ footprint s.P q
 
 /-! ## `NoOrphan` (§54) -/
 
@@ -135,9 +144,10 @@ def NoOrphan (s : S3) : Prop :=
 initial state, `true` for `Init` and `false` for `Uninit` (read on leaves only). -/
 abbrev Statics := List ((Option Nat × Option Nat × Nat) × Bool)
 
-/-- Well-formed statics declaration (§47; not stated by §47, a hypothesis of the theorems on the
-initial state): parents and owning statics are earlier statics, and a part has its parent's
-owning static. -/
+/-- Well-formed statics declaration (§47: the ownership graph of statics is acyclic; §49, last
+paragraph: the ordering of identifiers represents this well-foundedness, and that of structural
+parents): parents and owning statics are earlier statics, and a part has its parent's owning
+static (§49.2). -/
 def StaticsOK (statics : Statics) : Prop := ShapeOK 0 (statics.map (·.1))
 
 /-- Decidability of `StaticsOK` (§47). -/
@@ -146,8 +156,8 @@ instance (statics : Statics) : Decidable (StaticsOK statics) := by
 
 /-- `S3.init statics` (§47): base frame 0 and the declared statics, owned by frame 0 or by
 another static; one root `Modify` authority with no origin per root static, held by its owner;
-leaves `Init` or `Uninit` as declared; no anchor, no derived authority, nothing dead or
-pinned. -/
+leaves `Init` or `Uninit` as declared; no anchor, no derived authority, nothing dead, no
+dynamic pinning obligation. -/
 def S3.init (statics : Statics) : S3 :=
   { F := [0]
     nF := 1
@@ -158,7 +168,7 @@ def S3.init (statics : Statics) : S3 :=
         shapeOwner (statics.map (·.1)) (.frame 0) i, true⟩
     D := fun _ => []
     dead := fun _ => false
-    pin := fun _ => false }
+    pins := [] }
 
 /-- `StaticPinnedBottom` (§75, §80): every static place whose leaf is designated by `K.Pinned` is
 directly owned by the base frame 0. A condition on `(K, statics)`. -/
@@ -211,6 +221,8 @@ def s2 : S3 := allocEff s0 1 [(none, 0)]
 /-- After `derive(1, [1], Modify)` then `store(3, 0)` (§60, §65): authority 3 on leaf 1 stored in
 place 0. -/
 def s3 : S3 := storeEff (deriveEff s0 1 [1] .modify) 3 0
+/-- After `pin(0)` (§74): obligation 0 pins leaf 0. -/
+def s4 : S3 := pinEff s0 0
 
 example : StaticsOK st := by decide
 example : DerivePre s0 0 [0] .modify := by decide
@@ -230,20 +242,28 @@ example : FreePre K0 s2 3 0 := by decide
 example : AllocStatic K0 s0 0 1 [(none, 0), (some 3, 0)] := by decide
 example : ¬ AllocStatic K0 s0 0 1 [(none, 0), (none, 0)] := by decide
 example : PinPre s0 0 := by decide
-example : UnpinPre K0 s0 0 := by decide
+example : UnpinPre K0 s4 0 := by decide
+example : ¬ UnpinPre K0 s0 0 := by decide
+example : ¬ EndUsePre K0 s4 0 := by decide
 
-/-- §63.8 decides alone: in `s3`, the transfer of place 0 to place 1 satisfies §63.1–§63.7 and is
-rejected by local self-blocking prevention. -/
+/-- §75: `unpin` ends only the designated obligation; with two obligations on leaf 0, ending
+obligation 0 leaves the leaf pinned by obligation 1. -/
+example : (unpinEff (pinEff s4 0) 0).pin 0 = true ∧ (unpinEff s4 0).pin 0 = false := by decide
+
+/-- §63.8 decides alone: in `s3`, the transfer of place 0 to place 1 satisfies §63.1–§63.7 and
+§63.9 and is rejected by local self-blocking prevention. -/
 example : (s3.Usable 0 ∧ s3.Usable 1 ∧ HasRight s3 .modify 0 ∧ HasRight s3 .modify 1 ∧
     SameShape s3.P 0 1 ∧ (∀ l ∈ footprint s3.P 0, s3.I l = .init) ∧
     (∀ l ∈ footprint s3.P 1, s3.I l ≠ .init) ∧ ¬ overlap s3.P 0 1 ∧
-    (∀ j ∈ List.range s3.A.length, ¬ ActiveDerivedOutside s3 0 j) ∧
+    (∃ g ∈ List.range s3.A.length, Grounds s3 .modify 0 g ∧
+      ∀ j ∈ List.range s3.A.length, ActiveDerivedOutside s3 0 j → RightChain s3 g j) ∧
     (∀ l ∈ footprint s3.P 0, ¬ K0.Pinned l ∧ s3.pin l = false) ∧
     (∀ x ∈ movedDeps s3 0, s3.Active x) ∧ AnchorOrder (transferEff s3 0 1) ∧
     (∀ x ∈ List.range s3.A.length, AnchorMoves s3 0 x →
       ∀ q ∈ List.range s3.P.length, (transferEff s3 0 1).Usable q →
         OptP ((transferEff s3 0 1).A[x]?) (fun y => y.active = true → y.holder = .place q →
-          EffAnchorOK (transferEff s3 0 1) x ((transferEff s3 0 1).pframe q)) True)) ∧
+          EffAnchorOK (transferEff s3 0 1) x ((transferEff s3 0 1).pframe q)) True) ∧
+    (transferEff s3 0 1).Usable 1) ∧
     ¬ NoLocalSelfLock s3 0 1 ∧ ¬ TransferPre K0 s3 0 1 := by decide
 
 end Examples
