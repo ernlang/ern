@@ -4,7 +4,7 @@ import Ern.MemoryModel.Access.Rename.Derived
 # Renaming of identities: `enterFrame` and `exitFrame`
 
 Correspondence of the operations O6 `enterFrame` (§72) and O7 `exitFrame` (§73) of
-`specs/ERN_Memory_Model_Specification_v0.1.md` under a renaming of identities (§49, last
+`specs/ERN_Memory_Model_Specification.md` under a renaming of identities (§49, last
 paragraph): related effects, invariant preconditions, corresponding outcomes (§58), and the order
 facts `Down` and `SibMono` kept by an `ok` step. Parameters are renamed; the shape of the locals is
 not (its parents are fresh, §72.2).

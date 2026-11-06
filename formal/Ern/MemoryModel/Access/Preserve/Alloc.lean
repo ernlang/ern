@@ -3,7 +3,7 @@ import Ern.MemoryModel.Access.Preserve.Common
 /-!
 # Access kernel: `alloc` (O14)
 
-Results on `alloc provider owner shape` of `specs/ERN_Memory_Model_Specification_v0.1.md` §71
+Results on `alloc provider owner shape` of `specs/ERN_Memory_Model_Specification.md` §71
 and on the outcomes of §58: the `ok` outcome preserves the main invariant of §57 (`KInv`),
 separately its auxiliary `KAux`, and `I5` (§57); it adds exactly one root place and exactly one authority, the root
 `Modify` authority of that place, with no origin, held by `owner`, the new leaves `Uninit` (§71,

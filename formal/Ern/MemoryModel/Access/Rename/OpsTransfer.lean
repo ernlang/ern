@@ -3,7 +3,7 @@ import Ern.MemoryModel.Access.Rename.Derived
 /-!
 # Renaming of identities: `transfer`
 
-Equivariance of O4 `transfer` (`specs/ERN_Memory_Model_Specification_v0.1.md` §63) under related
+Equivariance of O4 `transfer` (`specs/ERN_Memory_Model_Specification.md` §63) under related
 states (§38; §49, last paragraph): the helpers of its preconditions (§63.4, §63.6–§63.8), its `ok`
 effect, its preconditions (§63.1–§63.9) and the correspondence of its outcomes (§58). Positional
 field identity (§63.2) needs `SibMono`.

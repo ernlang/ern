@@ -4,7 +4,7 @@ import Ern.MemoryModel.Refinement
 /-!
 # DataStack: a library administrative abstraction (contract DS-v2, non-normative)
 
-A `DataStack` instance of `specs/ERN_Memory_Model_Specification_v0.1.md`. The spec does not define
+A `DataStack` instance of `specs/ERN_Memory_Model_Specification.md`. The spec does not define
 its contract (Part XIV preamble: "The contracts of `HandlePool` and `DataStack` belong to their
 library abstractions and are not defined here"). The contract formalized here is the library
 contract **DS-v2**, which is **not normative**: every definition below that encodes a DS-v2 item

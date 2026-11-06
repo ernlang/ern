@@ -7,7 +7,7 @@ import Ern.MemoryModel.Access.HolderCover
 **Non-normative.** This module formalizes the library contract "HandlePool v0.5": the HandlePool
 v0.4 annex (items D.1–D.4) with the items HP5-1 to HP5-7, HP5-1' and HP5-1'' of the
 arbitrations Q3, Q4, Q5 and Q12.
-`specs/ERN_Memory_Model_Specification_v0.1.md` does not define it (Part XIV preamble: "The
+`specs/ERN_Memory_Model_Specification.md` does not define it (Part XIV preamble: "The
 contracts of `HandlePool` and `DataStack` belong to their library abstractions and are not defined
 here"). The normative clauses that constrain it are §36 (`MetaRight` is exercisable `Modify` on the
 administering value; `writeShared` alone is insufficient; the library adds no rights to the

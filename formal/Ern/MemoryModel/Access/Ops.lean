@@ -3,7 +3,7 @@ import Ern.MemoryModel.Access.Basic
 /-!
 # Access kernel: operations O1–O16
 
-The sixteen kernel operations of `specs/ERN_Memory_Model_Specification_v0.1.md` §60–§75. Each
+The sixteen kernel operations of `specs/ERN_Memory_Model_Specification.md` §60–§75. Each
 operation has a precondition structure with one named field per clause item (or per condition of
 an item), each field citing its clause; a `Decidable` instance; an effect function; and a step
 relation over `Outcome3` (§58). Every operation except `alloc` is `Guarded` (`ok` or `reject`);

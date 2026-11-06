@@ -4,7 +4,7 @@ import Ern.MemoryModel.Access.Main
 /-!
 # Refinement of the access kernel into the elementary memory machine (spec v0.1, Part XVII)
 
-Source: `specs/ERN_Memory_Model_Specification_v0.1.md`, §82 (items 1–8) with §10, §16, §17, §23.
+Source: `specs/ERN_Memory_Model_Specification.md`, §82 (items 1–8) with §10, §16, §17, §23.
 
 * A layout of places in allocations and its interface `LayoutWF` (§82.1, §23).
 * The representation relation `Repr` between a kernel state (`Access.S3`) and an admissible state

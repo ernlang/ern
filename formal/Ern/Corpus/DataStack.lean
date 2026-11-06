@@ -4,7 +4,7 @@ import Ern.Lib.DataStack
 /-!
 # Corpus DataStack: the stack library (test module)
 
-Cases of the library instance `DataStack` of `specs/ERN_Memory_Model_Specification_v0.1.md`, run on
+Cases of the library instance `DataStack` of `specs/ERN_Memory_Model_Specification.md`, run on
 the reference kernel (§60–§75) through the library of `Ern.Lib.DataStack`. The spec does not define
 the contract (Part XIV preamble: "The contracts of `HandlePool` and `DataStack` belong to their
 library abstractions and are not defined here"); the contract is DS-v2, non-normative, stated in the

@@ -4,7 +4,7 @@ import Ern.MemoryModel.Access.Invariants
 # Access kernel: shared lemmas
 
 Lemmas shared by the preservation proofs of the kernel operations of
-`specs/ERN_Memory_Model_Specification_v0.1.md` §60–§75: origin and parent chains (§40, §42),
+`specs/ERN_Memory_Model_Specification.md` §60–§75: origin and parent chains (§40, §42),
 footprints and frames of places (§40), effective modes (§43), the grounding of a right (§43,
 §63.4, §69.2, §70.3), exclusivity under `I1` (§50), active origins under `I2` (§51), additions of
 authorities (§42, §60, §61), states with the same authorities up to holders (§63), consequences

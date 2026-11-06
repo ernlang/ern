@@ -6,7 +6,7 @@ import Ern.MemoryModel.RefinementArena
 
 The cases of corpus MM23-H of the Jalon 3 material (`ERN_Jalon3_materiel.md`, §3; non-normative
 design material), replayed on the reference refinement of
-`specs/ERN_Memory_Model_Specification_v0.1.md` (§82, Part XIV). This is a test module: no model or
+`specs/ERN_Memory_Model_Specification.md` (§82, Part XIV). This is a test module: no model or
 library module imports it.
 
 Each case is a run from the initial state (§47) translated into the elementary memory machine with

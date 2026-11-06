@@ -4,7 +4,7 @@ import Ern.MemoryModel.Access.Preserve.Common
 # Access kernel: preservation by `enterFrame` and `exitFrame`
 
 Operations O6 `enterFrame` (§72) and O7 `exitFrame` (§73) of
-`specs/ERN_Memory_Model_Specification_v0.1.md`, with the frame rules of §39 and the parameter and
+`specs/ERN_Memory_Model_Specification.md`, with the frame rules of §39 and the parameter and
 reanchoring rules of §45. Both steps preserve the kernel invariant of §57 (`KInv`, with the active
 origins of `I2`, §51) and, separately, the auxiliary invariant `KAux` (not a clause of §57) and
 `I5` (§57). The file also proves entry protection of parameters (§72.3 and

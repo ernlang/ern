@@ -4,7 +4,7 @@ import Ern.MemoryModel.Access.Lemmas
 # Access kernel: the preserved invariant
 
 The conjunction that every kernel step must preserve (§57 of
-`specs/ERN_Memory_Model_Specification_v0.1.md`) and the auxiliary invariant carried with it. The per-operation preservation modules state their results with these two predicates.
+`specs/ERN_Memory_Model_Specification.md`) and the auxiliary invariant carried with it. The per-operation preservation modules state their results with these two predicates.
 -/
 
 namespace Ern.MemoryModel.Access

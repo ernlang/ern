@@ -3,7 +3,7 @@ import Ern.MemoryModel.Access.Rename.Basic
 /-!
 # Renaming of identities: places
 
-Equivariance of the place-level notions of `specs/ERN_Memory_Model_Specification_v0.1.md` under a
+Equivariance of the place-level notions of `specs/ERN_Memory_Model_Specification.md` under a
 renaming of identities (§49, last paragraph): parent chains, parts, leaves and footprints (§40),
 overlap (§63.3), transitive ownership (§40), root places (§40), released units (§70), children,
 positional correspondence and same shape (§63.2), holders within a value and their move (§63),

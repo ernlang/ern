@@ -4,7 +4,7 @@ import Ern.MemoryModel.Access.Preserve.Common
 # Access kernel: preservation by `derive`, `split` and `release`
 
 O1 `derive` (§60), O2 `split` (§61) and O3 `release` (§62) of
-`specs/ERN_Memory_Model_Specification_v0.1.md` preserve the kernel invariant `KInv` (§57),
+`specs/ERN_Memory_Model_Specification.md` preserve the kernel invariant `KInv` (§57),
 separately its auxiliary `KAux`, and I5 (§57); `split` needs the obligation `DDSound(K)` (§61,
 §80) for I1 only, and `release` needs `WF3` (§49) for I2 (§51). Per-invariant lemmas, the effects
 of §61 and §62 on effective modes (§43), the failure of I1 after a `split` without `DDSound` (§61,

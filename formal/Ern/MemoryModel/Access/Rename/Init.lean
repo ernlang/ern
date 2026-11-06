@@ -5,7 +5,7 @@ import Ern.MemoryModel.Access.Statics
 # Renaming of identities: the initial state
 
 Two `StaticsOK` numberings of one statics declaration related by a consistent renumbering
-(`specs/ERN_Memory_Model_Specification_v0.1.md` §47; §49, last paragraph; §63.2) have
+(`specs/ERN_Memory_Model_Specification.md` §47; §49, last paragraph; §63.2) have
 corresponding initial states: the place renaming `Renumbered.π` and the root-authority renaming
 `Renumbered.α` relate `S3.init` of both numberings (`Renumbered.initSim`).
 -/

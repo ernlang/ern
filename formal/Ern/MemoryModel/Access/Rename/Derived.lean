@@ -3,7 +3,7 @@ import Ern.MemoryModel.Access.Rename.Places
 /-!
 # Renaming of identities: derived notions of a state
 
-Equivariance of the state-level notions of `specs/ERN_Memory_Model_Specification_v0.1.md` read by
+Equivariance of the state-level notions of `specs/ERN_Memory_Model_Specification.md` read by
 the operations O1–O16 and by the invariants, under related states (§38; §49, last paragraph): the
 current frame (§39), origin chains and effective anchors (§42, §44), activity (§42), usability,
 frames of places and live holders (§40, §49.8), effective modes (§43), exercise and the
