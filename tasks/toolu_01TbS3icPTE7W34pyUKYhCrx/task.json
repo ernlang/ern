@@ -1,0 +1,18 @@
+{
+  "tool_use_id": "toolu_01TbS3icPTE7W34pyUKYhCrx",
+  "agent_id": "ab2db5ebe2090da01",
+  "subagent_type": "general-purpose",
+  "task_description": "Rename T3 frame operations",
+  "files": [
+    "formal/Ern/MemoryModel/Access/Rename/OpsFrames.lean"
+  ],
+  "token_usage": {
+    "input_tokens": 74,
+    "cache_creation_tokens": 189773,
+    "cache_read_tokens": 6019962,
+    "output_tokens": 52725,
+    "api_call_count": 37
+  },
+  "started_at": "2026-11-06T17:45:26.33523+01:00",
+  "completed_at": "2026-11-06T17:52:59.555324+01:00"
+}

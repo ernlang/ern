@@ -1,0 +1,57 @@
+{
+  "cli_version": "0.12.2",
+  "checkpoint_id": "01M6RXN5YDJB6MM2YE68FWK0C0",
+  "strategy": "manual-commit",
+  "branch": "reference/memory-model-v0",
+  "checkpoints_count": 10,
+  "files_touched": [
+    "formal/Ern.lean",
+    "formal/Ern/MemoryModel/Access/Rename/Basic.lean",
+    "formal/Ern/MemoryModel/Access/Rename/Derived.lean",
+    "formal/Ern/MemoryModel/Access/Rename/Init.lean",
+    "formal/Ern/MemoryModel/Access/Rename/Invariants.lean",
+    "formal/Ern/MemoryModel/Access/Rename/Main.lean",
+    "formal/Ern/MemoryModel/Access/Rename/OpsEndFree.lean",
+    "formal/Ern/MemoryModel/Access/Rename/OpsFrames.lean",
+    "formal/Ern/MemoryModel/Access/Rename/OpsSmall.lean",
+    "formal/Ern/MemoryModel/Access/Rename/OpsTransfer.lean",
+    "formal/Ern/MemoryModel/Access/Rename/Places.lean"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 96,
+    "cache_creation_tokens": 105274,
+    "cache_read_tokens": 14973812,
+    "output_tokens": 42025,
+    "api_call_count": 38,
+    "subagent_tokens": {
+      "input_tokens": 650,
+      "cache_creation_tokens": 1899089,
+      "cache_read_tokens": 58767020,
+      "output_tokens": 666284,
+      "api_call_count": 325
+    }
+  },
+  "redaction": {
+    "replacements": 5,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 0,
+      "credentialed_uri": 0,
+      "entropy": 2,
+      "key_context": 3,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}

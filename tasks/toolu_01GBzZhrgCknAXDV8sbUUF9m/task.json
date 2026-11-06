@@ -1,0 +1,15 @@
+{
+  "tool_use_id": "toolu_01GBzZhrgCknAXDV8sbUUF9m",
+  "agent_id": "a6bba478d5aa2ad70",
+  "subagent_type": "general-purpose",
+  "task_description": "Adversarial review of bisimulation",
+  "token_usage": {
+    "input_tokens": 80,
+    "cache_creation_tokens": 237834,
+    "cache_read_tokens": 6929560,
+    "output_tokens": 63284,
+    "api_call_count": 40
+  },
+  "started_at": "2026-11-06T18:03:14.595006+01:00",
+  "completed_at": "2026-11-06T18:13:50.399569+01:00"
+}
