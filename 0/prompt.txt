@@ -1,0 +1,19 @@
+<pasted_content id="c845">
+**Q3 — décision du propriétaire (2026-11-06)**
+
+La disjonction suffit : `pool_entries_meta_disjoint` établit ce qui était exigé, à savoir que l'écriture des métadonnées ne touche jamais une entrée. La possession du stockage par la valeur du pool n'est pas requise. Un pool sur un stockage fourni de l'extérieur, comme dans `Witness.hst`, est légitime. Ma demande précédente sur un « stockage possédé » était une approximation de la disjonction et ne doit pas être reprise.
+
+Fermer le point ouvert dans la PR, avec cette justification inscrite au tableau. Aucune autre modification. La PR reste en draft.
+</pasted_content id="c845">
+
+---
+
+OK, pas de question ouverte à rétablir. Les deux constats restent des descriptions : la sur-approximation des métadonnées est sans risque grâce à la disjonction, et (c) est limité aux feuilles parce que `S₃` ne modélise pas les valeurs. La correspondance au niveau des valeurs relève du raffinement concret.
+
+---
+
+juste pour savoir, on est d'accord que les commentaires dans les fichiers `.lean` ne font que ce qu'ils sont censés faire et ne font pas d'historique de decision?
+
+---
+
+Yes, clean up
