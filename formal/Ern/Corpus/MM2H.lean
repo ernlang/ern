@@ -1,7 +1,7 @@
 import Ern.MemoryModel.Machine
 
 /-!
-# Corpus MM2-H on the memory machine (test module, spec v0 Parts II–III, §8–§20)
+# Corpus MM2-H on the memory machine (test module, spec v0.1 Parts II–III, §8–§20)
 
 Test module. It states no semantics: it runs the MM2-H corpus (non-normative validation
 material, 17 identifiers, H13 split into H13a and H13b, 18 scenarios) on the relations of
@@ -21,8 +21,8 @@ equality of the presented authority with the recorded token (§17 ¶4); read and
 obligations are the machine's explicit test instances `Witness.obR` and `Witness.obW` (both parts
 `True`), except in H14, which needs a false static part.
 
-Open obligations, not declared passed: H10 address formation (§14 ¶4, §19), H13a at language
-level (§10 ¶4, §19), H13b (§19).
+Open boundaries of the spec, classified non-blocking and not declared passed: H10 address
+formation (§14 ¶4, §19), H13a at language level (§10 ¶4, §19), H13b (§19).
 -/
 
 namespace Ern.Corpus.MM2H
@@ -164,16 +164,11 @@ obtained `ub`: the old provenance designates the dead allocation `0` (§12 ¶3, 
 theorem H01 : Run h01Ops h01 ∧ ReadStep ctxR (rd 0) () h01 .ub :=
   ⟨run_h01.1, readStep_of (by decide)⟩
 
-/-- H01 twin as written ("read through the new access"). Expected `ok`; obtained `ub`.
-Mismatch, case defect: the new allocation is wholly uninitialized (§10 ¶5), so a read of
-length `8` through it violates §15.3. Class N2. -/
-theorem H01_twin : Run h01Ops h01 ∧ ReadStep ctxR (rd 1) () h01 .ub :=
-  ⟨run_h01.1, readStep_of (by decide)⟩
-
-/-- Variant of the H01 twin, not the corpus's twin: a write through the new access before the
-read. Obtained `ok` with the written bytes (§16 ¶2, §16 ¶5). It shows that the `ub` of
-`H01_twin` comes from §10 ¶5, not from the address reuse. -/
-theorem H01_twin_variant :
+/-- H01 twin, as revised by the material owner: a write through the new access, then the read.
+Expected `ok`; obtained `ok` with the written bytes (§16 ¶2, §16 ¶5). The twin as first written
+read the new allocation without writing it first, which is `ub` by §10 ¶5 and §15.3, not by the
+address reuse. Class N2. -/
+theorem H01_twin :
     Run (h01Ops ++ [.write (wr 1) () Witness.w₀]) (h01.write (wr 1) Witness.w₀) ∧
     ReadStep ctxR (rd 1) () (h01.write (wr 1) Witness.w₀) (.ok (writtenBytes Witness.w₀ 0 8)) :=
   ⟨run_write run_h01.1 (by decide) trivial trivial, readStep_of (by decide)⟩
@@ -281,10 +276,6 @@ theorem H09_twin : Run [.alloc 0 96 8 8 (some 7)] a8 ∧
 /-- Source access of H10: write access to `[96, 100)` of allocation `0` (§12 ¶1). -/
 def h10src : Access := ⟨96, 0, 4, .write⟩
 
-/-- Access formed outside the source range `[96, 100)` but inside the allocation:
-`[100, 104)` (§14 ¶4). -/
-def h10out : Access := ⟨100, 0, 4, .write⟩
-
 /-- Access formed outside the source range and outside the allocation: `[104, 108)`
 (§14 ¶4). -/
 def h10past : Access := ⟨104, 0, 4, .write⟩
@@ -292,21 +283,13 @@ def h10past : Access := ⟨104, 0, 4, .write⟩
 /-- Restrictive derivation of `h10src` inside its range: `[98, 100)` (§14 ¶1). -/
 def h10in : Access := ⟨98, 0, 2, .write⟩
 
-/-- H10, use of an access formed outside the source range that leaves the allocation.
-Expected `ub` for the use; obtained `ub` (§15 ¶1, §16.2). The formation itself has no
-transition in the machine and no verdict: open obligation (§14 ¶4, §19), not declared passed.
-Class N2. -/
+/-- H10, as revised by the material owner: use of an access formed outside the source range that
+leaves the allocation. Expected `ub` for the use; obtained `ub` (§15 ¶1, §16.2). The formation
+itself has no transition in the machine and no verdict: an open boundary of the spec (§14 ¶4,
+§19), classified non-blocking. Class N2. -/
 theorem H10 : Run [.alloc 0 96 8 8 (some 7)] a8 ∧ ¬ Derive h10src h10past ∧
     WriteStep ctxW h10past () Witness.w₀ a8 .ub :=
   ⟨run_a8, fun h => absurd h.2.1 (by decide), .ub fun h => absurd h.1 (by decide)⟩
-
-/-- H10, use of an access formed outside the source range but inside the allocation.
-Expected `ub`; obtained `ok`. Mismatch, case defect: provenance has allocation granularity in
-the machine (§14 ¶2), so only leaving the allocation makes the use `ub` (§16.2); the scenario
-does not say which. Class N2. -/
-theorem H10_inside : Run [.alloc 0 96 8 8 (some 7)] a8 ∧ ¬ Derive h10src h10out ∧
-    WriteStep ctxW h10out () Witness.w₀ a8 (.ok (a8.write h10out Witness.w₀)) :=
-  ⟨run_a8, fun h => absurd h.2.1 (by decide), .ok ⟨by decide, trivial, trivial⟩⟩
 
 /-- H10 twin: a restrictive derivation inside the source range, then use. Expected `ok`;
 obtained `ok` (§14 ¶1, §16). Class N2. -/
