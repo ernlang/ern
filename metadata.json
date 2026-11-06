@@ -1,0 +1,54 @@
+{
+  "cli_version": "0.12.2",
+  "checkpoint_id": "01M6QXMHVJJ651QRP3XYYR3MTZ",
+  "strategy": "manual-commit",
+  "branch": "reference/memory-model-v0",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "formal/Ern/MemoryModel/Access/Basic.lean",
+    "formal/Ern/MemoryModel/Access/Invariants.lean",
+    "formal/Ern/MemoryModel/Access/Ops.lean",
+    "formal/Ern/MemoryModel/Access/Preserve/Alloc.lean",
+    "formal/Ern/MemoryModel/Access/Preserve/DeriveSplitRelease.lean",
+    "formal/Ern/MemoryModel/Access/Preserve/EndFree.lean",
+    "formal/Ern/MemoryModel/Access/Preserve/Frames.lean",
+    "formal/Ern/MemoryModel/Access/Preserve/Small.lean"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 0,
+    "api_call_count": 0,
+    "subagent_tokens": {
+      "input_tokens": 586,
+      "cache_creation_tokens": 1481194,
+      "cache_read_tokens": 41819381,
+      "output_tokens": 350498,
+      "api_call_count": 293
+    }
+  },
+  "redaction": {
+    "replacements": 667,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 0,
+      "credentialed_uri": 0,
+      "entropy": 662,
+      "key_context": 5,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}
