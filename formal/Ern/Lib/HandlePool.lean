@@ -5,9 +5,8 @@ import Ern.MemoryModel.Access.HolderCover
 # Handle pool: a library instance of the access discipline (non-normative)
 
 **Non-normative.** This module formalizes the library contract "HandlePool v0.5": the HandlePool
-v0.4 annex (items D.1–D.4) as amended by the arbitrations Q3, Q4, Q5 and Q12 (items HP5-1 to
-HP5-7), by the second follow-up to Q3 and Q5 (HP5-1', HP5-1'') and by the decision on Q3 of
-2026-11-06 (the metadata write of `freeSlot`, HP5-1).
+v0.4 annex (items D.1–D.4) with the items HP5-1 to HP5-7, HP5-1' and HP5-1'' of the
+arbitrations Q3, Q4, Q5 and Q12.
 `specs/ERN_Memory_Model_Specification_v0.1.md` does not define it (Part XIV preamble: "The
 contracts of `HandlePool` and `DataStack` belong to their library abstractions and are not defined
 here"). The normative clauses that constrain it are §36 (`MetaRight` is exercisable `Modify` on the
@@ -23,10 +22,9 @@ its destination (O10); `resolve` derives a companion from `internal` over the wh
 an entry authority from the companion (O1 twice); `resolveMany` does the same with `split` (O2) in
 `Modify` and with one `Observe` derive per handle (O1) in `Observe`; `unresolve` releases (O3);
 `freeSlot` writes its metadata leaves, the leaves of the pool value (O10), then updates the
-registry (HP5-1, Q3 decision of 2026-11-06). Every library step is thus, on the kernel side, a
-finite sequence of accepted kernel steps (`pstep_kernel`), so, under `DDSound` (§80) and
-`StaticsOK` (§47), every kernel state of a library run is kernel-reachable and satisfies the
-invariant of §57 (`kernel_guarantee`, HP5-7).
+registry (HP5-1). Every library step is thus, on the kernel side, a finite sequence of accepted
+kernel steps (`pstep_kernel`), so, under `DDSound` (§80) and `StaticsOK` (§47), every kernel state
+of a library run is kernel-reachable and satisfies the invariant of §57 (`kernel_guarantee`, HP5-7).
 -/
 
 namespace Ern.Lib.HandlePool
@@ -391,28 +389,27 @@ instance (L : PState) (pl : Pool) (q : Nat) : Decidable (FreeContentOK L pl q) :
   decidable_of_iff ((∀ l ∈ footprint L.kern.P q, L.kern.I l ≠ .init) ∧ NoInternalDesc L.kern pl q)
     ⟨fun ⟨a, b⟩ => ⟨a, b⟩, fun ⟨a, b⟩ => ⟨a, b⟩⟩
 
-/-- Metadata leaves of pool `pl` (HandlePool v0.5, HP5-1 as amended by arbitration Q3, decision
-of 2026-11-06; non-normative library contract; §46 analogue, §36): the leaves (§40) of the pool
-value, the place holding `internal` (`Arena.arenaValue`); empty when `internal` is absent or held
-by a frame, a case `AdminRight` excludes. The decision does not name the metadata leaves: taking all
-the leaves of the pool value is the reading of this formalization, on the basis of §36 (`MetaRight`
-is exercisable `Modify` on the administering value) and HP5-3 (the write of the pool value). -/
+/-- Metadata leaves of pool `pl` (HandlePool v0.5, HP5-1; non-normative library contract; §46
+analogue, §36): the leaves (§40) of the pool value, the place holding `internal`
+(`Arena.arenaValue`); empty when `internal` is absent or held by a frame, a case `AdminRight`
+excludes. Taking all the leaves of the pool value is the reading of this formalization, on the basis
+of §36 (`MetaRight` is exercisable `Modify` on the administering value) and HP5-3 (the write of the
+pool value). -/
 def metaLeaves (s : S3) (pl : Pool) : List Nat :=
   match Arena.arenaValue s pl.entry with
   | some v => footprint s.P v
   | none => []
 
-/-- The metadata leaves are the leaves of the pool value (HandlePool v0.5, HP5-1, Q3 decision of
-2026-11-06; §46 analogue, §40). -/
+/-- The metadata leaves are the leaves of the pool value (HandlePool v0.5, HP5-1; §46 analogue,
+§40). -/
 theorem metaLeaves_of {s : S3} {pl : Pool} {v : Nat} (h : Arena.arenaValue s pl.entry = some v) :
     metaLeaves s pl = footprint s.P v := by
   unfold metaLeaves; rw [h]
 
-/-- Effect of `freeSlot` on slot `i` of pool `j` (HandlePool v0.5, HP5-1 as amended by arbitration
-Q3, decision of 2026-11-06; non-normative library contract): the kernel write of the metadata
-leaves (§67 effect: they become `Init`), then the abstract update: the slot becomes free and its
-generation is incremented. There is no end-of-use effect, and the library adds no rights to the
-kernel (§36). -/
+/-- Effect of `freeSlot` on slot `i` of pool `j` (HandlePool v0.5, HP5-1; non-normative library
+contract): the kernel write of the metadata leaves (§67 effect: they become `Init`), then the
+abstract update: the slot becomes free and its generation is incremented. There is no end-of-use
+effect, and the library adds no rights to the kernel (§36). -/
 def freeSlotEff (L : PState) (j : Nat) (pl : Pool) (i : Nat) (sl : Slot) : PState :=
   { L with
     kern := write3Eff L.kern (metaLeaves L.kern pl)
@@ -423,9 +420,9 @@ order of HP5-1'' (Q5 extended to `freeSlot`); §58, §89; non-normative library 
 without the pool; then `fail` for a handle of a dead pool, of another pool, stale, absent or free,
 before the right is checked; then `reject` without the administration right (live pool and
 `MetaRight`); then `reject` unless the content conditions hold (`FreeContentOK`); then `ok`, whose
-effect is `freeSlotEff` (the write of the metadata leaves, Q3 decision of 2026-11-06). As for
-`allocSlot`, the preconditions of that kernel write (§67) are not fields of the step: they follow
-from `AdminRight` under `KInv` (`meta_write_of_kinv`). -/
+effect is `freeSlotEff` (the write of the metadata leaves). As for `allocSlot`, the preconditions of
+that kernel write (§67) are not fields of the step: they follow from `AdminRight` under `KInv`
+(`meta_write_of_kinv`). -/
 inductive FreeSlotStep (j : Nat) (h : Handle) (L : PState) : Outcome3 PState → Prop where
   | noPool : L.pools[j]? = none → FreeSlotStep j h L .reject
   | fail {pl : Pool} : L.pools[j]? = some pl → ¬ HandleOK L.kern pl h → FreeSlotStep j h L .fail
@@ -528,11 +525,11 @@ theorem write_of_right {s : S3} (hk : KInv s) {q a : Nat} {ls : List Nat} (hu : 
   have hul : s.Usable l := usable_of_partOf hk.1 (l + 1) l q (Nat.lt_succ_self l) hlq hu
   exact fun q' _ hq' x hx => hk.2.1.1.2.2.1 q' (usable_of_part hk.1 hq' hul) x hx
 
-/-- The metadata write of `freeSlot` under `KInv` (§57) (HandlePool v0.5, HP5-1 as amended by
-arbitration Q3, decision of 2026-11-06; §36, §43, §67): for a pool with `AdminRight`, `internal` is
-held by the pool value `v`, the metadata leaves are the leaves of `v`, an authority `a` grounds
-`MetaRight` (`Grounds`: exercisable `Modify` with effective `Modify` over every leaf of `v`), and
-the ordinary write of the metadata leaves through `a` satisfies the preconditions of §67. -/
+/-- The metadata write of `freeSlot` under `KInv` (§57) (HandlePool v0.5, HP5-1; §36, §43, §67): for
+a pool with `AdminRight`, `internal` is held by the pool value `v`, the metadata leaves are the
+leaves of `v`, an authority `a` grounds `MetaRight` (`Grounds`: exercisable `Modify` with effective
+`Modify` over every leaf of `v`), and the ordinary write of the metadata leaves through `a`
+satisfies the preconditions of §67. -/
 theorem meta_write_of_kinv {s : S3} (hk : KInv s) {pl : Pool} (hR : AdminRight s pl) :
     ∃ v a, Arena.arenaValue s pl.entry = some v ∧ metaLeaves s pl = footprint s.P v ∧
       Grounds s .modify v a ∧ Write3Pre s a (metaLeaves s pl) := by
@@ -555,9 +552,9 @@ theorem meta_write_of_kinv {s : S3} (hk : KInv s) {pl : Pool} (hR : AdminRight s
 /-- What a pool step is on the kernel side (HandlePool v0.5, HP5-7; §57, §58): under `KInv`, every
 library step is a finite sequence of accepted kernel steps O1–O16: `newPool` none (the identity),
 `allocSlot` one `write` (§67) of the handle, `freeSlot` one `write` (§67) of the metadata leaves
-through the authority on which `MetaRight` rests (HP5-1 as amended by arbitration Q3, decision of
-2026-11-06), `resolve` two `derive` (§60), `resolveMany` one `derive` then one `split` (§61) or one
-`derive` per handle, `unresolve` `release` steps (§62). -/
+through the authority on which `MetaRight` rests (HP5-1), `resolve` two `derive` (§60),
+`resolveMany` one `derive` then one `split` (§61) or one `derive` per handle, `unresolve` `release`
+steps (§62). -/
 theorem pstep_kernel {k : K} {L L' : PState} (hk : KInv L.kern) (h : PStep k L L') :
     KSeq k L.kern L'.kern := by
   cases h with
@@ -1838,11 +1835,11 @@ theorem resolve_composite {L L' : PState} {j : Nat} {h : Handle} {m : Mode}
 
 /-! ## `freeSlot` (HandlePool v0.5, HP5-1, HP5-3, HP5-6) -/
 
-/-- The effect of an accepted `freeSlot` (HandlePool v0.5, HP5-1 as amended by arbitration Q3,
-decision of 2026-11-06): the pool exists with the administration right, the handle is valid, and
-the content conditions hold; the arrival state is `freeSlotEff`, whose kernel state is the write of
-the metadata leaves (§67 effect), whose resolutions are those of the departure state (no
-end-of-use effect; §36, §58), and whose slot is free with its generation incremented. -/
+/-- The effect of an accepted `freeSlot` (HandlePool v0.5, HP5-1): the pool exists with the
+administration right, the handle is valid, and the content conditions hold; the arrival state is
+`freeSlotEff`, whose kernel state is the write of the metadata leaves (§67 effect), whose
+resolutions are those of the departure state (no end-of-use effect; §36, §58), and whose slot is
+free with its generation incremented. -/
 theorem freeSlot_effect {L L' : PState} {j : Nat} {h : Handle}
     (hst : FreeSlotStep j h L (.ok L')) :
     ∃ pl sl, L.pools[j]? = some pl ∧ pl.slots[h.slot]? = some sl ∧ AdminRight L.kern pl ∧
@@ -1888,12 +1885,11 @@ theorem write3Eff_of_init {s : S3} {ls : List Nat} (h : ∀ l ∈ ls, s.I l = .i
 right. On every library-reachable state, under `DDSound` (§80) and `StaticsOK` (§47), for every
 pool with `AdminRight` (§36), the pool value `v` (the place holding `internal`) exists and the
 kernel `write` (§67) of the leaves of `v` through the authority grounding `MetaRight` is accepted;
-when the leaves of `v` are `Init`, its effect is the identity on the kernel state. Since the Q3
-decision of 2026-11-06 this write is the kernel part of an accepted `freeSlot` (`freeSlotEff`,
-`freeSlot_meta_leaves`). §76.5 requires `Init` leaves only when the pool is created: on a
-library-reachable state with `AdminRight`, a leaf of `v` can be `Moved`, and the write of an
-accepted `freeSlot` then makes it `Init` (`Witness.meta_write_not_identity`,
-`freeSlot_kernel_write`). -/
+when the leaves of `v` are `Init`, its effect is the identity on the kernel state. This write is the
+kernel part of an accepted `freeSlot` (`freeSlotEff`, `freeSlot_meta_leaves`). §76.5 requires `Init`
+leaves only when the pool is created: on a library-reachable state with `AdminRight`, a leaf of `v`
+can be `Moved`, and the write of an accepted `freeSlot` then makes it `Init`
+(`Witness.meta_write_not_identity`, `freeSlot_kernel_write`). -/
 theorem freeSlot_meta_write {k : K} {statics : Statics} (hdd : DDSound k)
     (hst : StaticsOK statics) {L : PState} (hr : PReach k statics L) {pl : Pool}
     (hR : AdminRight L.kern pl) :
@@ -1916,12 +1912,12 @@ theorem freeSlot_meta_write {k : K} {statics : Statics} (hdd : DDSound k)
       have := hk.1.holders _ y hy ya; rw [hhold] at this; exact this
     exact ⟨v, a, rfl, Guarded.ok (write_of_right hk hu hex hall fun _ h => h), write3Eff_of_init⟩
 
-/-- HandlePool v0.5, HP5-1 as amended by arbitration Q3 (decision of 2026-11-06), proof (a): on
-every library-reachable state, under `DDSound` (§80) and `StaticsOK` (§47), an accepted `freeSlot`
-identifies its metadata leaves exactly: `internal` is held by the pool value `v` (§46 analogue), the
-metadata leaves are the leaves of `v` (§40), and the kernel part of the step is the ordinary write
-(§67) of those leaves through an authority `a` on which `MetaRight` rests, exercisable `Modify`
-with effective `Modify` over every leaf of `v` (`Grounds`; §36, §43). -/
+/-- HandlePool v0.5, HP5-1, proof (a): on every library-reachable state, under `DDSound` (§80) and
+`StaticsOK` (§47), an accepted `freeSlot` identifies its metadata leaves exactly: `internal` is held
+by the pool value `v` (§46 analogue), the metadata leaves are the leaves of `v` (§40), and the
+kernel part of the step is the ordinary write (§67) of those leaves through an authority `a` on
+which `MetaRight` rests, exercisable `Modify` with effective `Modify` over every leaf of `v`
+(`Grounds`; §36, §43). -/
 theorem freeSlot_meta_leaves {k : K} {statics : Statics} (hdd : DDSound k)
     (hst : StaticsOK statics) {L L' : PState} (hr : PReach k statics L) {j : Nat} {h : Handle}
     (hs : FreeSlotStep j h L (.ok L')) :
@@ -1933,11 +1929,10 @@ theorem freeSlot_meta_leaves {k : K} {statics : Statics} (hdd : DDSound k)
     obtain ⟨v, a, hv, hml, hg, hw⟩ := meta_write_of_kinv (kernel_guarantee hdd hst L hr) hR
     exact ⟨pl, v, a, hp, hv, hml, hg, Guarded.ok hw⟩
 
-/-- HandlePool v0.5, HP5-1 as amended by arbitration Q3 (decision of 2026-11-06), proof (b): the
-kernel state after an accepted `freeSlot` is exactly the effect of the write of the metadata leaves,
-the leaves of the pool value `v` (§67 effect): every metadata leaf is `Init`, with no hypothesis on
-its state before (`Moved` included, §41, §59), every other leaf keeps its state, and the other
-kernel components are unchanged (§38, §58). -/
+/-- HandlePool v0.5, HP5-1, proof (b): the kernel state after an accepted `freeSlot` is exactly the
+effect of the write of the metadata leaves, the leaves of the pool value `v` (§67 effect): every
+metadata leaf is `Init`, with no hypothesis on its state before (`Moved` included, §41, §59), every
+other leaf keeps its state, and the other kernel components are unchanged (§38, §58). -/
 theorem freeSlot_kernel_write {L L' : PState} {j : Nat} {h : Handle}
     (hs : FreeSlotStep j h L (.ok L')) :
     ∃ pl v, L.pools[j]? = some pl ∧ Arena.arenaValue L.kern pl.entry = some v ∧
@@ -1956,14 +1951,13 @@ theorem freeSlot_kernel_write {L L' : PState} {j : Nat} {h : Handle}
     · show (write3Eff L.kern (metaLeaves L.kern pl)).I l = .init; simp [write3Eff, hl]
     · show (write3Eff L.kern (metaLeaves L.kern pl)).I l = L.kern.I l; simp [write3Eff, hl]
 
-/-- HandlePool v0.5, HP5-1 as amended by arbitration Q3 (decision of 2026-11-06), proof (c): the
-abstract update of an accepted `freeSlot` frees the slot with its generation incremented; the
-identity, storage, `internal` and other slots of the pool, the other pools, the resolutions and the
-next pool identity are unchanged; no memory right is added (`A` and `D` unchanged; §36: the library
-adds no rights to the kernel); the metadata leaves of the updated pool are the written leaves, all
-`Init` (§46 analogue, §67). The correspondence of (c) holds at the level of the written leaves and
-of their initialization state only: `S3` has no value component (§38), so the values written (free
-state, generation) cannot be stated. -/
+/-- HandlePool v0.5, HP5-1, proof (c): the abstract update of an accepted `freeSlot` frees the slot
+with its generation incremented; the identity, storage, `internal` and other slots of the pool, the
+other pools, the resolutions and the next pool identity are unchanged; no memory right is added (`A`
+and `D` unchanged; §36: the library adds no rights to the kernel); the metadata leaves of the
+updated pool are the written leaves, all `Init` (§46 analogue, §67). The correspondence of (c) holds
+at the level of the written leaves and of their initialization state only: `S3` has no value
+component (§38), so the values written (free state, generation) cannot be stated. -/
 theorem freeSlot_abstract_update {L L' : PState} {j : Nat} {h : Handle}
     (hs : FreeSlotStep j h L (.ok L')) :
     ∃ pl sl pl', L.pools[j]? = some pl ∧ pl.slots[h.slot]? = some sl ∧
@@ -1983,15 +1977,14 @@ theorem freeSlot_abstract_update {L L' : PState} {j : Nat} {h : Handle}
     have hl' : l ∈ metaLeaves L.kern pl := hl
     show (write3Eff L.kern (metaLeaves L.kern pl)).I l = .init; simp [write3Eff, hl']
 
-/-- HandlePool v0.5, HP5-1 as amended by arbitration Q3 (decision of 2026-11-06): on every
-library-reachable state, under `DDSound` (§80) and `StaticsOK` (§47), the metadata leaves written
-by an accepted `freeSlot` are disjoint from the leaves of the freed slot, whose states the write
-keeps (HP5-1: no leaf of the entry is `Init`). A shared leaf would be covered by `internal`
-(§76.3: `footprint(internal) = footprint(storage)`), while the authority on which `MetaRight`
-rests has effective `Modify` on it; by I1 (§50), either that authority is `internal`, impossible
-along the holder chain of §43 since `internal` is held by the pool value, or `internal` has no
-effective mode there, so an active strict descendant of `internal` of own mode `Modify` covers the
-leaf (§43, case 3), which HP5-1' excludes. -/
+/-- HandlePool v0.5, HP5-1: on every library-reachable state, under `DDSound` (§80) and `StaticsOK`
+(§47), the metadata leaves written by an accepted `freeSlot` are disjoint from the leaves of the
+freed slot, whose states the write keeps (HP5-1: no leaf of the entry is `Init`). A shared leaf
+would be covered by `internal` (§76.3: `footprint(internal) = footprint(storage)`), while the
+authority on which `MetaRight` rests has effective `Modify` on it; by I1 (§50), either that
+authority is `internal`, impossible along the holder chain of §43 since `internal` is held by the
+pool value, or `internal` has no effective mode there, so an active strict descendant of `internal`
+of own mode `Modify` covers the leaf (§43, case 3), which HP5-1' excludes. -/
 theorem freeSlot_meta_disjoint {k : K} {statics : Statics} (hdd : DDSound k)
     (hst : StaticsOK statics) {L L' : PState} (hr : PReach k statics L) {j : Nat} {h : Handle}
     (hs : FreeSlotStep j h L (.ok L')) :
@@ -2046,13 +2039,12 @@ theorem freeSlot_meta_disjoint {k : K} {statics : Statics} (hdd : DDSound k)
     show (write3Eff L.kern (metaLeaves L.kern pl)).I l = L.kern.I l
     simp [write3Eff, hn]
 
-/-- HandlePool v0.5, D.1 and HP5-1 as amended by arbitration Q3 (decision of 2026-11-06): on every
-library-reachable state, under `DDSound` (§80) and `StaticsOK` (§47), no leaf of an entry of a
-live pool (`internal` active, §46 analogue) is a metadata leaf, a leaf of the pool value. An entry
-lies in the storage (D.1), whose leaves are those of `internal` (§76.3, `PoolOK.fpEq`); a shared
-leaf would make `internal` `SelfLock` (§63.8), which `NoSelfLock` excludes on reachable states
-(§63.8, §65.3; `reachable_noSelfLock`). No ownership of the storage by the pool value is assumed
-(§46). -/
+/-- HandlePool v0.5, D.1 and HP5-1: on every library-reachable state, under `DDSound` (§80) and
+`StaticsOK` (§47), no leaf of an entry of a live pool (`internal` active, §46 analogue) is a
+metadata leaf, a leaf of the pool value. An entry lies in the storage (D.1), whose leaves are those
+of `internal` (§76.3, `PoolOK.fpEq`); a shared leaf would make `internal` `SelfLock` (§63.8), which
+`NoSelfLock` excludes on reachable states (§63.8, §65.3; `reachable_noSelfLock`). No ownership of
+the storage by the pool value is assumed (§46). -/
 theorem pool_entries_meta_disjoint {k : K} {statics : Statics} (hdd : DDSound k)
     (hst : StaticsOK statics) {L : PState} (hr : PReach k statics L) {pl : Pool}
     (hpl : pl ∈ L.pools) (ha : L.kern.Active pl.internal) {sl : Slot} (hsl : sl ∈ pl.slots) :
@@ -2351,8 +2343,8 @@ def x5 : PState := { x4 with kern := transferEff x4.kern 1 5 }
 companion 6 (§62). -/
 def x6 : PState := { x5 with kern := releaseEff (releaseEff x5.kern 7) 6 }
 
-/-- After `freeSlot(⟨0, 0, 0⟩)` (HandlePool v0.5, HP5-1, Q3 decision of 2026-11-06): the metadata
-leaves, the leaves of the pool value 3, are written (§67); slot 0 is free, of generation 1 (§38). -/
+/-- After `freeSlot(⟨0, 0, 0⟩)` (HandlePool v0.5, HP5-1): the metadata leaves, the leaves of the
+pool value 3, are written (§67); slot 0 is free, of generation 1 (§38). -/
 def x7 : PState := freeSlotEff x6 0 pl4 0 ⟨1, 0, true⟩
 
 /-- HandlePool v0.5, HP5-2 (mandatory proof (1) of arbitration Q3 and its follow-up): from
@@ -2464,8 +2456,7 @@ theorem no_stale_after_exit :
     pool_freeSlot_content_rejects (sl := ⟨1, 0, true⟩) rfl (by decide) (by decide) rfl
       (by decide)⟩
 
-/-! ### `freeSlot` on a pool value with a `Moved` leaf (HandlePool v0.5, HP5-1, HP5-3, Q3 decision
-of 2026-11-06; §63, §67)
+/-! ### `freeSlot` on a pool value with a `Moved` leaf (HandlePool v0.5, HP5-1, HP5-3; §63, §67)
 
 Statics `vst` (§47): place 0, the pool value, `Init`, with leaves 1 and 2; place 3, the storage,
 owned by place 0, with `Uninit` leaves 4 and 5; places 6 and 7, `Uninit` leaves of frame 0, the
@@ -2490,16 +2481,16 @@ def m3 : PState := allocSlotEff m2 0 pv 0 ⟨4, 0, false⟩ 7
 /-- Pool 0 after `allocSlot` (HandlePool v0.5, D.3; §47). -/
 def pv3 : Pool := ⟨0, 3, 1, [⟨4, 0, true⟩, ⟨5, 0, false⟩]⟩
 /-- After `freeSlot(⟨0, 0, 0⟩)`: the write of the leaves of the pool value, place 0 (§67), and slot
-0 free at generation 1 (HandlePool v0.5, HP5-1, Q3 decision of 2026-11-06). -/
+0 free at generation 1 (HandlePool v0.5, HP5-1). -/
 def m4 : PState := freeSlotEff m3 0 pv3 0 ⟨4, 0, true⟩
 
-/-- HandlePool v0.5, HP5-1, HP5-3 and the Q3 decision of 2026-11-06 (non-normative library
-contract): `m2` is library-reachable, pool 0 has `AdminRight` (§36) and its value, place 0, has the
-`Moved` leaf 1 (§63); the write of the leaves of the pool value (§67) that `freeSlot_meta_write`
-provides is then not the identity on the kernel state. Continued by `allocSlot(0, 7)` and an
-accepted `freeSlot(⟨0, 0, 0⟩)`, this is a conforming case, no longer a limit: the arrival kernel
-state is the write of the leaves of the pool value on the departure kernel state, it differs from
-it, and the `Moved` leaf 1 is `Init` after it; slot 0 is free at generation 1. -/
+/-- HandlePool v0.5, HP5-1 and HP5-3 (non-normative library contract): `m2` is library-reachable,
+pool 0 has `AdminRight` (§36) and its value, place 0, has the `Moved` leaf 1 (§63); the write of the
+leaves of the pool value (§67) that `freeSlot_meta_write` provides is then not the identity on the
+kernel state. Continued by `allocSlot(0, 7)` and an accepted `freeSlot(⟨0, 0, 0⟩)`, this is a
+conforming case: the arrival kernel state is the write of the leaves of the pool value on the
+departure kernel state, it differs from it, and the `Moved` leaf 1 is `Init` after it; slot 0 is
+free at generation 1. -/
 theorem meta_write_not_identity :
     StaticsOK vst ∧ PReach K0 vst m2 ∧ m2.pools[0]? = some pv ∧ AdminRight m2.kern pv ∧
     Arena.arenaValue m2.kern pv.entry = some 0 ∧ m2.kern.I 1 = .moved ∧

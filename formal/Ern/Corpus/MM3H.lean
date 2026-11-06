@@ -794,18 +794,16 @@ in no mode, `reset` is `reject` (§78.2: the blocks 5 and 6 are active and cover
 6), as in that baseline; the `endUse` of the block values 2 and 3 is `reject`, against the `ok` of
 that baseline, decided by the v0.1 amendment of §69.2 (last sentence: the block 5, made inactive by
 the `endUse` of 2, keeps its active descendant 8, held by the leaf 6; the block 6 keeps 7, held by
-the leaf 5), which overrides the baseline for these two steps. Decision H49, validated by the owner
-on 2026-11-06: the rejections of `endUse 2` and `endUse 3` are accepted; the witnesses and the
-justification by I2 are kept. Justification by I2 (§51, last sentences): the effect of `endUse 2`
-(§69 `ok` effect, `endUseEff`), applied by the v0 baseline, makes the block authority 5, held by
-the value 2, inactive while its derived authority 8 (origin 5) stays active, a state that violates
-I2; likewise the effect of `endUse 3` makes the block authority 6, held by the value 3, inactive
-while 7 (origin 6) stays active. The residual blocking
-is allowed: `NoLock` is not adopted (§65 last paragraph, §27) and indirect blocking compatible with
-safety may remain (§88). Obtained: the same. Twin of the two `endUse` rejections: the same sequence
-without the cycle (the six steps after `fao`), then both `endUse` and `reset`, `ok`. The `reset`
-`reject` in `h49` persists in that twin (on `fao` the blocks 5 and 6 are still held by the values 2
-and 3, §78.2); by arbitration it is exempt from a positive twin. -/
+the leaf 5), which overrides the baseline for these two steps. Justification by I2 (§51, last
+sentences): the effect of `endUse 2` (§69 `ok` effect, `endUseEff`), applied by the v0 baseline,
+makes the block authority 5, held by the value 2, inactive while its derived authority 8 (origin 5)
+stays active, a state that violates I2; likewise the effect of `endUse 3` makes the block authority
+6, held by the value 3, inactive while 7 (origin 6) stays active. The residual blocking is allowed:
+`NoLock` is not adopted (§65 last paragraph, §27) and indirect blocking compatible with safety may
+remain (§88). Obtained: the same. Twin of the two `endUse` rejections: the same sequence without the
+cycle (the six steps after `fao`), then both `endUse` and `reset`, `ok`. The `reset` `reject` in
+`h49` persists in that twin (on `fao` the blocks 5 and 6 are still held by the values 2 and 3,
+§78.2); by arbitration it is exempt from a positive twin. -/
 theorem H49 : RunsTo K0 [] h49o h49 ∧ ¬ h49.kern.ExercisableAt 7 .observe ∧
     ¬ h49.kern.ExercisableAt 8 .observe ∧ ResetD 0 h49 .reject ∧
     EndUseStep K0 2 h49.kern .reject ∧ ¬ EndUseKeptDesc h49.kern 2 ∧

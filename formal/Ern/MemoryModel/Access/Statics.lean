@@ -275,10 +275,9 @@ private theorem renumber_owner {σ : List Nat} {statics : Statics} {i : Nat} (hi
 
 /-! ## Existence of a conforming numbering -/
 
-/-- Owner decision of 2026-11-06 on `StaticsOK`, point (a) (§47, §49 and its last paragraph,
-§63.2): every declaration conforming to §47 and §49 has a consistent renumbering, a permutation
-of its identifiers preserving parents, owning statics, kinds, initial states and field order,
-that satisfies `StaticsOK`. -/
+/-- `StaticsOK` (a) (§47, §49 and its last paragraph, §63.2): every declaration conforming to §47
+and §49 has a consistent renumbering, a permutation of its identifiers preserving parents, owning
+statics, kinds, initial states and field order, that satisfies `StaticsOK`. -/
 theorem StaticsConf.exists_renumber {statics : Statics} (h : StaticsConf statics) :
     ∃ σ : List Nat, σ.Perm (List.range statics.length) ∧ ConsistentRenumbering σ statics ∧
       StaticsOK (renumber σ statics) := by

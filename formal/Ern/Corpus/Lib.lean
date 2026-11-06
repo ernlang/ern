@@ -19,23 +19,23 @@ module imports it.
   storage (`pool_two_freeSlot_cross`).
 * The guard of §56 across registries: a second administration (arena, pool, stack) on the
   `internal` of a live administration of another registry, or of the same registry for pools.
-* The usage scenarios W1 and W2 of material §5b (W3 is in `Ern.Corpus.MM3H`); W2 also checks
-  decision Q17 (2026-11-06) on its move (`Ern.MemoryModel.Access.TransferSource`).
+* The usage scenarios W1 and W2 of material §5b (W3 is in `Ern.Corpus.MM3H`); W2 also checks the
+  properties Q17 (a) and (b) on its move (`Ern.MemoryModel.Access.TransferSource`).
 
 Each case is a run from `CState.init statics` (§47) by the combined runner
 (`Ern.Corpus.LibRunner`): `CRunsTo k statics os C` states that every step is `ok`, that `C` is
 library-reachable and that its kernel state is reachable by O1–O16 (§57; the kernel part of
 `freeSlot` is the write of its metadata leaves, the leaves of the pool value, §67; HandlePool v0.5,
-HP5-1 with the Q3 decision of 2026-11-06). The verdict of the step under test is stated with the
-relation of its operation on the projected state (`ResolveStep`, `FreeSlotStep`, `NewPoolStep`,
-`NewArenaStep`, `NewStackStep`, `StoreStep`, `TransferStep`, …) and decided by `decide`. Each
-docstring gives the expected verdict from the case's source, the obtained verdict, the class
-(material §0, rule 5: `Lib` library instance) and the positive twin of each rejection or `fail`
-(rule 2: the same sequence without the faulty element, accepted). Where spec v0.1, HandlePool v0.5
-or DS-v2 changes the verdict the source gave, the docstring records the historical expected
-verdict, its justification, the new expected verdict and the clause or contract item that decides
-it (arbitration Q21). A case whose obtained verdict differs from the expected one keeps its
-expected verdict and is marked **MISMATCH** with its cause.
+HP5-1). The verdict of the step under test is stated with the relation of its operation on the
+projected state (`ResolveStep`, `FreeSlotStep`, `NewPoolStep`, `NewArenaStep`, `NewStackStep`,
+`StoreStep`, `TransferStep`, …) and decided by `decide`. Each docstring gives the expected verdict
+from the case's source, the obtained verdict, the class (material §0, rule 5: `Lib` library
+instance) and the positive twin of each rejection or `fail` (rule 2: the same sequence without the
+faulty element, accepted). Where spec v0.1, HandlePool v0.5 or DS-v2 changes the verdict the source
+gave, the docstring records the historical expected verdict, its justification, the new expected
+verdict and the clause or contract item that decides it (arbitration Q21). A case whose obtained
+verdict differs from the expected one keeps its expected verdict and is marked **MISMATCH** with its
+cause.
 
 Twins that are not literally the same sequence without one faulty step:
 * another handle, entry, target, parameter or identity in place of the faulty one: H30 (the handle
@@ -421,13 +421,12 @@ is written through 6; then `freeSlot` of slot 0 of pool 1. Historical verdict of
 `reject` (HandlePool v0.5, HP5-1: no leaf of the entry may be `Init`; the leaf 6 is `Init`).
 Obtained: `reject`. Twin without the write: `ok`; the leaf 6 stays `Uninit` and the slot 0 of
 pool 0 stays live at generation 0 (the kernel write of `freeSlot` covers only the leaf 4, the value
-of pool 1, which holds its `internal` 6; HandlePool v0.5, HP5-1 with the Q3 decision of
-2026-11-06). On that state pool 0 cannot resolve its slot while the `internal` 6 of pool 1 is
-active: its own `internal` 5 has no effective right on the storage (`reject`, §43 case 3). Twin of
-that `reject`: the same sequence without the authority 6 (its `derive` and `store`) and the steps
-that use it (pool 1, its slot, its `freeSlot`): `allocSlot` then `resolve` in pool 0, `ok`.
-Dropping only the steps of pool 1 does not lift the `reject`: 6 is active from its `derive` on,
-before pool 1 exists. -/
+of pool 1, which holds its `internal` 6; HandlePool v0.5, HP5-1). On that state pool 0 cannot
+resolve its slot while the `internal` 6 of pool 1 is active: its own `internal` 5 has no effective
+right on the storage (`reject`, §43 case 3). Twin of that `reject`: the same sequence without the
+authority 6 (its `derive` and `store`) and the steps that use it (pool 1, its slot, its `freeSlot`):
+`allocSlot` then `resolve` in pool 0, `ok`. Dropping only the steps of pool 1 does not lift the
+`reject`: 6 is active from its `derive` on, before pool 1 exists. -/
 theorem pool_two_freeSlot_cross : CRunsTo K0 [] pxo px ∧
     HandlePool.NewPoolStep px.othersP 5 5 px.toP .reject ∧ NewArenaBase px.kern 5 5 ∧
     (∀ l ∈ footprint px.kern.P 5, px.kern.I l = .uninit) ∧
@@ -663,23 +662,20 @@ move by another system while the view lives. On the literal reading (the view = 
 alone, expected `ok` after its release), spec v0 rejected this move, the MISMATCH of the v0
 edition; under v0.1 that reading obtains its expected verdicts as well.
 
-Decision Q17, validated by the owner on 2026-11-06: the exemption of v0.1 §63.4 is accepted. The
-expected property of the move in `w2a` is reformulated accordingly, with (b) as restated by the
-owner on 2026-11-06 (the first statement of (b), "every access of the grounding chain is
-rejected", was erroneous). For each transfer of the move, with the authority grounding its `Modify`
-right over the source in the state before it (`Grounds`: the root 7 for 9 → 16 from `w2a`, the
-column authority 10 being released; 11 for 12 → 19 from `w2b`), in the state after the transfer:
-(a) no active authority outside the grounding chain (`RightChain`: 7 for the field 9, 7 having no
-origin; 11 and its origin 7 for the field 12) covers a source leaf; (b) every read of a source
-leaf is rejected, every access through a strict origin-chain ancestor of the grounding authority is
-rejected, and a write through the grounding authority itself is permitted. Obtained, by
-`transfer_source_q17` on these reachable states (§57; §63.4, §43, §50): (a) holds; reads are
-rejected through every authority (the source leaves are `Moved`: §66.1, §41, §53); writes and
-shared writes through a strict ancestor are rejected (7 on the field 12, §67.1, §68.2, §43 case 3;
-the root 7 has none). Checked separately on `w2m`, the state after the move: a write through the
+Expected property of the move in `w2a` (Q17 (a) and (b)). For each transfer of the move, with the
+authority grounding its `Modify` right over the source in the state before it (`Grounds`: the root 7
+for 9 → 16 from `w2a`, the column authority 10 being released; 11 for 12 → 19 from `w2b`), in the
+state after the transfer: (a) no active authority outside the grounding chain (`RightChain`: 7 for
+the field 9, 7 having no origin; 11 and its origin 7 for the field 12) covers a source leaf; (b)
+every read of a source leaf is rejected, every access through a strict origin-chain ancestor of the
+grounding authority is rejected, and a write through the grounding authority itself is permitted.
+Obtained, by `transfer_source_q17` on these reachable states (§57; §63.4, §43, §50): (a) holds;
+reads are rejected through every authority (the source leaves are `Moved`: §66.1, §41, §53); writes
+and shared writes through a strict ancestor are rejected (7 on the field 12, §67.1, §68.2, §43 case
+3; the root 7 has none). Checked separately on `w2m`, the state after the move: a write through the
 grounding authority itself is `ok`, a re-initialization of the `Moved` leaf, 11 on the field 12
 and 7 on the field 9 (§67 has no `Init` precondition; positive witness also in
-`TransferSourceWitness.write_through_ground_accepted`). The case is not reclassified. -/
+`TransferSourceWitness.write_through_ground_accepted`). -/
 theorem W2 : CRunsTo K0 [] w2o w2 ∧ TransferStep K0 12 19 w2.kern .reject ∧
     CRuns K0 [] (w2o ++ [.release 12, .release 11, .transfer 9 16, .transfer 12 19]) ∧
     CRunsTo K0 [] (w2o ++ [.release 12]) w2a ∧ ActiveDerivedOutside w2a.kern 12 11 ∧

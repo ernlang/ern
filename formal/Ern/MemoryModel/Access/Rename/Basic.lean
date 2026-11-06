@@ -319,12 +319,11 @@ structure Sim (π α : Ren) (s s' : S3) : Prop where
 set; likewise the anchors `D(p)`, §44, and the leaves of a pinning obligation, §74): `Satisfiable`
 (§71) does not distinguish states equal up to permutation of footprint, anchor and pin-leaf lists,
 which the formalization represents as lists (§49, last paragraph). `K` is a parameter of the
-formalization (§48, §80), not a concrete definition, so this is a hypothesis on it (accepted by the
-owner on 2026-11-06), satisfied for instance by `Examples.K0` (`MainExamples.k0_ext`). Only the
-renaming bisimulation depends on it: `satisfiable_ren` and `alloc_corr` (OpsEndFree), then
-`op_corr`, `Sim.step`, `Sim.step_back`, `Sim.run`, `Sim.run_back`, `Sim.run_back_any`,
-`Renumbered.run`, `Renumbered.run_back`, `Renumbered.reachable`, `Renumbered.reachable_back` and
-`Renumbered.properties` (Main). -/
+formalization (§48, §80), not a concrete definition, so this is a hypothesis on it, satisfied for
+instance by `Examples.K0` (`MainExamples.k0_ext`). Only the renaming bisimulation depends on it:
+`satisfiable_ren` and `alloc_corr` (OpsEndFree), then `op_corr`, `Sim.step`, `Sim.step_back`,
+`Sim.run`, `Sim.run_back`, `Sim.run_back_any`, `Renumbered.run`, `Renumbered.run_back`,
+`Renumbered.reachable`, `Renumbered.reachable_back` and `Renumbered.properties` (Main). -/
 def KExt (k : K) : Prop :=
   ∀ p sh s t, SRel Ren.id Ren.id s t → k.Satisfiable p sh s → k.Satisfiable p sh t
 

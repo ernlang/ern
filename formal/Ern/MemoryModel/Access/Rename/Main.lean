@@ -12,9 +12,9 @@ Assembly of the renaming bisimulation of the access kernel for
 `specs/ERN_Memory_Model_Specification_v0.1.md` §49, last paragraph: per operation O1–O16
 (§58, §60–§75), per run (§57, §58), on reachable states (§57) from the initial states of two
 `StaticsOK` numberings of one declaration (§47; §63.2), and the transfer of `KInv`, `I5` (§57)
-and `DDSound` (§80). Owner decision of 2026-11-06 on `StaticsOK`, point (b); `KExt` is the
-owner-accepted hypothesis on `Satisfiable` (§71). Any two numberings given by point (a)
-(`StaticsConf.exists_renumber`) are related (`renumber_renumbered`).
+and `DDSound` (§80): `StaticsOK` (b), under the interface obligation `KExt` on `Satisfiable` (§71,
+§42). Any two numberings given by `StaticsOK` (a) (`StaticsConf.exists_renumber`) are related
+(`renumber_renumbered`).
 -/
 
 namespace Ern.MemoryModel.Access.Rename
@@ -310,10 +310,10 @@ private theorem mapRefs_mapRefs (f g : Nat → Nat) (e : (Option Nat × Option N
   obtain ⟨⟨p, o, k⟩, b⟩ := e
   cases p <;> cases o <;> rfl
 
-/-- Any two consistent renumberings of a conforming declaration satisfying `StaticsOK`, as given
-by point (a) of the owner decision of 2026-11-06 (`StaticsConf.exists_renumber`), are related by
-a consistent renumbering: the second is the renumbering of the first by `σ₂.map σ₁.idxOf`, and
-both are `Renumbered` (§47; §49, last paragraph; §63.2). -/
+/-- Any two consistent renumberings of a conforming declaration satisfying `StaticsOK`, as given by
+`StaticsOK` (a) (`StaticsConf.exists_renumber`), are related by a consistent renumbering: the second
+is the renumbering of the first by `σ₂.map σ₁.idxOf`, and both are `Renumbered` (§47; §49, last
+paragraph; §63.2). -/
 theorem renumber_renumbered {C : Statics} (hC : StaticsConf C) {σ₁ σ₂ : List Nat}
     (hp₁ : σ₁.Perm (List.range C.length)) (hc₁ : ConsistentRenumbering σ₁ C)
     (hok₁ : StaticsOK (renumber σ₁ C)) (hp₂ : σ₂.Perm (List.range C.length))

@@ -7,8 +7,8 @@ Correspondence under a renaming of identities (§49, last paragraph) of the oper
 `endUse` (§69), O13 `free` (§70) and O14 `alloc` (§71) of
 `specs/ERN_Memory_Model_Specification_v0.1.md`: the release of authorities whose holder died
 (§69, §70 `ok` effects), the effects and preconditions of each operation, `Satisfiable` (§71) under
-the owner-accepted hypothesis `KExt`, the correspondence of outcomes (§58), and the preservation by
-`ok` steps of downward links and of field order (§63.2).
+the interface obligation `KExt`, the correspondence of outcomes (§58), and the preservation by `ok`
+steps of downward links and of field order (§63.2).
 
 `FreeCompat`'s `auth` is not renamed (§70.2); shapes are not renamed (§71.1).
 -/
@@ -442,7 +442,7 @@ theorem allocEff_down (hd : Down s) {ow : Nat} {ls : LocalShape}
   ⟨shapeP_down hd.1 hok, fun j o ho => hd.2 j o (by rw [← allocEff_org s ow ls]; exact ho)⟩
 
 /-- `Satisfiable` of the renamed contract on related states (§71; §49, last paragraph). The
-direction from the renamed side uses the owner-accepted hypothesis `KExt` (§42, §44). -/
+direction from the renamed side uses the interface obligation `KExt` (§42, §44). -/
 theorem satisfiable_ren (hk : KExt k) (h : SRel π α s s') (pr : Nat) (ls : LocalShape) :
     (k.rename π α).Satisfiable (π.f pr) ls s' ↔ k.Satisfiable pr ls s := by
   show (∃ t₀, SRel π α t₀ s' ∧ k.Satisfiable (π.g (π.f pr)) ls t₀) ↔ _

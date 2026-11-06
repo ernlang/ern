@@ -27,8 +27,8 @@ imports it.
   reaches a library-reachable state (`CReach`) whose kernel state is reachable by O1–O16 (§57):
   the kernel part of every library step is a finite sequence of kernel steps (HandlePool v0.5,
   HP5-7): `allocSlot` is a kernel `write` (§67) when some authority can write its destination, and
-  `freeSlot` a kernel `write` of its metadata leaves, the leaves of the pool value (HP5-1, Q3
-  decision of 2026-11-06), when some authority can write them, which `crun` checks.
+  `freeSlot` a kernel `write` of its metadata leaves, the leaves of the pool value (HP5-1), when
+  some authority can write them, which `crun` checks.
 -/
 
 namespace Ern.Corpus.LibRunner
@@ -187,9 +187,8 @@ def firstFree : List HandlePool.Slot → Option (Nat × HandlePool.Slot)
 def writer (s : S3) (dst : Nat) : Option Nat :=
   (List.range s.A.length).find? fun a => decide (Write3Pre s a [dst])
 
-/-- The kernel-side check of a step of `crun` (§67; HandlePool v0.5, D.3, HP5-1 with the Q3
-decision of 2026-11-06): the handle write of `allocSlot` and the metadata write of `freeSlot` are
-kernel `write`s by some authority. -/
+/-- The kernel-side check of a step of `crun` (§67; HandlePool v0.5, D.3, HP5-1): the handle write
+of `allocSlot` and the metadata write of `freeSlot` are kernel `write`s by some authority. -/
 def COp.kok (C : CState) : COp → Bool
   | .allocSlot _ dst => (writer C.kern dst).isSome
   | .freeSlot j _ => match C.pools[j]? with
@@ -772,8 +771,8 @@ theorem LStep.kseq {k : K} {L L' : LState} (h : LStep k L L') :
 
 /-- The kernel part of an `ok` step of the combined library (§57; Part XIV; HandlePool v0.5,
 D.2, D.3, HP5-7; DS-v2): a finite sequence of kernel steps O1–O16 when the step passes the check
-`kok` (`allocSlot` and `freeSlot` are then a `write`, §67; HandlePool v0.5, HP5-1 with the Q3
-decision of 2026-11-06); `newPool`, `newStack` and `mark` are the identity. -/
+`kok` (`allocSlot` and `freeSlot` are then a `write`, §67; HandlePool v0.5, HP5-1); `newPool`,
+`newStack` and `mark` are the identity. -/
 theorem crel_kside {k : K} {C C' : CState} {o : COp} (h : CRel k C o (.ok C'))
     (hw : o.kok C = true) : HandlePool.KSeq k C.kern C'.kern := by
   cases o with
