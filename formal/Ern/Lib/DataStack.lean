@@ -229,6 +229,64 @@ inductive RewindStep (k : K) (j : Nat) (m : Mark) (D : DState) : Outcome3 DState
       ReleaseStep D.kern.A.length s₁ (.ok s₂) →
       RewindStep k j m D (.ok ⟨s₂, D.stacks.set j (rewindMeta st m), D.fresh⟩)
 
+/-- `rewind` has one outcome (§58: a guarded transition has one outcome; DS-v1, non-normative):
+the cases of `RewindStep` exclude each other, and `split` and `release` are deterministic
+(`Guarded.det`). With `rewind_ok_iff`, an `ok` rewind is never also `reject` or `fail`. -/
+theorem RewindStep.det {k : K} {j : Nat} {m : Mark} {D : DState} {o₁ o₂ : Outcome3 DState}
+    (h₁ : RewindStep k j m D o₁) (h₂ : RewindStep k j m D o₂) : o₁ = o₂ := by
+  cases h₁ with
+  | noStack h =>
+    cases h₂ with
+    | noStack _ => rfl
+    | dead h' _ => rw [h] at h'; cases h'
+    | static _ _ _ => rfl
+    | split _ _ _ _ => rfl
+    | release _ _ _ _ _ => rfl
+    | ok h' _ _ _ _ => rw [h] at h'; cases h'
+  | dead h hl =>
+    cases h₂ with
+    | noStack h' => rw [h] at h'; cases h'
+    | dead _ _ => rfl
+    | static h' hl' _ => rw [h] at h'; cases h'; exact absurd hl' hl
+    | split h' hl' _ _ => rw [h] at h'; cases h'; exact absurd hl' hl
+    | release h' hl' _ _ _ => rw [h] at h'; cases h'; exact absurd hl' hl
+    | ok h' hl' _ _ _ => rw [h] at h'; cases h'; exact absurd hl' hl
+  | static h hl ha =>
+    cases h₂ with
+    | noStack _ => rfl
+    | dead h' hl' => rw [h] at h'; cases h'; exact absurd hl hl'
+    | static _ _ _ => rfl
+    | split _ _ _ _ => rfl
+    | release _ _ _ _ _ => rfl
+    | ok h' _ ha' _ _ => rw [h] at h'; cases h'; exact absurd ha' ha
+  | split h hl _ hs =>
+    cases h₂ with
+    | noStack _ => rfl
+    | dead h' hl' => rw [h] at h'; cases h'; exact absurd hl hl'
+    | static _ _ _ => rfl
+    | split _ _ _ _ => rfl
+    | release _ _ _ _ _ => rfl
+    | ok h' _ _ hs' _ => rw [h] at h'; cases h'; cases Guarded.det hs hs'
+  | release h hl _ hs hr =>
+    cases h₂ with
+    | noStack _ => rfl
+    | dead h' hl' => rw [h] at h'; cases h'; exact absurd hl hl'
+    | static _ _ _ => rfl
+    | split _ _ _ _ => rfl
+    | release _ _ _ _ _ => rfl
+    | ok h' _ _ hs' hr' =>
+      rw [h] at h'; cases h'; cases Guarded.det hs hs'; cases Guarded.det hr hr'
+  | ok h hl ha hs hr =>
+    cases h₂ with
+    | noStack h' => rw [h] at h'; cases h'
+    | dead h' hl' => rw [h] at h'; cases h'; exact absurd hl hl'
+    | static h' _ ha' => rw [h] at h'; cases h'; exact absurd ha ha'
+    | split h' _ _ hs' => rw [h] at h'; cases h'; cases Guarded.det hs hs'
+    | release h' _ _ hs' hr' =>
+      rw [h] at h'; cases h'; cases Guarded.det hs hs'; cases Guarded.det hr hr'
+    | ok h' _ _ hs' hr' =>
+      rw [h] at h'; cases h'; cases Guarded.det hs hs'; cases Guarded.det hr hr'; rfl
+
 /-! ## `grow` (DS-v1: in place, the derived `issue`) -/
 
 /-- In-place extension (DS-v1, non-normative: "extension into the space directly after the
