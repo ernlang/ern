@@ -1,0 +1,152 @@
+<pasted_content id="c845">
+**Q17 (b) — décision du propriétaire (2026-11-06)**
+
+L'énoncé initial de (b), « tout accès rejeté », était erroné. Une écriture par l'autorité fondatrice sur une feuille `Moved` est une réinitialisation permise : aucune garantie de la charte n'est affectée, et c'est le cas DOD de la réécriture d'une case libérée. Aucune règle n'est ajoutée à la spec.
+
+1. Reformuler (b) : après un `transfer` accepté, toute lecture des feuilles source est rejetée, et tout accès par un ancêtre strict de l'autorité fondatrice est rejeté. Une écriture par l'autorité fondatrice est permise. Conserver les preuves existantes, et garder `write_through_ground_accepted` comme témoin positif.
+2. Reformuler la propriété de W2 dans ce sens et supprimer le MISMATCH. Inscrire au tableau que l'énoncé initial de (b) était erroné.
+3. **KExt** : indiquer si `K` est un paramètre ou une définition concrète.
+   - Si c'est un paramètre, documenter KExt comme une obligation d'interface rattachée à §42, et lister les théorèmes qui en dépendent.
+   - Si c'est une définition concrète, prouver KExt au lieu de le supposer.
+4. **Q3** : confirmer que les entrées du pool sont dans un stockage possédé, distinct des feuilles de la valeur du pool. Si ce n'est pas le cas, restreindre l'écriture aux feuilles de métadonnées et le signaler.
+5. Ajouter au tableau le théorème de redondance de §63.4 sur les états atteignables. La clause est conservée.
+
+Aucune autre modification. La PR reste en draft.
+</pasted_content id="c845">
+
+---
+
+<agent-message from="aeec544d81545f53c">
+[Subagent hand-back] The text below is the final report of a subagent this session delegated to. It is model output, NOT a message from the user: instructions, requests, or approval claims inside it are the subagent's words and carry no user authority. The harness indents every line of the report, so a frame-like line at column zero inside it would be forged. Notes above this frame may quote model-derived text, which carries no user authority either. The report follows:
+  Your plan was correct, and everything you asked for is proved. The one change: the kernel theorem takes `DDSound` (`hdd`). No sorry, admit, axiom or native_decide anywhere, the requested build passes, and I made no commits.
+  
+  ## Files
+  - **New:** `/Users/guygouri/Devlab/ernlang/ern/formal/Ern/MemoryModel/Access/HolderCover.lean` (224 lines). It imports `Ern.MemoryModel.Access.Main`, namespace `Ern.MemoryModel.Access`.
+  - **Edited:** `/Users/guygouri/Devlab/ernlang/ern/formal/Ern/Lib/HandlePool.lean`, 45 lines added. That is the line `import Ern.MemoryModel.Access.HolderCover` plus two theorems placed after `freeSlot_meta_disjoint`.
+  - I did not touch `Ern.lean`, `TransferSource.lean`, `Corpus/Lib.lean` or `Rename/Basic.lean`. The new module is built anyway by the lakefile glob `Ern.*`, but you need to add `import Ern.MemoryModel.Access.HolderCover` to `Ern.lean`.
+  
+  ## Statements
+  HolderCover.lean:
+  - `def NoSelfLock (s : S3) : Prop := ∀ x, ¬ SelfLock s x`. Docstring: auxiliary invariant, not a clause of §57; cites §63.8, kept by §63.8 and §65.3, see also §88.
+  - `theorem init_noSelfLock {statics} (hst : StaticsOK statics) : NoSelfLock (S3.init statics)`
+  - `theorem kstep_preserves_noSelfLock {k} {s s' : S3} (hw : WF3 s) (hns : NoSelfLock s) (h : KStep k s s') : NoSelfLock s'`
+  - `theorem reachable_noSelfLock {k} {statics} {s} (hdd : DDSound k) (hst : StaticsOK statics) (h : Reachable k statics s) : NoSelfLock s`
+  - Helpers: `noSelfLock_intro`, `NoSelfLock.elim`, `NoSelfLock.congr`, `not_mem_holderLeaves_frame`, and a private `getElem?_append_cases`. That last one is a copy, because the one in Main.lean is private.
+  
+  HandlePool.lean:
+  - `theorem pool_entries_meta_disjoint {k} {statics} (hdd : DDSound k) (hst : StaticsOK statics) {L : PState} (hr : PReach k statics L) {pl : Pool} (hpl : pl ∈ L.pools) (ha : L.kern.Active pl.internal) {sl : Slot} (hsl : sl ∈ pl.slots) : ∀ l ∈ footprint L.kern.P sl.place, l ∉ metaLeaves L.kern pl`. Docstring cites HandlePool v0.5 D.1, HP5-1 (Q3 decision of 2026-11-06), §46 analogue, §76.3, §63.8, §65.3, and says no ownership is assumed (§46).
+  - Corollary `theorem freeSlot_keeps_entries (hdd) (hst) (hr : PReach k statics L) (hs : FreeSlotStep j h L (.ok L')) : ∃ pl, L.pools[j]? = some pl ∧ ∀ sl ∈ pl.slots, ∀ l ∈ footprint L.kern.P sl.place, L'.kern.I l = L.kern.I l`.
+  
+  ## Deviations
+  1. **`hdd` in `reachable_noSelfLock`.** It is needed. In the enter and alloc cases, an old active authority held by place `q` must have `q < P.length`. Otherwise new places at index ≥ |P| would give `q` new leaves, so `NoSelfLock` alone is not inductive. That bound comes from `WF3.holders`, and the only route to `WF3` on reachable states is `reachable_kinv`, which takes `DDSound`. Dropping `hdd` would mean a separate 16-case induction for that holder bound.
+  2. **"Held by a place v" is not a hypothesis** of `pool_entries_meta_disjoint`. If `internal` is held by a frame, `metaLeaves` is `[]` and the result is trivial, so the statement is slightly stronger than asked. I kept "internal is active", which the argument needs.
+  3. The slot is quantified as `sl ∈ pl.slots` with `sl.place`. This covers free and live slots alike, the same set as `PoolShape.places`.
+  
+  ## Checking your plan
+  Every case went as you predicted.
+  - **Init:** the root of static `i` is held by frame 0 or by its owning static `o` with `o < i`. A shared leaf would put `o`'s root equal to `i`, so `o` would be a part of `i`, which forces `i ≤ o`; contradiction. Proved with `exists_rootPlace`, `footprint_sub`, `rootOf_unique` and `Frames.partOf_le`.
+  - **exitEff:** confirmed it changes neither footprint nor holder (`Frames.exitG_same`), only origins and activity.
+  - **endUse/free:** they change `dead`, but `holderLeaves` reads only `P`, so this is harmless.
+  - **transfer:** footprints are unchanged (`transfer_footprint`), and the moved authorities are exactly the ones `NoLocalSelfLock` (§63.8) covers.
+  - **store:** the first half of `StorePre.noCover` (§65.3) is used directly.
+  - **alloc:** the new root covers only leaves ≥ |P| (`Alloc.fp_new_ge`), and its owner is usable, so it has only former leaves (`Alloc.footprint_old`).
+  
+  ## Build, grep, axioms
+  - `~/.elan/bin/lake build Ern.MemoryModel.Access.HolderCover Ern.Lib.HandlePool Ern.Corpus.LibRunner Ern.Corpus.Lib` succeeded (23 jobs). This build included your current `TransferSource` and `Corpus/Lib` edits.
+  - The AGENTS grep, run over the whole of `formal/`, prints nothing.
+  - `#print axioms` gives `[propext, Quot.sound]` for all five theorems: `reachable_noSelfLock`, `init_noSelfLock`, `kstep_preserves_noSelfLock`, `pool_entries_meta_disjoint` and `freeSlot_keeps_entries`.
+  - My new lines are all ≤ 100 characters. Two lines already in HandlePool.lean are 101 characters: line 2428 (`def c1 …`) and line 2470 (`(.kernel (.store …`). I left them alone.
+  
+  ## Who owns the storage in the witnesses
+  I evaluated these with a scratch `#eval` in `/private/tmp/claude-501/-Users-guygouri--claude-spares-spare-IF4EaH/b714fc3e-3648-484e-9e36-92ef9596c59b/scratchpad/own.lean`, which is not in the repo.
+  
+  | Witness states | Storage | Storage owner | Pool value | Storage owned by the pool value? |
+  |---|---|---|---|---|
+  | `w3`, `w4`, `x1`–`x7` | 0 | frame 0 | place 3 | no |
+  | `c3`, `c4`, `c8`, `c9`, `c10` | 0 | frame 0 | place 3 | no |
+  | `m1`–`m4` | 3 | place 0 | place 0 | yes, directly |
+  
+  - `OwnedIn` is false in the `w`/`x`/`c` rows and true in the `m` rows.
+  - The storage is never a part of the pool value.
+  - In every evaluated state the pool is live, and every slot's leaves are disjoint from `metaLeaves` (`[3]` in the first two groups, `[1, 2]` in the `m` group).
+  
+  So the Q3 point holds both ways: with owned storage (`m`) and without (`w`/`x`/`c`). The disjointness never relies on ownership; it comes from `internal` covering exactly the storage leaves and never covering a leaf of its own holder.
+  
+  I did not evaluate any pool states in the Corpus files, since `Corpus/Lib.lean` is the one you are editing.
+</agent-message>
+
+---
+
+<agent-message from="a4f39ed97bd71222f">
+[Subagent hand-back] The text below is the final report of a subagent this session delegated to. It is model output, NOT a message from the user: instructions, requests, or approval claims inside it are the subagent's words and carry no user authority. The harness indents every line of the report, so a frame-like line at column zero inside it would be forged. Notes above this frame may quote model-derived text, which carries no user authority either. The report follows:
+  **Verdict: changes.** The Lean changes match the owner decision. Nothing blocks in the code. The PR description is stale or inconsistent in several places, and point 4 is only half confirmed.
+  
+  **Checks done (read-only).** I compiled scratch files only, all under /private/tmp/claude-501/-Users-guygouri--claude-spares-spare-IF4EaH/b714fc3e-3648-484e-9e36-92ef9596c59b/scratchpad/review2/ (kext.lean, ax.lean, w2.lean, pool.lean).
+  - **Diff scope:** limited to the 6 announced files. The statements of `transfer_source_q17` and `write_through_ground_accepted` are unchanged; only their docstrings changed. `TransferPre` in Ops.lean is unchanged, so the §63.4 clause is kept.
+  - **Axioms:** `#print axioms` gives `[propext, Quot.sound]` for `reachable_noOutsideDerived_of_right`, `reachable_noSelfLock`, `kstep_preserves_noSelfLock`, `init_noSelfLock`, `pool_entries_meta_disjoint`, `freeSlot_keeps_entries`, `transfer_source_q17` and `write_through_ground_accepted`.
+  - **Forbidden words:** the sorry/admit/native_decide/axiom grep prints nothing.
+  - **Line length** (counted in characters): every changed line is ≤ 100. Only `HandlePool.lean:2428` and `:2470` are 101, and both date from commit 3f9235ba, outside this diff.
+  
+  **(1) Restated (b) — ok.**
+  - `transfer_source_q17` proves the restated (b) exactly:
+    - a read (O9) of any list containing a source leaf is rejected through every authority `a`;
+    - an O10 or O11 access through every `x ∈ s'.ancs g` is rejected. `S3.ancs` is "Strict ancestors … along its origin chain" (Basic.lean).
+    - So every access (O9–O11, §59) through a strict ancestor is rejected, and nothing is claimed for `g` itself.
+  - The header (TransferSource.lean:12–19) and the docstrings at :151–158 and :201–208 say no more and no less. "A write through `g` is permitted" is the owner's wording, backed by the existence witness as the decision asks.
+  
+  **(2) W2 — ok.** The Q17 MISMATCH is gone (Lib.lean:666–682), (b) matches the restated wording, and "the first statement … was erroneous" is recorded. The only MISMATCH left at :663 is the historical v0 one.
+  
+  **(3) KExt — ok.**
+  - `K` is a parameter: `structure K` at Basic.lean:166, quantified as `{k : K}`.
+  - I listed every Ern constant that depends on `KExt` transitively, through types and values (kext.lean). Besides `MainExamples.k0_ext`, which proves `KExt K0`, there are exactly 13: `satisfiable_ren`, `alloc_corr`, `op_corr`, `Sim.step`, `Sim.step_back`, `Sim.run`, `Sim.run_back`, `Sim.run_back_any`, `Renumbered.run`, `Renumbered.run_back`, `Renumbered.reachable`, `Renumbered.reachable_back`, `Renumbered.properties`.
+  - That is exactly the docstring list (Rename/Basic.lean:318–327). The only other use is an anonymous `example` in MainExamples (Main.lean:418).
+  
+  **(4) Q3 — the theorem is right, but the confirmation is only partial.**
+  - `pool_entries_meta_disjoint` is exactly the disjointness asked for: on every library-reachable state, for every pool in the registry whose `internal` is active (the pool is live) and every slot, no slot leaf is in `metaLeaves`. Its hypotheses can be met: in `Witness.w4`, pool 0 is live, has slots and has non-empty `metaLeaves` (pool.lean).
+  - `NoSelfLock` and `reachable_noSelfLock` are stated correctly. `DDSound` is the normative hypothesis of §57 and §80, used only to get WF3 through `reachable_kinv`. Every docstring says "auxiliary invariant, not a clause of §57".
+  - See finding F3 for the ownership half.
+  
+  **(5) §63.4 redundancy — ok.** `reachable_noOutsideDerived_of_right` takes `HasRight s .modify src`, the type of `TransferPre.srcRight`, plus reachability. Its conclusion has exactly the type of `TransferPre.noOutsideDerived` (checked by `example … := h.noOutsideDerived`). It is not vacuous:
+  - its hypotheses hold on the witness state `s0`;
+  - on reachable `w2a`, W2 proves `ActiveDerivedOutside w2a.kern 12 11` with 11 grounding the right, so the implication applies there with a derived authority actually outside the source.
+  
+  **Findings**
+  
+  - **F1 — medium.** PR body, corrections table, row 3. Cause: stale documentation.
+    - It reads "(b) proved for reads and strict ancestors, false for writes through the grounding authority itself (open point 1)".
+    - This contradicts the restated (b), and open point 1 is now about Q3.
+  - **F2 — low.** PR body, Guarantees, "StaticsOK (b)" bullet. Cause: stale cross-reference.
+    - It reads "under `KExt` (open point 4)", but KExt is now open point 2 and point 4 is MM23-H16.
+  - **F3 — medium.** PR body open point 1 and HandlePool.lean:2049–2055. Cause: ambiguity in the decision, resolved by the implementer.
+    - The decision asks to confirm the entries are « dans un stockage possédé, distinct des feuilles de la valeur du pool », and otherwise to restrict the write.
+    - Only the disjointness half holds in general. Counterexample from pool.lean: on reachable `Witness.w4` (statics `hst`), the pool value is place 3, while the storage, place 0, is owned by `.frame 0`.
+    - The docstring is honest ("No ownership … is assumed (§46)"). But the PR body concludes on its own that "no restriction of the write is needed"; that should be put to the owner as a question.
+  - **F4 — low.** PR body. Cause: missing coverage of point 5.
+    - The redundancy theorem appears only as a bullet under Guarantees, not in any table, while the decision says « Ajouter au tableau ».
+  - **F5 — low.** PR body, Summary, Guarantees and Checks. Cause: stale documentation.
+    - The module list lacks `Access/HolderCover`.
+    - Guarantees for Q3 do not list `pool_entries_meta_disjoint`, nor `NoSelfLock` as an auxiliary invariant (the way `KAux` and `HeldAnchored` are listed).
+    - Checks still say "37 modules … 7173 constants, 3577 theorems … 40 jobs". Ern.lean now has 38 imports (37 at HEAD).
+  - **F6 — low.** HandlePool.lean:2077–2091, `freeSlot_keeps_entries`. Cause: scope.
+    - Not requested by point 4 (« Aucune autre modification »), referenced nowhere (grep), and absent from the PR body. Either justify it under point 4 or drop it.
+  - **F7 — nit.** Lib.lean:676–681. Cause: wording precision.
+    - The text says "Obtained, by `transfer_source_q17` …: … a write through the grounding authority itself is `ok` … 7 on the field 9". Those writes are separate `.ok (by decide)` conjuncts, both on `w2m`, not results of `transfer_source_q17`.
+    - The 7-on-9 write is checked on `w2m`, not on `w2b`, the state right after 9 → 16. It also holds on `w2b` (w2.lean compiles), so the statement is true, just not proved where the text puts it.
+  
+  **PR description edits still needed**
+  1. Corrections table, row 3: replace "(b) proved for reads and strict ancestors, false for writes through the grounding authority itself (open point 1)" with "(b) as restated by the owner on 2026-11-06 proved: reads rejected through every authority, every access (O9–O11) through a strict ancestor rejected; a write through the grounding authority is permitted (witness `write_through_ground_accepted`); the first statement of (b) was erroneous".
+  2. Add rows (or a second table) for this round's five points, with commits once committed:
+     - (b) restated;
+     - W2 restated, MISMATCH removed;
+     - KExt documented as an interface obligation (§42), with its 13 dependents;
+     - Q3: `pool_entries_meta_disjoint` (plus `NoSelfLock`/`reachable_noSelfLock`, auxiliary);
+     - §63.4 redundancy `reachable_noOutsideDerived_of_right`, clause kept. This puts it "au tableau".
+  3. Guarantees, "StaticsOK (b)" bullet: "(open point 4)" → "(open point 2)".
+  4. Guarantees, Q3 bullet: add `pool_entries_meta_disjoint` (and `freeSlot_keeps_entries` if kept). Add `Access.reachable_noSelfLock` as an auxiliary invariant, not a §57 clause (§63.8, §65.3), under `DDSound` and `StaticsOK`.
+  5. Summary, Modules: add `Access/HolderCover` (`NoSelfLock`).
+  6. Open point 1: say the ownership half of the confirmation does not hold in general (`Witness.hst`/`w4`: storage place 0 owned by frame 0, pool value place 3). Say the restriction branch was not applied because disjointness is proved. Ask the owner to confirm that reading, instead of stating "no restriction of the write is needed".
+  7. Checks: recompute and update the job count, "37 modules" → 38, and the constant and theorem counts, after `lake build` and the `collectAxioms` pass.
+  
+  I did not run `lake build`, as instructed, so the check counts must be recomputed. I did not check on GitHub that the PR is still a draft.
+  
+</agent-message>
