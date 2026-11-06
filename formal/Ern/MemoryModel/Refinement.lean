@@ -1021,12 +1021,13 @@ chain, read on the first leaf of its footprint. -/
 def anchorAlloc (L : Layout) (s3 : S3) (a : Nat) : Nat :=
   (L ((s3.afp (s3.effAnchor a)).headD 0)).alloc
 
-/-- Smallest value of `f` over a list, starting from `m` (§82.3; lowest-address rule). -/
+/-- Smallest value of `f` over a list, starting from `m` (lowest-address rule, reference
+realization). -/
 def minOver (f : Nat → Nat) : Nat → List Nat → Nat
   | m, [] => m
   | m, l :: ls => minOver f (min m (f l)) ls
 
-/-- `minOver` is at most the start and at most `f` on the list (§82.3). -/
+/-- `minOver` is at most the start and at most `f` on the list (lowest-address rule). -/
 theorem minOver_le (f : Nat → Nat) :
     ∀ (ls : List Nat) (m : Nat), minOver f m ls ≤ m ∧ ∀ l ∈ ls, minOver f m ls ≤ f l
   | [], m => ⟨Nat.le_refl m, fun _ h => nomatch h⟩
@@ -1037,7 +1038,7 @@ theorem minOver_le (f : Nat → Nat) :
     · exact Nat.le_trans h1 (Nat.min_le_right _ _)
     · exact h2 l' hl'
 
-/-- `minOver` is the start or a value of `f` on the list (§82.3). -/
+/-- `minOver` is the start or a value of `f` on the list (lowest-address rule). -/
 theorem minOver_mem (f : Nat → Nat) :
     ∀ (ls : List Nat) (m : Nat), minOver f m ls = m ∨ ∃ l ∈ ls, minOver f m ls = f l
   | [], m => .inl rfl
@@ -1053,7 +1054,8 @@ theorem minOver_mem (f : Nat → Nat) :
 /-- Address of the reference to the region of authority `a` in `s2`: for a region whose leaves all
 have zero physical size, the empty region included, the base of the allocation of the effective
 anchor (§82.2, last sentence); otherwise the lowest address among the leaves of the region with a
-nonzero size (lowest-address rule, recorded for §82.3). -/
+nonzero size (lowest-address rule: a reference realization, not normative; the address of such a
+region belongs to Spec 8, its width and encoding to Spec 11, §81). -/
 def ptrAddr (s2 : Machine.State) (L : Layout) (s3 : S3) (a : Nat) : Nat :=
   match (s3.afp a).filter (fun l => decide (0 < (L l).len)) with
   | l :: ls => minOver (leafAddr s2 L) (leafAddr s2 L l) ls
@@ -1163,9 +1165,9 @@ theorem anchorAlloc_eq {L : Layout} {s3 : S3} {s2 : Machine.State} (hlw : Layout
   unfold anchorAlloc
   rw [hlw.alloc_part (mem_footprint.1 hh).2.2, hlw.alloc_part hlr]
 
-/-- Pointer soundness of `store` (§82.2 pointer validity and its last sentence, §82.3 with the
-lowest-address rule recorded for it): under `Repr`, `WF3`, `NoDangling`, an `ok` step of
-`store(authority, target)` whose reference has the address `ad` (`ptrAddr`), the obligations of the
+/-- Pointer soundness of `store` (§82.2 pointer validity and its last sentence, §82.3; the
+lowest-address rule, a non-normative reference realization): under `Repr`, `WF3`, `NoDangling`, an
+`ok` step of `store(authority, target)` whose reference has the address `ad` (`ptrAddr`), the obligations of the
 write, a target of pointer size (pointer-size rule, a stated hypothesis: types and ABI, §81) and the
 obligation of the encoding for that reference, the range of `target` after the write decodes to
 `ad` and carries the provenance of the allocation of the effective anchor. Every leaf of the region
@@ -3111,7 +3113,8 @@ theorem H15 :
   ⟨sim_of (piOf_ok _ []) (by decide) (by decide) (by decide) run15_ok, by decide, by decide,
     by decide, by decide, by decide, by decide⟩
 
-/-! ### Corpus case H16: lowest address of a region (§82.3, lowest-address rule) -/
+/-! ### Corpus case H16: lowest address of a region (lowest-address rule, reference realization)
+-/
 
 /-- The run of corpus case H16 with `issue` replaced by `split` then `store` (§82.3, Part XIV):
 frame 1 with locals 0, 1, 2; storage 3 with leaves 4 (offset 0) and 5 (offset 8), owned by 0;
@@ -3130,10 +3133,10 @@ def fin16 : S3 × Machine.State :=
 /-- Every step of the run passes its checks (§60–§75, §82). -/
 theorem run16_ok : (srun K0 (· = ·) obR obW π16 (sinit [] π16) ops16).isSome = true := by decide
 
-/-- **Corpus case H16** (§82.3, lowest-address rule): the reference to the region `[5, 4]`, whose
-first listed leaf is not the lowest, has the lowest address among its leaves of nonzero size,
-that of leaf 4 (offset 0), not that of the head 5 (offset 8); its provenance is the storage
-allocation. The run is translated with `Repr`. -/
+/-- **Corpus case H16** (lowest-address rule, a non-normative reference realization; Spec 8 and
+Spec 11, §81): the reference to the region `[5, 4]`, whose first listed leaf is not the lowest, has the
+lowest address among its leaves of nonzero size, that of leaf 4 (offset 0), not that of the head 5
+(offset 8); its provenance is the storage allocation. The run is translated with `Repr`. -/
 theorem H16 :
     ((∃ os, Machine.Exec (· = ·) obR obW os Machine.State.empty fin16.2) ∧
       Repr π16.L π16.rtok fin16.1 fin16.2 ∧ Access.Reachable K0 [] fin16.1) ∧

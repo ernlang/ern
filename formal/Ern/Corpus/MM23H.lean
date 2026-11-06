@@ -32,9 +32,10 @@ verdict of this corpus changes under v0.1.
 Address rules of references (`Refinement.ptrAddr`): a region whose leaves all have zero physical
 size, the empty region included, has the base of the allocation of the effective anchor of its
 authority, with that allocation as provenance (§82.2, last sentence); a region with a leaf of
-nonzero size has the lowest address among its leaves of nonzero size (a decision of the user's
-brief, recorded for §82.3, not stated by v0.1); the destination leaf has the size of a
-reference (`pe8.size = 8`).
+nonzero size has the lowest address among its leaves of nonzero size (a non-normative reference
+realization: §82.2 decides only regions whose leaves all have zero physical size; the address of
+such a region belongs to Spec 8, its width and encoding to Spec 11, §81); the destination leaf has
+the size of a reference (`pe8.size = 8`).
 
 Not encoded (classified, material §3 and §6; non-blocking by the user's arbitration Q20):
 * MM23-H14, a raw pointer formed before a call and used during the call on the footprint of a
@@ -812,9 +813,11 @@ Obtained: the same; the case passes. R6 is reached (`LSim`), the issue being the
 operation, realized by one write of the destination 2. Block 4 has the region `[5, 4]`, recorded
 in the arena entry; both leaves have nonzero size, leaf 4 at offset 0 below the head 5 at offset
 8; the range of 2 decodes to the address of leaf 4, not to that of the head, every byte with the
-storage allocation as provenance. Source of the expected verdict: a decision of the user's brief
-recorded for §82.3 (lowest-address rule), not stated by spec v0.1: §82.2 decides only regions
-whose leaves all have zero physical size, and §81 leaves encodings to Spec 11. -/
+storage allocation as provenance. Source of the expected verdict: the lowest-address rule
+(`Refinement.ptrAddr`), a non-normative reference realization: §82.2 decides only regions whose
+leaves all have zero physical size. Boundary: Spec 8 for the address of a region with a leaf of
+nonzero size, which depends on the order and offsets of its leaves (§82.1); Spec 11 for its
+width and encoding (§81). -/
 theorem H16 : LSim K5 [] π6 (lt6 5) ∧ LSim K5 [] π6 (lt6 6) ∧
     (lopsOf π6 (.issue 0 [5, 4] 2) (lt6 5).1 (lt6 5).2).map opKind = [1] ∧
     (lopsOf π6 (.issue 0 [5, 4] 2) (lt6 5).1 (lt6 5).2).map opAlloc = [some (π6.L 2).alloc] ∧
