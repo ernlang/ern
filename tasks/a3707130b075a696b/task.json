@@ -1,0 +1,17 @@
+{
+  "tool_use_id": "a3707130b075a696b",
+  "agent_id": "a3707130b075a696b",
+  "subagent_type": "workflow-subagent",
+  "files": [
+    "formal/Ern.lean"
+  ],
+  "token_usage": {
+    "input_tokens": 16,
+    "cache_creation_tokens": 41187,
+    "cache_read_tokens": 557793,
+    "output_tokens": 4355,
+    "api_call_count": 8
+  },
+  "started_at": "2026-11-06T16:56:33.571892+01:00",
+  "completed_at": "2026-11-06T16:57:26.588088+01:00"
+}

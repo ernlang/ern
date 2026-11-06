@@ -1,0 +1,17 @@
+{
+  "tool_use_id": "a60a6dd7ab5f6de4a",
+  "agent_id": "a60a6dd7ab5f6de4a",
+  "subagent_type": "workflow-subagent",
+  "files": [
+    "formal/Ern/MemoryModel/Access/TransferSource.lean"
+  ],
+  "token_usage": {
+    "input_tokens": 52,
+    "cache_creation_tokens": 132272,
+    "cache_read_tokens": 3316664,
+    "output_tokens": 27851,
+    "api_call_count": 26
+  },
+  "started_at": "2026-11-06T16:38:15.981451+01:00",
+  "completed_at": "2026-11-06T16:42:35.096032+01:00"
+}
