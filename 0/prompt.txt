@@ -1,0 +1,61 @@
+Préambule: Reprise après interruption. L’état est dans la branche. Commence par établir ce qui est fait et ce qui reste par question (Q1 à Q28), sans refaire ce qui est fait.
+Voici le prompt original:
+```
+
+<pasted_content id="c845">
+Arbitrages (rapport bloquant, section 7) :
+
+Q1 : (b). Ajouter à §63 « la destination est utilisable dans l'état d'arrivée ».
+Q2 : lecture mixte sur l'état d'arrivée : invariants du noyau sur l'état entier, plus ArenaInv de la nouvelle entrée ; NewArenaBase porte cette lecture.
+Q3 : réalisation par des pas du noyau. freeSlot (contrat HandlePool v0.5) marque l'entrée libre et incrémente la génération ; préconditions : droit d'administration, pool vivant, handle valide, aucune feuille de l'entrée à Init (Uninit ou Moved), aucune autorité active dérivée d'une compagne de ce pool sur l'entrée ; aucun effet d'endUse. Deux preuves obligatoires :
+  (1) témoin complet depuis l'état initial par des pas autorisés : newPool, allocSlot, resolve Modify, écriture, transfer de la valeur vers un local de même forme, unresolve, freeSlot accepté ;
+  (2) la mise à jour des métadonnées (état libre, génération) est réalisable par une écriture autorisée sous le droit d'administration.
+Q4 : garantie par pool : réécrire D.2, D.3 et D.4(3) sur les compagnes du pool du slot ; les pools imbriqués restent permis ; I1 et les garanties du noyau restent prouvées sur l'état entier.
+Q5 : la validation du handle précède le contrôle du droit : fail dans les deux cas.
+Q6 : réécrire §86 s4 : « La réémission ne modifie ni les octets ni l'état d'initialisation. Une lecture reste soumise aux conditions ordinaires du modèle mémoire, notamment Init, aux droits d'accès et à la validité de représentation pour le type demandé. La Spec 4 déterminera les obligations de construction et de typage des valeurs réémises. »
+Q7 : restreindre §78.3 aux ancres du sous-arbre strict de internal qui couvrent une feuille du stockage administré ; prouver que la clause découle de §78.2 et de I3 (lecture Q9), et l'équivalence de reset avec sa séquence du noyau dans les deux sens.
+Q8 : ajouter à §47 : le graphe de possession des statiques est acyclique.
+Q9 et Q26 : « valide » = active. §69.2 : endUse est rejeté si une autorité détenue par place a un descendant actif détenu ailleurs.
+Q10 : (a).
+Q11 : (a) fail ; (b) reject ; (c) reject ; (d) mark exige AdminRight ; (e) grow suit le détenteur actuel du bloc ; (f) fail avant le contrôle du droit (contrat DS-v2).
+Q12 : avec le nouveau freeSlot, un handle d'entrée libre est périmé : fail.
+Q13 : §71.2 inchangé ; préciser au §36 que MetaRight vise la création ou le recyclage d'autorités sur un stockage existant, pas la création d'une allocation fraîche par alloc ; la concurrence entre appels relève de la spec 2.
+Q14 : « opérations d'accès » = O9–O11 ; le préciser au §59.
+Q15 : restreindre §40 aux emplacements racines utilisables, comme §49.7.
+Q16 : définir I5 : toute feuille épinglée appartient à un emplacement utilisable.
+Q17 : lecture actuelle.
+Q18 : région dont toutes les feuilles sont de taille nulle : base et provenance de l'allocation de l'ancre effective, comme la région vide.
+Q19 : H31a : le jumeau à plusieurs pas (conjonct 5) est accepté.
+Q20 : non bloquants (classés).
+Q21 : pour chaque cas dont le verdict attendu change, conserver le verdict historique, sa justification et le nouveau verdict fondé sur la v0.1 (tableau dans la description de PR) :
+  - H21, H50, H51 : nouveau verdict = verdict obtenu ;
+  - H49 : conservé comme test de régression, verdict = verdict obtenu, blocage résiduel documenté (décision NoLock) ; exception explicite : le reset rejeté de H49 est dispensé de jumeau positif ;
+  - H16 classé spec 3 ; W2 et W3 : les variantes deviennent les cas ; MM2-H H01 : la variante devient le jumeau ; H10 : l'accès sort de l'allocation ; W1 : la valeur est retirée avant freeSlot.
+Q22 : non bloquants (frontières ouvertes de la spec) ; exitRoots retenu comme réalisation de référence.
+Q23 : lectures dont un témoin du rapport change un verdict :
+  - B#1, B#15, B#33, SP-A4, machine S1 et S2 : lectures actuelles conservées (B#15 imposée par Q9) ;
+  - B#28 : remplacée par Q9 ;
+  - B#45 : remplacée : chaque pin crée une obligation d'épinglage d'identité fraîche ; une feuille est épinglée tant qu'une obligation active la couvre ; unpin désigne une obligation et ne lève qu'elle ; K.ExternalDone porte sur cette obligation ;
+  - H-R5 : sans objet ; DS-R1 à DS-R13 : tranchées par Q11, Q27 et Q28.
+  Les lectures sans témoin de différence sont conservées.
+Q24 : le fournisseur doit être un emplacement utilisable (§71.2).
+Q25 : (b).
+Q27 : (a).
+Q28 : (c) fail (une pile morte invalide ses marques).
+
+Spec : ne pas modifier `specs/ERN_Memory_Model_Specification_v0.md`. Créer `specs/ERN_Memory_Model_Specification_v0.1.md` à partir de la v0, avec les amendements Q1, Q2, Q6, Q7, Q8, Q9/Q26, Q13, Q14, Q15, Q16, Q18, Q24 et B#45 (§74, §75), en anglais ; en-tête : « Edition v0.1 — corrective candidate, not yet validated », suivi de la liste des clauses modifiées. Commit séparé `docs(specs): add memory model v0.1 corrective candidate`. La reconstruction suit la v0.1.
+Contrats locaux : HandlePool v0.5 (Q3, Q4, Q5, Q12) et DS-v2 (Q11, Q27, Q28), changements listés dans la description de PR.
+Preuves : refaire celles qui sont touchées ; les garanties de Q1, Q3, Q7 et B#45 sont démontrées sur les états atteignables du contrat, sans hypothèse supplémentaire non normative ; tout échec de preuve est rapporté, jamais contourné. Ouvrir la PR si la condition du brief est remplie.
+</pasted_content id="c845">
+
+```
+
+---
+
+<task-notification>
+<task-id>btvkfyry3</task-id>
+<tool-use-id>toolu_01SaEmfw6HHKKkRdoxb9ht37</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-guygouri-Devlab-ernlang-ern/b714fc3e-3648-484e-9e36-92ef9596c59b/tasks/btvkfyry3.output</output-file>
+<status>completed</status>
+<summary>Background command "Run full lake build in background" completed (exit code 0)</summary>
+</task-notification>
