@@ -1,6 +1,6 @@
-# ERN — Memory Model Specification v0
+# ERN — Memory Model Specification v0.1
 
-**Edition: v0 — November 5, 2026. Status: validated and frozen.**
+**Edition v0.1 — November 6, 2026. Status: validated and frozen. Supersedes v0.**
 
 **Higher normative authority:** *ERN — Language Charter v0* (October 27, 2026).  
 This specification defines the normative rules of ERN's memory model. Technical names (`derive`, `transfer`, `issue`, etc.) designate **abstract semantic operations**; they do not constitute syntax decisions.
@@ -432,7 +432,7 @@ Transferring a value never physically moves storage owned by it. Moving an **in-
 
 An abstraction may keep its metadata in `SharedMutable` storage and modify it through `writeShared` to the extent permitted by the applicable rights and contracts. **Shared mutation of metadata does not, however, grant the right to create, recycle, or terminate exclusive authority over the administered storage.** Such operations require `internal` to be exercisable in `Modify` mode from the value administering the storage.
 
-For every administrative abstraction, including arenas, `HandlePool`, and `DataStack`, **`MetaRight` requires `Modify` exercisable on the administering value**. The `writeShared` branch alone is insufficient. Operations issuing, recycling, ending, or invalidating regions must preserve active authorities and dependencies. Allocation through administration shared among simultaneous holders, under an interface not providing such exclusive exercise, cannot be expressed in safe code with only these sequential operations: any synchronized implementation of it belongs to Spec 2. These abstractions remain libraries and add no rights to the kernel.
+For every administrative abstraction, including arenas, `HandlePool`, and `DataStack`, **`MetaRight` requires `Modify` exercisable on the administering value**. The `writeShared` branch alone is insufficient. `MetaRight` governs the creation or recycling of authorities over existing storage; it does not govern the creation of a fresh allocation by `alloc` (Section 71). Concurrency between calls belongs to Spec 2. Operations issuing, recycling, ending, or invalidating regions must preserve active authorities and dependencies. Allocation through administration shared among simultaneous holders, under an interface not providing such exclusive exercise, cannot be expressed in safe code with only these sequential operations: any synchronized implementation of it belongs to Spec 2. These abstractions remain libraries and add no rights to the kernel.
 
 ## 37. Dependent Values and Persistent References
 
@@ -478,7 +478,7 @@ A place `p` is **usable** (`Usable(s,p)`) if and only if:
 
 An ownership cycle makes no place usable. `placeFrame(p)` is the terminal frame of this chain when `p` is usable. Structural parts share their parent's owner and death marker. A value may be logically ended by `endUse` without the place that contained it becoming unusable; the substorages it owned may, however, die.
 
-A **root place** has no structural parent. Every root place has a root authority of own mode `Modify`, with no origin, held exactly by that place's owner (`RootHeld`). This authority cannot be transferred in isolation; root ownership follows a legal transfer of the owning value when necessary.
+A **root place** has no structural parent. Every **usable** root place has a root authority of own mode `Modify`, with no origin, held exactly by that place's owner (`RootHeld`). This authority cannot be transferred in isolation; root ownership follows a legal transfer of the owning value when necessary.
 
 ## 41. Leaf Initialization States
 
@@ -561,7 +561,7 @@ The arena is **live** if `internal` is active. The **arena value** is the place 
 
 ## 47. Initial State
 
-The kernel's initial state contains only base frame 0 and the declared static storage. Every static leaf has its declared initial state, `Init` or `Uninit`. The roots of static places directly owned by frame 0 have a root `Modify` authority held by that frame; a static may also be owned by another static, in which case its root authority is held by the latter. The initial state invents no dynamic allocation, derived authority, or implicit anchor. The initial arena registry belongs to library state and is empty. The initial frame does not exit.
+The kernel's initial state contains only base frame 0 and the declared static storage. Every static leaf has its declared initial state, `Init` or `Uninit`. The roots of static places directly owned by frame 0 have a root `Modify` authority held by that frame; a static may also be owned by another static, in which case its root authority is held by the latter. The ownership graph of statics is acyclic: no static is owned, directly or transitively, by itself. The initial state invents no dynamic allocation, derived authority, or implicit anchor. The initial arena registry belongs to library state and is empty. The initial frame does not exit.
 
 ## 48. External Parametric Contract
 
@@ -594,7 +594,7 @@ Exclusivity of **effective** modes (`effective_exclusive`) is a consequence of I
 
 ## 51. I2 — Conservation of Rights
 
-A derived authority covers only a subfootprint of what its origin chain permits and does not elevate its mode. Derivation and splitting restrictions do not allow duplication of an exclusive right over a leaf. Every active authority is linked to a valid origin according to state and reanchoring rules. Partial suspension follows from `effective`.
+A derived authority covers only a subfootprint of what its origin chain permits and does not elevate its mode. Derivation and splitting restrictions do not allow duplication of an exclusive right over a leaf. Every active authority is linked to a valid origin according to state and reanchoring rules: an origin is **valid** if and only if it is active, so the origin of an active derived authority is active. Partial suspension follows from `effective`.
 
 ## 52. I3 — Validity of Anchors and Dependencies
 
@@ -641,6 +641,8 @@ WF3 \land Inv3 \land AnchorOrderHeld \land NoOrphan
 
 `ArenaInv` (Section 55) belongs to the library abstraction: it is not included in this main kernel invariant.
 
+**I5:** every pinned leaf, statically (`K.Pinned`) or dynamically (an active pinning obligation, Section 74), belongs to a usable place.
+
 I5, associated with pinned storage, remains a **specialized obligation** of `K.Pinned`, not a clause automatically implied by sequential accesses alone. This property is required for reachable states under the declared assumptions. Its correspondence with allocations and bytes requires the refinement defined below.
 
 # VIII. Definition of Transitions and Management of Authorities
@@ -661,13 +663,13 @@ An `ok` transition must satisfy its preconditions, apply exactly its prescribed 
 
 ## 59. Implicit Preservation of Modes and Anchors
 
-Changes in effective authority are **derived** from active authorities and their origins; no `Suspended` indicator is mutated. Access operations do not change an anchor without an explicitly authorized effect of transfer, `depend`, `store`, release, or reanchoring. Leaves becoming `Init` do so through a permitted write (`write3`, `writeShared`, `store`, including during a derived `issue`) or a transfer from a corresponding source leaf already `Init`; leaves initialized in `S3.init` are declared as such.
+Changes in effective authority are **derived** from active authorities and their origins; no `Suspended` indicator is mutated. Access operations (O9–O11) do not change an anchor without an explicitly authorized effect of transfer, `depend`, `store`, release, or reanchoring. Leaves becoming `Init` do so through a permitted write (`write3`, `writeShared`, `store`, including during a derived `issue`) or a transfer from a corresponding source leaf already `Init`; leaves initialized in `S3.init` are declared as such.
 
 ## 60. O1 — Derivation of an Authority
 
 **Preconditions**
 
-1. `source` is an active derived or root authority, and `ExercisableAt(s,source,mode)` holds; its origin chain and anchors are valid.
+1. `source` is an active derived or root authority, and `ExercisableAt(s,source,mode)` holds; its origin chain and anchors are valid: every authority of its origin chain, its effective anchor included, is active.
 2. The leaves of `region` exist and belong to the footprint of `source`; `mode` does not exceed the available effective right on these leaves.
 3. The addition preserves exclusivity I1: no unrelated active authority becomes incompatible with the derived right, and already-active descendants are respected.
 4. The new holding frame is the live current frame. The admissible state's footprint and anchoring restrictions remain true.
@@ -710,11 +712,12 @@ These transitions govern value consumption and the controlled movement of their 
 1. `source` and `destination` are usable, and the current frame has exercisable `Modify` over their relevant footprints.
 2. Source and destination have the **same shape of ordered subtrees**. The `i`-th child of each source part corresponds to the `i`-th child of the corresponding destination part; all nodes are matched. Structural field identity is positional, not an arbitrary matching of children.
 3. **All** source leaves are `Init`, and **no** destination leaf is `Init`. The source and destination footprints are disjoint.
-4. No exclusive authority is duplicated; validity of derived authorities and active projections is preserved.
+4. No exclusive authority is duplicated; validity of derived authorities and active projections is preserved. No active derived authority held outside `source` covers a source leaf, except the authorities through which the step exercises its `Modify` right over `source`: the exercisable authority on which that right rests and its origin chain. Other active authorities remain subject to this check. Authorities held by parts of `source` are transferred with the value and are controlled by §63.8.
 5. **No in-place source leaf is pinned**, either statically (`K.Pinned`) or dynamically (`pin`). Storage merely **owned** by the source, which is not itself moved by the transfer of that value, does not prevent this transfer.
 6. Dependencies of all still-usable places following the value remain valid; non-escape constraints and `AnchorOrder` are checked in the **resulting state**, including transferred anchors of owned places that remain usable.
 7. All moved held authorities, including those of owned storage, satisfy `AnchorOrderHeld` in the resulting state; no authority may escape a local anchor on the grounds that its containing value was transferred.
 8. **Local self-blocking prevention:** For each active authority held before the step by a part `r` of `source` whose holder becomes the corresponding part `corr(r)` of `destination`, that authority's footprint contains **no leaf** of `corr(r)` in the resulting state. Transfer is rejected if this local check fails; no global authority-acyclicity check is imposed.
+9. **Destination usability:** `destination` is usable in the resulting state.
 
 **`ok` effect:**
 
@@ -802,7 +805,7 @@ The logical end of a value does not necessarily entail deallocation of its stora
 **Preconditions**
 
 1. `place` is usable and the current frame has exercisable `Modify` over it.
-2. No active descendant over the leaves of `place` **or storage that dies with it** is held outside the places dying with `place`, in a way that would prevent rights from returning or being invalidated.
+2. No active descendant over the leaves of `place` **or storage that dies with it** is held outside the places dying with `place`, in a way that would prevent rights from returning or being invalidated. The authorities through which the step exercises its `Modify` right over `place`, namely the exercisable authority on which that right rests and its origin chain, are exempt from this check. Moreover, no authority that the effect makes inactive (held by `place` or by a place dying with it, transitively owned storage included) has an active descendant, whatever its footprint, that the same step does not make inactive.
 3. No place **remaining usable after the effect** depends on an authority held by `place`, its root, or an authority that would become inactive when an owned holder dies.
 4. **No leaf whose use ends, including transitively owned storage, is pinned**, either statically (`K.Pinned`) or dynamically (`pin`). A dynamic pinning obligation must be legally removed by `unpin` before this step.
 
@@ -814,7 +817,7 @@ The logical end of a value does not necessarily entail deallocation of its stora
 
 1. `place` is a **root of storage owned by a value** (`OwnedRoot`), not an ordinary local directly owned by a frame and not part of an aggregate.
 2. `K.Deallocable(place)` is established, and `K.FreeCompat(place,auth)` justifies deallocation authority `auth`; this identifier is opaque to the authority kernel.
-3. The current frame has exercisable `Modify`; no active derivative over the footprint being freed is held outside holders that die; no surviving place is anchored to an authority of the released region or of its dead holders.
+3. The current frame has exercisable `Modify`; no active derivative over the footprint being freed is held outside holders that die; no surviving place is anchored to an authority of the released region or of its dead holders. The authorities through which the step exercises its `Modify` right over `place`, namely the exercisable authority on which that right rests and its origin chain, are exempt from the check on active derivatives. Moreover, no authority that the effect makes inactive (an authority of the released region, its root included, or an authority whose holder dies) has an active descendant, whatever its footprint, that the same step does not make inactive.
 4. No leaf of the released unit is statically or dynamically pinned. Ending external use does not silently turn a still-pinned leaf into a releasable unit.
 
 **`ok` effect:** `place` and the storage that ceases to live are marked dead; authorities of those regions, including their corresponding roots, become inactive, as do authorities whose holders die. Surviving dependencies must remain valid. Every realization of `free` must satisfy the corresponding deallocation relation of the elementary memory machine (Part III). **Other outcome:** `reject`.
@@ -824,7 +827,7 @@ The logical end of a value does not necessarily entail deallocation of its stora
 **Static preconditions**
 
 1. `shape` is a **nonempty** abstract shape, represented like the local places of `enterFrame`; an allocation of **zero physical size** may be represented by a logical one-leaf shape.
-2. **All leaves of the provider** are `Init`; updates to its metadata are permitted through exercisable `Modify` or a valid `writeShared` over `SharedMutable` metadata.
+2. The provider is a usable place, and **all leaves of the provider** are `Init`; updates to its metadata are permitted through exercisable `Modify` or a valid `writeShared` over `SharedMutable` metadata.
 3. The current frame has exercisable `Modify` over `owner`; new identities and ownership relations must respect `WF3`, `RootHeld`, and liveness restrictions.
 
 **Outcomes**
@@ -880,13 +883,13 @@ Pinning forbids certain movements or ends of lifetime. It is not a general guara
 
 **Preconditions:** `place` is usable, the current frame has exercisable `Modify` over the relevant leaves, and the operation respects applicable pinning obligations.
 
-**`ok` effect:** A dynamic pinning obligation is installed on the relevant leaves. While it is active, `transfer`, `endUse`, `free`, and `exitFrame` are rejected if they act on leaves it pins; removal of this obligation requires `unpin` under `K.ExternalDone`. Pinning does not make contents immutable. **Other outcome:** `reject`.
+**`ok` effect:** A dynamic pinning obligation of fresh identity is installed on the relevant leaves. A leaf is dynamically pinned while at least one active pinning obligation covers it. While an obligation is active, `transfer`, `endUse`, `free`, and `exitFrame` are rejected if they act on leaves it pins; removal of this obligation requires `unpin` under `K.ExternalDone`. Pinning does not make contents immutable. **Other outcome:** `reject`.
 
 ## 75. O16 — Removal of Dynamic Pinning
 
-**Preconditions:** `place` is usable, the current frame has exercisable `Modify`, and contract `K.ExternalDone(place)` attests that all relevant external use has ended.
+**Preconditions:** `unpin` designates one active dynamic pinning obligation, installed by `pin` on `place`; `place` is usable, the current frame has exercisable `Modify`, and contract `K.ExternalDone`, applied to that obligation, attests that all relevant external use has ended.
 
-**`ok` effect:** The corresponding dynamic pinning obligation ends, without itself modifying values, their initialization, or their access authorities. Static obligations are not removed by this operation. **Other outcome:** `reject`.
+**`ok` effect:** The designated dynamic pinning obligation ends, and only that one: a leaf it covered stays pinned while another active obligation covers it. The step does not itself modify values, their initialization, or their access authorities. Static obligations are not removed by this operation. **Other outcome:** `reject`.
 
 **Associated static rule (`StaticPinnedBottom`):** Statics designated by `K.Pinned` must be places **directly** owned by the **base frame**, not merely transitively owned by a static value. This restriction ensures that they do not die when an intermediate frame exits.
 
@@ -903,7 +906,7 @@ An arena is a **library abstraction**, not a memory-kernel primitive. Operations
 3. `internal` is **held by a place**: that place is the arena value; `footprint(internal) = footprint(storage)`.
 4. **Unified administration guard (Section 56):** no **live** administrative abstraction, whether an arena or a library instance such as a handle pool, already uses this `internal` identity. The relevant registries of library administrations are consulted before registration. Two distinct identities may cover common leaves: this is not in itself grounds for rejection.
 5. All leaves of the arena value holding `internal` are already `Init`; construction does not initialize them implicitly.
-6. Dependency, holder, storage, and administration relations respect `WF3`, I1, `AnchorOrder`, `AnchorOrderHeld`, and the expected arena invariants.
+6. Dependency, holder, storage, and administration relations respect, in the resulting state, `WF3`, I1, `AnchorOrder`, and `AnchorOrderHeld` over the whole kernel state, and the new entry satisfies `ArenaInv` (Section 55).
 
 **`ok` effect:** A live entry `{storage, internal, available, issued}` is added; the initial `available` set represents the administered storage, and `issued` is initially empty. Registering the entry fabricates no place, access right, or `Init` state. **Other outcome:** `reject`.
 
@@ -934,7 +937,7 @@ The identity of `internal`, not the index of `storage`, is the key to preventing
 
 1. The entry exists and is live. **`MetaRight(s,arena)` requires exercisable `Modify` over the arena value**, in accordance with Section 36. `writeShared` over metadata alone, even when legal, does not replace such exercise. `internal` and the arena's other restrictions remain valid.
 2. **No active authority derived from `internal` covers a leaf of the administered storage.** A derived authority with an empty footprint does not, by itself, block `reset`.
-3. No still-usable place depends, directly or transitively, on an anchor in the **strict origin subtree of `internal`** (`internal` itself is excluded). Under precondition 2 and invariant I3, this condition follows from the absence of active descendants covering the storage, and remains explicit in the abstraction contract. Validity obligations of other nested arenas remain satisfied.
+3. No still-usable place depends, directly or transitively, on an anchor in the **strict origin subtree of `internal`** (`internal` itself is excluded) that covers a leaf of the administered storage. Under precondition 2 and invariant I3, this condition follows from the absence of active descendants covering the storage, and remains explicit in the abstraction contract. Validity obligations of other nested arenas remain satisfied.
 
 **`ok` effect:** All **leaves** of the administered storage become available again, and the issuance list is cleared under the arena contract. No still-active derived authority covering those leaves may remain, by precondition 2; an empty-footprint derivative may remain active without designating any recycled leaf. **No leaf is made `Init` by `reset`**, including in the arena value. **Other outcome:** `reject`.
 
@@ -1002,7 +1005,7 @@ A transition of the access discipline must admit a realization compatible with t
 ## 82. Representation Relation and Concrete Obligations
 
 1. **Places and bytes:** relate `P`, `footprint` leaves, their ownership, and their parts to the storage units, offsets, ranges, identities, and alignment constraints of the elementary memory machine; establish actual disjointness for `DeclaredDisjoint` declarations.
-2. **Authorities and operations:** connect effective modes and `ExercisableAt` to concrete read, write, and pointer-validity conditions; show that safe access governed by Parts VI through XV satisfies the obligations of Part III, without conflating ownership and binary representation.
+2. **Authorities and operations:** connect effective modes and `ExercisableAt` to concrete read, write, and pointer-validity conditions; show that safe access governed by Parts VI through XV satisfies the obligations of Part III, without conflating ownership and binary representation. A pointer to a region whose leaves all have zero physical size is represented like a pointer to the empty region: its address is the base of the allocation of the effective anchor of its authority, and that allocation is its provenance.
 3. **Initialization:** relate `Uninit`, `Init`, and `Moved` to concrete values and representations; an authority `store` must correspond to writing an actual reference into **a single logical leaf** with an appropriate representation.
 4. **Allocation and deallocation:** relate `alloc` / `free` to `AllocStep` / `DeallocStep`, justify `Satisfiable`, `Deallocable`, and `FreeCompat`, as well as the zero-physical-size case.
 5. **Lifetimes:** relate `endUse`, `exitFrame`, `NoDangling`, dependencies, and death markers to the validity effects on actual storage.
@@ -1028,7 +1031,7 @@ Starting from a `Modify` authority exercised over a structure, `split` may provi
 
 ## 86. Arena, Active Views, and Reset
 
-Two disjoint issued regions may be used simultaneously with valid derived rights. `reset` is rejected while an issuance or active dependency would make recycling unsafe; after a legal end of use for all the relevant blocks, the region may be reissued. Reissuance does not permit reading a former logical value without the required initialization.
+Two disjoint issued regions may be used simultaneously with valid derived rights. `reset` is rejected while an issuance or active dependency would make recycling unsafe; after a legal end of use for all the relevant blocks, the region may be reissued. Reissuance modifies neither the bytes nor the initialization state. A read remains subject to the ordinary conditions of the memory model, notably `Init`, access rights, and representation validity for the requested type. Spec 4 will determine the construction and typing obligations of reissued values.
 
 ## 87. Pinning an In-Place Value
 
