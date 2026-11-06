@@ -6,7 +6,7 @@ import Ern.MemoryModel.RefinementArena
 
 The cases of corpus MM23-H of the Jalon 3 material (`ERN_Jalon3_materiel.md`, §3; non-normative
 design material), replayed on the reference refinement of
-`specs/ERN_Memory_Model_Specification_v0.md` (§82, Part XIV). This is a test module: no model or
+`specs/ERN_Memory_Model_Specification_v0.1.md` (§82, Part XIV). This is a test module: no model or
 library module imports it.
 
 Each case is a run from the initial state (§47) translated into the elementary memory machine with
@@ -25,15 +25,18 @@ test, the machine relations of its realized raw operations (`ReadStep`, `WriteSt
 
 Each docstring gives the expected verdict of the material, the obtained one, the class (material
 §0, rule 5: `R` refinement) and the positive twin of each rejection or `fail` (rule 2). A case
-whose obtained verdict differs from its expected one, or whose expected verdict has no spec v0
-source, is kept with its expected verdict and classified; no case is corrected.
+whose obtained verdict differs from its expected one, or whose expected verdict has no spec v0.1
+source, is kept with its expected verdict and classified; no case is corrected. No expected
+verdict of this corpus changes under v0.1.
 
-Address rules of references (decisions of the brief, recorded for §82.3 in `Refinement.ptrAddr`):
-an empty region has the base of the allocation of its effective anchor, with that allocation as
-provenance; a nonempty region has the lowest address among its leaves of nonzero size; the
-destination leaf has the size of a reference (`pe8.size = 8`).
+Address rules of references (`Refinement.ptrAddr`): a region whose leaves all have zero physical
+size, the empty region included, has the base of the allocation of the effective anchor of its
+authority, with that allocation as provenance (§82.2, last sentence); a region with a leaf of
+nonzero size has the lowest address among its leaves of nonzero size (a decision of the user's
+brief, recorded for §82.3, not stated by v0.1); the destination leaf has the size of a
+reference (`pe8.size = 8`).
 
-Not encoded (classified, material §3 and §6):
+Not encoded (classified, material §3 and §6; non-blocking by the user's arbitration Q20):
 * MM23-H14, a raw pointer formed before a call and used during the call on the footprint of a
   `Modify` parameter: undefined behavior that no safe program constructs; class spec 3 (strong
   protection of parameters during the invocation, §72 last paragraph, §81) with the boundary of
@@ -42,6 +45,10 @@ Not encoded (classified, material §3 and §6):
   11 (a reference occupies a leaf of pointer size), not a guarantee of the refinement; class
   specs 4 and 11 (§81, §82.3 "a single logical leaf with an appropriate representation"). The
   pointer-size rule is a hypothesis of `Refinement.pointer_sound_store`.
+
+Open boundaries of the spec (non-blocking by arbitration Q22): MM23-H04 and MM23-H13 (propagation
+of provenance through copies, §10 ¶4, §19) and MM23-H09 (deallocation of automatic storage at
+exit, §9 ¶2, §73), for which `Refinement.exitRoots` is the reference realization.
 -/
 
 namespace Ern.Corpus.MM23H
@@ -52,9 +59,10 @@ open Ern.MemoryModel.Refinement.Runs (piOf piOf_ok obR obW wv decodedAt kernelRu
 
 /-! ## Test contracts (§48, §80) -/
 
-/-- Test contract (§48): the `SharedMutable`, `Pinned`, `ExternalDone`, `Deallocable` and
-`FreeCompat` lists of a `KD`; `DeclaredDisjoint` is leaf disjointness (§23) when `dd` holds and
-declares nothing otherwise; `Satisfiable` (§71) is `sat` for every request. -/
+/-- Test contract (§48): the `SharedMutable`, `Pinned`, `ExternalDone` (on identities of dynamic
+pinning obligations, §75), `Deallocable` and `FreeCompat` lists of a `KD`; `DeclaredDisjoint` is
+leaf disjointness (§23) when `dd` holds and declares nothing otherwise; `Satisfiable` (§71) is
+`sat` for every request. -/
 def KT (d : KD) (dd sat : Bool) : K :=
   ⟨fun r r' => dd = true ∧ ∀ l ∈ r, l ∉ r', (· ∈ d.shared), (· ∈ d.pinned), (· ∈ d.done),
     (· ∈ d.dealloc), fun p a => (p, a) ∈ d.compat, fun _ _ _ => sat = true⟩
@@ -68,9 +76,9 @@ instance (d : KD) (dd sat : Bool) : DecidablePred (KT d dd sat).SharedMutable :=
 /-- Decidability of `Pinned` for a test contract (§48). -/
 instance (d : KD) (dd sat : Bool) : DecidablePred (KT d dd sat).Pinned :=
   fun l => inferInstanceAs (Decidable (l ∈ d.pinned))
-/-- Decidability of `ExternalDone` for a test contract (§48). -/
+/-- Decidability of `ExternalDone` for a test contract (§48, §75). -/
 instance (d : KD) (dd sat : Bool) : DecidablePred (KT d dd sat).ExternalDone :=
-  fun p => inferInstanceAs (Decidable (p ∈ d.done))
+  fun o => inferInstanceAs (Decidable (o ∈ d.done))
 /-- Decidability of `Deallocable` for a test contract (§48). -/
 instance (d : KD) (dd sat : Bool) : DecidablePred (KT d dd sat).Deallocable :=
   fun p => inferInstanceAs (Decidable (p ∈ d.dealloc))
@@ -138,15 +146,13 @@ def lnext (L : LState) : LOp → Option LState
 
 variable (π : Params Unit)
 
-/-- One translated library step (§82.7, `LSimRun.step`): when the bounded invariant checks hold on
-the kernel state (§49, §54), the library operation is `ok` and the obligations of its kernel steps
-hold, the next library state and the memory state after the raw operations of its kernel
-steps. -/
+/-- One translated library step (§82.7, `LSimRun.step`): when the library operation is `ok` and
+the obligations of its kernel steps hold, the next library state and the memory state after the
+raw operations of its kernel steps. -/
 def lsstep (st : LState × Machine.State) (lop : LOp) : Option (LState × Machine.State) :=
   match lnext k st.1 lop with
   | some L' =>
-    if WF3Check st.1.kern ∧ NoDanglingCheck st.1.kern ∧
-        KObl k (· = ·) obR obW π (kexp lop st.1) st.2 then
+    if KObl k (· = ·) obR obW π (kexp lop st.1) st.2 then
       some (L', run st.2 (lopsOf π lop st.1 st.2))
     else none
   | none => none
@@ -236,8 +242,7 @@ theorem lsrun_sound {statics : Statics} {π : Params Unit} :
         split at hs
         · next hc =>
           simp only [Option.some.injEq] at hs; subst hs
-          exact lsrun_sound lops _ st' (.step h (wf3_of_check hc.1) (noDangling_of_check hc.2.1)
-            (lnext_sound hn) hc.2.2) he
+          exact lsrun_sound lops _ st' (.step h (lnext_sound hn) hc) he
         · cases hs
       · cases hs
 
@@ -258,16 +263,15 @@ theorem lsim {statics : Statics} {π : Params Unit} {lops : List LOp} (hi : Init
 end Sound
 
 /-- The raw operations realizing a kernel step from a state of a kernel simulation run are an
-execution of `ok` raw steps (§82 preamble, `r6`), when the bounded invariant checks (§49, §54),
-the preconditions of the step and its obligations hold. -/
+execution of `ok` raw steps (§82 preamble, `r6_reachable`), under `DDSound(K)` (§80), when the
+preconditions of the step and its obligations hold. -/
 theorem kexec {k : K} {statics : Statics} {π : Params Unit} {s3 : S3} {s2 : Machine.State}
-    {op : KOp}
+    {op : KOp} (hdd : DDSound k)
     (hπ : ParamsOK (· = ·) π) (h : SimRun k (· = ·) obR obW statics π s3 s2)
-    (hc : WF3Check s3 ∧ NoDanglingCheck s3 ∧ OpPre k op s3 ∧
-      StepObl k (· = ·) obR obW π op s3 s2) :
+    (hc : OpPre k op s3 ∧ StepObl k (· = ·) obR obW π op s3 s2) :
     Machine.Exec (· = ·) obR obW (opsOf π op s3 s2) s2 (run s2 (opsOf π op s3 s2)) :=
-  (r6 hπ (simulation hπ h).2.1 (wf3_of_check hc.1) (noDangling_of_check hc.2.1)
-    (opStep_of_pre hc.2.2.1) hc.2.2.2).1
+  have hs := simulation hdd hπ h
+  (r6_reachable hdd h.staticsOK hs.2.2 hπ hs.2.1 (opStep_of_pre hc.1) hc.2).1
 
 /-! ## Raw operations and bytes read back (§9, §15–§17, §20) -/
 
@@ -342,22 +346,22 @@ variable {k : K} [∀ r r', Decidable (k.DeclaredDisjoint r r')] [DecidablePred 
   [∀ p a, Decidable (k.FreeCompat p a)] [∀ p ls s, Decidable (k.Satisfiable p ls s)]
 
 /-- A successful translated kernel run reaches its final states, with the conclusions of
-`simulation` (§82 preamble). -/
+`simulation` under `DDSound(K)` (§82 preamble, §80). -/
 theorem sim {statics : Statics} {P : List Place} {z : List Nat} {ops : List KOp}
-    (hi : InitOK statics (piOf P z))
+    (hdd : DDSound k) (hi : InitOK statics (piOf P z))
     (h : (srun k (· = ·) obR obW (piOf P z) (sinit statics (piOf P z)) ops).isSome = true) :
     Sim k statics (piOf P z) (kfin k statics (piOf P z) ops) :=
   have hs := ksim hi h
-  ⟨hs, simulation (piOf_ok P z) hs⟩
+  ⟨hs, simulation hdd (piOf_ok P z) hs⟩
 
 /-- A successful translated library run reaches its final states, with the conclusions of
-`lsimulation` (§82.7). -/
+`lsimulation` under `DDSound(K)` (§82.7, §80). -/
 theorem lsimOf {statics : Statics} {P : List Place} {z : List Nat} {lops : List LOp}
-    (hi : InitOK statics (piOf P z))
+    (hdd : DDSound k) (hi : InitOK statics (piOf P z))
     (h : (lsrun k (piOf P z) (linit statics (piOf P z)) lops).isSome = true) :
     LSim k statics (piOf P z) (lfin k statics (piOf P z) lops) :=
   have hs := lsim hi h
-  ⟨hs, lsimulation (piOf_ok P z) hs⟩
+  ⟨hs, lsimulation hdd (piOf_ok P z) hs⟩
 
 end Reached
 
@@ -368,15 +372,16 @@ def initOf (s : Machine.State) (L : Layout) (l : Nat) : Option Bool :=
 
 /-! ## Run R1: owned storage, pinning, transfer, leak, exit (H03, H04, H07, H08, H09) -/
 
-/-- Contract of R1 (§48, §75): `ExternalDone` for the storage leaf 3. -/
-abbrev K1 : K := KT { done := [3] } false true
+/-- Contract of R1 (§48, §75): `ExternalDone` for the pinning obligation 0, the one `pin 3`
+installs (§74: its identity is its index among the obligations of the state). -/
+abbrev K1 : K := KT { done := [0] } false true
 
 /-- Run R1 (§72, §67, §71, §74, §63, §75, §69, §73): frame 1 with the provider 0 and the values
 `v` (1) and `w` (2), 0 and 1 written; storage 3 (one leaf) allocated from 0 for `v` (root
-authority 3 held by `v`) and written; 3 pinned; `transfer(v, w)`; 3 unpinned; `endUse(w)`;
-exit. -/
+authority 3 held by `v`) and written; 3 pinned (`pin 3` installs the obligation 0, §74);
+`transfer(v, w)`; 3 unpinned (`unpin` designates the obligation 0, §75); `endUse(w)`; exit. -/
 def r1 : List KOp := [.enter [] [lf, lf, lf], .write 0 [0] wv, .write 1 [1] wv, .alloc 0 1 [lf],
-  .write 3 [3] wv, .pin 3, .transfer 1 2, .unpin 3, .endUse 2, .exit]
+  .write 3 [3] wv, .pin 3, .transfer 1 2, .unpin 0, .endUse 2, .exit]
 
 /-- Parameters of R1, fixed once from its final places (§82). -/
 def π1 : Params Unit := piOf (kernelRun (S3.init []) r1).P []
@@ -389,10 +394,11 @@ def t1 : List (Machine.Op Unit) := opsOf π1 (.transfer 1 2) (st1 6).1 (st1 6).2
 
 /-- **MM23-H03** (material §3, class R). Transfer of a value whose owned storage is pinned.
 Expected (material): no machine step on the storage, address unchanged. Obtained: the same.
-After six steps of R1 (reached, `Sim`) the storage leaf 3 is pinned; `transfer(v, w)` is `ok`
-(§63.5: storage merely owned by the source does not prevent it, §87); its raw operations are an
-execution of `ok` steps (§82), none reads, writes or deallocates the allocation of 3, which is
-live before and after them at the same address (§82.6, §74). No rejection, no twin. -/
+After six steps of R1 (reached, `Sim`) the storage leaf 3 is pinned by the active obligation 0
+(§74); `transfer(v, w)` is `ok` (§63.5: storage merely owned by the source does not prevent it,
+§87; §63.9: `w` is usable afterwards); its raw operations are an execution of `ok` steps (§82),
+none reads, writes or deallocates the allocation of 3, which is live before and after them at the
+same address (§82.6, §74). No rejection, no twin. -/
 theorem H03 : Sim K1 [] π1 (st1 6) ∧ (st1 6).1.pin 3 = true ∧
     TransferStep K1 1 2 (st1 6).1 (.ok (transferEff (st1 6).1 1 2)) ∧
     Machine.Exec (· = ·) obR obW t1 (st1 6).2 (run (st1 6).2 t1) ∧
@@ -400,9 +406,9 @@ theorem H03 : Sim K1 [] π1 (st1 6) ∧ (st1 6).1.pin 3 = true ∧
     liveOf (st1 6).2 (π1.L 3).alloc = some true ∧
     liveOf (run (st1 6).2 t1) (π1.L 3).alloc = some true ∧
     leafAddr (run (st1 6).2 t1) π1.L 3 = leafAddr (st1 6).2 π1.L 3 :=
-  have h := sim (by decide) (by decide)
-  ⟨h, by decide, .ok (by decide), kexec (piOf_ok _ _) h.1 (by decide), by decide, by decide,
-    by decide, by decide⟩
+  have h := sim (KT.ddSound _ _ _) (by decide) (by decide)
+  ⟨h, by decide, .ok (by decide), kexec (KT.ddSound _ _ _) (piOf_ok _ _) h.1 (by decide), by decide,
+    by decide, by decide, by decide⟩
 
 /-- **MM23-H04** (material §3, class R). Transfer of a value in place. Expected (material): a read
 then a write of the bytes, provenance kept; the source `Moved` and unreadable, its bytes still
@@ -413,8 +419,8 @@ range of `v` is unchanged and initialized; in the kernel the leaf of `v` is `Mov
 and every read of it is rejected (§66.1). Twin of the rejected read, the same run without the
 transfer: the read of `v` is `ok`. The provenance is kept because the realization writes the
 bytes it read, provenance included (§16 ¶2, §20.2 ¶1); propagation of provenance through copies is
-not fixed by spec v0 at the level of the language (§10 ¶4, §19): open obligation, not a
-mismatch. -/
+not fixed by spec v0.1 at the level of the language (§10 ¶4, §19): open boundary of the spec,
+non-blocking (arbitration Q22), not a mismatch. -/
 theorem H04 : Sim K1 [] π1 (st1 6) ∧ t1.map opKind = [0, 1] ∧
     t1.map opAlloc = [some (π1.L 1).alloc, some (π1.L 2).alloc] ∧
     (∀ i < 8, bytesOf (run (st1 6).2 t1) π1.L 2 i = bytesOf (st1 6).2 π1.L 1 i) ∧
@@ -423,13 +429,15 @@ theorem H04 : Sim K1 [] π1 (st1 6) ∧ t1.map opKind = [0, 1] ∧
     (transferEff (st1 6).1 1 2).I 1 = .moved ∧
     (∀ a, Read3Step a [1] (transferEff (st1 6).1 1 2) .reject) ∧
     Read3Step 1 [1] (st1 6).1 (.ok (st1 6).1) :=
-  ⟨sim (by decide) (by decide), by decide, by decide, by decide, by decide, by decide, by decide,
+  ⟨sim (KT.ddSound _ _ _) (by decide) (by decide), by decide, by decide, by decide, by decide,
+    by decide, by decide,
     fun _ => .reject fun hp => absurd (hp.init 1 (List.mem_singleton_self _)) (by decide),
     .ok (by decide)⟩
 
 /-- **MM23-H08** (material §3, class R). `endUse` of a value whose owned storage is not freed.
 Expected (material): no machine step; the allocation stays live (a leak). Obtained: the same.
-After eight steps of R1 (reached), `endUse(w)` is `ok` and realized by no raw operation (§82.5,
+After eight steps of R1 (reached; the `unpin` of step 8 ended the pinning obligation 0 of the
+storage leaf, §75, §69.4), `endUse(w)` is `ok` and realized by no raw operation (§82.5,
 §69 effect "does not automatically trigger physical deallocation"); in the kernel the storage 3
 is dead and unusable, in the machine its allocation is live, and still live at the end of R1. -/
 theorem H08 : Sim K1 [] π1 (st1 8) ∧ Sim K1 [] π1 (st1 10) ∧
@@ -437,8 +445,8 @@ theorem H08 : Sim K1 [] π1 (st1 8) ∧ Sim K1 [] π1 (st1 10) ∧
     opsOf π1 (.endUse 2) (st1 8).1 (st1 8).2 = [] ∧
     (endUseEff (st1 8).1 2).dead 3 = true ∧ ¬ (endUseEff (st1 8).1 2).Usable 3 ∧
     liveOf (st1 8).2 (π1.L 3).alloc = some true ∧ liveOf (st1 10).2 (π1.L 3).alloc = some true :=
-  ⟨sim (by decide) (by decide), sim (by decide) (by decide), .ok (by decide), rfl, by decide,
-    by decide, by decide, by decide⟩
+  ⟨sim (KT.ddSound _ _ _) (by decide) (by decide), sim (KT.ddSound _ _ _) (by decide) (by decide),
+    .ok (by decide), rfl, by decide, by decide, by decide, by decide⟩
 
 /-- The raw operations realizing the exit of frame 1 in R1 (§82, §73). -/
 def x1 : List (Machine.Op Unit) := opsOf π1 .exit (st1 9).1 (st1 9).2
@@ -447,20 +455,22 @@ def x1 : List (Machine.Op Unit) := opsOf π1 .exit (st1 9).1 (st1 9).2
 automatic allocation, none for the owned storage. Obtained: the same for the realization of the
 reference (`exitOps`): after nine steps of R1 (reached), the exit is realized by one `ok`
 deallocation of the allocation of each root local 0, 1, 2 of the frame with its recorded token
-(§17, §82.5), dead afterwards, and none for the storage 3, live afterwards. **Source gap (open
-obligation)**: spec v0 does not require the first half: §9 ¶2 ("storage with static or automatic
-duration, whose particular rules will be defined later") and §73 ("Exiting does not entail
-automatic physical deallocation of all dead places") leave the deallocation of automatic storage
-at exit undetermined; it is a choice of the realization, not a spec v0 guarantee. -/
+(§17, §82.5), dead afterwards, and none for the storage 3, live afterwards. **Open boundary of the
+spec** (non-blocking, arbitration Q22): spec v0.1 does not require the first half: §9 ¶2 ("storage
+with static or automatic duration, whose particular rules will be defined later") and §73
+("Exiting does not entail automatic physical deallocation of all dead places") leave the
+deallocation of automatic storage at exit undetermined; `exitOps`, which deallocates
+`Refinement.exitRoots`, is the reference realization retained by Q22, not a spec v0.1
+guarantee. -/
 theorem H09 : Sim K1 [] π1 (st1 9) ∧ Sim K1 [] π1 (st1 10) ∧
     x1.map opDealloc = [some ((π1.L 0).alloc, 100), some ((π1.L 1).alloc, 101),
       some ((π1.L 2).alloc, 102)] ∧
     Machine.Exec (· = ·) obR obW x1 (st1 9).2 (run (st1 9).2 x1) ∧
     (∀ r ∈ [0, 1, 2], liveOf (run (st1 9).2 x1) (π1.L r).alloc = some false) ∧
     liveOf (run (st1 9).2 x1) (π1.L 3).alloc = some true :=
-  have h := sim (by decide) (by decide)
-  ⟨h, sim (by decide) (by decide), by decide, kexec (piOf_ok _ _) h.1 (by decide), by decide,
-    by decide⟩
+  have h := sim (KT.ddSound _ _ _) (by decide) (by decide)
+  ⟨h, sim (KT.ddSound _ _ _) (by decide) (by decide), by decide,
+    kexec (KT.ddSound _ _ _) (piOf_ok _ _) h.1 (by decide), by decide, by decide⟩
 
 /-- The raw operations realizing the allocation of R1 (§82.4, §71). -/
 def a1 : List (Machine.Op Unit) := opsOf π1 (.alloc 0 1 [lf]) (st1 3).1 (st1 3).2
@@ -506,12 +516,13 @@ theorem H07 : Sim K1 [] π1 (st1 3) ∧ a1.map opSize = [some 8] ∧
     (∀ s', ¬ OpStep K7f (.alloc 0 1 [lf]) st7f.1 s') ∧
     Machine.Exec (· = ·) obR obW ([] : List (Machine.Op Unit)) st7f.2 st7f.2 ∧
     Refinement.Repr π7.L π7.rtok st7f.1 st7f.2 := by
-  have h1 : Sim K1 [] π1 (st1 3) := sim (by decide) (by decide)
-  have h7 : Sim K7 [] π7 (st7 3) := sim (by decide) (by decide)
-  have hf : Sim K7f [] π7 st7f := sim (by decide) (by decide)
+  have h1 : Sim K1 [] π1 (st1 3) := sim (KT.ddSound _ _ _) (by decide) (by decide)
+  have h7 : Sim K7 [] π7 (st7 3) := sim (KT.ddSound _ _ _) (by decide) (by decide)
+  have hf : Sim K7f [] π7 st7f := sim (KT.ddSound _ _ _) (by decide) (by decide)
   have hfail : AllocStep K7f 0 1 [lf] st7f.1 .fail := .fail (by decide) (by decide)
-  refine ⟨h1, by decide, kexec (piOf_ok _ _) h1.1 (by decide), h7, sim (by decide) (by decide),
-    by decide, kexec (piOf_ok _ _) h7.1 (by decide), hf, hfail, fun s' h => ?_,
+  refine ⟨h1, by decide, kexec (KT.ddSound _ _ _) (piOf_ok _ _) h1.1 (by decide), h7,
+    sim (KT.ddSound _ _ _) (by decide) (by decide), by decide,
+    kexec (KT.ddSound _ _ _) (piOf_ok _ _) h7.1 (by decide), hf, hfail, fun s' h => ?_,
     r6_alloc_fail hf.2.2.1 hfail⟩
   cases (h : AllocStep K7f 0 1 [lf] st7f.1 (.ok s')) with
   | ok _ hs => exact absurd hs (by decide)
@@ -549,12 +560,12 @@ authority. Expected (material): no safe program reaches it; the memory machine w
 (the allocation is live). Obtained: the same. R2 is reached up to the end of `q` and through the
 `reset` (`LSim`); the `reset` is `ok` (§78) and its state library-reachable; block 5 is inactive
 there and a read through it is rejected (§66.2); along every continuation of the library run, no
-kernel step uses block 5 (`reset_no_access`, §82.7, §78, §86: no step reactivates an authority).
+kernel step uses block 5 (`reset_no_access`, §82.7, §78, §86; no step reactivates an authority).
 In the memory machine the allocation of the storage is live, the range of leaf 5 still holds the
 bytes written through block 5, and a raw read of it is `ok`. Twin of the rejected read, the same
 run without the end of the block and the `reset`: the read through block 5 is `ok`. The draft
 lemma stating that no authority derived from `internal` remains active after `reset` is false
-under spec v0 (§78 effect: "an empty-footprint derivative may remain active"); the statement used
+under spec v0.1 (§78 effect: "an empty-footprint derivative may remain active"); the statement used
 is restricted to authorities covering a leaf of the storage (§78.2). -/
 theorem H02 : LSim K2 [] π2 (lt2 10) ∧ LSim K2 [] π2 (lt2 11) ∧
     (lt2 10).1.arenas[0]? = some E2 ∧ ResetD 0 (lt2 10).1 (.ok l2r) ∧ LReach K2 [] l2r ∧
@@ -565,12 +576,13 @@ theorem H02 : LSim K2 [] π2 (lt2 10) ∧ LSim K2 [] π2 (lt2 11) ∧
     Machine.ReadStep obR (leafAcc (lt2 11).2 π2.L .read 5) () (lt2 11).2
       (.ok (readVal (lt2 11).2 (leafAcc (lt2 11).2 π2.L .read 5))) ∧
     Read3Step 5 [5] (lt2 9).1.kern (.ok (lt2 9).1.kern) := by
-  have h10 : LSim K2 [] π2 (lt2 10) := lsimOf (by decide) (by decide)
+  have h10 : LSim K2 [] π2 (lt2 10) := lsimOf (KT.ddSound _ _ _) (by decide) (by decide)
   have hE : (lt2 10).1.arenas[0]? = some E2 := by decide
   have hr : ResetD 0 (lt2 10).1 (.ok l2r) := oks (k := K2) (o := .reset 0) (by decide)
-  exact ⟨h10, lsimOf (by decide) (by decide), hE, hr, .step h10.2.2.2 (.reset hr), by decide,
-    .reject (by decide), fun _ _ hp => reset_no_access hE hr hp (by decide) (by decide),
-    by decide, by decide, readStep_of (by decide), .ok (by decide)⟩
+  exact ⟨h10, lsimOf (KT.ddSound _ _ _) (by decide) (by decide), hE, hr,
+    .step h10.2.2.2 (.reset hr), by decide, .reject (by decide),
+    fun _ _ hp => reset_no_access hE hr hp (by decide) (by decide), by decide, by decide,
+    readStep_of (by decide), .ok (by decide)⟩
 
 /-- **MM23-H06** (material §3, class R). `free` of an arena block. Expected (material):
 impossible, not an allocation. Obtained: the same. On R2 after the end of `q` (reached), with the
@@ -586,8 +598,8 @@ theorem H06 : LSim K2 [] π2 (lt2 10) ∧ K2.Deallocable 5 ∧ K2.FreeCompat 5 1
     opsOf π2 (.free 4 104) (lt2 10).1.kern (lt2 10).2 = [.dealloc (π2.L 4).alloc 104] ∧
     Machine.DeallocStep (· = ·) (π2.L 4).alloc 104 (lt2 10).2
       (.ok ((lt2 10).2.dealloc (π2.L 4).alloc)) :=
-  ⟨lsimOf (by decide) (by decide), by decide, by decide, by decide, .reject (by decide),
-    by decide, .ok (by decide), rfl, .ok (by decide)⟩
+  ⟨lsimOf (KT.ddSound _ _ _) (by decide) (by decide), by decide, by decide, by decide,
+    .reject (by decide), by decide, .ok (by decide), rfl, .ok (by decide)⟩
 
 /-- **MM23-H13** (material §3, class R). A value containing a pointer, transferred then read.
 Expected (material): provenance kept. Obtained: the same. On R2 (reached before the transfer,
@@ -597,7 +609,8 @@ decodes to the address of leaf 5, every byte with the provenance of the storage 
 `ok` in the kernel, realized by one raw read of the range of `q`, `ok`, which returns the bytes
 written into `v`, provenance included, and they decode to the address of leaf 5 (§20.2 ¶1,
 §82.2). No rejection, no twin. As in H04, the copy keeps provenance by the choice of the
-realization; propagation through copies stays open in spec v0 (§10 ¶4, §19). -/
+realization; propagation through copies stays open in spec v0.1 (§10 ¶4, §19): open boundary,
+non-blocking (arbitration Q22). -/
 theorem H13 : LSim K2 [] π2 (lt2 7) ∧ LSim K2 [] π2 (lt2 8) ∧ LSim K2 [] π2 (lt2 9) ∧
     decodedAt π2 (lt2 7).2 2 = leafAddr (lt2 7).2 π2.L 5 ∧
     (∀ i < 8, (bytesOf (lt2 7).2 π2.L 2 i).2 = some (π2.L 4).alloc) ∧
@@ -610,9 +623,10 @@ theorem H13 : LSim K2 [] π2 (lt2 7) ∧ LSim K2 [] π2 (lt2 8) ∧ LSim K2 [] �
     readVal (lt2 8).2 (leafAcc (lt2 8).2 π2.L .read 3) =
       readVal (lt2 7).2 (leafAcc (lt2 7).2 π2.L .read 2) ∧
     decodedAt π2 (lt2 8).2 3 = leafAddr (lt2 8).2 π2.L 5 :=
-  ⟨lsimOf (by decide) (by decide), lsimOf (by decide) (by decide), lsimOf (by decide) (by decide),
-    by decide, by decide, by decide, .ok (by decide), rfl, readStep_of (by decide), by decide,
-    by decide⟩
+  ⟨lsimOf (KT.ddSound _ _ _) (by decide) (by decide),
+    lsimOf (KT.ddSound _ _ _) (by decide) (by decide),
+    lsimOf (KT.ddSound _ _ _) (by decide) (by decide), by decide, by decide, by decide,
+    .ok (by decide), rfl, readStep_of (by decide), by decide, by decide⟩
 
 /-! ## Run R3: statics, read, `writeShared`, free, exit (H05, H10, H11, H12) -/
 
@@ -649,8 +663,8 @@ theorem H05 : Sim K3 stZ π3 (st3 7) ∧ Sim K3 stZ π3 (st3 9) ∧
     Machine.DeallocStep (· = ·) (π3.L 4).alloc 104 (st3 7).2
       (.ok ((st3 7).2.dealloc (π3.L 4).alloc)) ∧
     liveOf ((st3 7).2.dealloc (π3.L 4).alloc) (π3.L 4).alloc = some false :=
-  ⟨sim (by decide) (by decide), sim (by decide) (by decide), .ok (by decide), rfl, by decide,
-    by decide, .ok (by decide), by decide⟩
+  ⟨sim (KT.ddSound _ _ _) (by decide) (by decide), sim (KT.ddSound _ _ _) (by decide) (by decide),
+    .ok (by decide), rfl, by decide, by decide, .ok (by decide), by decide⟩
 
 /-- **MM23-H10** (material §3, class R). Static storage. Expected (material): its allocation is
 never deallocated. Obtained: the same: every prefix of R3 is a successful translated run and the
@@ -659,7 +673,7 @@ owned by the base frame, which does not exit; §73; §82.6). -/
 theorem H10 : Sim K3 stZ π3 (st3 9) ∧ ∀ n ∈ List.range (r3.length + 1),
     (srun K3 (· = ·) obR obW π3 (sinit stZ π3) (r3.take n)).isSome = true ∧
     liveOf (st3 n).2 (π3.L 0).alloc = some true :=
-  ⟨sim (by decide) (by decide), by decide⟩
+  ⟨sim (KT.ddSound _ _ _) (by decide) (by decide), by decide⟩
 
 /-- **MM23-H11** (material §3, class R). Read of an `Init` leaf. Expected (material): `ReadStep`
 `ok`. Obtained: the same. On the initial state of R3 (reached), the read of the static leaf 0 by
@@ -670,7 +684,8 @@ theorem H11 : Sim K3 stZ π3 (st3 0) ∧ Read3Step 0 [0] (st3 0).1 (.ok (st3 0).
     Machine.ReadStep obR (leafAcc (st3 0).2 π3.L .read 0) () (st3 0).2
       (.ok (readVal (st3 0).2 (leafAcc (st3 0).2 π3.L .read 0))) ∧
     (∀ i < 8, bytesOf (st3 0).2 π3.L 0 i = π3.ival 0 i) :=
-  ⟨sim (by decide) (by decide), .ok (by decide), rfl, readStep_of (by decide), by decide⟩
+  ⟨sim (KT.ddSound _ _ _) (by decide) (by decide), .ok (by decide), rfl, readStep_of (by decide),
+    by decide⟩
 
 /-- **MM23-H12** (material §3, class R). `writeShared`. Expected (material): an ordinary
 `WriteStep`, sequential. Obtained: the same. After five steps of R3 (reached), `writeShared` of
@@ -683,7 +698,7 @@ theorem H12 : Sim K3 stZ π3 (st3 5) ∧ K3.SharedMutable 3 ∧
       [.write (leafAcc (st3 5).2 π3.L .write 3) () (wv 3)] ∧
     Machine.WriteStep obW (leafAcc (st3 5).2 π3.L .write 3) () (wv 3) (st3 5).2
       (.ok ((st3 5).2.write (leafAcc (st3 5).2 π3.L .write 3) (wv 3))) :=
-  ⟨sim (by decide) (by decide), by decide, by decide, .ok (by decide), rfl,
+  ⟨sim (KT.ddSound _ _ _) (by decide) (by decide), by decide, by decide, .ok (by decide), rfl,
     .ok ⟨by decide, by decide, trivial⟩⟩
 
 /-! ## Run R4: declared disjointness (H01) -/
@@ -717,13 +732,13 @@ theorem H01 : (∀ k : K, k.DeclaredDisjoint [1, 2] [2] → ¬ DDSound k) ∧ DD
     (∀ r r', K4.DeclaredDisjoint r r' → (∀ l ∈ r, l < (st4 2).1.P.length ∧ isLeaf (st4 2).1.P l) →
       (∀ l ∈ r', l < (st4 2).1.P.length ∧ isLeaf (st4 2).1.P l) → ByteDisjoint π4.L r r') ∧
     ByteDisjoint π4.L [1] [2] := by
-  have h2 : Sim K4 [] π4 (st4 2) := sim (by decide) (by decide)
+  have h2 : Sim K4 [] π4 (st4 2) := sim (KT.ddSound _ _ _) (by decide) (by decide)
   have hb : ∀ r r', K4.DeclaredDisjoint r r' →
       (∀ l ∈ r, l < (st4 2).1.P.length ∧ isLeaf (st4 2).1.P l) →
       (∀ l ∈ r', l < (st4 2).1.P.length ∧ isLeaf (st4 2).1.P l) → ByteDisjoint π4.L r r' :=
     fun _ _ hd hr hr' => declaredDisjoint_bytes (KT.ddSound _ _ _) h2.2.2.1.layout hd hr hr'
   exact ⟨fun k hd hs => hs _ _ hd 2 (by decide) (by decide), KT.ddSound _ _ _, by decide,
-    sim (by decide) (by decide), .reject (by decide), by decide, h2, hb,
+    sim (KT.ddSound _ _ _) (by decide) (by decide), .reject (by decide), by decide, h2, hb,
     hb _ _ (by decide) (by decide) (by decide)⟩
 
 /-! ## Run R5: references to empty regions (H15) -/
@@ -754,8 +769,9 @@ destination 2 (`split` realizes none, §77, §82.7). Block 6 has the empty regio
 the allocation of 5, nonzero, every byte with that allocation as provenance. Authority 7 has the
 empty region, effective anchor 3; the range of 4 decodes to the base of the allocation of 3,
 nonzero, with that provenance. Both destinations have the size of a reference (8 bytes). Source of
-the expected verdict: a decision of the brief recorded for §82.3 (empty-region rule), not stated
-by spec v0 (§81 leaves encodings to Spec 11). -/
+the expected verdict: v0.1 §82.2, last sentence (a region whose leaves all have zero physical
+size, the empty region included). Under v0 the same verdict rested on a decision of the brief
+recorded for §82.3; v0.1 gives it a spec source without changing it. -/
 theorem H15 : LSim K5 [] π5 (lt5 5) ∧ LSim K5 [] π5 (lt5 8) ∧
     (lopsOf π5 (.issue 0 [] 2) (lt5 5).1 (lt5 5).2).map opKind = [1] ∧
     (lopsOf π5 (.issue 0 [] 2) (lt5 5).1 (lt5 5).2).map opAlloc = [some (π5.L 2).alloc] ∧
@@ -770,9 +786,10 @@ theorem H15 : LSim K5 [] π5 (lt5 5) ∧ LSim K5 [] π5 (lt5 8) ∧
     decodedAt π5 (lt5 8).2 4 = baseOf (lt5 8).2 (π5.L 3).alloc ∧
     (∀ i < 8, (bytesOf (lt5 8).2 π5.L 4 i).2 = some (π5.L 3).alloc) ∧
     baseOf (lt5 8).2 (π5.L 3).alloc ≠ 0 ∧ (π5.L 2).len = 8 ∧ (π5.L 4).len = 8 :=
-  ⟨lsimOf (by decide) (by decide), lsimOf (by decide) (by decide), by decide, by decide,
+  ⟨lsimOf (KT.ddSound _ _ _) (by decide) (by decide),
+    lsimOf (KT.ddSound _ _ _) (by decide) (by decide), by decide, by decide, by decide, by decide,
     by decide, by decide, by decide, by decide, by decide, by decide, by decide, by decide,
-    by decide, by decide, by decide, by decide, by decide, by decide, by decide⟩
+    by decide, by decide, by decide, by decide, by decide⟩
 
 /-! ## Run R6: a region whose head is not its lowest leaf (H16) -/
 
@@ -795,8 +812,9 @@ Obtained: the same; the case passes. R6 is reached (`LSim`), the issue being the
 operation, realized by one write of the destination 2. Block 4 has the region `[5, 4]`, recorded
 in the arena entry; both leaves have nonzero size, leaf 4 at offset 0 below the head 5 at offset
 8; the range of 2 decodes to the address of leaf 4, not to that of the head, every byte with the
-storage allocation as provenance. Source of the expected verdict: a decision of the brief recorded
-for §82.3 (lowest-address rule), not stated by spec v0 (§81). -/
+storage allocation as provenance. Source of the expected verdict: a decision of the user's brief
+recorded for §82.3 (lowest-address rule), not stated by spec v0.1: §82.2 decides only regions
+whose leaves all have zero physical size, and §81 leaves encodings to Spec 11. -/
 theorem H16 : LSim K5 [] π6 (lt6 5) ∧ LSim K5 [] π6 (lt6 6) ∧
     (lopsOf π6 (.issue 0 [5, 4] 2) (lt6 5).1 (lt6 5).2).map opKind = [1] ∧
     (lopsOf π6 (.issue 0 [5, 4] 2) (lt6 5).1 (lt6 5).2).map opAlloc = [some (π6.L 2).alloc] ∧
@@ -806,8 +824,9 @@ theorem H16 : LSim K5 [] π6 (lt6 5) ∧ LSim K5 [] π6 (lt6 6) ∧
     decodedAt π6 (lt6 6).2 2 = leafAddr (lt6 6).2 π6.L 4 ∧
     decodedAt π6 (lt6 6).2 2 ≠ leafAddr (lt6 6).2 π6.L 5 ∧
     (∀ i < 8, (bytesOf (lt6 6).2 π6.L 2 i).2 = some (π6.L 3).alloc) ∧ (π6.L 2).len = 8 :=
-  ⟨lsimOf (by decide) (by decide), lsimOf (by decide) (by decide), by decide, by decide,
+  ⟨lsimOf (KT.ddSound _ _ _) (by decide) (by decide),
+    lsimOf (KT.ddSound _ _ _) (by decide) (by decide), by decide, by decide, by decide, by decide,
     by decide, by decide, by decide, by decide, by decide, by decide, by decide, by decide,
-    by decide, by decide, by decide⟩
+    by decide⟩
 
 end Ern.Corpus.MM23H

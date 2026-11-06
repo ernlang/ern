@@ -3,7 +3,7 @@ import Ern.MemoryModel.Arena
 /-!
 # Corpus runner (test module)
 
-A computable executor for the corpus cases of `specs/ERN_Memory_Model_Specification_v0.md`: the
+A computable executor for the corpus cases of `specs/ERN_Memory_Model_Specification_v0.1.md`: the
 kernel operations O1–O16 (§60–§75) and the arena operations O17–O19 of Part XIV (§76–§78), over
 the library state of `Ern.MemoryModel.Arena` (§46: the kernel state `S₃` and, separately, the arena
 registry). This module is a test module: no model module imports it.
@@ -28,8 +28,8 @@ open Ern.MemoryModel.Access Ern.MemoryModel.Arena
 /-! ## Test contracts (§48, §80) -/
 
 /-- A test contract `K` given by lists (§48): the `SharedMutable`, `Pinned`, `ExternalDone` and
-`Deallocable` sets, and the `FreeCompat` pairs. Nothing is declared disjoint; every allocation
-request is satisfiable. -/
+`Deallocable` sets, and the `FreeCompat` pairs; `ExternalDone` lists identities of dynamic pinning
+obligations (§75). Nothing is declared disjoint; every allocation request is satisfiable. -/
 structure KD where
   shared : List Nat := []
   pinned : List Nat := []
@@ -51,7 +51,7 @@ instance (d : KD) : DecidablePred d.toK.SharedMutable :=
 /-- Decidability of `Pinned` for a test contract (§48). -/
 instance (d : KD) : DecidablePred d.toK.Pinned :=
   fun l => inferInstanceAs (Decidable (l ∈ d.pinned))
-/-- Decidability of `ExternalDone` for a test contract (§48). -/
+/-- Decidability of `ExternalDone`, on obligation identities, for a test contract (§48, §75). -/
 instance (d : KD) : DecidablePred d.toK.ExternalDone :=
   fun p => inferInstanceAs (Decidable (p ∈ d.done))
 /-- Decidability of `Deallocable` for a test contract (§48). -/
@@ -70,7 +70,8 @@ theorem KD.ddSound (d : KD) : DDSound d.toK := fun _ _ h => h.elim
 /-! ## Operations and outcomes (§58, §60–§78) -/
 
 /-- An operation of a corpus run: the kernel operations O1–O16 (§60–§75) and the arena operations
-O17–O19 (§76–§78), with their arguments. -/
+O17–O19 (§76–§78), with their arguments; `unpin` takes the identity of a dynamic pinning
+obligation, its index in `S3.pins` (§74, §75). -/
 inductive Op where
   | derive (src : Nat) (region : List Nat) (m : Mode)
   | split (src : Nat) (rs : List (List Nat))
@@ -83,7 +84,7 @@ inductive Op where
   | write (a : Nat) (ls : List Nat)
   | writeShared (a : Nat) (ls : List Nat)
   | pin (p : Nat)
-  | unpin (p : Nat)
+  | unpin (o : Nat)
   | endUse (p : Nat)
   | free (p auth : Nat)
   | alloc (provider owner : Nat) (ls : LocalShape)
@@ -127,7 +128,7 @@ def OpRel (k : K) (L : LState) : Op → Outcome3 LState → Prop
   | .write a ls => KRel (Write3Step a ls L.kern) L.arenas
   | .writeShared a ls => KRel (WriteSharedStep k a ls L.kern) L.arenas
   | .pin p => KRel (PinStep p L.kern) L.arenas
-  | .unpin p => KRel (UnpinStep k p L.kern) L.arenas
+  | .unpin o => KRel (UnpinStep k o L.kern) L.arenas
   | .endUse p => KRel (EndUseStep k p L.kern) L.arenas
   | .free p auth => KRel (FreeStep k p auth L.kern) L.arenas
   | .alloc pr ow ls => KRel (AllocStep k pr ow ls L.kern) L.arenas
@@ -162,8 +163,8 @@ def lstep (L : LState) : Op → Outcome3 LState
   | .read a ls => kg L (Read3Pre L.kern a ls) L.kern
   | .write a ls => kg L (Write3Pre L.kern a ls) (write3Eff L.kern ls)
   | .writeShared a ls => kg L (WriteSharedPre k L.kern a ls) (write3Eff L.kern ls)
-  | .pin p => kg L (PinPre L.kern p) (pinEff L.kern p true)
-  | .unpin p => kg L (UnpinPre k L.kern p) (pinEff L.kern p false)
+  | .pin p => kg L (PinPre L.kern p) (pinEff L.kern p)
+  | .unpin o => kg L (UnpinPre k L.kern o) (unpinEff L.kern o)
   | .endUse p => kg L (EndUsePre k L.kern p) (endUseEff L.kern p)
   | .free p auth => kg L (FreePre k L.kern p auth) (freeEff L.kern p)
   | .alloc pr ow ls =>

@@ -5,8 +5,8 @@ import Ern.Corpus.Runner
 
 The cases of corpus MM3-H of the Jalon 3 material (`ERN_Jalon3_materiel.md`, §1; non-normative
 design material), run on the reference kernel and arena of
-`specs/ERN_Memory_Model_Specification_v0.md` (§60–§78), plus new cases fixed by spec clauses and the
-usage scenario W3 (material §5b). This is a test module: no model module imports it.
+`specs/ERN_Memory_Model_Specification_v0.1.md` (§60–§78), plus new cases fixed by spec clauses and
+the usage scenario W3 (material §5b). This is a test module: no model module imports it.
 
 Each case is a run from `LState.init statics` (§47) by the runner (`Ern.Corpus.Runner`):
 `RunsTo k statics os L` states that every step is `ok` and that `L` is library-reachable and its
@@ -17,7 +17,10 @@ material, or the spec clause for new cases), the obtained verdict, the class (ma
 `N3` kernel, `Lib` library instance, `spec 3` another specification) and the positive twin (rule 2:
 the same sequence without the faulty element, accepted). A case whose obtained verdict differs from
 the expected one is kept with its expected verdict and marked **MISMATCH** with its cause; no case
-is corrected.
+is corrected. Where spec v0.1 or an arbitration of the corpus owner changes the expected verdict a
+case had under spec v0 (H21, H49, H50, H51), its docstring gives the historical expected verdict,
+its justification, the new expected verdict and the v0.1 clause that decides it; H16 gives the
+same history for its spec v0 mismatch, which v0.1 closes.
 
 Twins that are not literally the same sequence without one faulty step:
 * another destination, target, parameter or identity in place of the faulty one: H04 (the other
@@ -28,15 +31,13 @@ Twins that are not literally the same sequence without one faulty step:
   `fail`; the available region `[6]`, `ok`);
 * further steps that lift the blocking before the step under test: H11 (`endUse` of `v2` and of
   the leaf 6), H17 (`endUse` of the block value, then `free` of the storage 4 instead of the leaf
-  5), H19 (`endUse` of the child value), H26 second twin (the contract with `ExternalDone`, then
-  `unpin`), H27b (three `release`), W3 (`endUse` of the structure and of the block values);
+  5), H19 (`endUse` of the child value), H26 second twin (the contract with `ExternalDone` on the
+  obligation, then `unpin`), H27b (three `release`), W3 (`endUse` of the structure);
 * a pairing given by the material: H05 (its own twin), H21b (H37);
 * a faulty element of several steps, removed: H03, S77_6 (`derive` and `store`), H51 through a
-  helper (the view, or its `store`), H49 (the six steps of the cycle: removing only its stores
-  leaves the `reject`, for another cause);
-* no twin: the `reset` `reject` in the state `h49` of H49, which persists without the cycle
-  (construction defect by rule 2, recorded there); the reception `transfer` `reject` of H16, a
-  **MISMATCH** whose expected verdict is `ok`.
+  helper (the view, or its `store`), H49 `endUse` of the block values (the six steps of the cycle);
+* no twin, by arbitration: the `reset` `reject` in the state `h49` of H49, which persists without
+  the cycle (on `fao` the blocks are still held by the values 2 and 3, §78.2).
 
 Local shapes are lists of (parent, kind) (§72, §71.1); `lf` is a root leaf, `pt p` a part of `p`.
 Place and authority identities are list indices (§38): `enterFrame` appends the locals and one
@@ -46,9 +47,9 @@ root authority per root local; `alloc` appends the shape and one root authority;
 
 Not encoded here:
 * section G (H30–H34b, H44, handle pools) and the usage scenarios W1, W2 (they use a handle pool):
-  later wave (`HandlePool`);
-* the cross-registry cases of §56 (a pool and an arena, or two pools, on one `internal`): later
-  wave; only the arena registry exists here (`S56`);
+  `Ern.Corpus.Lib`;
+* the cross-registry cases of §56 (a pool and an arena, or two pools, on one `internal`):
+  `Ern.Corpus.Lib`; only the arena registry exists here (`S56`);
 * section J, out of the kernel, classified by the material: H38 get-or-insert cache (spec 3,
   flow-sensitive liveness, §25, §32); H39 suspended coroutine holding a `Modify` parameter
   (specs 2 and 3, §29, §81); H40 raw pointer used during a call (spec 3 and the boundary of §19,
@@ -89,13 +90,14 @@ theorem read_rejected {s : S3} {ls : List Nat}
     Read3Step a ls s .reject :=
   .reject fun hp => h a (List.mem_range.2 (exercisable_lt hp.exercisable)) hp
 
-/-- The preconditions of `transfer` other than local self-blocking prevention (§63.1–§63.7), the
-fields of `TransferPre` but `noSelfLock`: used to show that §63.8 alone rejects a transfer. -/
-def TransferPreBut638 (k : K) (s : S3) (src dst : Nat) : Prop :=
+/-- The preconditions §63.1–§63.7 of `transfer`, the fields of `TransferPre` but `noSelfLock`
+(§63.8) and `dstUsableAfter` (§63.9): used to show which of §63.8 and §63.9 rejects a transfer. -/
+def TransferPre637 (k : K) (s : S3) (src dst : Nat) : Prop :=
   s.Usable src ∧ s.Usable dst ∧ HasRight s .modify src ∧ HasRight s .modify dst ∧
     SameShape s.P src dst ∧ (∀ l ∈ footprint s.P src, s.I l = .init) ∧
     (∀ l ∈ footprint s.P dst, s.I l ≠ .init) ∧ ¬ overlap s.P src dst ∧
-    (∀ j ∈ List.range s.A.length, ¬ ActiveDerivedOutside s src j) ∧
+    (∃ g ∈ List.range s.A.length, Grounds s .modify src g ∧
+      ∀ j ∈ List.range s.A.length, ActiveDerivedOutside s src j → RightChain s g j) ∧
     (∀ l ∈ footprint s.P src, ¬ k.Pinned l ∧ s.pin l = false) ∧
     (∀ x ∈ movedDeps s src, s.Active x) ∧ AnchorOrder (transferEff s src dst) ∧
     (∀ x ∈ List.range s.A.length, AnchorMoves s src x →
@@ -103,10 +105,20 @@ def TransferPreBut638 (k : K) (s : S3) (src dst : Nat) : Prop :=
         OptP ((transferEff s src dst).A[x]?) (fun y => y.active = true → y.holder = .place q →
           EffAnchorOK (transferEff s src dst) x ((transferEff s src dst).pframe q)) True)
 
-/-- Decidability of `TransferPreBut638` (§63). -/
+/-- Decidability of `TransferPre637` (§63). -/
 instance (k : K) [DecidablePred k.Pinned] (s : S3) (src dst : Nat) :
-    Decidable (TransferPreBut638 k s src dst) := by
-  unfold TransferPreBut638; infer_instance
+    Decidable (TransferPre637 k s src dst) := by
+  unfold TransferPre637; infer_instance
+
+/-- §69.2, last sentence: no authority that the effect of `endUse(p)` makes inactive has an active
+descendant that the effect does not make inactive; the field `keptDesc` of `EndUsePre`. -/
+def EndUseKeptDesc (s : S3) (p : Nat) : Prop :=
+  ∀ a ∈ List.range s.A.length, ∀ j ∈ List.range s.A.length, s.Active a →
+    ¬ (endUseEff s p).Active a → a ∈ s.ancs j → ¬ (endUseEff s p).Active j
+
+/-- Decidability of `EndUseKeptDesc` (§69.2). -/
+instance (s : S3) (p : Nat) : Decidable (EndUseKeptDesc s p) := by
+  unfold EndUseKeptDesc; infer_instance
 
 /-- The static preconditions of `issue` other than local self-blocking prevention (§77.1, §77.2),
 the fields of `IssueStatic` but `dstNotIn`: used to show that this clause alone rejects. -/
@@ -318,13 +330,14 @@ def h13o : List Op := [.enter [] [lf, lf, lf], .write 0 [0], .write 1 [1], .allo
 def h13 : LState := final K0 [] h13o
 
 /-- **H13** (material §1 C, class N3). Ownership cycle: `x` owns `y`, then `y` receives `x` by
-transfer. Expected (material): `reject`. Obtained: `reject` by §63.8 alone (§63.1–§63.7 hold):
-the root authority 3 of `y`, held by `x`, would be held by `corr(x) = y` and covers the leaf `y`
-(§40, §88). Twin: the transfer of `x` into `z` is `ok`. -/
+transfer. Expected (material): `reject`. Obtained: `reject` by §63.8 and §63.9 (§63.1–§63.7
+hold): the root authority 3 of `y`, held by `x`, would be held by `corr(x) = y` and covers the leaf
+`y` (§63.8, §88); `y` would own itself, so it is not usable in the resulting state (§63.9, §40).
+Twin: the transfer of `x` into `z` is `ok`. -/
 theorem H13 : RunsTo K0 [] h13o h13 ∧ TransferStep K0 1 3 h13.kern .reject ∧
-    TransferPreBut638 K0 h13.kern 1 3 ∧ ¬ NoLocalSelfLock h13.kern 1 3 ∧
-    Runs K0 [] (h13o ++ [.transfer 1 2]) :=
-  ⟨runsTo (by decide), .reject (by decide), by decide, by decide, runsTo (by decide)⟩
+    TransferPre637 K0 h13.kern 1 3 ∧ ¬ NoLocalSelfLock h13.kern 1 3 ∧
+    ¬ (transferEff h13.kern 1 3).Usable 3 ∧ Runs K0 [] (h13o ++ [.transfer 1 2]) :=
+  ⟨runsTo (by decide), .reject (by decide), by decide, by decide, by decide, runsTo (by decide)⟩
 
 /-- Test contract of H14, H15 (§70.2, §80): place 2 deallocable by the authority 7. -/
 abbrev KF2 : K := KD.toK { dealloc := [2], compat := [(2, 7)] }
@@ -367,26 +380,32 @@ def h16p : List Op := [.enter [] [lf, lf, lf], .write 0 [0], .write 1 [1], .allo
   .write 3 [3], .derive 1 [1] .modify, .derive 2 [2] .modify, .enter [4, 5] [lf]]
 /-- State reached by `h16p` (§57). -/
 def h16a : LState := final KF3 [] h16p
-/-- Run of H16 as the kernel can run it (§70, §73): the callee frees the storage through its
-parameter on `x`, then returns. -/
-def h16o : List Op := h16p ++ [.free 3 7, .exit]
+/-- Run of H16 (§63, §70, §73): the callee receives `x` by `transfer` into its local 4, frees the
+storage 3 now owned by that local, returns the value by `transfer` into `R` through the parameter
+5, then exits. -/
+def h16o : List Op := h16p ++ [.transfer 1 4, .free 3 7, .transfer 4 2, .exit]
 /-- State reached by `h16o` (§57). -/
 def h16 : LState := final KF3 [] h16o
 
-/-- **H16** (material §1 C, class N3). The callee receives by transfer a value owning a storage,
-frees it, returns the value; the caller reads that storage. Expected (material): `ok`, then
-`reject`. Obtained: the reception, `transfer` of `x` into the callee's local, is `reject`: the
-parameter 4 is an active derived authority covering `x` held outside it (§63.4, §45). With the
-storage freed through the parameter on `x` (`ok`) and the return (`ok`), the caller's read of the
-storage is `reject` for every authority (§66.1: the leaf belongs to no usable place, §70 effect).
-Twin without the `free`: the read is `ok`. **MISMATCH** on the reception (expected `ok`, obtained
-`reject`); cause: case defect, the reception by value is a calling convention deferred to Spec 3
-(§45, §81) and the literal kernel `transfer` is rejected by §63.4. -/
-theorem H16 : RunsTo KF3 [] h16p h16a ∧ TransferStep KF3 1 4 h16a.kern .reject ∧
-    ActiveDerivedOutside h16a.kern 1 4 ∧ RunsTo KF3 [] h16o h16 ∧
-    (∀ a, Read3Step a [3] h16.kern .reject) ∧ Runs KF3 [] (h16p ++ [.exit, .read 3 [3]]) :=
-  ⟨runsTo (by decide), .reject (by decide), by decide, runsTo (by decide),
-    read_rejected (by decide), runsTo (by decide)⟩
+/-- **H16** (material §1 C, class spec 3 by arbitration: reception by value is a calling
+convention of Spec 3, §45, §81; non-blocking). The callee receives by transfer a value owning a
+storage, frees it, returns the value; the caller reads that storage. Expected (material): `ok`,
+then `reject`. Historical (spec v0): same expected verdict; the reception, `transfer` of `x` into
+the callee's local, was obtained `reject`, the parameter 4 being an active derived authority
+covering `x` held outside it (§63.4 before its v0.1 amendment); **MISMATCH**, case defect. Spec
+v0.1 decides the reception `ok`: the parameter 4 is the exercisable authority on which the
+`Modify` right over `x` rests, exempt from the check with its origin chain (v0.1 §63.4); the
+expected verdict, unchanged, is now the spec's and the mismatch is closed. Obtained: the
+reception, the `free` of the storage through the callee's local (§70), the return into `R` (§63)
+and the exit (§73) are `ok`; the caller's read of the storage is `reject` for every authority
+(§66.1: the leaf belongs to no usable place, §70 effect). Twin without the `free`: the read is
+`ok`. -/
+theorem H16 : RunsTo KF3 [] h16p h16a ∧ ActiveDerivedOutside h16a.kern 1 4 ∧
+    Grounds h16a.kern .modify 1 4 ∧ RunsTo KF3 [] h16o h16 ∧
+    (∀ a, Read3Step a [3] h16.kern .reject) ∧
+    Runs KF3 [] (h16p ++ [.transfer 1 4, .transfer 4 2, .exit, .read 3 [3]]) :=
+  ⟨runsTo (by decide), by decide, by decide, runsTo (by decide), read_rejected (by decide),
+    runsTo (by decide)⟩
 
 /-- Test contract of H17 (§70.2, §80): the storage 4 and the region leaf 5 deallocable by the
 authority 7, so that only the structural clause can reject. -/
@@ -416,10 +435,12 @@ def h18 : LState := final K0 [] h17p
 storage. Expected (material): `reject`. Obtained: `reject`: §63.8 fails, `internal` (the root of
 the storage, held by the arena value) would be held by `corr(0) = 5` and covers the leaf 5 (§40,
 §88); §63.6 fails as well, the storage becoming owned by its own leaf (no frame for the anchor of
-the value 2). Twin: the transfer of the arena value into the local leaf 3 is `ok`. -/
+the value 2); §63.9 fails too, that ownership cycle making the leaf 5 unusable in the resulting
+state (§40). Twin: the transfer of the arena value into the local leaf 3 is `ok`. -/
 theorem H18 : RunsTo K0 [] h17p h18 ∧ TransferStep K0 0 5 h18.kern .reject ∧
-    ¬ NoLocalSelfLock h18.kern 0 5 ∧ Runs K0 [] (h17p ++ [.transfer 0 3]) :=
-  ⟨runsTo (by decide), .reject (by decide), by decide, runsTo (by decide)⟩
+    ¬ NoLocalSelfLock h18.kern 0 5 ∧ ¬ (transferEff h18.kern 0 5).Usable 5 ∧
+    Runs K0 [] (h17p ++ [.transfer 0 3]) :=
+  ⟨runsTo (by decide), .reject (by decide), by decide, by decide, runsTo (by decide)⟩
 
 /-- Run of H19 (§76, §77): storage 4 (leaf 5) owned by the arena value 0; parent arena on 4; block
 5 on `[5]` issued to 2; child arena on the leaf 5 with `internal` the block 5, its arena value 2. -/
@@ -458,12 +479,14 @@ def h21o : List Op := h21p ++ [.derive 0 [0] .observe, .derive 2 [2] .modify, .e
 def h21 : LState := final KA [] h21o
 
 /-- **H21** (material §1 D, class Lib). A callee that only observes the arena issues a block to a
-local, then returns the block. Expected (material): `ok`. Obtained: the `writeShared` on the
-metadata is `ok` (§68), but the `issue` is `reject`: `MetaRight` requires exercisable `Modify` on
-the arena value and `writeShared` alone does not satisfy it (§36, §77.1). Twin, the same run with a
-`Modify` parameter on the arena value: `issue`, `transfer` of the block value to the caller and
-`exitFrame` are `ok`. **MISMATCH** (expected `ok`, obtained `reject`); cause: spec change (§36,
-§77.1). -/
+local, then returns the block. Historical expected verdict (material): `ok`, which the Jalon 3
+draft obtained through a `writeShared` branch of `MetaRight`; under spec v0 the case was a
+**MISMATCH** (expected `ok`, obtained `reject`). New expected verdict (spec v0.1, by arbitration
+the obtained one): `reject` at the `issue`, decided by §36 and §77.1: `MetaRight` requires
+exercisable `Modify` on the arena value and `writeShared` alone does not satisfy it (v0.1 §36 keeps
+this rule; its amendment concerns `alloc` only). Obtained: the `writeShared` on the metadata is
+`ok` (§68), the `issue` is `reject`. Twin, the same run with a `Modify` parameter on the arena
+value: `issue`, `transfer` of the block value to the caller and `exitFrame` are `ok`. -/
 theorem H21 : RunsTo KA [] h21o h21 ∧ IssueD KA 0 [4] 6 h21 .reject ∧
     OptP (h21.arenas[0]?) (fun E => ¬ MetaRight h21.kern E) False ∧
     Runs KA [] (h21p ++ [.derive 0 [0] .modify, .derive 2 [2] .modify, .enter [4, 5] [lf],
@@ -547,19 +570,21 @@ theorem H25 : RunsTo K0 stW h25o h25 ∧ (∀ a, Write3Step a [0] h25.kern .reje
 
 /-- Test contract of H26 (§70.2, §80): place 2 deallocable by the authority 7. -/
 abbrev KP : K := KD.toK { dealloc := [2], compat := [(2, 7)] }
-/-- Test contract of the twin of H26 (§75, §80): the same, with `ExternalDone` on 2. -/
-abbrev KPd : K := KD.toK { done := [2], dealloc := [2], compat := [(2, 7)] }
-/-- Run of H26 (§74): the allocated storage 2 pinned. -/
+/-- Test contract of the twin of H26 (§75, §80): the same, with `ExternalDone` on the pinning
+obligation 0. -/
+abbrev KPd : K := KD.toK { done := [0], dealloc := [2], compat := [(2, 7)] }
+/-- Run of H26 (§74): the allocated storage 2 pinned by the obligation 0, the first installed. -/
 def h26o : List Op := h14p ++ [.pin 2]
 /-- State reached by `h26o` (§57). -/
 def h26 : LState := final KP [] h26o
 
 /-- **H26** (material §1 E, class N3). `free` of a pinned storage; `unpin` without `ExternalDone`.
-Expected (material): `reject`, `reject`. Obtained: `reject` (§70.4), `reject` (§75). Twins:
-`free` without the pin, `ok`; with `ExternalDone`, `unpin` then `free`, `ok`. -/
+Expected (material): `reject`, `reject`. Obtained: `reject` (§70.4), `reject` (§75: `unpin` of the
+obligation 0, installed by the `pin` of the storage, without `K.ExternalDone` on it). Twins: `free`
+without the pin, `ok`; with `ExternalDone` on the obligation 0, `unpin` then `free`, `ok`. -/
 theorem H26 : RunsTo KP [] h26o h26 ∧ FreeStep KP 2 7 h26.kern .reject ∧
-    UnpinStep KP 2 h26.kern .reject ∧ Runs KP [] (h14p ++ [.free 2 7]) ∧
-    Runs KPd [] (h14p ++ [.pin 2, .unpin 2, .free 2 7]) :=
+    UnpinStep KP 0 h26.kern .reject ∧ Runs KP [] (h14p ++ [.free 2 7]) ∧
+    Runs KPd [] (h14p ++ [.pin 2, .unpin 0, .free 2 7]) :=
   ⟨runsTo (by decide), .reject (by decide), .reject (by decide), runsTo (by decide),
     runsTo (by decide)⟩
 
@@ -731,31 +756,32 @@ theorem H48 : RunsTo K0 [] h48o h48 ∧ StoreStep 8 6 h48.kern .reject ∧
 def h49o : List Op := h48o ++ [.derive 7 [6] .modify, .store 8 6, .release 9]
 /-- State reached by `h49o` (§57). -/
 def h49 : LState := final K0 [] h49o
-/-- State reached by `h49o` and the `endUse` of the block values 2 and 3, which ends the blocks 5
-and 6 (§69 effect, §57). -/
-def h49e : LState := final K0 [] (h49o ++ [.endUse 2, .endUse 3])
 
-/-- **H49** (material §1 I, class N3). The same cycle, closed through a helper authority, then
-`release` of the helper. Expected (material): to arbitrate. Obtained: `ok`, with a residual
-blocking (material §5: held authorities that nobody can exercise block a `reset`): the authorities
-7 and 8 are exercisable in no mode; after the `endUse` of the block values 2 and 3 they stay so,
-active, held by the leaves 5 and 6, derived from `internal` through the blocks and covering the
-leaves 6 and 5, and `reset` is `reject` (§78.2; §65 last paragraph and §27: `NoLock` is not
-adopted; §88: indirect blocking compatible with safety may remain). Twin of that `reject`: the
-same sequence without the cycle (the six steps after `fao`), `ok`. Dropping only one or both
-`store` steps does not lift it: an authority left with the frame still covers its leaf (§78.2, a
-different, releasable cause). The `reset` `reject` in `h49` itself persists in that twin (on
-`fao` the blocks 5 and 6 are still held by the values 2 and 3, §78.2): by rule 2 it is a
-construction defect, kept as a fact and not as the residual blocking of the case. **MISMATCH** in form (expected "to arbitrate", obtained `ok`);
-cause: spec change, spec v0 now determines the verdict (§65, §88). -/
+/-- **H49** (material §1 I, class N3; regression test). The same cycle, closed through a helper
+authority, then `release` of the helper. Historical expected verdict (material): to arbitrate;
+under spec v0 the obtained verdict was `ok` with a residual blocking: after the `endUse` of the
+block values 2 and 3, `ok`, the authorities 7 and 8 stayed active and exercisable in no mode and
+`reset` was `reject` (§78.2), a **MISMATCH** in form; the arbitration of the corpus owner keeps H49
+as a regression test with that obtained verdict as its baseline and its residual blocking
+documented. New expected verdict (spec v0.1, derived from its text, not from the obtained outcome):
+the cycle is reached (`ok` at every step: §60, §65, §62), the authorities 7 and 8 are exercisable
+in no mode, `reset` is `reject` (§78.2: the blocks 5 and 6 are active and cover the leaves 5 and
+6), as in that baseline; the `endUse` of the block values 2 and 3 is `reject`, against the `ok` of
+that baseline, decided by the v0.1 amendment of §69.2 (last sentence: the block 5, made inactive by
+the `endUse` of 2, keeps its active descendant 8, held by the leaf 6; the block 6 keeps 7, held by
+the leaf 5), which overrides the baseline for these two steps. This residual blocking
+is allowed: `NoLock` is not adopted (§65 last paragraph, §27) and indirect blocking compatible with
+safety may remain (§88). Obtained: the same. Twin of the two `endUse` rejections: the same sequence
+without the cycle (the six steps after `fao`), then both `endUse` and `reset`, `ok`. The `reset`
+`reject` in `h49` persists in that twin (on `fao` the blocks 5 and 6 are still held by the values 2
+and 3, §78.2); by arbitration it is exempt from a positive twin. -/
 theorem H49 : RunsTo K0 [] h49o h49 ∧ ¬ h49.kern.ExercisableAt 7 .observe ∧
     ¬ h49.kern.ExercisableAt 8 .observe ∧ ResetD 0 h49 .reject ∧
-    RunsTo K0 [] (h49o ++ [.endUse 2, .endUse 3]) h49e ∧ ¬ h49e.kern.ExercisableAt 7 .observe ∧
-    ¬ h49e.kern.ExercisableAt 8 .observe ∧ ResetD 0 h49e .reject ∧
+    EndUseStep K0 2 h49.kern .reject ∧ ¬ EndUseKeptDesc h49.kern 2 ∧
+    EndUseStep K0 3 h49.kern .reject ∧ ¬ EndUseKeptDesc h49.kern 3 ∧
     Runs K0 [] (fao ++ [.endUse 2, .endUse 3, .reset 0]) :=
   ⟨runsTo (by decide), by decide, by decide, rejects (k := K0) (o := .reset 0) (by decide),
-    runsTo (by decide), by decide, by decide, rejects (k := K0) (o := .reset 0) (by decide),
-    runsTo (by decide)⟩
+    .reject (by decide), by decide, .reject (by decide), by decide, runsTo (by decide)⟩
 
 /-- Run of H50, `transfer` part (§72, §60, §65): structure 0 (field 1), structure 2 (field 3),
 local 4; 3, `Modify` on the field 3, stored into the field 1. -/
@@ -765,24 +791,28 @@ def h50t : LState := final K0 [] h50to
 
 /-- **H50**, `transfer` part (material §1 I, class N3). An authority transferred into the place
 it covers: structure 0 is transferred into structure 2 while its field 1 holds 3, which covers
-the field 3 = `corr(1)`. Expected (material): to arbitrate. Obtained: `reject` by §63.8 alone
-(local self-blocking prevention; §63.1–§63.7 hold; §88). Twin, the stored authority covering the
-local 4 instead: `ok`. **MISMATCH** (expected "to arbitrate", obtained `reject`); cause: spec
-change (§63.8). -/
+the field 3 = `corr(1)`. Historical expected verdict (material): to arbitrate; under spec v0 a
+**MISMATCH** in form (obtained `reject`). New expected verdict (spec v0.1, by arbitration the
+obtained one): `reject`, decided by §63.8 (local self-blocking prevention, §88). Obtained: `reject`
+by §63.8 alone (§63.1–§63.7 and §63.9 hold). Twin, the stored authority covering the local 4
+instead: `ok`. -/
 theorem H50_transfer : RunsTo K0 [] h50to h50t ∧ TransferStep K0 0 2 h50t.kern .reject ∧
-    TransferPreBut638 K0 h50t.kern 0 2 ∧ ¬ NoLocalSelfLock h50t.kern 0 2 ∧
+    TransferPre637 K0 h50t.kern 0 2 ∧ (transferEff h50t.kern 0 2).Usable 2 ∧
+    ¬ NoLocalSelfLock h50t.kern 0 2 ∧
     Runs K0 [] [.enter [] [lf, pt 0, lf, pt 2, lf], .derive 2 [4] .modify, .store 3 1,
       .transfer 0 2] :=
-  ⟨runsTo (by decide), .reject (by decide), by decide, by decide, runsTo (by decide)⟩
+  ⟨runsTo (by decide), .reject (by decide), by decide, by decide, by decide, runsTo (by decide)⟩
 
 /-- State after the first five steps of `fao`, the arena created and nothing issued (§57). -/
 def h50i : LState := final K0 [] (fao.take 5)
 
 /-- **H50**, `issue` part (material §1 I, class Lib). A block issued into a leaf of its own region
-(`issue(0, [5], 5)`, the region available). Expected (material): to arbitrate. Obtained: `reject`,
-static, by local self-blocking prevention alone: the other static preconditions hold and the
-destination is in the region (§77.2, §88). Twin, the same issue into the value 2: `ok`.
-**MISMATCH** (expected "to arbitrate", obtained `reject`); cause: spec change (§77.2). -/
+(`issue(0, [5], 5)`, the region available). Historical expected verdict (material): to arbitrate;
+under spec v0 a **MISMATCH** in form (obtained `reject`). New expected verdict (spec v0.1, by
+arbitration the obtained one): `reject`, decided by §77.2 (local self-blocking prevention, §88).
+Obtained: `reject`, static, by local self-blocking prevention alone: the other static
+preconditions hold and the destination is in the region. Twin, the same issue into the value 2:
+`ok`. -/
 theorem H50_issue : RunsTo K0 [] (fao.take 5) h50i ∧ IssueD K0 0 [5] 5 h50i .reject ∧
     OptP (h50i.arenas[0]?) (fun E => IssueStaticBut h50i.kern E [5] 5 ∧
       ¬ IssueStatic h50i.kern E [5] 5) False ∧
@@ -805,18 +835,19 @@ def h51o : List Op := h51p ++ [.derive 3 [4] .modify, .derive 1 [1] .observe, .s
 def h51 : LState := final K0 [] h51o
 
 /-- **H51** (material §1 I, class N3). An element of a storage owned by `v` holds a view on `v`.
-Expected (material): to arbitrate. Obtained: the direct `store` is `reject`: the view takes away
-the frame's `Modify` on `v`, hence on the storage it owns (§43 case 4, §65.2, §65.5); twin with
-the view on another value `u`: `ok`. Through a helper on the element, then its `release`, the
-configuration is reached (`ok`); then `v` can be neither written, nor relieved of the view, nor
-ended (`reject`, §67.1, §62.2, §69.1), while the view stays exercisable in `Observe`; the exit of
-the frame is `ok` (§88: residual blocking). Twins of these three rejections: the same sequence
-without the view on `v` (its `derive` and its `store`), then the write of `v` through its root,
-`ok`, or its `endUse`, `ok`; the same sequence without the `store` of the view, then its
-`release`, `ok`. With only the `store` dropped, the write and the `endUse` stay `reject` for a
-different cause: the view, then held by the frame, is active on `v` (§43 case 4, §67.1, §69.2)
-and releasable. **MISMATCH** in form (expected "to arbitrate", obtained `reject` / `ok`); cause:
-spec change, spec v0 now determines the verdicts (§65.2, §88). -/
+Historical expected verdict (material): to arbitrate; under spec v0 a **MISMATCH** in form
+(obtained `reject` / `ok`). New expected verdicts (spec v0.1, by arbitration the obtained ones),
+decided by §65.2, §67.1, §62.2, §69.1 and §88, clauses v0.1 leaves unchanged: the direct `store`
+is `reject`: the view takes away the frame's `Modify` on `v`, hence on the storage it owns (§43
+case 4, §65.2, §65.5); twin with the view on another value `u`: `ok`. Through a helper on the
+element, then its `release`, the configuration is reached (`ok`); then `v` can be neither written,
+nor relieved of the view, nor ended (`reject`, §67.1, §62.2, §69.1), while the view stays
+exercisable in `Observe`; the exit of the frame is `ok` (§88: residual blocking). Obtained: the
+same. Twins of these three rejections: the same sequence without the view on `v` (its `derive`
+and its `store`), then the write of `v` through its root, `ok`, or its `endUse`, `ok`; the same
+sequence without the `store` of the view, then its `release`, `ok`. With only the `store` dropped,
+the write and the `endUse` stay `reject` for a different cause: the view, then held by the frame,
+is active on `v` (§43 case 4, §67.1, §69.1) and releasable. -/
 theorem H51 : RunsTo K0 [] h51no h51n ∧ StoreStep 4 4 h51n.kern .reject ∧
     Runs K0 [] (h51p ++ [.derive 2 [2] .observe, .store 4 4]) ∧
     RunsTo K0 [] h51o h51 ∧ (∀ a, Write3Step a [1] h51.kern .reject) ∧
@@ -829,7 +860,7 @@ theorem H51 : RunsTo K0 [] h51no h51n ∧ StoreStep 4 4 h51n.kern .reject ∧
     write_rejected (by decide), .reject (by decide), .reject (by decide), by decide,
     runsTo (by decide), runsTo (by decide), runsTo (by decide), runsTo (by decide)⟩
 
-/-! ## New cases fixed by spec v0 clauses -/
+/-! ## New cases fixed by spec clauses -/
 
 /-- Prefix of `S63_8` (§72): structure 0 with the part 1, itself with the leaf 2; structure 3
 with the part 4, itself with the leaf 5; local 6. -/
@@ -842,12 +873,13 @@ def s638 : LState := final K0 [] s638o
 /-- **S63.8** (new case, §63.8; class N3). Transfer self-blocking through a nested part: structure
 0 is transferred into structure 3 while its leaf 2 holds 3, which covers the leaf 5 =
 `corr(2)`. Expected (§63.8, §88): `reject`. Obtained: `reject` by local self-blocking prevention
-alone (§63.1–§63.7 hold). Twin, the stored authority covering the local 6 instead: `ok`. -/
+alone (§63.1–§63.7 and §63.9 hold). Twin, the stored authority covering the local 6 instead:
+`ok`. -/
 theorem S63_8 : RunsTo K0 [] s638o s638 ∧ corr s638.kern.P 0 3 2 = some 5 ∧
-    TransferStep K0 0 3 s638.kern .reject ∧ TransferPreBut638 K0 s638.kern 0 3 ∧
-    ¬ NoLocalSelfLock s638.kern 0 3 ∧
+    TransferStep K0 0 3 s638.kern .reject ∧ TransferPre637 K0 s638.kern 0 3 ∧
+    (transferEff s638.kern 0 3).Usable 3 ∧ ¬ NoLocalSelfLock s638.kern 0 3 ∧
     Runs K0 [] (s638p ++ [.derive 2 [6] .modify, .store 3 2, .transfer 0 3]) :=
-  ⟨runsTo (by decide), by decide, .reject (by decide), by decide, by decide,
+  ⟨runsTo (by decide), by decide, .reject (by decide), by decide, by decide, by decide,
     runsTo (by decide)⟩
 
 /-- State after the first six steps of `fao`: block 5 on `[5]` issued to 2, so the leaf 5 is not
@@ -905,45 +937,27 @@ theorem S56 : RunsTo K0 [] s56o s56 ∧ NewArenaStep [] 4 4 s56 .reject ∧
 
 /-! ## Usage scenario W3 (material §5b) -/
 
-/-- Run of W3, literal reading (§71, §76, §77, §60, §65): frame 1 with arena value 0, allocator
-1, block values 2, 3, 4 and structure 5 (fields 6, 7, 8); storage 9 (leaves 10, 11, 12) owned by
-0, `internal` 6; three blocks issued to 2, 3, 4; three views (10, 11, 12), `Observe` on the
-blocks, stored into the fields. -/
-def w3o : List Op := [.enter [] [lf, lf, lf, lf, lf, lf, pt 5, pt 5, pt 5], .write 1 [1],
-  .alloc 1 0 [lf, pt 9, pt 9, pt 9], .write 0 [0], .newArena 9 6, .issue 0 [10] 2,
-  .issue 0 [11] 3, .issue 0 [12] 4, .derive 7 [10] .observe, .derive 8 [11] .observe,
-  .derive 9 [12] .observe, .store 10 6, .store 11 7, .store 12 8]
-/-- State reached by `w3o` (§57). -/
-def w3 : LState := final K0 [] w3o
-/-- State reached by `w3o` and `endUse` of the structure (§57). -/
-def w3e : LState := final K0 [] (w3o ++ [.endUse 5])
-/-- Run of W3 with the blocks issued into fields of the structure (§77, §60, §65): structure 2
-with the fields 3 to 8; storage 9 (leaves 10, 11, 12), `internal` 3; blocks 4, 5, 6 issued into
-the fields 3, 4, 5; views 7, 8, 9 derived from them and stored into the fields 6, 7, 8. -/
-def w3vo : List Op := [.enter [] [lf, lf, lf, pt 2, pt 2, pt 2, pt 2, pt 2, pt 2], .write 1 [1],
+/-- Run of W3 (§71, §76, §77, §60, §65): frame 1 with arena value 0, allocator 1 and structure 2
+(fields 3 to 8); storage 9 (leaves 10, 11, 12) owned by 0, `internal` 3; blocks 4, 5, 6 issued
+into the fields 3, 4, 5; views 7, 8, 9, `Observe` on the blocks, stored into the fields 6, 7, 8. -/
+def w3o : List Op := [.enter [] [lf, lf, lf, pt 2, pt 2, pt 2, pt 2, pt 2, pt 2], .write 1 [1],
   .alloc 1 0 [lf, pt 9, pt 9, pt 9], .write 0 [0], .newArena 9 3, .issue 0 [10] 3,
   .issue 0 [11] 4, .issue 0 [12] 5, .derive 4 [10] .observe, .derive 5 [11] .observe,
   .derive 6 [12] .observe, .store 7 6, .store 8 7, .store 9 8]
-/-- State reached by `w3vo` (§57). -/
-def w3v : LState := final K0 [] w3vo
+/-- State reached by `w3o` (§57). -/
+def w3 : LState := final K0 [] w3o
 
 /-- **W3** (material §5b, frame arena; class Lib, not given by the material). `alloc`,
 `newArena`, three `issue`, three views stored into a local structure; `reset` while the views
-live; `endUse` of the structure; `reset`; reissue. Expected (material): `reset` during the views
-`reject`; after `endUse` of the structure `ok`; reissue `ok`. Obtained, literal reading (blocks
-issued to the locals 2, 3, 4): `reject` during the views (§78.2); after `endUse` of the structure,
-`reset` is still `reject`, the three blocks being held by the values 2, 3, 4 (§78.2); after their
-end, `reset` and the reissue are `ok`. With the blocks issued into fields of the structure: the
-expected verdicts (§78.2, §69 effect, §77). **MISMATCH** on the literal reading (after `endUse`
-of the structure: expected `ok`, obtained `reject`); cause: case defect, the material does not say
-which values hold the blocks. -/
+live; `endUse` of the structure; `reset`; reissue. The material does not say which values hold the
+blocks; by arbitration the case issues them into fields of the structure (the literal reading,
+blocks issued to separate locals, kept `reset` `reject` after the `endUse` of the structure: a case
+defect under spec v0). Expected (material): `reset` during the views `reject`; after `endUse` of
+the structure `ok`; reissue `ok`. Obtained: the same (§78.2; §69 effect: the `endUse` of the
+structure ends the blocks and the views it holds; §77). Twin of the `reject`: the `endUse` of the
+structure, then `reset`, `ok`. -/
 theorem W3 : RunsTo K0 [] w3o w3 ∧ ResetD 0 w3 .reject ∧
-    RunsTo K0 [] (w3o ++ [.endUse 5]) w3e ∧ ResetD 0 w3e .reject ∧
-    Runs K0 [] (w3o ++ [.endUse 5, .endUse 2, .endUse 3, .endUse 4, .reset 0, .issue 0 [10] 2]) ∧
-    RunsTo K0 [] w3vo w3v ∧ ResetD 0 w3v .reject ∧
-    Runs K0 [] (w3vo ++ [.endUse 2, .reset 0, .issue 0 [10] 3]) :=
-  ⟨runsTo (by decide), rejects (k := K0) (o := .reset 0) (by decide), runsTo (by decide),
-    rejects (k := K0) (o := .reset 0) (by decide), runsTo (by decide), runsTo (by decide),
-    rejects (k := K0) (o := .reset 0) (by decide), runsTo (by decide)⟩
+    Runs K0 [] (w3o ++ [.endUse 2, .reset 0, .issue 0 [10] 3]) :=
+  ⟨runsTo (by decide), rejects (k := K0) (o := .reset 0) (by decide), runsTo (by decide)⟩
 
 end Ern.Corpus.MM3H
