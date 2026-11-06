@@ -1,0 +1,18 @@
+{
+  "tool_use_id": "toolu_012EthBzkn9PJKm76Pzc1Crm",
+  "agent_id": "aeec544d81545f53c",
+  "subagent_type": "general-purpose",
+  "task_description": "Prove pool entries disjoint from metadata",
+  "files": [
+    "formal/Ern/MemoryModel/Access/HolderCover.lean"
+  ],
+  "token_usage": {
+    "input_tokens": 100,
+    "cache_creation_tokens": 264726,
+    "cache_read_tokens": 9475646,
+    "output_tokens": 48328,
+    "api_call_count": 50
+  },
+  "started_at": "2026-11-06T18:43:03.175837+01:00",
+  "completed_at": "2026-11-06T18:51:06.29002+01:00"
+}
