@@ -13,7 +13,7 @@ on the stack value; the abstraction adds no rights to the kernel), §38 and §46
 separate from `S₃`), §47 (empty initial registry), §56 (guard over all registries of live
 administrations) and §58 (outcomes).
 
-DS-v2 is DS-v1 with three changes. DS-v1: marks carry the stack identity and a fresh mark
+DS-v2 is DS-v1 with six changes. DS-v1: marks carry the stack identity and a fresh mark
 identifier; the stack keeps the ordered list of live marks; `rewind m` fails on a dead or foreign
 mark, rejects if an active authority derived from `internal` covers a cell above `m`, otherwise
 returns those cells to available and removes `m` and every mark above it; `push` and `grow` use the
@@ -23,7 +23,10 @@ the space directly after the block, `fail` otherwise). DS2-1: `mark` requires th
 right of §36 (`AdminRight`), else `reject`. DS2-2: `grow` stores the new block authority into the
 place that currently holds the block authority `b`. DS2-3: a dead stack (`internal` inactive)
 invalidates its marks, so `rewind` of a mark of a dead stack is `fail`, checked with the dead or
-foreign mark, before the right. Also part of DS-v2: `push` without room is `fail`; `grow` of a `b`
+foreign mark, before the right. DS2-4: "a cell above m" is every cell at a position `≥ m.top`.
+DS2-5: `grow` with `extra = 0` is accepted, an in-place reissue of the same region. DS2-6: `rewind`
+on a stack index that does not exist is `fail`, like an invalid mark (`mark`, `push` and `grow` on
+a missing stack stay `reject`). Also part of DS-v2: `push` without room is `fail`; `grow` of a `b`
 that is no block of the stack is `reject`; §76.5 applies to `newStack`; the dead or foreign mark is
 checked before the right of §36; §36 applies to `rewind`.
 
@@ -86,10 +89,10 @@ def DState.init (statics : Statics) : DState := ⟨S3.init statics, [], 0⟩
 non-normative). -/
 def cellsOf (st : Stack) (b n : Nat) : List Nat := (st.cells.drop b).take n
 
-/-- The cells above mark `m` (DS-v2, non-normative, "a cell above m"; reading DS-R1; §46
-available leaves): the positions from the top of `m` to the current top, those that `rewind m`
-returns to available. -/
-def above (st : Stack) (m : Mark) : List Nat := cellsOf st m.top (st.top - m.top)
+/-- The cells above mark `m` (DS-v2, non-normative, "a cell above m", DS2-4: every cell at a
+position `≥ m.top`; §46 available leaves): `rewind m` returns those below the current top to
+available, the others already are. -/
+def above (st : Stack) (m : Mark) : List Nat := st.cells.drop m.top
 
 /-- The stack seen as an administration entry (§46, §36; DS-v2, non-normative): storage,
 `internal`, available cells (positions `≥ top`) and issued blocks. Used for `MetaRight` and the
@@ -232,14 +235,14 @@ def rewindMeta (st : Stack) (m : Mark) : Stack :=
     blocks := st.blocks.filter fun x => decide (x.base < m.top)
     marks := st.marks.takeWhile fun x => decide (x ≠ m) }
 
-/-- `rewind(j, m)` (DS-v2, non-normative): `reject` on a missing stack; `fail`, the state
-unchanged, on a dead or foreign mark, a mark of a dead stack included (DS2-3), before the right;
-`reject` without the administrative right of §36; then the derived `reset` of Part XIV on the cells
-above `m`: `split` of `internal` on them (O2), which rejects when an active authority derived from
+/-- `rewind(j, m)` (DS-v2, non-normative): `fail`, the state unchanged, on a missing stack (DS2-6)
+and on a dead or foreign mark, a mark of a dead stack included (DS2-3), before the right; `reject`
+without the administrative right of §36; then the derived `reset` of Part XIV on the cells above
+`m` (DS2-4): `split` of `internal` on them (O2), which rejects when an active authority derived from
 `internal` covers one of them (`rewind_rejects_live_above`), and `release` of the derived authority
 (O3); `ok`: the cells return to available, `m` and the later marks are removed. -/
 inductive RewindStep (k : K) (j : Nat) (m : Mark) (D : DState) : Outcome3 DState → Prop where
-  | noStack : D.stacks[j]? = none → RewindStep k j m D .reject
+  | noStack : D.stacks[j]? = none → RewindStep k j m D .fail
   | dead {st : Stack} : D.stacks[j]? = some st → ¬ LiveMark D.kern j st m →
       RewindStep k j m D .fail
   | static {st : Stack} : D.stacks[j]? = some st → LiveMark D.kern j st m →
@@ -255,22 +258,23 @@ inductive RewindStep (k : K) (j : Nat) (m : Mark) (D : DState) : Outcome3 DState
       RewindStep k j m D (.ok ⟨s₂, D.stacks.set j (rewindMeta st m), D.fresh⟩)
 
 /-- `rewind` has one outcome (§58: a guarded transition has one outcome; DS-v2, non-normative):
-the cases of `RewindStep` exclude each other, and `split` and `release` are deterministic
-(`Guarded.det`). With `rewind_ok_iff`, an `ok` rewind is never also `reject` or `fail`. -/
+the cases of `RewindStep` exclude each other, the two `fail` cases (missing stack, DS2-6; dead or
+foreign mark) give the same outcome, and `split` and `release` are deterministic (`Guarded.det`).
+With `rewind_ok_iff`, an `ok` rewind is never also `reject` or `fail`. -/
 theorem RewindStep.det {k : K} {j : Nat} {m : Mark} {D : DState} {o₁ o₂ : Outcome3 DState}
     (h₁ : RewindStep k j m D o₁) (h₂ : RewindStep k j m D o₂) : o₁ = o₂ := by
   cases h₁ with
   | noStack h =>
     cases h₂ with
     | noStack _ => rfl
-    | dead h' _ => rw [h] at h'; cases h'
-    | static _ _ _ => rfl
-    | split _ _ _ _ => rfl
-    | release _ _ _ _ _ => rfl
+    | dead _ _ => rfl
+    | static h' _ _ => rw [h] at h'; cases h'
+    | split h' _ _ _ => rw [h] at h'; cases h'
+    | release h' _ _ _ _ => rw [h] at h'; cases h'
     | ok h' _ _ _ _ => rw [h] at h'; cases h'
   | dead h hl =>
     cases h₂ with
-    | noStack h' => rw [h] at h'; cases h'
+    | noStack _ => rfl
     | dead _ _ => rfl
     | static h' hl' _ => rw [h] at h'; cases h'; exact absurd hl' hl
     | split h' hl' _ _ => rw [h] at h'; cases h'; exact absurd hl' hl
@@ -278,7 +282,7 @@ theorem RewindStep.det {k : K} {j : Nat} {m : Mark} {D : DState} {o₁ o₂ : Ou
     | ok h' hl' _ _ _ => rw [h] at h'; cases h'; exact absurd hl' hl
   | static h hl ha =>
     cases h₂ with
-    | noStack _ => rfl
+    | noStack h' => rw [h] at h'; cases h'
     | dead h' hl' => rw [h] at h'; cases h'; exact absurd hl hl'
     | static _ _ _ => rfl
     | split _ _ _ _ => rfl
@@ -286,7 +290,7 @@ theorem RewindStep.det {k : K} {j : Nat} {m : Mark} {D : DState} {o₁ o₂ : Ou
     | ok h' _ ha' _ _ => rw [h] at h'; cases h'; exact absurd ha' ha
   | split h hl _ hs =>
     cases h₂ with
-    | noStack _ => rfl
+    | noStack h' => rw [h] at h'; cases h'
     | dead h' hl' => rw [h] at h'; cases h'; exact absurd hl hl'
     | static _ _ _ => rfl
     | split _ _ _ _ => rfl
@@ -294,7 +298,7 @@ theorem RewindStep.det {k : K} {j : Nat} {m : Mark} {D : DState} {o₁ o₂ : Ou
     | ok h' _ _ hs' _ => rw [h] at h'; cases h'; cases Guarded.det hs hs'
   | release h hl _ hs hr =>
     cases h₂ with
-    | noStack _ => rfl
+    | noStack h' => rw [h] at h'; cases h'
     | dead h' hl' => rw [h] at h'; cases h'; exact absurd hl hl'
     | static _ _ _ => rfl
     | split _ _ _ _ => rfl
@@ -312,13 +316,22 @@ theorem RewindStep.det {k : K} {j : Nat} {m : Mark} {D : DState} {o₁ o₂ : Ou
     | ok h' _ _ hs' hr' =>
       rw [h] at h'; cases h'; cases Guarded.det hs hs'; cases Guarded.det hr hr'; rfl
 
+/-- `rewind_missing_fails` (DS-v2, non-normative, DS2-6: `rewind` on a stack index that does not
+exist is `fail`, like an invalid mark, before the right of §36; §58 `fail`): on a missing stack,
+`rewind m` fails, with no other outcome, for every mark `m`. -/
+theorem rewind_missing_fails {k : K} {D : DState} {j : Nat} {m : Mark}
+    (h : D.stacks[j]? = none) :
+    RewindStep k j m D .fail ∧ ∀ o, RewindStep k j m D o → o = .fail :=
+  ⟨.noStack h, fun _ ho => ho.det (.noStack h)⟩
+
 /-! ## `grow` (DS-v2: in place, the derived `issue`) -/
 
 /-- In-place extension (DS-v2, non-normative: "extension into the space directly after the
-block"; the availability check of the derived `issue`, §77.4): the block ends at the top, and
-`extra` available cells follow it. -/
+block"; the availability check of the derived `issue`, §77.4): `extra` is zero, the empty
+extension, always available (§77.4: "The empty region is always available"; DS2-5: an in-place
+reissue of the same region), or the block ends at the top and `extra` available cells follow it. -/
 def InPlace (st : Stack) (x : Blk) (extra : Nat) : Prop :=
-  x.base + x.size = st.top ∧ st.top + extra ≤ st.cells.length
+  extra = 0 ∨ (x.base + x.size = st.top ∧ st.top + extra ≤ st.cells.length)
 
 /-- Decidability of `InPlace` (§77.4; DS-v2). -/
 instance (st : Stack) (x : Blk) (extra : Nat) : Decidable (InPlace st x extra) := by
@@ -345,7 +358,8 @@ def holderPlace (s : S3) (a : Nat) : Option Nat :=
   | none => none
 
 /-- `grow(j, b, extra)` (DS-v2, non-normative: in place only, using the derived `issue`): `reject`
-when `b` is not a block of the stack or `extra` is zero; `release` of `b` (O3); then the derived
+when `b` is not a block of the stack; `extra` may be zero, an in-place reissue of the same region
+(DS2-5); `release` of `b` (O3); then the derived
 `issue` of Part XIV (`Arena.IssueD`) of the region of the same base and of size `size + extra` into
 the place `d` that holds `b` when `grow` starts (DS2-2), on the released state: `reject` when no
 place holds `b` (there is no destination, §77.2; never on library-reachable states,
@@ -356,37 +370,35 @@ inductive GrowStep (k : K) (j b extra : Nat) (D : DState) : Outcome3 DState → 
   | noStack : D.stacks[j]? = none → GrowStep k j b extra D .reject
   | noBlock {st : Stack} : D.stacks[j]? = some st → st.block b = none →
       GrowStep k j b extra D .reject
-  | noExtra {st : Stack} {x : Blk} : D.stacks[j]? = some st → st.block b = some x → extra = 0 →
-      GrowStep k j b extra D .reject
-  | release {st : Stack} {x : Blk} : D.stacks[j]? = some st → st.block b = some x → 0 < extra →
+  | release {st : Stack} {x : Blk} : D.stacks[j]? = some st → st.block b = some x →
       ReleaseStep b D.kern .reject → GrowStep k j b extra D .reject
   | noHolder {st : Stack} {x : Blk} {s₁ : S3} : D.stacks[j]? = some st → st.block b = some x →
-      0 < extra → ReleaseStep b D.kern (.ok s₁) → holderPlace D.kern b = none →
+      ReleaseStep b D.kern (.ok s₁) → holderPlace D.kern b = none →
       GrowStep k j b extra D .reject
   | static {st : Stack} {x : Blk} {s₁ : S3} {d : Nat} : D.stacks[j]? = some st →
-      st.block b = some x → 0 < extra → ReleaseStep b D.kern (.ok s₁) →
+      st.block b = some x → ReleaseStep b D.kern (.ok s₁) →
       holderPlace D.kern b = some d →
       ¬ IssueStatic s₁ st.entry (cellsOf st x.base (x.size + extra)) d →
       GrowStep k j b extra D .reject
   | fail {st : Stack} {x : Blk} {s₁ : S3} {d : Nat} : D.stacks[j]? = some st →
-      st.block b = some x → 0 < extra → ReleaseStep b D.kern (.ok s₁) →
+      st.block b = some x → ReleaseStep b D.kern (.ok s₁) →
       holderPlace D.kern b = some d →
       IssueStatic s₁ st.entry (cellsOf st x.base (x.size + extra)) d →
       ¬ InPlace st x extra → GrowStep k j b extra D .fail
   | split {st : Stack} {x : Blk} {s₁ : S3} {d : Nat} : D.stacks[j]? = some st →
-      st.block b = some x → 0 < extra → ReleaseStep b D.kern (.ok s₁) →
+      st.block b = some x → ReleaseStep b D.kern (.ok s₁) →
       holderPlace D.kern b = some d →
       IssueStatic s₁ st.entry (cellsOf st x.base (x.size + extra)) d → InPlace st x extra →
       SplitStep k st.internal [cellsOf st x.base (x.size + extra)] s₁ .reject →
       GrowStep k j b extra D .reject
   | store {st : Stack} {x : Blk} {s₁ s₂ : S3} {d : Nat} : D.stacks[j]? = some st →
-      st.block b = some x → 0 < extra → ReleaseStep b D.kern (.ok s₁) →
+      st.block b = some x → ReleaseStep b D.kern (.ok s₁) →
       holderPlace D.kern b = some d →
       IssueStatic s₁ st.entry (cellsOf st x.base (x.size + extra)) d → InPlace st x extra →
       SplitStep k st.internal [cellsOf st x.base (x.size + extra)] s₁ (.ok s₂) →
       StoreStep s₁.A.length d s₂ .reject → GrowStep k j b extra D .reject
   | ok {st : Stack} {x : Blk} {s₁ s₂ s₃ : S3} {d : Nat} : D.stacks[j]? = some st →
-      st.block b = some x → 0 < extra → ReleaseStep b D.kern (.ok s₁) →
+      st.block b = some x → ReleaseStep b D.kern (.ok s₁) →
       holderPlace D.kern b = some d →
       IssueStatic s₁ st.entry (cellsOf st x.base (x.size + extra)) d → InPlace st x extra →
       SplitStep k st.internal [cellsOf st x.base (x.size + extra)] s₁ (.ok s₂) →
@@ -435,7 +447,7 @@ theorem DStep.reachable {k : K} {statics : Statics} {D D' : DState}
     | ok _ _ _ hsp hrl => exact .step (.step hr (.split hsp)) (.release hrl)
   | grow hs =>
     cases hs with
-    | ok _ _ _ hrl _ _ _ hsp hst =>
+    | ok _ _ hrl _ _ _ hsp hst =>
       exact .step (.step (.step hr (.release hrl)) (.split hsp)) (.store hst)
 
 /-- The kernel state of every library-reachable state is kernel-reachable (§36, §57; DS-v2). -/
@@ -515,7 +527,8 @@ theorem mem_footprint_self {s : S3} {d : Nat} (hu : s.Usable d) (hl : isLeaf s.P
 
 /-- `rewind_rejects_live_above` (DS-v2, non-normative: "rewind m … rejects if an active authority
 derived from internal covers a cell above m"): for a live mark `m` of an existing stack (its stack
-live, DS2-3), if an active authority derived from `internal` covers a cell above `m`, `rewind m`
+live, DS2-3), if an active authority derived from `internal` covers a cell above `m` (at a position
+`≥ m.top`, DS2-4), `rewind m`
 has the outcome `reject` and no other: either the administrative right of §36 fails, or `split` of
 `internal` on the cells above `m` is rejected, since `internal` no longer has effective `Modify` on
 that cell (§43, §61.1). -/
@@ -531,7 +544,7 @@ theorem rewind_rejects_live_above {k : K} {D : DState} {j : Nat} {st : Stack} {m
     · exact .split hst hm ha (.reject hn)
     · exact .static hst hm ha
   · cases ho with
-    | noStack => rfl
+    | noStack h => rw [hst] at h; cases h
     | dead h hd => rw [hst] at h; cases h; exact absurd hm hd
     | static => rfl
     | split => rfl
@@ -676,7 +689,7 @@ theorem DStep.akeep {k : K} {D D' : DState} (h : DStep k D D') : AKeep D.kern D'
       exact (kstep_akeep (.split hsp)).trans (kstep_akeep (k := k) (.release hrl))
   | grow hs =>
     cases hs with
-    | ok _ _ _ hrl _ _ _ hsp hst =>
+    | ok _ _ hrl _ _ _ hsp hst =>
       exact ((kstep_akeep (k := k) (.release hrl)).trans (kstep_akeep (.split hsp))).trans
         (kstep_akeep (k := k) (.store hst))
 
@@ -809,7 +822,7 @@ theorem DStep.blocksHeld {k : K} {D D' : DState} (h : DStep k D D') (hw : Blocks
       · exact keep i st' h x hx
   | grow hs =>
     cases hs with
-    | @ok st x₀ s₁ s₂ s₃ d hst _ _ _ _ _ _ hsp hsto =>
+    | @ok st x₀ s₁ s₂ s₃ d hst _ _ _ _ _ hsp hsto =>
       intro i st' h x hx
       rcases getElem?_set_cases h with ⟨rfl, rfl⟩ | ⟨-, h⟩
       · obtain ⟨y, hy, rfl⟩ := List.mem_map.1 hx
@@ -861,7 +874,8 @@ active authority derived from internal covers a cell above m, otherwise returns 
 available"; §36; §61.1, §61.3, §62 through Part XIV). On a library-reachable state (`DReach`, a
 state invariant), for an existing stack, `rewind m` is `ok` exactly when `m` is a live mark of the
 stack (DS-v2: its stack is live, DS2-3), the administrative right of §36 holds (`AdminRight`,
-DS-v2, Q27 (a)), and no active authority derived from `internal` covers a cell above `m` (DS-v2).
+DS-v2, Q27 (a)), and no active authority derived from `internal` covers a cell above `m` (DS-v2;
+DS2-4: a cell at a position `≥ m.top`).
 The model has no explicit check of the last condition: it is the effective `Modify` of `internal`
 required by `split` (§61.1, with the effective mode of §43). The other checks of `split` and
 `release` never reject there: `internal` has own mode `Modify` and covers the cells
@@ -885,8 +899,7 @@ theorem rewind_ok_iff {k : K} {statics : Statics} {D : DState} (hr : DReach k st
     obtain ⟨yi, hyi, hmi, hci⟩ := hr.stackShape j st hst
     have yia : yi.active = true := by
       obtain ⟨y, hy, ya⟩ := ha.1; rw [hyi] at hy; cases hy; exact ya
-    have hab : ∀ l ∈ above st m, l ∈ yi.footprint :=
-      fun l hl => hci l (List.mem_of_mem_drop (List.mem_of_mem_take hl))
+    have hab : ∀ l ∈ above st m, l ∈ yi.footprint := fun l hl => hci l (List.mem_of_mem_drop hl)
     have hmod : ∀ l ∈ above st m, effective D.kern st.internal l = some .modify := by
       intro l hl
       have hd : descModes D.kern st.internal l = [] := by
@@ -1045,7 +1058,7 @@ theorem rewind_dead_fails {k : K} {D : DState} {i : Nat} {st : Stack} {m : Mark}
     RewindStep k i m D .fail ∧ ∀ o, RewindStep k i m D o → o = .fail := by
   refine ⟨.dead hst hm, fun o ho => ?_⟩
   cases ho with
-  | noStack h => rw [hst] at h; cases h
+  | noStack => rfl
   | dead => rfl
   | static h hl => rw [hst] at h; cases h; exact absurd hl hm
   | split h hl => rw [hst] at h; cases h; exact absurd hl hm
@@ -1094,15 +1107,15 @@ theorem mark_no_aba {k : K} {D D₁ D' : DState} {j : Nat} {m : Mark} (hw : Mark
 
 /-- `grow_same_base` (DS-v2, non-normative: "grow is in place only (same base, extension into the
 space directly after the block)"; DS2-2: the new block authority goes to the place that currently
-holds `b`): an `ok` of `grow b extra` grows the block of authority `b` of the stack in place:
-`extra` is positive and the extension is in place; the metadata records the grown block of the
+holds `b`; DS2-5: `extra` may be zero): an `ok` of `grow b extra` grows the block of authority `b`
+of the stack in place: the extension is in place; the metadata records the grown block of the
 same base, `extra` more cells, the new authority and, as destination, the place `d` that held `b`
 when `grow` started; in the arrival state that authority, of fresh identity, is an active `Modify`
 derived from `internal` covering the cells from the same base and held by `d` (§61, §65 `ok`
 effects); the old cells are a prefix of the new ones; `b` is inactive (§62). -/
 theorem grow_same_base {k : K} {D D' : DState} {j b extra : Nat}
     (h : GrowStep k j b extra D (.ok D')) :
-    ∃ st x d, D.stacks[j]? = some st ∧ st.block b = some x ∧ 0 < extra ∧ InPlace st x extra ∧
+    ∃ st x d, D.stacks[j]? = some st ∧ st.block b = some x ∧ InPlace st x extra ∧
       holderPlace D.kern b = some d ∧
       D'.stacks[j]? = some (growMeta st x extra D.kern.A.length d) ∧
       growBlk x extra D.kern.A.length d ∈ (growMeta st x extra D.kern.A.length d).blocks ∧
@@ -1111,7 +1124,7 @@ theorem grow_same_base {k : K} {D D' : DState} {j b extra : Nat}
       cellsOf st x.base x.size <+: cellsOf st x.base (x.size + extra) ∧
       ¬ D'.kern.Active b := by
   cases h with
-  | @ok st x s₁ s₂ s₃ d hst hx hpos hrl hd hstat hin hsp hsto =>
+  | @ok st x s₁ s₂ s₃ d hst hx hrl hd hstat hin hsp hsto =>
     obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 hrl
     obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hsp
     obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hsto
@@ -1122,7 +1135,7 @@ theorem grow_same_base {k : K} {D D' : DState} {j b extra : Nat}
     have hnew :=
       issued_block (releaseEff D.kern b) st.internal d (cellsOf st x.base (x.size + extra))
     rw [hlen] at hblk hnew ⊢
-    refine ⟨st, x, d, hst, hx, hpos, hin, hd, List.getElem?_set_self (lt_of_getElem? hst),
+    refine ⟨st, x, d, hst, hx, hin, hd, List.getElem?_set_self (lt_of_getElem? hst),
       List.mem_map.2 ⟨x, List.mem_of_find?_eq_some hx, by simp⟩, hnew, cellsOf_prefix st _ _ _, ?_⟩
     rintro ⟨y, hy, ya⟩
     rw [storeEff_eq hblk] at hy
@@ -1141,7 +1154,7 @@ theorem grow_keeps_prefix_init {k : K} {D D' : DState} {j b extra : Nat}
     (h : GrowStep k j b extra D (.ok D')) {st : Stack} {x : Blk} (hst : D.stacks[j]? = some st)
     (hx : st.block b = some x) : ∀ l ∈ cellsOf st x.base x.size, D'.kern.I l = D.kern.I l := by
   cases h with
-  | @ok _ _ _ _ _ d hst₀ hx₀ _ hrl _ _ _ hsp hsto =>
+  | @ok _ _ _ _ _ d hst₀ hx₀ hrl _ _ _ hsp hsto =>
     rw [hst] at hst₀; cases hst₀; rw [hx] at hx₀; cases hx₀
     obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hrl
     obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hsp
@@ -1204,7 +1217,7 @@ theorem grow_keeps_prefix_bytes {Ty : Type} {k : K} {D D' : DState} {j b extra :
             (Refinement.run s2 (Refinement.opsOf π (.store D.kern.A.length d) s₂ s2)) π.L l i =
           Refinement.bytesOf s2 π.L l i := by
   cases h with
-  | @ok st₀ x₀ s₁ s₂ s₃ d hst₀ hx₀ hpos hrl hd hstat hin hsp hsto =>
+  | @ok st₀ x₀ s₁ s₂ s₃ d hst₀ hx₀ hrl hd hstat hin hsp hsto =>
     rw [hst] at hst₀; cases hst₀; rw [hx] at hx₀; cases hx₀
     have hlen : s₁.A.length = D.kern.A.length := by
       rw [(Guarded.ok_iff.1 hrl).2]; exact releaseEff_len D.kern b
@@ -1340,30 +1353,26 @@ theorem run_ok :
     d9.stacks = [⟨1, 4, [2, 3], 1, [x5], [⟨0, 0, 0⟩]⟩] ∧ RewindStep K0 0 m1 d9 .fail ∧
     d10.stacks = [⟨1, 4, [2, 3], 2, [⟨0, 2, 8, 4⟩], [⟨0, 0, 0⟩]⟩] ∧ d10.kern.afp 8 = [2, 3] := by
   have r10 : DReach K0 wst d10 := .step d9_reach
-    (.grow (.ok (st := st9) (x := x5) (d := 4) (by decide) (by decide) (by decide)
+    (.grow (.ok (st := st9) (x := x5) (d := 4) (by decide) (by decide)
       (.ok (by decide)) (by decide) (by decide) (by decide) (.ok (by decide)) (.ok (by decide))))
   have hrej := (rewind_rejects_live_above (k := K0) (D := d7) (j := 0) (st := st7) (m := m1)
     (x := 6) (l := 3) (y := ⟨.modify, some 4, [3], .place 5, true⟩) (by decide) (by decide)
     (by decide) rfl (by decide) (by decide) (by decide)).1
   have hfail : GrowStep K0 0 5 1 d7 .fail :=
-    .fail (st := st7) (x := x5) (d := 4) (by decide) (by decide) (by decide) (.ok (by decide))
+    .fail (st := st7) (x := x5) (d := 4) (by decide) (by decide) (.ok (by decide))
       (by decide) (by decide) (by decide)
   exact ⟨r10, hrej, hfail, by decide, (rewind_dead_fails (st := st9) (by decide) (by decide)).1,
     by decide, by decide⟩
 
-/-! ### Examples of DS-v2 and the remaining readings
+/-! ### Examples of DS-v2
 
 Each theorem below shows, on a library-reachable state, a program whose verdict or arrival state
-is fixed by a DS-v2 item (DS2-1 to DS2-3, or an item of DS-v1 decided by the arbitration), or, for
-the theorems named `reading_*`, depends on a reading of DS-v2 whose status is open: Q23 says that
-Q11, Q27 and Q28 decide DS-R1 to DS-R13, but none of their items names DS-R1 or DS-R4, and both
-readings change a verdict. Each such theorem shows the verdict of the draft reading formalized here,
-and the facts that make the other reading give another one. -/
+is fixed by a DS-v2 item (DS2-1 to DS2-6, or an item of DS-v1 decided by the arbitration). -/
 
 /-- `release(5)` by the program, after the rewind (§62; DS-v2 non-vacuity). -/
 def d11 : DState := ⟨releaseEff d9.kern 5, d9.stacks, d9.fresh⟩
 /-- `derive(4, [3], Modify)` by the program: authority 8 on cell 3, above the current top (§60;
-DS-v2 reading of "above"). -/
+DS-v2, DS2-4). -/
 def d12 : DState := ⟨deriveEff d11.kern 4 [3] .modify, d11.stacks, d11.fresh⟩
 /-- The first mark (DS-v2, §58). -/
 def m0 : Mark := ⟨0, 0, 0⟩
@@ -1377,18 +1386,25 @@ theorem d11_reach : DReach K0 wst d11 := .step d9_reach (.kernel (.release (.ok 
 /-- The callee of `d13` is library-reachable (DS-v2; §72). -/
 theorem d13_reach : DReach K0 wst d13 := .step d9_reach (.kernel (.enter (.ok (by decide))))
 
-/-- **Reading of "a cell above m"** (DS-v2, non-normative; reading DS-R1, open: no item of Q11,
-Q27 or Q28 names it; §46). In `d12`, authority 8, active and derived from `internal` 4, covers cell 3, at a
-position above the top of mark `⟨0, 0, 0⟩` but above the current top too, hence not among the
-cells `rewind` returns (`above`): `rewind ⟨0, 0, 0⟩` is `ok`. Under the reading "any cell at a
-position at or above the top of `m`", it is rejected. -/
-theorem reading_above :
+/-- **A cell above `m` is any cell at a position `≥ m.top`** (DS-v2, non-normative: DS2-4, DS-R1;
+§46). In `d12`, authority 8, active and derived from `internal` 4, covers cell 3, at a position
+above the top of mark `⟨0, 0, 0⟩` and also at or above the current top (an available cell):
+`rewind ⟨0, 0, 0⟩` is `reject` and nothing else. -/
+theorem rewind_rejects_above_top :
     DReach K0 wst d12 ∧ d12.kern.A[8]? = some ⟨.modify, some 4, [3], .frame 0, true⟩ ∧
-    st9.internal ∈ d12.kern.ancs 8 ∧ 3 ∈ st9.cells.drop m0.top ∧ 3 ∉ above st9 m0 ∧
-    ∃ D', RewindStep K0 0 m0 d12 (.ok D') :=
+    st9.internal ∈ d12.kern.ancs 8 ∧ 3 ∈ above st9 m0 ∧ 3 ∈ st9.cells.drop st9.top ∧
+    RewindStep K0 0 m0 d12 .reject ∧ ∀ o, RewindStep K0 0 m0 d12 o → o = .reject :=
   ⟨.step d11_reach (.kernel (.derive (.ok (by decide)))), by decide, by decide, by decide,
-    by decide,
-    ⟨_, .ok (st := st9) (by decide) (by decide) (by decide) (.ok (by decide)) (.ok (by decide))⟩⟩
+    by decide, rewind_rejects_live_above (st := st9) (x := 8) (l := 3)
+      (y := ⟨.modify, some 4, [3], .frame 0, true⟩) (by decide) (by decide) (by decide) rfl
+      (by decide) (by decide) (by decide)⟩
+
+/-- **`rewind` on a missing stack fails** (DS-v2, non-normative: DS2-6, DS-R3; §58). In the
+initial state `d0`, no stack exists: `rewind(0, ⟨0, 0, 0⟩)` is `fail` and nothing else. -/
+theorem rewind_missing_stack_fails :
+    DReach K0 wst d0 ∧ d0.stacks[0]? = none ∧
+    RewindStep K0 0 m0 d0 .fail ∧ ∀ o, RewindStep K0 0 m0 d0 o → o = .fail :=
+  ⟨.init, rfl, rewind_missing_fails rfl⟩
 
 /-- **The dead or foreign mark is checked before the right** (DS-v2, non-normative: DS-v1 decided
 by Q11 (f); §36, §58). In `d13`, a callee with no right on the stack value (`¬ AdminRight`)
@@ -1404,23 +1420,32 @@ requested cells are not all in the storage. -/
 theorem push_no_room : DReach K0 wst d3 ∧ PushStep K0 0 3 4 d3 .fail :=
   ⟨d3_reach, .fail (st := st3) (by decide) (by decide) (by decide)⟩
 
-/-- **Reading of `grow` with `extra = 0`** (DS-v2, non-normative; reading DS-R4, open: no item of Q11,
-Q27 or Q28 names it; §58). In `d9`, `grow(0, 5, 0)` is rejected (`extra = 0`), while the sequence `release`,
-static checks into place 4, the holder of block authority 5 (DS2-2), in-place check, `split` and
-`store` of the same region would be `ok`. -/
-theorem reading_grow_zero :
-    DReach K0 wst d9 ∧ GrowStep K0 0 5 0 d9 .reject ∧ holderPlace d9.kern 5 = some 4 ∧
-    ReleaseStep 5 d9.kern (.ok (releaseEff d9.kern 5)) ∧
-    IssueStatic (releaseEff d9.kern 5) st9.entry (cellsOf st9 x5.base (x5.size + 0)) 4 ∧
-    InPlace st9 x5 0 ∧
-    SplitStep K0 st9.internal [cellsOf st9 x5.base (x5.size + 0)] (releaseEff d9.kern 5)
-      (.ok (splitEff (releaseEff d9.kern 5) st9.internal [cellsOf st9 x5.base (x5.size + 0)])) ∧
-    StoreStep (releaseEff d9.kern 5).A.length 4
-      (splitEff (releaseEff d9.kern 5) st9.internal [cellsOf st9 x5.base (x5.size + 0)])
-      (.ok (storeEff (splitEff (releaseEff d9.kern 5) st9.internal
-        [cellsOf st9 x5.base (x5.size + 0)]) (releaseEff d9.kern 5).A.length 4)) :=
-  ⟨d9_reach, .noExtra (st := st9) (x := x5) (by decide) (by decide) rfl, by decide,
-    .ok (by decide), by decide, by decide, .ok (by decide), .ok (by decide)⟩
+/-- `grow(0, 5, 0)` in `d9`: `release(5)`, `split(4, [[2]])`, `store(8, 4)` into place 4, which
+holds block authority 5 (DS-v2, DS2-5, DS2-2, Part XIV, §77). -/
+def d18 : DState :=
+  ⟨storeEff (splitEff (releaseEff d9.kern 5) st9.internal [cellsOf st9 x5.base (x5.size + 0)])
+      (releaseEff d9.kern 5).A.length 4,
+    d9.stacks.set 0 (growMeta st9 x5 0 (releaseEff d9.kern 5).A.length 4), d9.fresh⟩
+
+/-- **`grow` with `extra = 0` is an in-place reissue of the same region** (DS-v2, non-normative:
+DS2-5, DS-R4; §62, §77). In `d9`, `grow(0, 5, 0)` is `ok`: the block keeps its base and size, its
+new authority 8 covers the same cell 2 and is held by place 4, the holder of block authority 5
+(DS2-2); the top is unchanged. In `d7`, block 5 lies below block 6: `grow(0, 5, 1)` fails (not in
+place), while `grow(0, 5, 0)` is `ok`, since its extension is empty (§77.4). -/
+theorem grow_zero_reissues :
+    DReach K0 wst d18 ∧ GrowStep K0 0 5 0 d9 (.ok d18) ∧
+    d18.stacks = [⟨1, 4, [2, 3], 1, [⟨0, 1, 8, 4⟩], [⟨0, 0, 0⟩]⟩] ∧ d18.kern.afp 8 = [2] ∧
+    d18.kern.A[8]?.map (·.holder) = some (.place 4) ∧ ¬ d18.kern.Active 5 ∧
+    x5.base + x5.size ≠ st7.top ∧ GrowStep K0 0 5 1 d7 .fail ∧
+    ∃ D', GrowStep K0 0 5 0 d7 (.ok D') := by
+  have h18 : GrowStep K0 0 5 0 d9 (.ok d18) :=
+    .ok (st := st9) (x := x5) (d := 4) (by decide) (by decide) (.ok (by decide)) (by decide)
+      (by decide) (by decide) (.ok (by decide)) (.ok (by decide))
+  exact ⟨.step d9_reach (.grow h18), h18, by decide, by decide, by decide, by decide, by decide,
+    .fail (st := st7) (x := x5) (d := 4) (by decide) (by decide) (.ok (by decide)) (by decide)
+      (by decide) (by decide),
+    ⟨_, .ok (st := st7) (x := x5) (d := 4) (by decide) (by decide) (.ok (by decide)) (by decide)
+      (by decide) (by decide) (.ok (by decide)) (.ok (by decide))⟩⟩
 
 /-- **`mark` requires the right of §36** (DS-v2, non-normative: DS2-1, Q11 (d); §36, §58). In
 `d13`, a callee frame with no right on the stack value 0 (`¬ AdminRight`) marks stack 0: `reject`,
@@ -1458,7 +1483,7 @@ theorem grow_follows_holder :
     (d15.stacks[0]?).map (·.blocks) = some [⟨0, 2, 6, 5⟩] ∧ d15.kern.I 4 = .moved :=
   ⟨.step d5_reach (.kernel (.transfer (.ok (by decide)))), by decide, by decide, rfl, by decide,
     by decide,
-    .ok (st := st5) (x := x5) (d := 5) (by decide) (by decide) (by decide) (.ok (by decide))
+    .ok (st := st5) (x := x5) (d := 5) (by decide) (by decide) (.ok (by decide))
       (by decide) (by decide) (by decide) (.ok (by decide)) (.ok (by decide)),
     by decide, by decide, by decide⟩
 
@@ -1482,9 +1507,9 @@ def d16 : DState := ⟨enterEff d11.kern [] [], d11.stacks, d11.fresh⟩
 
 /-- **§36 applies to `rewind`** (DS-v2, non-normative: DS-v1 decided by Q27 (a); §36). In `d16`,
 mark `⟨0, 0, 0⟩` is live for stack 0 and no active authority derived from `internal` 4 covers the
-cell 2 above it (blocks 5, 6 and 7 are released): every condition DS-v1 lists for the `ok` case
-holds. The callee has no right on the stack value (`¬ AdminRight`, §36), so `rewind ⟨0, 0, 0⟩` is
-`reject` and nothing else (`rewind_ok_iff`, `RewindStep.det`). -/
+cells 2 and 3 above it (DS2-4; blocks 5, 6 and 7 are released): every condition DS-v1 lists for
+the `ok` case holds. The callee has no right on the stack value (`¬ AdminRight`, §36), so
+`rewind ⟨0, 0, 0⟩` is `reject` and nothing else (`rewind_ok_iff`, `RewindStep.det`). -/
 theorem rewind_needs_right :
     DReach K0 wst d16 ∧ d16.stacks[0]? = some st9 ∧ LiveMark d16.kern 0 st9 m0 ∧
     (∀ (x l : Nat) (y : Authority), d16.kern.A[x]? = some y → y.active = true →
