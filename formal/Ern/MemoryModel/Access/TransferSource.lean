@@ -4,23 +4,22 @@ import Ern.MemoryModel.Access.Main
 # Access kernel: source leaves after an accepted `transfer` (§63.4, decision Q17)
 
 Owner decision Q17 (validated 2026-11-06): the exemption of §63.4, for "the exercisable authority
-on which that right rests and its origin chain", is accepted, and it is to be proved, on reachable
-states, that (a) after an accepted `transfer` no active authority outside the grounding chain covers
-the source leaves, and (b) every access of the grounding chain to these leaves is rejected. With `g`
-any authority grounding the `Modify` right over `source` (`Grounds`, §43) and the grounding chain
-`RightChain s g` (§63.4), after an accepted `transfer` (§63) from a reachable state (§57):
+on which that right rests and its origin chain", is accepted. With `g` any authority grounding the
+`Modify` right over `source` (`Grounds`, §43) and the grounding chain `RightChain s g` (§63.4),
+after an accepted `transfer` (§63) from a reachable state (§57):
 
-* (a) is proved: every active authority covering a source leaf lies in the grounding chain (§43,
-  §50);
-* (b) is proved for reads and for strict ancestors: a read (O9, §66) of a source leaf is rejected
-  through every authority, the leaf being `Moved` (§41, §63 `ok` effect, §63.3 disjointness); a
-  write (O10, §67) or a shared write (O11, §68) of a source leaf through a strict origin-chain
-  ancestor of `g` is rejected, `g` being an active `Modify` descendant covering the leaf (§43
-  case 3);
-* (b) is false for O10 and O11 through `g` itself: a write or shared write of a source leaf through
-  `g` is accepted in a reachable run (`TransferSourceWitness.write_through_ground_accepted`), since
-  §67 and §68 have no `Init` precondition and `Moved` forbids reads only (§41, §53). This part is
-  left to the owner.
+* (a) every active authority covering a source leaf lies in the grounding chain (§43, §50);
+* (b), as restated by the owner on 2026-11-06 (the first statement, "every access of the grounding
+  chain is rejected", was erroneous): every read (O9, §66) of a source leaf is rejected, through
+  every authority, the leaf being `Moved` (§41, §63 `ok` effect, §63.3 disjointness); every access
+  through a strict origin-chain ancestor of `g` is rejected, reads as above and writes (O10, §67)
+  or shared writes (O11, §68) because `g` is an active `Modify` descendant covering the leaf (§43
+  case 3); a write through `g` itself is permitted, a re-initialization of the `Moved` leaf (§67
+  and §68 have no `Init` precondition; §41, §53), with the positive witness
+  `TransferSourceWitness.write_through_ground_accepted`.
+
+The derived-outside check of §63.4 is implied by §63.1 on reachable states
+(`reachable_noOutsideDerived_of_right`); the clause is kept.
 -/
 
 namespace Ern.MemoryModel.Access
@@ -153,10 +152,10 @@ theorem transfer_source_anc_writeShared_rejected {k : K} {s s' : S3} {src dst g 
 a state reachable under `DDSound` (§80) from well-formed statics (§47), an accepted `transfer` of
 `src`, and every authority `g` grounding the `Modify` right over `src` before the step:
 (a) every authority active after the step covering a source leaf belongs to the grounding chain of
-`g`; (b) for every list `ls` containing a source leaf, a read is rejected through every authority,
-and a write or shared write is rejected through every strict origin-chain ancestor of `g`. This is
-(b) of the decision without O10 and O11 through `g` itself, for which (b) is false:
-`TransferSourceWitness.write_through_ground_accepted`. -/
+`g`; (b) as restated by the owner on 2026-11-06: for every list `ls` containing a source leaf, a
+read is rejected through every authority, and a write or shared write is rejected through every
+strict origin-chain ancestor of `g`, so every access through a strict ancestor is rejected. A write
+through `g` itself is permitted (`TransferSourceWitness.write_through_ground_accepted`). -/
 theorem transfer_source_q17 {k : K} {statics : Statics} {s s' : S3} {src dst g : Nat}
     (hdd : DDSound k) (hst : StaticsOK statics) (hr : Reachable k statics s)
     (ht : TransferStep k src dst s (.ok s')) (hg : Grounds s .modify src g) :
@@ -171,6 +170,26 @@ theorem transfer_source_q17 {k : K} {statics : Statics} {s s' : S3} {src dst g :
     fun _ hx _ h => transfer_source_anc_write_rejected ht hg hl hls hx h,
     fun _ hx _ h => transfer_source_anc_writeShared_rejected ht hg hl hls hx h⟩⟩
 
+/-- Redundancy of the derived-outside check of §63.4 on reachable states (§63.1, §63.4, §43, §50;
+the clause is kept in `TransferPre`): on a state reachable under `DDSound` (§80) from well-formed
+statics (§47), the `Modify` right over `src` (§63.1, `TransferPre.srcRight`) implies the
+derived-outside check of §63.4 (`TransferPre.noOutsideDerived`), for an authority grounding that
+right; so that check never rejects a `transfer` by itself on a reachable state. -/
+theorem reachable_noOutsideDerived_of_right {k : K} {statics : Statics} {s : S3} {src : Nat}
+    (hdd : DDSound k) (hst : StaticsOK statics) (hr : Reachable k statics s)
+    (hR : HasRight s .modify src) :
+    ∃ g ∈ List.range s.A.length, Grounds s .modify src g ∧
+      ∀ j ∈ List.range s.A.length, ActiveDerivedOutside s src j → RightChain s g j := by
+  obtain ⟨g, hgr, hex, hall⟩ := hR
+  refine ⟨g, hgr, ⟨hgr, hex, hall⟩, fun j _ hj => ?_⟩
+  cases hy : s.A[j]? with
+  | none => simp only [ActiveDerivedOutside, hy, OptP] at hj
+  | some y =>
+    simp only [ActiveDerivedOutside, hy, OptP] at hj
+    obtain ⟨ya, -, -, l, hl, hlq⟩ := hj
+    exact grounds_cover_rightChain (reachable_kinv hdd hst hr).2.1.1.1 ⟨hgr, hex, hall⟩ hy ya hl
+      hlq
+
 namespace TransferSourceWitness
 
 open Examples
@@ -184,8 +203,9 @@ Q17, validated 2026-11-06; §63.4, §67, §68, §41, §53): under `K0` (`DDSound
 well-formed statics `st` (§47), `S3.init st` is reachable, `transfer(0, 1)` is accepted, root
 authority 0 grounds the `Modify` right over place 0, leaf 0 is a `Moved` source leaf afterwards,
 and both a write (O10) and a shared write (O11) of leaf 0 through authority 0 are accepted, the
-resulting state being reachable. Statement (b) of Q17 therefore fails for O10 and O11 through the
-grounding authority itself. -/
+resulting state being reachable. Positive witness of (b) as restated by the owner on 2026-11-06: a
+write through the grounding authority itself is a permitted re-initialization of the `Moved`
+leaf. -/
 theorem write_through_ground_accepted : DDSound K0 ∧ StaticsOK st ∧ Reachable K0 st s0 ∧
     TransferStep K0 0 1 s0 (.ok t1) ∧ Grounds s0 .modify 0 0 ∧ 0 ∈ footprint t1.P 0 ∧
     t1.I 0 = .moved ∧ Write3Step 0 [0] t1 (.ok (write3Eff t1 [0])) ∧

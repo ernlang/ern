@@ -664,23 +664,22 @@ alone, expected `ok` after its release), spec v0 rejected this move, the MISMATC
 edition; under v0.1 that reading obtains its expected verdicts as well.
 
 Decision Q17, validated by the owner on 2026-11-06: the exemption of v0.1 §63.4 is accepted. The
-expected property of the move in `w2a` is reformulated accordingly. For each transfer of the move,
-with the authority grounding its `Modify` right over the source in the state before it (`Grounds`:
-the root 7 for 9 → 16 from `w2a`, the column authority 10 being released; 11 for 12 → 19 from
-`w2b`), in the state after the transfer: (a) no active authority outside the grounding chain
-(`RightChain`: 7 for the field 9, 7 having no origin; 11 and its origin 7 for the field 12) covers
-a source leaf; (b) every access of that chain to a source leaf is rejected. Obtained, by
-`transfer_source_q17` on these reachable states (§57; §63.4, §43, §50): (a) holds; (b) holds for
-reads, through every authority (the source leaves are `Moved`: §66.1, §41, §53), and for writes
-and shared writes through a strict origin-chain ancestor of the grounding authority (7 on the
-field 12, §67.1, §68.2, §43 case 3; the root 7 has none). A write through the grounding authority
-itself is `ok` after the move, a re-initialization of the `Moved` leaf: 11 on the field 12, and 7
-on the field 9 (§67 has no `Init` precondition and `Moved` forbids reads only, §41, §53; the
-finding of `TransferSourceWitness.write_through_ground_accepted`). For these two writes the
-obtained `ok` differs from (b) as worded (every access of the chain rejected): **MISMATCH**, cause:
-Q17 (b) and §67, §68 disagree on writes through the grounding authority itself; the resolution
-(restricting Q17 (b) to reads and to strict ancestors, or a spec rule) is left to the owner. The
-case is not reclassified. -/
+expected property of the move in `w2a` is reformulated accordingly, with (b) as restated by the
+owner on 2026-11-06 (the first statement of (b), "every access of the grounding chain is
+rejected", was erroneous). For each transfer of the move, with the authority grounding its `Modify`
+right over the source in the state before it (`Grounds`: the root 7 for 9 → 16 from `w2a`, the
+column authority 10 being released; 11 for 12 → 19 from `w2b`), in the state after the transfer:
+(a) no active authority outside the grounding chain (`RightChain`: 7 for the field 9, 7 having no
+origin; 11 and its origin 7 for the field 12) covers a source leaf; (b) every read of a source
+leaf is rejected, every access through a strict origin-chain ancestor of the grounding authority is
+rejected, and a write through the grounding authority itself is permitted. Obtained, by
+`transfer_source_q17` on these reachable states (§57; §63.4, §43, §50): (a) holds; reads are
+rejected through every authority (the source leaves are `Moved`: §66.1, §41, §53); writes and
+shared writes through a strict ancestor are rejected (7 on the field 12, §67.1, §68.2, §43 case 3;
+the root 7 has none). Checked separately on `w2m`, the state after the move: a write through the
+grounding authority itself is `ok`, a re-initialization of the `Moved` leaf, 11 on the field 12
+and 7 on the field 9 (§67 has no `Init` precondition; positive witness also in
+`TransferSourceWitness.write_through_ground_accepted`). The case is not reclassified. -/
 theorem W2 : CRunsTo K0 [] w2o w2 ∧ TransferStep K0 12 19 w2.kern .reject ∧
     CRuns K0 [] (w2o ++ [.release 12, .release 11, .transfer 9 16, .transfer 12 19]) ∧
     CRunsTo K0 [] (w2o ++ [.release 12]) w2a ∧ ActiveDerivedOutside w2a.kern 12 11 ∧
