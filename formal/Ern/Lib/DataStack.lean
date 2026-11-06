@@ -458,6 +458,257 @@ theorem rewind_keeps_older_marks {k : K} {D D' : DState} {j : Nat} {m : Mark}
     · simp only [rewindMeta]; rw [hs]; exact takeWhile_ne_append post hpre
     · rw [releaseEff_I]; rfl
 
+/-! ## When `rewind` is `ok` (DS-v1) -/
+
+/-- Anchors name existing authorities (support for DS-v1, non-normative, `rewind`; §44: `D(q)`
+holds authority identities; §42: identities index `A`): every anchor of every place is an index of
+`A`. -/
+def DBound (s : S3) : Prop := ∀ q, ∀ x ∈ s.D q, x < s.A.length
+
+/-- Every kernel step keeps `DBound` (support for DS-v1, non-normative; §60–§75 `ok` effects on
+`D`, §42): each effect keeps, drops or moves existing anchors, adds an active authority (§64,
+§65), or replaces an anchor by an element of its origin chain (§73); `A` never shrinks. -/
+theorem kstep_dBound {k : K} {s s' : S3} (h : KStep k s s') (hb : DBound s) : DBound s' := by
+  have hA := kstep_akeep h
+  suffices H : ∀ q, ∀ x ∈ s'.D q, x < s.A.length from fun q x hx => hA.lt (H q x hx)
+  cases h with
+  | derive hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact hb
+  | split hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact hb
+  | release hs =>
+    obtain ⟨hp, rfl⟩ := Guarded.ok_iff.1 hs
+    obtain ⟨x, hx, -⟩ := hp.active
+    rw [releaseEff_eq hx]; intro q z hz
+    simp only at hz; split at hz
+    · exact hb q z (List.mem_filter.1 hz).1
+    · exact hb q z hz
+  | transfer hs =>
+    obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs
+    intro q z hz; simp only [transferEff] at hz; split at hz
+    · cases hz
+    · rcases List.mem_append.1 hz with hz | hz
+      · exact hb q z hz
+      · simp only [movedTo, List.mem_flatMap] at hz
+        obtain ⟨r, -, hr⟩ := hz; exact hb r z hr
+  | depend hs =>
+    obtain ⟨hp, rfl⟩ := Guarded.ok_iff.1 hs
+    intro q z hz; simp only [dependEff] at hz; split at hz
+    · rcases List.mem_append.1 hz with hz | hz
+      · exact hb _ z hz
+      · rw [List.mem_singleton.1 hz]; obtain ⟨y, hy, -⟩ := hp.anchorActive; exact lt_of_getElem? hy
+    · exact hb q z hz
+  | enter hs =>
+    obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs
+    intro q z hz; simp only [enterEff] at hz; split at hz
+    · cases hz
+    · exact hb q z hz
+  | exit hs =>
+    obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs
+    intro q z hz; simp only [exitEff, List.mem_map] at hz
+    obtain ⟨x, hx, rfl⟩ := hz
+    have hxl := hb q x hx
+    cases hf : firstSurv s s.F.tail (x :: s.ancs x) with
+    | none => exact hxl
+    | some w =>
+      rcases List.mem_cons.1 (List.mem_of_find?_eq_some hf) with rfl | hw
+      · exact hxl
+      · exact Nat.lt_trans (chain_lt hw) hxl
+  | read hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact hb
+  | write hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact hb
+  | writeShared hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact hb
+  | pin hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact hb
+  | unpin hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact hb
+  | endUse hs =>
+    obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs
+    intro q z hz; simp only [endUseEff, cleanup, endUseS] at hz; split at hz
+    · cases hz
+    · exact hb q z hz
+  | free hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact hb
+  | alloc hs =>
+    cases hs with
+    | ok =>
+      intro q z hz; simp only [allocEff] at hz; split at hz
+      · cases hz
+      · exact hb q z hz
+  | @store a p hs =>
+    obtain ⟨hp, rfl⟩ := Guarded.ok_iff.1 hs
+    have hd := hp.derivedHeld
+    cases hy : s.A[a]? with
+    | none => rw [hy] at hd; exact hd.elim
+    | some y =>
+      rw [storeEff_eq hy]; intro q z hz; simp only at hz; split at hz
+      · rcases List.mem_append.1 hz with hz | hz
+        · exact hb _ z hz
+        · rw [List.mem_singleton.1 hz]; exact lt_of_getElem? hy
+      · exact hb q z hz
+
+/-- Every kernel-reachable state satisfies `DBound` (support for DS-v1, non-normative; §47: no
+anchor initially; §57 reachable states). -/
+theorem dBound_of_reachable {k : K} {statics : Statics} {s : S3} (h : Reachable k statics s) :
+    DBound s := by
+  induction h with
+  | init => intro q x hx; simp [S3.init] at hx
+  | step _ hs ih => exact kstep_dBound hs ih
+
+/-- Shape of the `internal` authority of every stack (DS-v1, non-normative; §76.2: own mode
+`Modify`; §76.3: its footprint contains the footprint of the storage, the cells of the stack; §42:
+modes and footprints never change): it exists, has own mode `Modify` and covers every cell. -/
+def StackShape (D : DState) : Prop :=
+  ∀ (i : Nat) (st : Stack), D.stacks[i]? = some st →
+    ∃ y : Authority, D.kern.A[st.internal]? = some y ∧ y.mode = .modify ∧
+    ∀ c ∈ st.cells, c ∈ y.footprint
+
+/-- The kernel part of a library step keeps every authority (DS-v1, non-normative; §42, `AKeep`;
+Part XIV: the steps of `push`, `rewind`, `grow` are kernel steps). -/
+theorem DStep.akeep {k : K} {D D' : DState} (h : DStep k D D') : AKeep D.kern D'.kern := by
+  cases h with
+  | kernel hk => exact kstep_akeep hk
+  | newStack hs =>
+    obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact akeep_append (List.append_nil _).symm
+  | push hs =>
+    cases hs with
+    | ok _ _ _ hsp hst => exact (kstep_akeep (.split hsp)).trans (kstep_akeep (k := k) (.store hst))
+  | mark hs => cases hs with | ok _ => exact akeep_append (List.append_nil _).symm
+  | rewind hs =>
+    cases hs with
+    | ok _ _ _ hsp hrl =>
+      exact (kstep_akeep (.split hsp)).trans (kstep_akeep (k := k) (.release hrl))
+  | grow hs =>
+    cases hs with
+    | ok _ _ _ hrl _ _ hsp hst =>
+      exact ((kstep_akeep (k := k) (.release hrl)).trans (kstep_akeep (.split hsp))).trans
+        (kstep_akeep (k := k) (.store hst))
+
+/-- `StackShape` is kept when the authorities are kept and each stack keeps its `internal` and
+its cells (DS-v1, non-normative; §42, §46). -/
+theorem stackShape_keep {D D' : DState} (hA : AKeep D.kern D'.kern) (hw : StackShape D)
+    (hs : ∀ (i : Nat) (st' : Stack), D'.stacks[i]? = some st' →
+      ∃ st : Stack, D.stacks[i]? = some st ∧ st'.internal = st.internal ∧ st'.cells = st.cells) :
+    StackShape D' := by
+  intro i st' h
+  obtain ⟨st, hst, hi, hc⟩ := hs i st' h
+  obtain ⟨y, hy, hm, hf⟩ := hw i st hst
+  obtain ⟨y', hy', hm', hf', -⟩ := hA _ y hy
+  exact ⟨y', hi ▸ hy', hm'.trans hm, fun c hc' => hf' ▸ hf c (hc ▸ hc')⟩
+
+/-- Replacing stack `j` by a stack with the same `internal` and cells (DS-v1, non-normative; §46
+metadata updates of `push`, `mark`, `rewind`, `grow`). -/
+theorem set_keeps {l : List Stack} {j : Nat} {st st₀ : Stack} (hst : l[j]? = some st₀)
+    (hi : st.internal = st₀.internal) (hc : st.cells = st₀.cells) :
+    ∀ (i : Nat) (st' : Stack), (l.set j st)[i]? = some st' →
+      ∃ st'' : Stack, l[i]? = some st'' ∧ st'.internal = st''.internal ∧
+        st'.cells = st''.cells := by
+  intro i st' h
+  rcases getElem?_set_cases h with ⟨rfl, rfl⟩ | ⟨-, h⟩
+  · exact ⟨st₀, hst, hi, hc⟩
+  · exact ⟨st', h, rfl, rfl⟩
+
+/-- Every library step keeps `StackShape` (DS-v1, non-normative; §76.2, §76.3 at `newStack`,
+§42 afterwards). -/
+theorem DStep.stackShape {k : K} {D D' : DState} (h : DStep k D D') (hw : StackShape D) :
+    StackShape D' := by
+  have hA := h.akeep
+  cases h with
+  | kernel => exact stackShape_keep hA hw fun i st' h => ⟨st', h, rfl, rfl⟩
+  | @newStack _ _ _ int hs =>
+    obtain ⟨hp, rfl⟩ := Guarded.ok_iff.1 hs
+    intro i st' h
+    rcases getElem?_append_single h with h | rfl
+    · exact hw i st' h
+    · have hi := hp.base.internalAuth
+      cases hy : D.kern.A[int]? with
+      | none => rw [hy] at hi; exact hi.elim
+      | some y =>
+        rw [hy] at hi
+        refine ⟨y, hy, hi.2, fun c hc => ?_⟩
+        have := hp.base.fpSup c hc; simpa [S3.afp, hy] using this
+  | push hs => cases hs with | ok hst => exact stackShape_keep hA hw (set_keeps hst rfl rfl)
+  | mark hs => cases hs with | ok hst => exact stackShape_keep hA hw (set_keeps hst rfl rfl)
+  | rewind hs => cases hs with | ok hst => exact stackShape_keep hA hw (set_keeps hst rfl rfl)
+  | grow hs => cases hs with | ok hst => exact stackShape_keep hA hw (set_keeps hst rfl rfl)
+
+/-- Every library-reachable state satisfies `StackShape` (DS-v1, non-normative; §47: no stack
+initially; §76.2, §76.3, §42). -/
+theorem DReach.stackShape {k : K} {statics : Statics} {D : DState} (h : DReach k statics D) :
+    StackShape D := by
+  induction h with
+  | init => intro i st h; simp [DState.init] at h
+  | step _ hs ih => exact hs.stackShape ih
+
+/-- The authority added by `split` of `src` on one region can be released at once (support for
+DS-v1, non-normative, `rewind`; §62): it is active, derived, held by the current frame (§62.1,
+§62.2), has no descendant (§62.3: origins precede, §42) and, under `DBound`, anchors no place
+(§62.3, §62.4). -/
+theorem release_after_split {s : S3} {src : Nat} {R : List Nat} (hb : DBound s) :
+    ReleasePre (splitEff s src [R]) s.A.length := by
+  have hy₀ := split_block s src R
+  refine ⟨⟨_, hy₀, rfl⟩, by rw [hy₀]; simp [OptP], by rw [hy₀]; exact rfl,
+    fun j hj hn => ?_, fun q _ _ hx => absurd (hb q _ hx) (Nat.lt_irrefl _)⟩
+  have := chain_lt hn
+  have := List.mem_range.1 hj; simp [splitEff] at this; omega
+
+/-- `rewind_ok_iff` (DS-v1, non-normative: "rewind m fails on a dead or foreign mark, rejects if an
+active authority derived from internal covers a cell above m, otherwise returns those cells to
+available"; §36; §61.1, §61.3, §62 through Part XIV). On a library-reachable state (`DReach`, a
+state invariant), for an existing stack, `rewind m` is `ok` exactly when `m` is a live mark of the
+stack (DS-v1), the administrative right of §36 holds (`AdminRight`), and no active authority
+derived from `internal` covers a cell above `m` (DS-v1). The model has no explicit check of the
+last condition: it is the effective `Modify` of `internal` required by `split` (§61.1, with the
+effective mode of §43). The other checks of `split` and `release` never reject there: `internal`
+has own mode `Modify` and covers the cells (`DReach.stackShape`, §76.2, §76.3), and anchors name
+existing authorities (`dBound_of_reachable`). DS-v1 does not list §36: on the reachable state of
+`Witness.reading_rewind_right` every DS-v1 condition for success holds and §36 rejects (the §61.1
+check of `split` fails there too). -/
+theorem rewind_ok_iff {k : K} {statics : Statics} {D : DState} (hr : DReach k statics D)
+    {j : Nat} {st : Stack} (hst : D.stacks[j]? = some st) {m : Mark} :
+    (∃ D', RewindStep k j m D (.ok D')) ↔
+      LiveMark j st m ∧ AdminRight D.kern st ∧
+        ∀ (x l : Nat) (y : Authority), D.kern.A[x]? = some y → y.active = true →
+          st.internal ∈ D.kern.ancs x → l ∈ y.footprint → l ∉ above st m := by
+  constructor
+  · rintro ⟨D', h⟩
+    cases h with
+    | ok h hm ha hsp =>
+      rw [hst] at h; cases h
+      have hp := (Guarded.ok_iff.1 hsp).1
+      exact ⟨hm, ha, fun x l y hy ya hx hly hl =>
+        no_desc_of_modify hy ya hly hx (hp.modifyOn _ (List.mem_singleton_self _) l hl)⟩
+  · rintro ⟨hm, ha, hno⟩
+    obtain ⟨yi, hyi, hmi, hci⟩ := hr.stackShape j st hst
+    have yia : yi.active = true := by
+      obtain ⟨y, hy, ya⟩ := ha.1; rw [hyi] at hy; cases hy; exact ya
+    have hab : ∀ l ∈ above st m, l ∈ yi.footprint :=
+      fun l hl => hci l (List.mem_of_mem_drop (List.mem_of_mem_take hl))
+    have hmod : ∀ l ∈ above st m, effective D.kern st.internal l = some .modify := by
+      intro l hl
+      have hd : descModes D.kern st.internal l = [] := by
+        apply nil_of_forall_not_mem; intro e he
+        obtain ⟨x, y, hy, ya, hly, hx, -⟩ := mem_descModes.1 he
+        exact hno x l y hy ya hx hly hl
+      rw [effective_eq hyi yia (hab l hl), hd]; simp [effOf, hmi]
+    have hex : D.kern.ExercisableAt st.internal .modify := by
+      have hmr := ha.2
+      simp only [MetaRight, arenaValue, Stack.entry, hyi] at hmr
+      cases hv : yi.holder with
+      | frame f => rw [hv] at hmr; exact hmr.elim
+      | place v =>
+        rw [hv] at hmr
+        obtain ⟨b, -, hb, hall⟩ := hmr
+        exact .held hyi yia (.inr hmi) hv hb hall
+    have hsp : SplitPre k D.kern st.internal [above st m] := by
+      refine ⟨ha.1, hex, fun r hr p hp => ?_, fun r hr p hp => ?_, List.pairwise_singleton _ _,
+        fun r hr p hp x _ hd => ?_⟩
+      · rw [List.mem_singleton.1 hr] at hp; exact hmod p hp
+      · rw [List.mem_singleton.1 hr] at hp
+        exact ⟨by simp only [S3.afp, hyi]; exact hab p hp, by rw [hmod p hp]; simp⟩
+      · rw [List.mem_singleton.1 hr] at hp
+        unfold DistribExcl at hd
+        cases hx : D.kern.A[x]? with
+        | none => rw [hx] at hd; exact hd
+        | some y =>
+          rw [hx] at hd; obtain ⟨ya, hanc, hpy, -⟩ := hd; exact hno x p y hx ya hanc hpy hp
+    exact ⟨_, .ok hst hm ha (.ok hsp)
+      (.ok (release_after_split (dBound_of_reachable hr.reachable)))⟩
+
 /-! ## Marks are never reused (`mark_no_aba`) -/
 
 /-- Well-formed marks (DS-v1, non-normative, "marks carry stack identity and a fresh mark
@@ -1013,6 +1264,37 @@ theorem reading_newStack :
     Guard56 [stackInternals (DState.init wsu).kern (DState.init wsu).stacks] 1 :=
   ⟨.init, .reject (by decide), by decide, by decide, by decide, by decide, by decide, by decide,
     by decide, by decide, by decide⟩
+
+/-- A callee frame with no parameter and no local, entered after the program's `release(5)` that
+follows the rewind (§72; DS-v1, non-normative: reading of the reasons for which `rewind`
+rejects). -/
+def d16 : DState := ⟨enterEff d11.kern [] [], d11.stacks, d11.fresh⟩
+
+/-- **Reading of the reasons for which `rewind` rejects: §36 applies** (DS-v1, non-normative; §36,
+§61.1). In `d16`, mark `⟨0, 0, 0⟩` is live for stack 0 and no active authority derived from
+`internal` 4 covers the cell 2 above it (blocks 5, 6 and 7 are released): every condition DS-v1
+lists for the `ok` case holds. The callee has no right on the stack value (`¬ AdminRight`, §36), so
+`rewind ⟨0, 0, 0⟩` is `reject` and never `ok` (`rewind_ok_iff`); `split` of `internal` alone would
+reject too (`internal` is not exercisable at `Modify`, §61.1). Under the reading that DS-v1 lists
+every reason to reject, the outcome is `ok`. -/
+theorem reading_rewind_right :
+    DReach K0 wst d16 ∧ d16.stacks[0]? = some st9 ∧ LiveMark 0 st9 m0 ∧
+    (∀ (x l : Nat) (y : Authority), d16.kern.A[x]? = some y → y.active = true →
+      st9.internal ∈ d16.kern.ancs x → l ∈ y.footprint → l ∉ above st9 m0) ∧
+    ¬ AdminRight d16.kern st9 ∧ ¬ d16.kern.ExercisableAt st9.internal .modify ∧
+    RewindStep K0 0 m0 d16 .reject ∧ ¬ ∃ D', RewindStep K0 0 m0 d16 (.ok D') := by
+  have r16 : DReach K0 wst d16 :=
+    .step (.step d9_reach (.kernel (.release (.ok (by decide)))))
+      (.kernel (.enter (.ok (by decide))))
+  have hst : d16.stacks[0]? = some st9 := by decide
+  have hna : ¬ AdminRight d16.kern st9 := by decide
+  have hb : ∀ x ∈ List.range d16.kern.A.length, OptP (d16.kern.A[x]?) (fun y => y.active = true →
+      st9.internal ∈ d16.kern.ancs x → ∀ l ∈ above st9 m0, l ∉ y.footprint) True := by decide
+  refine ⟨r16, hst, by decide, fun x l y hy ya hx hly hl => ?_, hna, by decide,
+    .static hst (by decide) hna, fun h => hna ((rewind_ok_iff r16 hst).1 h).2.1⟩
+  have := hb x (List.mem_range.2 (lt_of_getElem? hy))
+  rw [hy] at this
+  exact this ya hx l hl hly
 
 end Witness
 
