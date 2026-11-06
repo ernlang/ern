@@ -21,6 +21,7 @@ import Ern.MemoryModel.Access.Preserve.EndFree
 import Ern.MemoryModel.Access.Preserve.Frames
 import Ern.MemoryModel.Access.Preserve.Small
 import Ern.MemoryModel.Access.Preserve.Transfer
+import Ern.MemoryModel.Access.Statics
 import Ern.MemoryModel.Access.TransferSource
 import Ern.MemoryModel.Arena
 import Ern.MemoryModel.Machine
