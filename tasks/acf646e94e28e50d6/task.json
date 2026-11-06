@@ -1,0 +1,17 @@
+{
+  "tool_use_id": "acf646e94e28e50d6",
+  "agent_id": "acf646e94e28e50d6",
+  "subagent_type": "workflow-subagent",
+  "files": [
+    "formal/Ern/Lib/HandlePool.lean"
+  ],
+  "token_usage": {
+    "input_tokens": 80,
+    "cache_creation_tokens": 128631,
+    "cache_read_tokens": 4881813,
+    "output_tokens": 38724,
+    "api_call_count": 40
+  },
+  "started_at": "2026-11-06T03:20:04.449607+01:00",
+  "completed_at": "2026-11-06T03:26:35.71992+01:00"
+}
