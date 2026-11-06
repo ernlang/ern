@@ -1,9 +1,9 @@
-import Ern.MemoryModel.Access.Preserve.Common
+import Ern.MemoryModel.Access.Main
 
 /-!
 # Arenas: the reference library abstraction (Part XIV)
 
-Arenas of `specs/ERN_Memory_Model_Specification_v0.md`, Part XIV (§76–§78), with §36, §46, §55,
+Arenas of `specs/ERN_Memory_Model_Specification_v0.1.md`, Part XIV (§76–§78), with §36, §46, §55,
 §56, §58, §79, §86 and §88. An arena is a library abstraction (Part XIV): its entries live in a
 library state separate from the kernel state `S₃` (§38, §46). `newArena` (O17) only registers an
 entry; `issue` (O18) and `reset` (O19) are defined twice:
@@ -12,11 +12,14 @@ entry; `issue` (O18) and `reset` (O19) are defined twice:
 * as derived operations over the kernel steps (Part XIV): `issue` is its static checks, the
   availability `fail`, then `split` of `internal` on the region and `store` of the block into the
   destination (`IssueD`); `reset` is `derive` of `internal` at `Modify` over the whole storage,
-  then `release`, then the explicit check of §78.3 (`ResetD`).
+  then `release`, then the explicit check of §78.3 (`ResetD`), which never rejects after an
+  accepted `derive` on states satisfying I3 (`resetNoDeps_of_derive`).
 
-`issue_as_kernel` and `reset_as_kernel` show that both definitions have the same outcomes and the
-same arrival states. Library reachability (`LReach`, `LReachNG`) uses the derived operations, so
-its kernel states are kernel-reachable (`newArena_as_library`).
+On library-reachable states, `issue_as_kernel` and `reset_as_kernel` show that both definitions
+have the same outcomes and the same arrival states, and `lReach_inv` that every live entry
+satisfies `ArenaInv` (§55). Library reachability (`LReach`, `LReachNG`) uses the derived
+operations, so its kernel states are kernel-reachable (`newArena_as_library`) and satisfy the
+kernel invariant of §57 (`Access.reachable_kinv`).
 -/
 
 namespace Ern.MemoryModel.Arena
@@ -101,6 +104,23 @@ structure ArenaInv (s : S3) (E : ArenaEntry) : Prop where
   /-- §55, item 5: every still-issued block authority is a derivative of `internal`. -/
   derived : ∀ e ∈ E.issued, s.Active e.2 → E.internal ∈ s.ancs e.2
 
+/-- Decidability of `ArenaInv` (§55): the footprint equality is the two inclusions. -/
+instance (s : S3) (E : ArenaEntry) : Decidable (ArenaInv s E) :=
+  @decidable_of_iff (ArenaInv s E) ((s.Usable E.storage ∧
+    (∀ l ∈ s.afp E.internal, l ∈ footprint s.P E.storage) ∧
+    (∀ l ∈ footprint s.P E.storage, l ∈ s.afp E.internal) ∧ s.Active E.internal ∧
+    OptP (s.A[E.internal]?) (fun y => y.mode = .modify ∧ y.holder.isPlace = true) False) ∧
+    ((∀ l ∈ E.available, l ∈ footprint s.P E.storage) ∧
+    (∀ e ∈ E.issued, ∀ l ∈ e.1, l ∈ footprint s.P E.storage)) ∧
+    (∀ e ∈ E.issued, ∀ e' ∈ E.issued, e ≠ e' → s.Active e.2 → s.Active e'.2 →
+      ∀ l ∈ e.1, l ∉ e'.1) ∧
+    (∀ e ∈ E.issued, s.Active e.2 → ∀ l ∈ e.1, l ∉ E.available) ∧
+    (∀ e ∈ E.issued, s.Active e.2 → E.internal ∈ s.ancs e.2))
+    ⟨fun ⟨⟨a, b, c, d, e⟩, ⟨f, g⟩, h, i, j⟩ => ⟨a, fun l => ⟨b l, c l⟩, d, e, f, g, h, i, j⟩,
+     fun h => ⟨⟨h.storageUsable, fun l => (h.fpEq l).1, fun l => (h.fpEq l).2, h.active,
+      h.shape⟩, ⟨h.availableIn, h.issuedIn⟩, h.disjoint, h.notAvailable, h.derived⟩⟩
+    (@instDecidableAnd _ _ inferInstance (@instDecidableAnd _ _ inferInstance inferInstance))
+
 /-- Shape of the issued blocks (support for §55, item 5, from the `ok` effect of §77; not a clause
 of `ArenaInv`): every issued block authority exists, has direct origin `internal`, a fresh identity
 above it, its region as footprint and mode `Modify`. -/
@@ -115,6 +135,398 @@ def EntryInv (s : S3) (E : ArenaEntry) : Prop := ArenaInv s E ∧ IssuedShape s 
 satisfies `EntryInv`. -/
 def LInv (L : LState) : Prop :=
   ∀ E ∈ L.arenas, E.internal < L.kern.A.length ∧ (Live L.kern E → EntryInv L.kern E)
+
+/-! ## A decision procedure for the kernel invariant on concrete states (§49–§54, §57)
+
+`KInvB` restates `KInv ∧ KAux` with every quantifier bounded by the lists of the state, so that
+`decide` evaluates it on the concrete states of the witnesses below; `KInvB.sound` derives
+`KInv ∧ KAux`. `WF3` (§49) and `I1` (§50), which §76.6 asks of the resulting state of `newArena`,
+are decidable through their bounded forms (`wf3_iff_kb`, `i1_iff_kb`). -/
+
+/-- A leaf of the footprint of `q` makes `q` an existing place (§40). -/
+theorem footprint_lt {P : List Place} {q l : Nat} (h : l ∈ footprint P q) : q < P.length := by
+  obtain ⟨hl, -, -, hlq⟩ := mem_footprint.1 h
+  rcases hlq with rfl | hc
+  · exact hl
+  · exact Nat.lt_trans (chain_lt hc) hl
+
+/-- The footprint of the authority record `z` is the footprint of place `r` (§49.6, §49.7). -/
+def FpIs (s : S3) (z : Authority) (r : Nat) : Prop :=
+  (∀ l ∈ z.footprint, l ∈ footprint s.P r) ∧ ∀ l ∈ footprint s.P r, l ∈ z.footprint
+
+/-- Decidability of `FpIs` (§49.6). -/
+instance (s : S3) (z : Authority) (r : Nat) : Decidable (FpIs s z r) := by
+  unfold FpIs; infer_instance
+
+/-- The record `z` is a root authority for the root place of leaf `l` (§49.6). -/
+def RootFor (s : S3) (l : Nat) (z : Authority) : Prop :=
+  z.origin = none ∧ ∃ r ∈ List.range s.P.length, RootPlace s.P r ∧ partOf s.P l r ∧ FpIs s z r
+
+/-- Decidability of `RootFor` (§49.6). -/
+instance (s : S3) (l : Nat) (z : Authority) : Decidable (RootFor s l z) := by
+  unfold RootFor; infer_instance
+
+/-- The origin chain of `a` reaches a root authority for the root place of leaf `l`
+(§49.6). -/
+def ChainRoot (s : S3) (a l : Nat) : Prop :=
+  ∃ x ∈ a :: s.ancs a, OptP (s.A[x]?) (RootFor s l) False
+
+/-- Decidability of `ChainRoot` (§49.6). -/
+instance (s : S3) (a l : Nat) : Decidable (ChainRoot s a l) := by
+  unfold ChainRoot; infer_instance
+
+/-- The record `z` is the active root `Modify` authority of root place `r`, held by its owner
+(§49.7). -/
+def RootAuth (s : S3) (r : Nat) (z : Authority) : Prop :=
+  z.active = true ∧ z.origin = none ∧ z.mode = .modify ∧
+    OptP (s.P[r]?) (fun pr => z.holder = pr.owner) False ∧ FpIs s z r
+
+/-- Decidability of `RootAuth` (§49.7). -/
+instance (s : S3) (r : Nat) (z : Authority) : Decidable (RootAuth s r z) := by
+  unfold RootAuth; infer_instance
+
+/-- Valid owner (§49.3): a frame below `nF` or an existing place. -/
+def OwnerOK (s : S3) : Holder → Prop
+  | .frame f => f < s.nF
+  | .place o => o < s.P.length
+
+/-- Decidability of `OwnerOK` (§49.3). -/
+instance (s : S3) (h : Holder) : Decidable (OwnerOK s h) := by
+  cases h <;> unfold OwnerOK <;> infer_instance
+
+/-- The active record `y` covers no leaf of an unusable place (§54, `NoDangling`). -/
+def NoDangB (s : S3) (y : Authority) : Prop :=
+  ∀ q ∈ List.range s.P.length, ¬ s.Usable q → ∀ l ∈ footprint s.P q, l ∉ y.footprint
+
+/-- Decidability of `NoDangB` (§54). -/
+instance (s : S3) (y : Authority) : Decidable (NoDangB s y) := by
+  unfold NoDangB; infer_instance
+
+/-- The origin-less record `z` is held by the owner of the root place of every leaf it covers
+(`RootHeldConv`, §40, §49.7). -/
+def RHConvB (s : S3) (z : Authority) : Prop :=
+  ∀ l ∈ z.footprint, ∀ r ∈ List.range s.P.length, RootPlace s.P r → partOf s.P l r →
+    OptP (s.P[r]?) (fun pr => z.holder = pr.owner) False
+
+/-- Decidability of `RHConvB` (§49.7). -/
+instance (s : S3) (z : Authority) : Decidable (RHConvB s z) := by
+  unfold RHConvB; infer_instance
+
+/-- Bounded check §49.1 (decision procedure). -/
+def KB_frames (s : S3) : Prop :=
+  s.F ≠ [] ∧ s.F.Nodup ∧ ∀ f ∈ s.F, f < s.nF
+
+/-- Decidability of `KB_frames` (decision procedure for §57). -/
+instance (s : S3) : Decidable (KB_frames s) := by
+  unfold KB_frames; infer_instance
+
+/-- Bounded check §49.2 (decision procedure). -/
+def KB_places (s : S3) : Prop :=
+  ∀ q ∈ List.range s.P.length, OptP (s.P[q]?) (fun pl => OptP pl.parent (fun r =>
+    OptP (s.P[r]?) (fun pr => r < q ∧ pr.owner = pl.owner ∧ s.dead r = s.dead q) False) True) True
+
+/-- Decidability of `KB_places` (decision procedure for §57). -/
+instance (s : S3) : Decidable (KB_places s) := by
+  unfold KB_places; infer_instance
+
+/-- Bounded check §49.3 (decision procedure). -/
+def KB_owners (s : S3) : Prop :=
+  ∀ q ∈ List.range s.P.length, OptP (s.P[q]?) (fun pl => OwnerOK s pl.owner) True
+
+/-- Decidability of `KB_owners` (decision procedure for §57). -/
+instance (s : S3) : Decidable (KB_owners s) := by
+  unfold KB_owners; infer_instance
+
+/-- Bounded check §49.4 (decision procedure). -/
+def KB_footprints (s : S3) : Prop :=
+  ∀ a ∈ List.range s.A.length, OptP (s.A[a]?) (fun x =>
+    ∀ l ∈ x.footprint, l < s.P.length ∧ isLeaf s.P l) True
+
+/-- Decidability of `KB_footprints` (decision procedure for §57). -/
+instance (s : S3) : Decidable (KB_footprints s) := by
+  unfold KB_footprints; infer_instance
+
+/-- Bounded check §49.5 (decision procedure). -/
+def KB_origins (s : S3) : Prop :=
+  ∀ b ∈ List.range s.A.length, OptP (s.A[b]?) (fun y => OptP y.origin (· < b) True) True
+
+/-- Decidability of `KB_origins` (decision procedure for §57). -/
+instance (s : S3) : Decidable (KB_origins s) := by
+  unfold KB_origins; infer_instance
+
+/-- Bounded check §49.6 (decision procedure). -/
+def KB_rootChain (s : S3) : Prop :=
+  ∀ a ∈ List.range s.A.length, OptP (s.A[a]?) (fun y => ∀ l ∈ y.footprint,
+    isLeaf s.P l → ChainRoot s a l) True
+
+/-- Decidability of `KB_rootChain` (decision procedure for §57). -/
+instance (s : S3) : Decidable (KB_rootChain s) := by
+  unfold KB_rootChain; infer_instance
+
+/-- Bounded check §49.7 (decision procedure). -/
+def KB_rootHeld (s : S3) : Prop :=
+  ∀ r ∈ List.range s.P.length, RootPlace s.P r → s.Usable r →
+    ∃ i ∈ List.range s.A.length, OptP (s.A[i]?) (RootAuth s r) False
+
+/-- Decidability of `KB_rootHeld` (decision procedure for §57). -/
+instance (s : S3) : Decidable (KB_rootHeld s) := by
+  unfold KB_rootHeld; infer_instance
+
+/-- Bounded check §49.8 (decision procedure). -/
+def KB_holders (s : S3) : Prop :=
+  ∀ a ∈ List.range s.A.length, OptP (s.A[a]?) (fun y =>
+    y.active = true → HolderLive s y.holder) True
+
+/-- Decidability of `KB_holders` (decision procedure for §57). -/
+instance (s : S3) : Decidable (KB_holders s) := by
+  unfold KB_holders; infer_instance
+
+/-- Bounded check §50 (decision procedure). -/
+def KB_i1 (s : S3) : Prop :=
+  ∀ a ∈ List.range s.A.length, ∀ b ∈ List.range s.A.length, OptP (s.A[a]?) (fun x =>
+    OptP (s.A[b]?) (fun y => a ≠ b → x.active = true → y.active = true →
+    (∃ p ∈ x.footprint, p ∈ y.footprint) → a ∉ s.ancs b → b ∉ s.ancs a →
+    x.mode = .observe ∧ y.mode = .observe) True) True
+
+/-- Decidability of `KB_i1` (decision procedure for §57). -/
+instance (s : S3) : Decidable (KB_i1 s) := by
+  unfold KB_i1; infer_instance
+
+/-- Bounded check §51 (decision procedure). -/
+def KB_i2 (s : S3) : Prop :=
+  ∀ b ∈ List.range s.A.length, OptP (s.A[b]?) (fun y => OptP y.origin (fun a =>
+    OptP (s.A[a]?) (fun x => y.mode.le x.mode ∧ (∀ p ∈ y.footprint, p ∈ x.footprint) ∧
+      (y.active = true → x.active = true)) False) True) True
+
+/-- Decidability of `KB_i2` (decision procedure for §57). -/
+instance (s : S3) : Decidable (KB_i2 s) := by
+  unfold KB_i2; infer_instance
+
+/-- Bounded check §52 (decision procedure). -/
+def KB_i3 (s : S3) : Prop :=
+  ∀ q ∈ List.range s.P.length, s.Usable q → ∀ x ∈ s.D q, s.Active x
+
+/-- Decidability of `KB_i3` (decision procedure for §57). -/
+instance (s : S3) : Decidable (KB_i3 s) := by
+  unfold KB_i3; infer_instance
+
+/-- Bounded check §44 (decision procedure). -/
+def KB_anchorOrder (s : S3) : Prop :=
+  AnchorOrder s
+
+/-- Decidability of `KB_anchorOrder` (decision procedure for §57). -/
+instance (s : S3) : Decidable (KB_anchorOrder s) := by
+  unfold KB_anchorOrder; infer_instance
+
+/-- Bounded check §54, `NoDangling` (decision procedure). -/
+def KB_noDangling (s : S3) : Prop :=
+  ∀ j ∈ List.range s.A.length, OptP (s.A[j]?) (fun y => y.active = true → NoDangB s y) True
+
+/-- Decidability of `KB_noDangling` (decision procedure for §57). -/
+instance (s : S3) : Decidable (KB_noDangling s) := by
+  unfold KB_noDangling; infer_instance
+
+/-- Bounded check §44 (decision procedure). -/
+def KB_anchorOrderHeld (s : S3) : Prop :=
+  AnchorOrderHeld s
+
+/-- Decidability of `KB_anchorOrderHeld` (decision procedure for §57). -/
+instance (s : S3) : Decidable (KB_anchorOrderHeld s) := by
+  unfold KB_anchorOrderHeld; infer_instance
+
+/-- Bounded check `RootHeldConv` (§40, §49.7) (decision procedure). -/
+def KB_rootHeldConv (s : S3) : Prop :=
+  ∀ x ∈ List.range s.A.length, OptP (s.A[x]?) (fun z => z.origin = none → RHConvB s z) True
+
+/-- Decidability of `KB_rootHeldConv` (decision procedure for §57). -/
+instance (s : S3) : Decidable (KB_rootHeldConv s) := by
+  unfold KB_rootHeldConv; infer_instance
+
+/-- `WF3` (§49) is its bounded check, item by item. -/
+theorem wf3_iff_kb {s : S3} : WF3 s ↔ KB_frames s ∧ KB_places s ∧ KB_owners s ∧
+    KB_footprints s ∧ KB_origins s ∧ KB_rootChain s ∧ KB_rootHeld s ∧ KB_holders s := by
+  constructor
+  · intro hw
+    refine ⟨hw.frames, fun q _ => ?_, fun q _ => ?_, fun a _ => ?_, fun b _ => ?_, fun a _ => ?_,
+      fun r _ hr hu => ?_, fun a _ => ?_⟩
+    · cases hpl : s.P[q]? with
+      | none => trivial
+      | some pl =>
+        show OptP pl.parent _ True
+        cases hr : pl.parent with
+        | none => trivial
+        | some r =>
+          obtain ⟨pr, hpr, h1, h2, h3⟩ := hw.places q pl r hpl hr
+          show OptP (s.P[r]?) _ False
+          rw [hpr]; exact ⟨h1, h2, h3⟩
+    · cases hpl : s.P[q]? with
+      | none => trivial
+      | some pl =>
+        show OwnerOK s pl.owner
+        cases ho : pl.owner with
+        | frame f => exact hw.owners.1 q pl f hpl ho
+        | place o => exact hw.owners.2.1 q pl o hpl ho
+    · cases hx : s.A[a]? with
+      | none => trivial
+      | some x => exact hw.footprints a x hx
+    · cases hy : s.A[b]? with
+      | none => trivial
+      | some y =>
+        show OptP y.origin _ True
+        cases ho : y.origin with
+        | none => trivial
+        | some o => exact hw.origins b y o hy ho
+    · cases hy : s.A[a]? with
+      | none => trivial
+      | some y =>
+        intro l hl hleaf
+        obtain ⟨x, z, r, hx, hz, hzo, hr, hlr, hfp⟩ := hw.rootChain a y l hy hl hleaf
+        refine ⟨x, ?_, ?_⟩
+        · rcases hx with rfl | hx
+          · exact List.mem_cons_self ..
+          · exact List.mem_cons_of_mem _ hx
+        · rw [hz]
+          exact ⟨hzo, r, List.mem_range.2 hr.1, hr, hlr, fun l' h => (hfp l').1 h,
+            fun l' h => (hfp l').2 h⟩
+    · obtain ⟨j, z, pr, hz, za, zo, zm, hpr, hh, hfp⟩ := hw.rootHeld r hr hu
+      refine ⟨j, List.mem_range.2 (lt_of_getElem? hz), ?_⟩
+      rw [hz]
+      refine ⟨za, zo, zm, ?_, fun l h => (hfp l).1 h, fun l h => (hfp l).2 h⟩
+      show OptP (s.P[r]?) _ False
+      rw [hpr]; exact hh
+    · cases hy : s.A[a]? with
+      | none => trivial
+      | some y => exact hw.holders a y hy
+  · rintro ⟨hfr, hpl, how, hfp, hor, hrc, hrh, hho⟩
+    refine ⟨hfr, fun q pl r hq hr => ?_, ⟨fun q pl f hq hf => ?_, fun q pl o hq ho => ?_,
+      fun q hq => hq.frameOf⟩, fun a x hx l hl => ?_, fun b y a hy ho => ?_,
+      fun a y l hy hl hleaf => ?_, fun r hr hu => ?_, fun a y hy ha => ?_⟩
+    · have := hpl q (List.mem_range.2 (lt_of_getElem? hq))
+      rw [hq] at this; simp only [OptP, hr] at this
+      cases hpr : s.P[r]? with
+      | none => rw [hpr] at this; exact this.elim
+      | some pr => rw [hpr] at this; exact ⟨pr, rfl, this⟩
+    · have := how q (List.mem_range.2 (lt_of_getElem? hq))
+      rw [hq] at this; simp only [OptP, OwnerOK, hf] at this; exact this
+    · have := how q (List.mem_range.2 (lt_of_getElem? hq))
+      rw [hq] at this; simp only [OptP, OwnerOK, ho] at this; exact this
+    · have := hfp a (List.mem_range.2 (lt_of_getElem? hx))
+      rw [hx] at this; exact this l hl
+    · have := hor b (List.mem_range.2 (lt_of_getElem? hy))
+      rw [hy] at this; simp only [OptP, ho] at this; exact this
+    · have := hrc a (List.mem_range.2 (lt_of_getElem? hy))
+      rw [hy] at this
+      obtain ⟨x, hx, hz⟩ := this l hl hleaf
+      cases hzx : s.A[x]? with
+      | none => rw [hzx] at hz; exact hz.elim
+      | some z =>
+        rw [hzx] at hz
+        obtain ⟨hzo, r, -, hr, hlr, h1, h2⟩ := hz
+        exact ⟨x, z, r, (List.mem_cons.1 hx).imp id id, hzx, hzo, hr, hlr,
+          fun l' => ⟨h1 l', h2 l'⟩⟩
+    · obtain ⟨i, -, hz⟩ := hrh r (List.mem_range.2 hr.1) hr hu
+      cases hzi : s.A[i]? with
+      | none => rw [hzi] at hz; exact hz.elim
+      | some z =>
+        rw [hzi] at hz
+        obtain ⟨za, zo, zm, hpr, h1, h2⟩ := hz
+        cases hp : s.P[r]? with
+        | none => rw [hp] at hpr; exact hpr.elim
+        | some pr =>
+          rw [hp] at hpr
+          exact ⟨i, z, pr, hzi, za, zo, zm, rfl, hpr, fun l => ⟨h1 l, h2 l⟩⟩
+    · have := hho a (List.mem_range.2 (lt_of_getElem? hy))
+      rw [hy] at this; exact this ha
+
+/-- Decidability of `WF3` (§49), through its bounded check. -/
+instance (s : S3) : Decidable (WF3 s) := decidable_of_iff _ wf3_iff_kb.symm
+
+/-- `I1` (§50) is its bounded check. -/
+theorem i1_iff_kb {s : S3} : I1 s ↔ KB_i1 s := by
+  constructor
+  · intro h1 a _ b _
+    cases hx : s.A[a]? with
+    | none => trivial
+    | some x =>
+      show OptP (s.A[b]?) _ True
+      cases hy : s.A[b]? with
+      | none => trivial
+      | some y =>
+        intro hab xa ya ⟨p, hpx, hpy⟩ hba hab'
+        exact h1 a b x y p hab hx hy xa ya hpx hpy hba hab'
+  · intro h a b x y p hab hx hy xa ya hpx hpy hab' hba
+    have := h a (List.mem_range.2 (lt_of_getElem? hx)) b (List.mem_range.2 (lt_of_getElem? hy))
+    rw [hx] at this; simp only [OptP, hy] at this
+    exact this hab xa ya ⟨p, hpx, hpy⟩ hab' hba
+
+/-- Decidability of `I1` (§50), through its bounded check. -/
+instance (s : S3) : Decidable (I1 s) := decidable_of_iff _ i1_iff_kb.symm
+
+/-- `KInv ∧ KAux` with bounded quantifiers (§49–§54, §57; decision procedure). -/
+structure KInvB (s : S3) : Prop where
+  /-- §49.1. -/
+  frames : KB_frames s
+  /-- §49.2. -/
+  places : KB_places s
+  /-- §49.3. -/
+  owners : KB_owners s
+  /-- §49.4. -/
+  footprints : KB_footprints s
+  /-- §49.5. -/
+  origins : KB_origins s
+  /-- §49.6. -/
+  rootChain : KB_rootChain s
+  /-- §49.7. -/
+  rootHeld : KB_rootHeld s
+  /-- §49.8. -/
+  holders : KB_holders s
+  /-- §50. -/
+  i1 : KB_i1 s
+  /-- §51. -/
+  i2 : KB_i2 s
+  /-- §52. -/
+  i3 : KB_i3 s
+  /-- §44. -/
+  anchorOrder : KB_anchorOrder s
+  /-- §54, `NoDangling`. -/
+  noDangling : KB_noDangling s
+  /-- §44. -/
+  anchorOrderHeld : KB_anchorOrderHeld s
+  /-- `RootHeldConv` (§40, §49.7). -/
+  rootHeldConv : KB_rootHeldConv s
+
+/-- Decidability of `KInvB` (decision procedure for §49–§54, §57). -/
+instance (s : S3) : Decidable (KInvB s) :=
+  decidable_of_iff (KB_frames s ∧ KB_places s ∧ KB_owners s ∧ KB_footprints s ∧ KB_origins s ∧
+    KB_rootChain s ∧ KB_rootHeld s ∧ KB_holders s ∧ KB_i1 s ∧ KB_i2 s ∧ KB_i3 s ∧
+    KB_anchorOrder s ∧ KB_noDangling s ∧ KB_anchorOrderHeld s ∧ KB_rootHeldConv s)
+    ⟨fun ⟨a, b, c, d, e, f, g, h, i, j, l, m, n, o, q⟩ =>
+      ⟨a, b, c, d, e, f, g, h, i, j, l, m, n, o, q⟩,
+     fun ⟨a, b, c, d, e, f, g, h, i, j, l, m, n, o, q⟩ =>
+      ⟨a, b, c, d, e, f, g, h, i, j, l, m, n, o, q⟩⟩
+
+/-- Soundness of `KInvB` (decision procedure for §49–§54, §57): it gives `KInv ∧ KAux`. -/
+theorem KInvB.sound {s : S3} (h : KInvB s) : KInv s ∧ KAux s := by
+  have hw : WF3 s := wf3_iff_kb.2 ⟨h.frames, h.places, h.owners, h.footprints, h.origins,
+    h.rootChain, h.rootHeld, h.holders⟩
+  refine ⟨⟨hw, ⟨⟨i1_iff_kb.2 h.i1, fun b y a hy ho => ?_,
+    fun q hq x hx => h.i3 q (List.mem_range.2 hq.lt) hq x hx, i4_always s⟩, h.anchorOrder,
+    fun j y hy ya q hq l hl hly => ?_⟩, h.anchorOrderHeld, noOrphan_of_wf3 hw⟩,
+    fun x z l r hz hzo hl hr hlr => ?_⟩
+  · have := h.i2 b (List.mem_range.2 (lt_of_getElem? hy))
+    rw [hy] at this; simp only [OptP, ho] at this
+    cases hxa : s.A[a]? with
+    | none => rw [hxa] at this; exact this.elim
+    | some x => rw [hxa] at this; exact ⟨x, rfl, this⟩
+  · have := h.noDangling j (List.mem_range.2 (lt_of_getElem? hy))
+    rw [hy] at this
+    exact this ya q (List.mem_range.2 (footprint_lt hl)) hq l hl hly
+  · have := h.rootHeldConv x (List.mem_range.2 (lt_of_getElem? hz))
+    rw [hz] at this
+    have h' := this hzo l hl r (List.mem_range.2 hr.1) hr hlr
+    cases hp : s.P[r]? with
+    | none => rw [hp] at h'; exact h'.elim
+    | some pr => rw [hp] at h'; exact ⟨pr, rfl, h'⟩
 
 /-! ## O17 `newArena` (§76) and the guard of §56 -/
 
@@ -141,15 +553,12 @@ identities of its live entries. -/
 def liveInternals (s : S3) (arenas : List ArenaEntry) : List Nat :=
   (arenas.filter fun E => decide (s.Active E.internal)).map (·.internal)
 
-/-- Preconditions of `newArena(storage, internal)` other than the guard (§76.1–§76.3, §76.5).
-§76.6 is a precondition of §76 and is omitted here pending arbitration, since it has two readings:
-global (`NewArena766Global`: `WF3`, `I1`, `AnchorOrder` and `AnchorOrderHeld` of the state, and
-`ArenaInv` of every live entry) and local (`NewArena766Local`: their clauses at the storage, the
-arena value and `internal`, and `ArenaInv` of the new entry). Both hold when this structure holds
-on a `KInv` state (`newArena766Local_of_kinv`; `newArena766Global_of_kinv`, with `LInv`), but not on
-library-reachable states outside `KInv` (the §63 cycle): the model accepts `newArena` where the
-global reading fails and the local one holds (`Witness.newArena766_global_fails_local_holds`), and
-where both fail (`Witness.newArena766_local_fails`). -/
+/-- Preconditions of `newArena(storage, internal)` other than the guard (§76.1–§76.3, §76.5,
+§76.6). §76.6 is read on the resulting state (v0.1 §76.6): its kernel component is `s`, since
+`newArena` changes no kernel component (§76 `ok` effect, `newArena_kernel`), so `WF3`, `I1`,
+`AnchorOrder` and `AnchorOrderHeld` are required of the whole kernel state `s`; the new entry is
+the one `newArenaEff` registers, `available` holding the leaves of the storage and `issued`
+empty, and it must satisfy `ArenaInv` (§55). -/
 structure NewArenaBase (s : S3) (storage internal : Nat) : Prop where
   /-- §76.1: `storage` is an existing, usable place. -/
   storageUsable : s.Usable storage
@@ -167,6 +576,16 @@ structure NewArenaBase (s : S3) (storage internal : Nat) : Prop where
   fpSup : ∀ l ∈ footprint s.P storage, l ∈ s.afp internal
   /-- §76.5: all leaves of the arena value are already `Init`. -/
   valueInit : OptP (s.A[internal]?) (fun y => LeavesInit s y.holder) True
+  /-- §76.6: `WF3` (§49) over the whole kernel state of the resulting state. -/
+  wf3 : WF3 s
+  /-- §76.6: `I1` (§50) over the whole kernel state of the resulting state. -/
+  i1 : I1 s
+  /-- §76.6: `AnchorOrder` (§44) over the whole kernel state of the resulting state. -/
+  anchorOrder : AnchorOrder s
+  /-- §76.6: `AnchorOrderHeld` (§44) over the whole kernel state of the resulting state. -/
+  anchorOrderHeld : AnchorOrderHeld s
+  /-- §76.6: the new entry satisfies `ArenaInv` (§55). -/
+  arenaInv : ArenaInv s ⟨storage, internal, footprint s.P storage, []⟩
 
 /-- Decidability of `NewArenaBase` (§76). -/
 instance (s : S3) (storage internal : Nat) : Decidable (NewArenaBase s storage internal) :=
@@ -176,9 +595,11 @@ instance (s : S3) (storage internal : Nat) : Decidable (NewArenaBase s storage i
     OptP (s.A[internal]?) (fun y => y.holder.isPlace = true) False ∧
     (∀ l ∈ s.afp internal, l ∈ footprint s.P storage) ∧
     (∀ l ∈ footprint s.P storage, l ∈ s.afp internal) ∧
-    OptP (s.A[internal]?) (fun y => LeavesInit s y.holder) True)
-    ⟨fun ⟨a, b, c, d, e, f, g, h⟩ => ⟨a, b, c, d, e, f, g, h⟩,
-     fun ⟨a, b, c, d, e, f, g, h⟩ => ⟨a, b, c, d, e, f, g, h⟩⟩
+    OptP (s.A[internal]?) (fun y => LeavesInit s y.holder) True ∧
+    WF3 s ∧ I1 s ∧ AnchorOrder s ∧ AnchorOrderHeld s ∧
+    ArenaInv s ⟨storage, internal, footprint s.P storage, []⟩)
+    ⟨fun ⟨a, b, c, d, e, f, g, h, i, j, l, m, n⟩ => ⟨a, b, c, d, e, f, g, h, i, j, l, m, n⟩,
+     fun ⟨a, b, c, d, e, f, g, h, i, j, l, m, n⟩ => ⟨a, b, c, d, e, f, g, h, i, j, l, m, n⟩⟩
 
 /-- Preconditions of `newArena(storage, internal)` (§76): those of `NewArenaBase` and the guard of
 §76.4 over the arena registry and the other registries `others` (§56). -/
@@ -331,10 +752,12 @@ inductive IssueD (k : K) (i : Nat) (region : List Nat) (dst : Nat) (L : LState) 
 
 /-! ## O19 `reset` (§78) -/
 
-/-- §78.3: no still-usable place depends on an anchor in the strict origin subtree of
-`internal`. Dependencies of contained values are covered since parts are places. -/
+/-- §78.3 (v0.1): no still-usable place depends on an anchor in the strict origin subtree of
+`internal` that covers a leaf of the administered storage. Dependencies of contained values are
+covered since parts are places. -/
 def ResetNoDeps (s : S3) (E : ArenaEntry) : Prop :=
-  ∀ q ∈ List.range s.P.length, s.Usable q → ∀ x ∈ s.D q, E.internal ∉ s.ancs x
+  ∀ q ∈ List.range s.P.length, s.Usable q → ∀ x ∈ s.D q, E.internal ∈ s.ancs x →
+    ∀ l ∈ s.afp x, l ∉ footprint s.P E.storage
 
 /-- Decidability of `ResetNoDeps` (§78.3). -/
 instance (s : S3) (E : ArenaEntry) : Decidable (ResetNoDeps s E) := by
@@ -351,7 +774,8 @@ structure ResetPre (s : S3) (E : ArenaEntry) : Prop where
   /-- §78.2: no active authority derived from `internal` covers a leaf of the storage. -/
   noCover : ∀ j ∈ List.range s.A.length, E.internal ∈ s.ancs j → s.Active j →
     ∀ l ∈ s.afp j, l ∉ footprint s.P E.storage
-  /-- §78.3: no usable place depends on an anchor in the strict origin subtree of `internal`. -/
+  /-- §78.3: no usable place depends on an anchor in the strict origin subtree of `internal`
+  covering a leaf of the storage. -/
   noDeps : ResetNoDeps s E
 
 /-- Decidability of `ResetPre` (§78). -/
@@ -813,11 +1237,12 @@ theorem arrival_iff_store {s : S3} {E : ArenaEntry} {region : List Nat} {dst : N
     rw [← heq] at h1 h2 h3
     exact ⟨h1, h2, h3⟩
 
-/-- `issue_as_kernel` (Part XIV, §77, §58): on a state satisfying the kernel invariant, when the
-entry satisfies `ArenaInv` if live, the contract of `issue` and the derived operation (`split` then
-`store`) have the same outcomes, `ok`, `fail` and `reject`, with the same arrival state, kernel part
-included (literal equality, `issueKEff_eq`). -/
-theorem issue_as_kernel (k : K) {L : LState} {i : Nat} {region : List Nat} {dst : Nat}
+/-- `issue` as its kernel sequence, per step (Part XIV, §77, §58): on a state satisfying the
+kernel invariant, when the entry satisfies `ArenaInv` if live, the contract of `issue` and the
+derived operation (`split` then `store`) have the same outcomes, `ok`, `fail` and `reject`, with
+the same arrival state, kernel part included (literal equality, `issueKEff_eq`). On
+library-reachable states the hypotheses hold (`issue_as_kernel`). -/
+theorem issue_as_kernel_of_inv (k : K) {L : LState} {i : Nat} {region : List Nat} {dst : Nat}
     (hk : KInv L.kern)
     (hai : ∀ E, L.arenas[i]? = some E → Live L.kern E → ArenaInv L.kern E)
     (o : Outcome3 LState) : IssueC i region dst L o ↔ IssueD k i region dst L o := by
@@ -898,11 +1323,42 @@ theorem release_after_derive {s : S3} {src : Nat} {R : List Nat} {m : Mode} (h3 
       h3 q ((S3.Usable.congr (s := s) (s' := deriveEff s src R m) rfl rfl rfl).1 hq) _ hx
     have := lt_of_getElem? hz; omega
 
-/-- Under `WF3`, `I1` and `ArenaInv` of a live entry, the preconditions of `reset` are exactly
-the preconditions of `derive` of `internal` at `Modify` over the storage (§60) and the explicit
-check of §78.3: §78.1 is §60.1 (`metaRight_iff`), §78.2 is §60.2 (effective `Modify` on every
-leaf of the storage), §60.3 follows from I1. -/
-theorem resetPre_iff {s : S3} {E : ArenaEntry} (hw : WF3 s) (h1 : I1 s)
+/-- §60.2 for `derive` of `internal` at `Modify` over the storage gives §78.2: an active
+derivative of `internal` covering a leaf of the storage would take the effective `Modify` of
+`internal` on that leaf away (§43, case 3). -/
+theorem noCover_of_derive {s : S3} {E : ArenaEntry}
+    (hd : DerivePre s E.internal (footprint s.P E.storage) .modify) :
+    ∀ j ∈ List.range s.A.length, E.internal ∈ s.ancs j → s.Active j →
+      ∀ l ∈ s.afp j, l ∉ footprint s.P E.storage := by
+  intro j _ ha hja l hl hls
+  obtain ⟨y, hy, ya⟩ := hja
+  have hly : l ∈ y.footprint := by simpa [S3.afp, hy] using hl
+  exact no_desc_of_modify hy ya hly ha (allows_modify_iff.1 (hd.modeOK l hls))
+
+/-- v0.1 §78.3, second sentence: under precondition 2 of §78 and invariant I3 (§52; a valid
+anchor is an active one, §51), §78.3 holds. An anchor of a usable place is active (I3), so an
+anchor in the strict origin subtree of `internal` covering a leaf of the storage would be an
+active derivative of `internal` covering that leaf, which §78.2 excludes. -/
+theorem resetNoDeps_of_noCover {s : S3} {E : ArenaEntry} (h3 : I3 s)
+    (h2 : ∀ j ∈ List.range s.A.length, E.internal ∈ s.ancs j → s.Active j →
+      ∀ l ∈ s.afp j, l ∉ footprint s.P E.storage) : ResetNoDeps s E := by
+  intro q _ hq x hx hix l hl hls
+  obtain ⟨y, hy, ya⟩ := h3 q hq x hx
+  exact h2 x (List.mem_range.2 (lt_of_getElem? hy)) hix ⟨y, hy, ya⟩ l hl hls
+
+/-- On states satisfying I3, the explicit check of §78.3 in `ResetD` never rejects after an
+accepted `derive` of `internal` over the storage (v0.1 §78.3, second sentence;
+`noCover_of_derive`, `resetNoDeps_of_noCover`): the derived `reset` is its kernel sequence. -/
+theorem resetNoDeps_of_derive {s : S3} {E : ArenaEntry} (h3 : I3 s)
+    (hd : DerivePre s E.internal (footprint s.P E.storage) .modify) : ResetNoDeps s E :=
+  resetNoDeps_of_noCover h3 (noCover_of_derive hd)
+
+/-- Under `WF3`, `I1`, `I2` and `ArenaInv` of a live entry, the preconditions of `reset` are
+exactly the preconditions of `derive` of `internal` at `Modify` over the storage (§60) and the
+explicit check of §78.3: §78.1 is §60.1 (`metaRight_iff`; the origin chain of the active `internal`
+is active by I2, §51), §78.2 is §60.2 (effective `Modify` on every leaf of the storage), §60.3
+follows from I1. -/
+theorem resetPre_iff {s : S3} {E : ArenaEntry} (hw : WF3 s) (h1 : I1 s) (h2 : I2 s)
     (hai : Live s E → ArenaInv s E) :
     ResetPre s E ↔
       DerivePre s E.internal (footprint s.P E.storage) .modify ∧ ResetNoDeps s E := by
@@ -923,7 +1379,7 @@ theorem resetPre_iff {s : S3} {E : ArenaEntry} (hw : WF3 s) (h1 : I1 s)
           (by simp [S3.afp, hy, hly]) hl
       rw [effective_eq hyi yia (hli l hl), hd]
       simp [effOf, hsh.1, Allows, OptP, Mode.le]
-    refine ⟨⟨⟨yi, hyi, yia⟩, (metaRight_iff hA).1 hp.metaRight,
+    refine ⟨⟨⟨yi, hyi, yia⟩, (metaRight_iff hA).1 hp.metaRight, h2.ancs_active ⟨yi, hyi, yia⟩,
       fun l hl => (mem_footprint.1 hl).elim fun h h' => ⟨h, h'.1⟩,
       fun l hl => (hA.fpEq l).2 hl, hmod, fun b _ => ?_, top_mem hw.frames.1⟩, hp.noDeps⟩
     unfold OptP; split
@@ -936,22 +1392,19 @@ theorem resetPre_iff {s : S3} {E : ArenaEntry} (hw : WF3 s) (h1 : I1 s)
     · trivial
   · rintro ⟨hd, h3⟩
     have hA := hai hd.active
-    refine ⟨hd.active, (metaRight_iff hA).2 hd.exercisable,
-      fun j _ ha hja l hl hls => ?_, h3⟩
-    obtain ⟨y, hy, ya⟩ := hja
-    have hly : l ∈ y.footprint := by simpa [S3.afp, hy] using hl
-    exact no_desc_of_modify hy ya hly ha (allows_modify_iff.1 (hd.modeOK l hls))
+    exact ⟨hd.active, (metaRight_iff hA).2 hd.exercisable, noCover_of_derive hd, h3⟩
 
-/-- `reset_as_kernel` (Part XIV, §78, §58): on a state satisfying the kernel invariant, when the
-entry satisfies `ArenaInv` if live, the contract of `reset` and the derived operation (`derive`
-then `release`, then the explicit check of §78.3) have the same outcomes, `ok` and `reject`, with
-the same arrival state, kernel part included (literal equality, `resetKEff_eq`). §78.3 is the only
-clause that the kernel sequence does not give (`reset_clause3_not_implied`). -/
-theorem reset_as_kernel {L : LState} {i : Nat} (hk : KInv L.kern)
+/-- `reset` as its kernel sequence, per step (Part XIV, §78, §58): on a state satisfying the
+kernel invariant, when the entry satisfies `ArenaInv` if live, the contract of `reset` and the
+derived operation (`derive` then `release`, then the explicit check of §78.3) have the same
+outcomes, `ok` and `reject`, with the same arrival state, kernel part included (literal equality,
+`resetKEff_eq`). On library-reachable states the hypotheses hold (`reset_as_kernel`). -/
+theorem reset_as_kernel_of_inv {L : LState} {i : Nat} (hk : KInv L.kern)
     (hai : ∀ E, L.arenas[i]? = some E → Live L.kern E → ArenaInv L.kern E)
     (o : Outcome3 LState) : ResetC i L o ↔ ResetD i L o := by
   have hw := hk.1
   have h1 := hk.2.1.1.1
+  have h2 := hk.2.1.1.2.1
   have h3 := hk.2.1.1.2.2.1
   have e : ∀ E, resetL L i E = ⟨releaseEff (deriveEff L.kern E.internal
       (footprint L.kern.P E.storage) .modify) L.kern.A.length,
@@ -962,12 +1415,12 @@ theorem reset_as_kernel {L : LState} {i : Nat} (hk : KInv L.kern)
     cases h with
     | noEntry h0 => exact .noEntry h0
     | @reject E hE hn =>
-      have hiff := resetPre_iff hw h1 (hai E hE)
+      have hiff := resetPre_iff hw h1 h2 (hai E hE)
       by_cases hd : DerivePre L.kern E.internal (footprint L.kern.P E.storage) .modify
       · exact .contract hE (.ok hd) (.ok (release_after_derive h3)) fun h3' => hn (hiff.2 ⟨hd, h3'⟩)
       · exact .derive hE (.reject hd)
     | @ok E hE hp =>
-      obtain ⟨hd, h3'⟩ := (resetPre_iff hw h1 (hai E hE)).1 hp
+      obtain ⟨hd, h3'⟩ := (resetPre_iff hw h1 h2 (hai E hE)).1 hp
       rw [e E]
       exact .ok hE (.ok hd) (.ok (release_after_derive h3)) h3'
   · intro h
@@ -975,17 +1428,17 @@ theorem reset_as_kernel {L : LState} {i : Nat} (hk : KInv L.kern)
     | noEntry h0 => exact .noEntry h0
     | @derive E hE hd =>
       exact .reject hE fun hp =>
-        Guarded.reject_iff.1 hd ((resetPre_iff hw h1 (hai E hE)).1 hp).1
+        Guarded.reject_iff.1 hd ((resetPre_iff hw h1 h2 (hai E hE)).1 hp).1
     | @release E s₁ hE hd hr =>
       obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hd
       exact absurd (release_after_derive h3) (Guarded.reject_iff.1 hr)
     | @contract E s₁ s₂ hE hd _ hn =>
-      exact .reject hE fun hp => hn ((resetPre_iff hw h1 (hai E hE)).1 hp).2
+      exact .reject hE fun hp => hn ((resetPre_iff hw h1 h2 (hai E hE)).1 hp).2
     | @ok E s₁ s₂ hE hd hr h3' =>
       obtain ⟨hd', rfl⟩ := Guarded.ok_iff.1 hd
       obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hr
       rw [← e E]
-      exact .ok hE ((resetPre_iff hw h1 (hai E hE)).2 ⟨hd', h3'⟩)
+      exact .ok hE ((resetPre_iff hw h1 h2 (hai E hE)).2 ⟨hd', h3'⟩)
 
 /-! ## Effects of `issue` and `reset` (§77, §78) -/
 
@@ -1013,6 +1466,30 @@ theorem issue_effect {k : K} {L L' : LState} {i : Nat} {region : List Nat} {dst 
   · simp [issueKEff, hl]
   · simp [issueKEff]
   · simp [issueKEff, hq]
+
+/-- v0.1 §86 (initialization state): an accepted derived `issue` leaves the initialization state of
+every leaf of the issued region unchanged, so a reissued leaf keeps its initialization state. Only
+leaf `destination` becomes `Init` (§77 `ok` effect), and it is not in the region (§77.2). -/
+theorem issue_keeps_init {k : K} {L L' : LState} {i : Nat} {region : List Nat} {dst : Nat}
+    (hs : IssueD k i region dst L (.ok L')) : ∀ l ∈ region, L'.kern.I l = L.kern.I l := by
+  cases hs with
+  | @ok E s₁ s₂ hE hst _ hsp hsto =>
+    intro l hl
+    obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hsp
+    obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hsto
+    rw [← issueKEff_eq]
+    have hne : l ≠ dst := fun h => hst.dstNotIn (h ▸ hl)
+    simp [issueKEff, hne]
+
+/-- v0.1 §86 (initialization state) for the contract of `issue` (§77): an `ok` leaves the
+initialization state of every leaf of the issued region unchanged. -/
+theorem issueC_keeps_init {L L' : LState} {i : Nat} {region : List Nat} {dst : Nat}
+    (hs : IssueC i region dst L (.ok L')) : ∀ l ∈ region, L'.kern.I l = L.kern.I l := by
+  cases hs with
+  | ok _ hst _ _ _ =>
+    intro l hl
+    have hne : l ≠ dst := fun h => hst.dstNotIn (h ▸ hl)
+    simp [issueL, issueKEff, hne]
 
 /-- The `ok` effect of the derived `reset` of entry `i` (§78): the kernel state is `resetKEff`
 (`resetKEff_eq`), which adds only an inactive record: places, initialization ("no leaf is made
@@ -1476,34 +1953,11 @@ theorem entryInv_append {s s' : S3} {E : ArenaEntry} {l : List Authority} (h : E
   entryInv_transport h (akeep_append hA) (fun _ => by rw [hP])
     ((S3.Usable.congr hP hF hd).2 h.1.storageUsable) hlive
 
-/-- A live entry registered by `newArena` satisfies `EntryInv` (§55 from §76.1–§76.3; the
-"expected arena invariants" of §76.6). -/
+/-- A live entry registered by `newArena` satisfies `EntryInv`: `ArenaInv` by §76.6 (§55), and
+`IssuedShape` since nothing is issued. -/
 theorem newEntry_inv {s : S3} {st i : Nat} (h : NewArenaBase s st i) :
-    EntryInv s ⟨st, i, footprint s.P st, []⟩ := by
-  have hia := h.internalAuth
-  have hpl := h.heldByPlace
-  cases hy : s.A[i]? with
-  | none => rw [hy] at hia; exact hia.elim
-  | some y =>
-    rw [hy] at hia hpl
-    refine ⟨⟨h.storageUsable, fun l => ⟨h.fpSub l, h.fpSup l⟩, ⟨y, hy, hia.1⟩, ?_,
-      fun l hl => hl, fun _ he => (by cases he), fun _ he => (by cases he),
-      fun _ he => (by cases he), fun _ he => (by cases he)⟩, fun _ he => (by cases he)⟩
-    show OptP (s.A[i]?) _ False
-    rw [hy]; exact ⟨hia.2, hpl⟩
-
-/-- On states satisfying the kernel invariant, the kernel predicates listed by §76.6 hold before
-registration, which changes no kernel component, and the new entry satisfies `ArenaInv` (§76.6,
-§57, §55). §76.6 is not redundant in general: it is omitted from `NewArenaBase` pending
-arbitration between its global reading `NewArena766Global` and its local reading
-`NewArena766Local`. On library-reachable states outside `KInv` the model accepts `newArena` where
-the global reading fails and the local one holds (`Witness.newArena766_global_fails_local_holds`),
-and where both fail (`Witness.newArena766_local_fails`). Generalized to both readings by
-`newArena766Global_of_kinv` and `newArena766Local_of_kinv`. -/
-theorem newArena_clause6 {s : S3} {st i : Nat} (hk : KInv s) (h : NewArenaBase s st i) :
-    WF3 s ∧ I1 s ∧ AnchorOrder s ∧ AnchorOrderHeld s ∧
-      ArenaInv s ⟨st, i, footprint s.P st, []⟩ :=
-  ⟨hk.1, hk.2.1.1.1, hk.2.1.2.1, hk.2.2.1, (newEntry_inv h).1⟩
+    EntryInv s ⟨st, i, footprint s.P st, []⟩ :=
+  ⟨h.arenaInv, fun _ he => by cases he⟩
 
 /-- `newArena` without the guard preserves the library invariant (§55, §76). -/
 theorem lInv_newArena {L : LState} {st i : Nat} (h : NewArenaBase L.kern st i) (hi : LInv L) :
@@ -1644,34 +2098,48 @@ theorem lInv_stepNG {k : K} {L L' : LState} (h : LStepNG k L L') (hw : WF3 L.ker
   | issue hs => exact lInv_issue hs hi
   | reset hs => exact lInv_reset hs hi
 
-/-- Conditional `ArenaInv` (§55) on library runs with or without the guard of §56: every live
-entry of a reachable library state satisfies `EntryInv`, **provided** every kernel-reachable state
-satisfies `WF3` and `NoDangling` (`hK`). `hK` is part of the main-invariant claim of §57, which is
-false as stated (`Access.reachable_kinv_false`, the §63 ownership cycle). At `(K0, st)`, the
-instance of every witness of this file, both `hK` (`Witness.lReach_inv_hyp_false`) and the
-conclusion (`Witness.lReach_inv_conclusion_false`, `Witness.arenaInv_broken_by_transfer`) are
-false. This theorem is therefore a conditional, not a proof that `ArenaInv` is preserved on
-library runs. Only `lInv_newArena`, `lInv_issue` and `lInv_reset` hold with no kernel
-hypothesis; `lInv_kernel` and `lInv_stepNG` take the per-step instances of `hK` (`WF3` before,
-`NoDangling` after), which the breaking `transfer` of `Witness.arenaInv_broken_by_transfer`
-violates. -/
-theorem lReachNG_inv {k : K} {statics : Statics}
-    (hK : ∀ s, Reachable k statics s → WF3 s ∧ NoDangling s) {L : LState}
-    (h : LReachNG k statics L) : LInv L := by
+/-- `ArenaInv` (§55) on library runs, with or without the guard of §56: in every library state
+reachable under `DDSound` (§80) and `StaticsOK` (§47), every registered `internal` exists and
+every live entry satisfies `EntryInv`. The kernel states of such runs are kernel-reachable
+(`LReachNG.reachable`), so they satisfy `WF3` and `NoDangling` (`Access.reachable_kinv`, §57),
+which `lInv_stepNG` asks of them. -/
+theorem lReachNG_inv {k : K} {statics : Statics} (hdd : DDSound k) (hst : StaticsOK statics)
+    {L : LState} (h : LReachNG k statics L) : LInv L := by
   induction h with
   | init => intro E hE; cases hE
-  | step hL hs ih => exact lInv_stepNG hs (hK _ hL.reachable).1 (hK _ (hL.step hs).reachable).2 ih
+  | step hL hs ih =>
+    exact lInv_stepNG hs (reachable_kinv hdd hst hL.reachable).1
+      (reachable_kinv hdd hst (hL.step hs).reachable).2.1.2.2 ih
 
-/-- Conditional `ArenaInv` (§55) on library-reachable states: every live entry satisfies
-`ArenaInv`, **provided** every kernel-reachable state satisfies `WF3` and `NoDangling` (`hK`, part
-of the §57 claim, false as stated: `Access.reachable_kinv_false`). At `(K0, st)` both `hK` and
-the conclusion are false (`Witness.lReach_inv_hyp_false`, `Witness.lReach_inv_conclusion_false`):
-an accepted `transfer` (§63) makes the storage of a live arena unusable
-(`Witness.arenaInv_broken_by_transfer`). A conditional only (see `lReachNG_inv`). -/
-theorem lReach_inv {k : K} {statics : Statics}
-    (hK : ∀ s, Reachable k statics s → WF3 s ∧ NoDangling s) {L : LState}
-    (h : LReach k statics L) : ∀ E ∈ L.arenas, Live L.kern E → ArenaInv L.kern E :=
-  fun E hE hl => ((lReachNG_inv hK h.ng E hE).2 hl).1
+/-- `ArenaInv` (§55) on library-reachable states: under `DDSound` (§80) and `StaticsOK` (§47),
+every live entry of a library-reachable state satisfies `ArenaInv` (`lReachNG_inv`). -/
+theorem lReach_inv {k : K} {statics : Statics} (hdd : DDSound k) (hst : StaticsOK statics)
+    {L : LState} (h : LReach k statics L) : ∀ E ∈ L.arenas, Live L.kern E → ArenaInv L.kern E :=
+  fun E hE hl => ((lReachNG_inv hdd hst h.ng E hE).2 hl).1
+
+/-- `issue_as_kernel` (Part XIV, §77, §58): on every library-reachable state, under `DDSound`
+(§80) and `StaticsOK` (§47), the contract of `issue` and the derived operation (`split` then
+`store`) have the same outcomes, `ok`, `fail` and `reject`, with the same arrival state, kernel
+part included (literal equality, `issueKEff_eq`). The kernel invariant
+(`Access.reachable_kinv`) and `ArenaInv` of the entry (`lReach_inv`) hold there. -/
+theorem issue_as_kernel {k : K} {statics : Statics} (hdd : DDSound k) (hst : StaticsOK statics)
+    {L : LState} (hr : LReach k statics L) {i : Nat} {region : List Nat} {dst : Nat}
+    (o : Outcome3 LState) : IssueC i region dst L o ↔ IssueD k i region dst L o :=
+  issue_as_kernel_of_inv k (reachable_kinv hdd hst hr.ng.reachable)
+    (fun E hE hl => lReach_inv hdd hst hr E (List.mem_of_getElem? hE) hl) o
+
+/-- `reset_as_kernel` (Part XIV, §78, §58): on every library-reachable state, under `DDSound`
+(§80) and `StaticsOK` (§47), the contract of `reset` and the derived operation (`derive` then
+`release`, then the explicit check of §78.3) have the same outcomes, `ok` and `reject`, with the
+same arrival state, kernel part included (literal equality, `resetKEff_eq`). The kernel invariant
+(`Access.reachable_kinv`) and `ArenaInv` of the entry (`lReach_inv`) hold there; by I3 the check
+of §78.3 never rejects after an accepted `derive` (`resetNoDeps_of_derive`), so the derived
+operation is the kernel sequence `derive` then `release`. -/
+theorem reset_as_kernel {k : K} {statics : Statics} (hdd : DDSound k) (hst : StaticsOK statics)
+    {L : LState} (hr : LReach k statics L) {i : Nat} (o : Outcome3 LState) :
+    ResetC i L o ↔ ResetD i L o :=
+  reset_as_kernel_of_inv (reachable_kinv hdd hst hr.ng.reachable)
+    (fun E hE hl => lReach_inv hdd hst hr E (List.mem_of_getElem? hE) hl) o
 
 /-! ## Safe reuse after `reset` (§78, §86) -/
 
@@ -1749,10 +2217,11 @@ theorem arena_reuse_safe {k : K} {L L₁ L₂ : LState} {i : Nat} {E : ArenaEntr
   | base hy ha => exact ⟨_, hy, ha⟩
   | held hy ha => exact ⟨_, hy, ha⟩
 
-/-- `arena_reuse_safe` for the issued blocks (§78, §86): after a legal `reset` of a live entry
-satisfying `EntryInv`, no block issued before it on a nonempty region is active or exercisable in
-any continuation of the library run. -/
-theorem arena_reuse_safe_issued {k : K} {L L₁ L₂ : LState} {i : Nat} {E : ArenaEntry}
+/-- `arena_reuse_safe` for the issued blocks, per step (§78, §86): after a legal `reset` of a live
+entry satisfying `EntryInv`, no block issued before it on a nonempty region is active or
+exercisable in any continuation of the library run. On library-reachable states the hypothesis
+holds (`arena_reuse_safe_issued`). -/
+theorem arena_reuse_safe_issued_of_inv {k : K} {L L₁ L₂ : LState} {i : Nat} {E : ArenaEntry}
     (hE : L.arenas[i]? = some E) (hinv : EntryInv L.kern E) (hr : ResetD i L (.ok L₁))
     (hrun : LRun k L₁ L₂) :
     ∀ e ∈ E.issued, e.1 ≠ [] → ¬ L₂.kern.Active e.2 ∧ ∀ m, ¬ L₂.kern.ExercisableAt e.2 m := by
@@ -1764,25 +2233,44 @@ theorem arena_reuse_safe_issued {k : K} {L L₁ L₂ : LState} {i : Nat} {E : Ar
   exact arena_reuse_safe hE hr hrun hj
     ⟨l, by simp [S3.afp, hy, hf, hl], hinv.1.issuedIn e he l hl⟩
 
-/-- `ArenaInv` is preserved by an `ok` of the contract of `issue` (§55, §77), on a state satisfying
-the kernel invariant (through `issue_as_kernel`). -/
-theorem lInv_issueC (k : K) {L L' : LState} {i : Nat} {region : List Nat} {dst : Nat}
-    (hk : KInv L.kern) (hs : IssueC i region dst L (.ok L')) (hi : LInv L) : LInv L' :=
-  lInv_issue ((issue_as_kernel k hk (fun E hE hl => ((hi E (List.mem_of_getElem? hE)).2 hl).1)
-    _).1 hs) hi
+/-- `arena_reuse_safe` for the issued blocks (§78, §86): after a legal `reset` of an entry of a
+library-reachable state, under `DDSound` (§80) and `StaticsOK` (§47), no block issued before it
+on a nonempty region is active or exercisable in any continuation of the library run. The entry is
+live (§78.1, through §60.1) and satisfies `EntryInv` there (`lReachNG_inv`). -/
+theorem arena_reuse_safe_issued {k : K} {statics : Statics} (hdd : DDSound k)
+    (hst : StaticsOK statics) {L L₁ L₂ : LState} (hL : LReach k statics L) {i : Nat}
+    {E : ArenaEntry} (hE : L.arenas[i]? = some E) (hr : ResetD i L (.ok L₁))
+    (hrun : LRun k L₁ L₂) :
+    ∀ e ∈ E.issued, e.1 ≠ [] → ¬ L₂.kern.Active e.2 ∧ ∀ m, ¬ L₂.kern.ExercisableAt e.2 m := by
+  have hlive : Live L.kern E := by
+    cases hr with
+    | @ok E' _ _ hE' hd _ _ =>
+      rw [hE] at hE'; cases hE'
+      exact (Guarded.ok_iff.1 hd).1.active
+  exact arena_reuse_safe_issued_of_inv hE
+    ((lReachNG_inv hdd hst hL.ng E (List.mem_of_getElem? hE)).2 hlive) hr hrun
 
-/-- `ArenaInv` is preserved by an `ok` of the contract of `reset` (§55, §78), on a state satisfying
-the kernel invariant (through `reset_as_kernel`). -/
-theorem lInv_resetC {L L' : LState} {i : Nat} (hk : KInv L.kern) (hs : ResetC i L (.ok L'))
-    (hi : LInv L) : LInv L' :=
-  lInv_reset ((reset_as_kernel hk (fun E hE hl => ((hi E (List.mem_of_getElem? hE)).2 hl).1)
-    _).1 hs) hi
+/-- `ArenaInv` (§55) after an `ok` of the contract of `issue` (§77) from a library-reachable state,
+under `DDSound` (§80) and `StaticsOK` (§47): the arrival state is library-reachable through the
+derived operation (`issue_as_kernel`). -/
+theorem lInv_issueC {k : K} {statics : Statics} (hdd : DDSound k) (hst : StaticsOK statics)
+    {L L' : LState} (hr : LReach k statics L) {i : Nat} {region : List Nat} {dst : Nat}
+    (hs : IssueC i region dst L (.ok L')) : LInv L' :=
+  lReachNG_inv hdd hst (hr.step (.issue ((issue_as_kernel hdd hst hr _).1 hs))).ng
 
-/-- "Through `derive` or `split`" (Part XIV): under `WF3` and `I1`, `derive` at `Modify` of `src`
-on a region of existing leaves and `split` of `src` on that one region have the same preconditions
-(§60, §61) and the same effect (`deriveEff_eq_split`). -/
+/-- `ArenaInv` (§55) after an `ok` of the contract of `reset` (§78) from a library-reachable state,
+under `DDSound` (§80) and `StaticsOK` (§47): the arrival state is library-reachable through the
+derived operation (`reset_as_kernel`). -/
+theorem lInv_resetC {k : K} {statics : Statics} (hdd : DDSound k) (hst : StaticsOK statics)
+    {L L' : LState} (hr : LReach k statics L) {i : Nat} (hs : ResetC i L (.ok L')) : LInv L' :=
+  lReachNG_inv hdd hst (hr.step (.reset ((reset_as_kernel hdd hst hr _).1 hs))).ng
+
+/-- "Through `derive` or `split`" (Part XIV): under `WF3`, `I1` and `I2`, `derive` at `Modify` of
+`src` on a region of existing leaves and `split` of `src` on that one region have the same
+preconditions (§60, §61) and the same effect (`deriveEff_eq_split`). I2 (§51) gives the active
+origin chain that §60.1 asks of `derive` and §61.1 does not list. -/
 theorem derive_iff_split (k : K) {s : S3} {src : Nat} {R : List Nat} (hw : WF3 s) (h1 : I1 s)
-    (hR : ∀ l ∈ R, l < s.P.length ∧ isLeaf s.P l) :
+    (h2 : I2 s) (hR : ∀ l ∈ R, l < s.P.length ∧ isLeaf s.P l) :
     DerivePre s src R .modify ↔ SplitPre k s src [R] := by
   constructor
   · intro hd
@@ -1805,7 +2293,7 @@ theorem derive_iff_split (k : K) {s : S3} {src : Nat} {R : List Nat} (hw : WF3 s
       fun p hq => hp.modifyOn R (List.mem_singleton_self _) p hq
     have hal : ∀ p ∈ R, Allows (effective s src p) .modify :=
       fun p hq => by rw [hm p hq]; exact allows_some_modify _
-    refine ⟨hp.active, hp.exercisable, hR,
+    refine ⟨hp.active, hp.exercisable, h2.ancs_active hp.active, hR,
       fun l hl => (hp.within R (List.mem_singleton_self _) l hl).1, hal, fun b _ => ?_,
       top_mem hw.frames.1⟩
     unfold OptP; split
@@ -1937,519 +2425,12 @@ theorem live_internal_unique {k : K} {statics : Statics} {L : LState}
     | step _ hs ih => exact unique56_step hs ih.1 ih.2
   exact this.2
 
-/-! ## A decision procedure for the kernel invariant on concrete states (§49–§54, §57)
-
-`KInvB` restates `KInv ∧ KAux` with every quantifier bounded by the lists of the state, so that
-`decide` evaluates it on the concrete states of the witnesses below; `KInvB.sound` derives
-`KInv ∧ KAux`. -/
-
-/-- A leaf of the footprint of `q` makes `q` an existing place (§40). -/
-theorem footprint_lt {P : List Place} {q l : Nat} (h : l ∈ footprint P q) : q < P.length := by
-  obtain ⟨hl, -, -, hlq⟩ := mem_footprint.1 h
-  rcases hlq with rfl | hc
-  · exact hl
-  · exact Nat.lt_trans (chain_lt hc) hl
-
-/-- The footprint of the authority record `z` is the footprint of place `r` (§49.6, §49.7). -/
-def FpIs (s : S3) (z : Authority) (r : Nat) : Prop :=
-  (∀ l ∈ z.footprint, l ∈ footprint s.P r) ∧ ∀ l ∈ footprint s.P r, l ∈ z.footprint
-
-/-- Decidability of `FpIs` (§49.6). -/
-instance (s : S3) (z : Authority) (r : Nat) : Decidable (FpIs s z r) := by
-  unfold FpIs; infer_instance
-
-/-- The record `z` is a root authority for the root place of leaf `l` (§49.6). -/
-def RootFor (s : S3) (l : Nat) (z : Authority) : Prop :=
-  z.origin = none ∧ ∃ r ∈ List.range s.P.length, RootPlace s.P r ∧ partOf s.P l r ∧ FpIs s z r
-
-/-- Decidability of `RootFor` (§49.6). -/
-instance (s : S3) (l : Nat) (z : Authority) : Decidable (RootFor s l z) := by
-  unfold RootFor; infer_instance
-
-/-- The origin chain of `a` reaches a root authority for the root place of leaf `l`
-(§49.6). -/
-def ChainRoot (s : S3) (a l : Nat) : Prop :=
-  ∃ x ∈ a :: s.ancs a, OptP (s.A[x]?) (RootFor s l) False
-
-/-- Decidability of `ChainRoot` (§49.6). -/
-instance (s : S3) (a l : Nat) : Decidable (ChainRoot s a l) := by
-  unfold ChainRoot; infer_instance
-
-/-- The record `z` is the active root `Modify` authority of root place `r`, held by its owner
-(§49.7). -/
-def RootAuth (s : S3) (r : Nat) (z : Authority) : Prop :=
-  z.active = true ∧ z.origin = none ∧ z.mode = .modify ∧
-    OptP (s.P[r]?) (fun pr => z.holder = pr.owner) False ∧ FpIs s z r
-
-/-- Decidability of `RootAuth` (§49.7). -/
-instance (s : S3) (r : Nat) (z : Authority) : Decidable (RootAuth s r z) := by
-  unfold RootAuth; infer_instance
-
-/-- Valid owner (§49.3): a frame below `nF` or an existing place. -/
-def OwnerOK (s : S3) : Holder → Prop
-  | .frame f => f < s.nF
-  | .place o => o < s.P.length
-
-/-- Decidability of `OwnerOK` (§49.3). -/
-instance (s : S3) (h : Holder) : Decidable (OwnerOK s h) := by
-  cases h <;> unfold OwnerOK <;> infer_instance
-
-/-- The active record `y` covers no leaf of an unusable place (§54, `NoDangling`). -/
-def NoDangB (s : S3) (y : Authority) : Prop :=
-  ∀ q ∈ List.range s.P.length, ¬ s.Usable q → ∀ l ∈ footprint s.P q, l ∉ y.footprint
-
-/-- Decidability of `NoDangB` (§54). -/
-instance (s : S3) (y : Authority) : Decidable (NoDangB s y) := by
-  unfold NoDangB; infer_instance
-
-/-- The origin-less record `z` is held by the owner of the root place of every leaf it covers
-(`RootHeldConv`, §40, §49.7). -/
-def RHConvB (s : S3) (z : Authority) : Prop :=
-  ∀ l ∈ z.footprint, ∀ r ∈ List.range s.P.length, RootPlace s.P r → partOf s.P l r →
-    OptP (s.P[r]?) (fun pr => z.holder = pr.owner) False
-
-/-- Decidability of `RHConvB` (§49.7). -/
-instance (s : S3) (z : Authority) : Decidable (RHConvB s z) := by
-  unfold RHConvB; infer_instance
-
-/-- Bounded check §49.1 (decision procedure). -/
-def KB_frames (s : S3) : Prop :=
-  s.F ≠ [] ∧ s.F.Nodup ∧ ∀ f ∈ s.F, f < s.nF
-
-/-- Decidability of `KB_frames` (decision procedure for §57). -/
-instance (s : S3) : Decidable (KB_frames s) := by
-  unfold KB_frames; infer_instance
-
-/-- Bounded check §49.2 (decision procedure). -/
-def KB_places (s : S3) : Prop :=
-  ∀ q ∈ List.range s.P.length, OptP (s.P[q]?) (fun pl => OptP pl.parent (fun r =>
-    OptP (s.P[r]?) (fun pr => r < q ∧ pr.owner = pl.owner ∧ s.dead r = s.dead q) False) True) True
-
-/-- Decidability of `KB_places` (decision procedure for §57). -/
-instance (s : S3) : Decidable (KB_places s) := by
-  unfold KB_places; infer_instance
-
-/-- Bounded check §49.3 (decision procedure). -/
-def KB_owners (s : S3) : Prop :=
-  ∀ q ∈ List.range s.P.length, OptP (s.P[q]?) (fun pl => OwnerOK s pl.owner) True
-
-/-- Decidability of `KB_owners` (decision procedure for §57). -/
-instance (s : S3) : Decidable (KB_owners s) := by
-  unfold KB_owners; infer_instance
-
-/-- Bounded check §49.4 (decision procedure). -/
-def KB_footprints (s : S3) : Prop :=
-  ∀ a ∈ List.range s.A.length, OptP (s.A[a]?) (fun x =>
-    ∀ l ∈ x.footprint, l < s.P.length ∧ isLeaf s.P l) True
-
-/-- Decidability of `KB_footprints` (decision procedure for §57). -/
-instance (s : S3) : Decidable (KB_footprints s) := by
-  unfold KB_footprints; infer_instance
-
-/-- Bounded check §49.5 (decision procedure). -/
-def KB_origins (s : S3) : Prop :=
-  ∀ b ∈ List.range s.A.length, OptP (s.A[b]?) (fun y => OptP y.origin (· < b) True) True
-
-/-- Decidability of `KB_origins` (decision procedure for §57). -/
-instance (s : S3) : Decidable (KB_origins s) := by
-  unfold KB_origins; infer_instance
-
-/-- Bounded check §49.6 (decision procedure). -/
-def KB_rootChain (s : S3) : Prop :=
-  ∀ a ∈ List.range s.A.length, OptP (s.A[a]?) (fun y => ∀ l ∈ y.footprint,
-    isLeaf s.P l → ChainRoot s a l) True
-
-/-- Decidability of `KB_rootChain` (decision procedure for §57). -/
-instance (s : S3) : Decidable (KB_rootChain s) := by
-  unfold KB_rootChain; infer_instance
-
-/-- Bounded check §49.7 (decision procedure). -/
-def KB_rootHeld (s : S3) : Prop :=
-  ∀ r ∈ List.range s.P.length, RootPlace s.P r → s.Usable r →
-    ∃ i ∈ List.range s.A.length, OptP (s.A[i]?) (RootAuth s r) False
-
-/-- Decidability of `KB_rootHeld` (decision procedure for §57). -/
-instance (s : S3) : Decidable (KB_rootHeld s) := by
-  unfold KB_rootHeld; infer_instance
-
-/-- Bounded check §49.8 (decision procedure). -/
-def KB_holders (s : S3) : Prop :=
-  ∀ a ∈ List.range s.A.length, OptP (s.A[a]?) (fun y =>
-    y.active = true → HolderLive s y.holder) True
-
-/-- Decidability of `KB_holders` (decision procedure for §57). -/
-instance (s : S3) : Decidable (KB_holders s) := by
-  unfold KB_holders; infer_instance
-
-/-- Bounded check §50 (decision procedure). -/
-def KB_i1 (s : S3) : Prop :=
-  ∀ a ∈ List.range s.A.length, ∀ b ∈ List.range s.A.length, OptP (s.A[a]?) (fun x =>
-    OptP (s.A[b]?) (fun y => a ≠ b → x.active = true → y.active = true →
-    (∃ p ∈ x.footprint, p ∈ y.footprint) → a ∉ s.ancs b → b ∉ s.ancs a →
-    x.mode = .observe ∧ y.mode = .observe) True) True
-
-/-- Decidability of `KB_i1` (decision procedure for §57). -/
-instance (s : S3) : Decidable (KB_i1 s) := by
-  unfold KB_i1; infer_instance
-
-/-- Bounded check §51 (decision procedure). -/
-def KB_i2 (s : S3) : Prop :=
-  ∀ b ∈ List.range s.A.length, OptP (s.A[b]?) (fun y => OptP y.origin (fun a =>
-    OptP (s.A[a]?) (fun x => y.mode.le x.mode ∧ ∀ p ∈ y.footprint, p ∈ x.footprint) False) True)
-    True
-
-/-- Decidability of `KB_i2` (decision procedure for §57). -/
-instance (s : S3) : Decidable (KB_i2 s) := by
-  unfold KB_i2; infer_instance
-
-/-- Bounded check §52 (decision procedure). -/
-def KB_i3 (s : S3) : Prop :=
-  ∀ q ∈ List.range s.P.length, s.Usable q → ∀ x ∈ s.D q, s.Active x
-
-/-- Decidability of `KB_i3` (decision procedure for §57). -/
-instance (s : S3) : Decidable (KB_i3 s) := by
-  unfold KB_i3; infer_instance
-
-/-- Bounded check §44 (decision procedure). -/
-def KB_anchorOrder (s : S3) : Prop :=
-  AnchorOrder s
-
-/-- Decidability of `KB_anchorOrder` (decision procedure for §57). -/
-instance (s : S3) : Decidable (KB_anchorOrder s) := by
-  unfold KB_anchorOrder; infer_instance
-
-/-- Bounded check §54, `NoDangling` (decision procedure). -/
-def KB_noDangling (s : S3) : Prop :=
-  ∀ j ∈ List.range s.A.length, OptP (s.A[j]?) (fun y => y.active = true → NoDangB s y) True
-
-/-- Decidability of `KB_noDangling` (decision procedure for §57). -/
-instance (s : S3) : Decidable (KB_noDangling s) := by
-  unfold KB_noDangling; infer_instance
-
-/-- Bounded check §44 (decision procedure). -/
-def KB_anchorOrderHeld (s : S3) : Prop :=
-  AnchorOrderHeld s
-
-/-- Decidability of `KB_anchorOrderHeld` (decision procedure for §57). -/
-instance (s : S3) : Decidable (KB_anchorOrderHeld s) := by
-  unfold KB_anchorOrderHeld; infer_instance
-
-/-- Bounded check `RootHeldConv` (§40, §49.7) (decision procedure). -/
-def KB_rootHeldConv (s : S3) : Prop :=
-  ∀ x ∈ List.range s.A.length, OptP (s.A[x]?) (fun z => z.origin = none → RHConvB s z) True
-
-/-- Decidability of `KB_rootHeldConv` (decision procedure for §57). -/
-instance (s : S3) : Decidable (KB_rootHeldConv s) := by
-  unfold KB_rootHeldConv; infer_instance
-
-/-- `KInv ∧ KAux` with bounded quantifiers (§49–§54, §57; decision procedure). -/
-structure KInvB (s : S3) : Prop where
-  /-- §49.1. -/
-  frames : KB_frames s
-  /-- §49.2. -/
-  places : KB_places s
-  /-- §49.3. -/
-  owners : KB_owners s
-  /-- §49.4. -/
-  footprints : KB_footprints s
-  /-- §49.5. -/
-  origins : KB_origins s
-  /-- §49.6. -/
-  rootChain : KB_rootChain s
-  /-- §49.7. -/
-  rootHeld : KB_rootHeld s
-  /-- §49.8. -/
-  holders : KB_holders s
-  /-- §50. -/
-  i1 : KB_i1 s
-  /-- §51. -/
-  i2 : KB_i2 s
-  /-- §52. -/
-  i3 : KB_i3 s
-  /-- §44. -/
-  anchorOrder : KB_anchorOrder s
-  /-- §54, `NoDangling`. -/
-  noDangling : KB_noDangling s
-  /-- §44. -/
-  anchorOrderHeld : KB_anchorOrderHeld s
-  /-- `RootHeldConv` (§40, §49.7). -/
-  rootHeldConv : KB_rootHeldConv s
-
-/-- Decidability of `KInvB` (decision procedure for §49–§54, §57). -/
-instance (s : S3) : Decidable (KInvB s) :=
-  decidable_of_iff (KB_frames s ∧ KB_places s ∧ KB_owners s ∧ KB_footprints s ∧ KB_origins s ∧
-    KB_rootChain s ∧ KB_rootHeld s ∧ KB_holders s ∧ KB_i1 s ∧ KB_i2 s ∧ KB_i3 s ∧
-    KB_anchorOrder s ∧ KB_noDangling s ∧ KB_anchorOrderHeld s ∧ KB_rootHeldConv s)
-    ⟨fun ⟨a, b, c, d, e, f, g, h, i, j, l, m, n, o, q⟩ =>
-      ⟨a, b, c, d, e, f, g, h, i, j, l, m, n, o, q⟩,
-     fun ⟨a, b, c, d, e, f, g, h, i, j, l, m, n, o, q⟩ =>
-      ⟨a, b, c, d, e, f, g, h, i, j, l, m, n, o, q⟩⟩
-
-/-- Soundness of `KInvB` (decision procedure for §49–§54, §57): it gives `KInv ∧ KAux`. -/
-theorem KInvB.sound {s : S3} (h : KInvB s) : KInv s ∧ KAux s := by
-  have hw : WF3 s := by
-    refine ⟨h.frames, fun q pl r hq hr => ?_, ⟨fun q pl f hq hf => ?_, fun q pl o hq ho => ?_,
-      fun q hq => hq.frameOf⟩, fun a x hx l hl => ?_, fun b y a hy ho => ?_,
-      fun a y l hy hl hleaf => ?_, fun r hr hu => ?_, fun a y hy ha => ?_⟩
-    · have := h.places q (List.mem_range.2 (lt_of_getElem? hq))
-      rw [hq] at this; simp only [OptP, hr] at this
-      cases hpr : s.P[r]? with
-      | none => rw [hpr] at this; exact this.elim
-      | some pr => rw [hpr] at this; exact ⟨pr, rfl, this⟩
-    · have := h.owners q (List.mem_range.2 (lt_of_getElem? hq))
-      rw [hq] at this; simp only [OptP, OwnerOK, hf] at this; exact this
-    · have := h.owners q (List.mem_range.2 (lt_of_getElem? hq))
-      rw [hq] at this; simp only [OptP, OwnerOK, ho] at this; exact this
-    · have := h.footprints a (List.mem_range.2 (lt_of_getElem? hx))
-      rw [hx] at this; exact this l hl
-    · have := h.origins b (List.mem_range.2 (lt_of_getElem? hy))
-      rw [hy] at this; simp only [OptP, ho] at this; exact this
-    · have := h.rootChain a (List.mem_range.2 (lt_of_getElem? hy))
-      rw [hy] at this
-      obtain ⟨x, hx, hz⟩ := this l hl hleaf
-      cases hzx : s.A[x]? with
-      | none => rw [hzx] at hz; exact hz.elim
-      | some z =>
-        rw [hzx] at hz
-        obtain ⟨hzo, r, -, hr, hlr, h1, h2⟩ := hz
-        exact ⟨x, z, r, (List.mem_cons.1 hx).imp id id, hzx, hzo, hr, hlr,
-          fun l' => ⟨h1 l', h2 l'⟩⟩
-    · obtain ⟨i, -, hz⟩ := h.rootHeld r (List.mem_range.2 hr.1) hr hu
-      cases hzi : s.A[i]? with
-      | none => rw [hzi] at hz; exact hz.elim
-      | some z =>
-        rw [hzi] at hz
-        obtain ⟨za, zo, zm, hpr, h1, h2⟩ := hz
-        cases hp : s.P[r]? with
-        | none => rw [hp] at hpr; exact hpr.elim
-        | some pr =>
-          rw [hp] at hpr
-          exact ⟨i, z, pr, hzi, za, zo, zm, rfl, hpr, fun l => ⟨h1 l, h2 l⟩⟩
-    · have := h.holders a (List.mem_range.2 (lt_of_getElem? hy))
-      rw [hy] at this; exact this ha
-  refine ⟨⟨hw, ⟨⟨fun a b x y p hab hx hy xa ya hpx hpy hab' hba => ?_, fun b y a hy ho => ?_,
-    fun q hq x hx => h.i3 q (List.mem_range.2 hq.lt) hq x hx, i4_always s⟩, h.anchorOrder,
-    fun j y hy ya q hq l hl hly => ?_⟩, h.anchorOrderHeld, noOrphan_of_wf3 hw⟩,
-    fun x z l r hz hzo hl hr hlr => ?_⟩
-  · have := h.i1 a (List.mem_range.2 (lt_of_getElem? hx)) b (List.mem_range.2 (lt_of_getElem? hy))
-    rw [hx] at this; simp only [OptP, hy] at this
-    exact this hab xa ya ⟨p, hpx, hpy⟩ hab' hba
-  · have := h.i2 b (List.mem_range.2 (lt_of_getElem? hy))
-    rw [hy] at this; simp only [OptP, ho] at this
-    cases hxa : s.A[a]? with
-    | none => rw [hxa] at this; exact this.elim
-    | some x => rw [hxa] at this; exact ⟨x, rfl, this⟩
-  · have := h.noDangling j (List.mem_range.2 (lt_of_getElem? hy))
-    rw [hy] at this
-    exact this ya q (List.mem_range.2 (footprint_lt hl)) hq l hl hly
-  · have := h.rootHeldConv x (List.mem_range.2 (lt_of_getElem? hz))
-    rw [hz] at this
-    have h' := this hzo l hl r (List.mem_range.2 hr.1) hr hlr
-    cases hp : s.P[r]? with
-    | none => rw [hp] at h'; exact h'.elim
-    | some pr => rw [hp] at h'; exact ⟨pr, rfl, h'⟩
-
-/-! ## §76.6 under its two readings (§76.6, §58, §44, §49, §50, §55)
-
-§76.6: "Dependency, holder, storage, and administration relations respect `WF3`, I1,
-`AnchorOrder`, `AnchorOrderHeld`, and the expected arena invariants." It is omitted from
-`NewArenaBase` pending arbitration between two readings, both defined here: global
-(`NewArena766Global`, the relations of the whole state) and local (`NewArena766Local`, the
-relations of the new arena only).
-
-State of evaluation. §76.6 is listed among the preconditions and does not say "in the resulting
-state", which §58 requires for evaluation there ("when a rule explicitly so provides", as §63.6,
-§63.7, §77.3 and §77.6 do): this points to the departure state. The arena invariants of the new
-arena, however, concern an entry that exists only in the arrival state. §76 leaves this open, so
-the global reading is a predicate on a library state, evaluated on the departure state `L` or on
-the arrival state `newArenaEff L st i`; the kernel component is the same in both (§76 `ok` effect,
-`newArena_kernel`), and the two agree whenever `NewArenaBase` holds
-(`newArena766Global_arrival_iff`), so the choice changes no verdict. The local reading reads only
-the kernel component and the new entry, so its departure and arrival forms coincide. -/
-
-/-- §76.6, global reading, on the library state `L` (departure or arrival state, see above): the
-kernel state satisfies `WF3` (§49), `I1` (§50), `AnchorOrder` and `AnchorOrderHeld` (§44), and
-every live entry of the registry satisfies `ArenaInv` (§55). -/
-def NewArena766Global (L : LState) : Prop :=
-  WF3 L.kern ∧ I1 L.kern ∧ AnchorOrder L.kern ∧ AnchorOrderHeld L.kern ∧
-    ∀ E ∈ L.arenas, Live L.kern E → ArenaInv L.kern E
-
-/-- The clauses of `WF3` (§49.2, §49.3, §49.7), `AnchorOrder` and `AnchorOrderHeld` (§44) whose
-bound place is `q`, with bounded quantifiers (local reading of §76.6, for the storage and the
-arena value). -/
-structure PlaceRel766 (s : S3) (q : Nat) : Prop where
-  /-- §49.2 at `q`: a parent of `q` exists, precedes it, shares its owner and death marker. -/
-  parent : OptP (s.P[q]?) (fun pl => OptP pl.parent (fun r =>
-    OptP (s.P[r]?) (fun pr => r < q ∧ pr.owner = pl.owner ∧ s.dead r = s.dead q) False) True) True
-  /-- §49.3 at `q`: the owner of `q` is valid. -/
-  owner : OptP (s.P[q]?) (fun pl => OwnerOK s pl.owner) True
-  /-- §49.3 at `q`: if `q` is usable, its ownership chain reaches a live frame. -/
-  chain : s.Usable q → ∃ f, FrameOf s q f ∧ f ∈ s.F
-  /-- §49.7 at `q`: if `q` is a usable root place, it has its root authority. -/
-  rootHeld : RootPlace s.P q → s.Usable q →
-    ∃ j ∈ List.range s.A.length, OptP (s.A[j]?) (RootAuth s q) False
-  /-- §44 `AnchorOrder` at `q`: the anchors of `q`, if usable. -/
-  anchorOrder : s.Usable q → ∀ x ∈ s.D q, EffAnchorOK s x (s.pframe q)
-  /-- §44 `AnchorOrderHeld` at `q`: the active authorities held by `q`, if usable. -/
-  anchorOrderHeld : s.Usable q → ∀ x ∈ List.range s.A.length, OptP (s.A[x]?) (fun y =>
-    y.active = true → y.holder = .place q → EffAnchorOK s x (s.pframe q)) True
-
-/-- The clauses of `WF3` (§49.4, §49.5, §49.6, §49.8) and `I1` (§50) whose bound authority is `a`,
-with bounded quantifiers (local reading of §76.6, for `internal`). -/
-structure AuthRel766 (s : S3) (a : Nat) : Prop where
-  /-- §49.4 at `a`: its footprint consists of leaves of existing places. -/
-  footprint : OptP (s.A[a]?) (fun x => ∀ l ∈ x.footprint, l < s.P.length ∧ isLeaf s.P l) True
-  /-- §49.5 at `a`: its origin precedes it. -/
-  origin : OptP (s.A[a]?) (fun y => OptP y.origin (· < a) True) True
-  /-- §49.6 at `a`: `RootChain` for every leaf it covers. -/
-  rootChain : OptP (s.A[a]?) (fun y => ∀ l ∈ y.footprint, isLeaf s.P l → ChainRoot s a l) True
-  /-- §49.8 at `a`: if active, it is held by a frame of the stack or by a usable place. -/
-  holder : OptP (s.A[a]?) (fun y => y.active = true → HolderLive s y.holder) True
-  /-- §50 at `a`: an active authority unrelated by derivation to `a` and sharing a leaf with it
-  has, with `a`, own mode `Observe`. -/
-  i1 : ∀ b ∈ List.range s.A.length, OptP (s.A[a]?) (fun x => OptP (s.A[b]?) (fun y =>
-    a ≠ b → x.active = true → y.active = true → (∃ p ∈ x.footprint, p ∈ y.footprint) →
-    a ∉ s.ancs b → b ∉ s.ancs a → x.mode = .observe ∧ y.mode = .observe) True) True
-
-/-- §76.6, local reading, for `newArena(st, i)` on the kernel state `s` (the same before and after
-registration): the relations of the new arena alone respect `WF3`, `I1`, `AnchorOrder` and
-`AnchorOrderHeld`, i.e. their clauses hold at its storage `st`, at its arena value (the place
-holding `i`, §46) and at `i` (`PlaceRel766`, `AuthRel766`), and the new entry satisfies `ArenaInv`
-(§55). §49.1, which concerns the frame stack and no relation of the arena, is not part of it. -/
-structure NewArena766Local (s : S3) (st i : Nat) : Prop where
-  /-- Storage relation: the clauses at the storage. -/
-  storage : PlaceRel766 s st
-  /-- Holder and dependency relations: the clauses at the arena value, if `i` is held by a place. -/
-  value : OptP (arenaValue s ⟨st, i, footprint s.P st, []⟩) (PlaceRel766 s) True
-  /-- Holder relation: the clauses at `internal`. -/
-  internal : AuthRel766 s i
-  /-- Administration relation: the new entry satisfies `ArenaInv` (§55). -/
-  arena : ArenaInv s ⟨st, i, footprint s.P st, []⟩
-
-/-- The clauses of `PlaceRel766` hold at every place of a state satisfying `WF3`, `AnchorOrder` and
-`AnchorOrderHeld` (§49, §44, §76.6). -/
-theorem placeRel766_of {s : S3} (hw : WF3 s) (ha : AnchorOrder s) (hh : AnchorOrderHeld s)
-    (q : Nat) : PlaceRel766 s q := by
-  refine ⟨?_, ?_, fun hu => hu.frameOf, fun hr hu => ?_, fun hu => ha q hu,
-    fun hu => anchorOrderHeld_iff.1 hh q (List.mem_range.2 hu.lt) hu⟩
-  · cases hpl : s.P[q]? with
-    | none => trivial
-    | some pl =>
-      show OptP pl.parent _ True
-      cases hr : pl.parent with
-      | none => trivial
-      | some r =>
-        obtain ⟨pr, hpr, h1, h2, h3⟩ := hw.places q pl r hpl hr
-        show OptP (s.P[r]?) _ False
-        rw [hpr]; exact ⟨h1, h2, h3⟩
-  · cases hpl : s.P[q]? with
-    | none => trivial
-    | some pl =>
-      show OwnerOK s pl.owner
-      cases ho : pl.owner with
-      | frame f => exact hw.owners.1 q pl f hpl ho
-      | place o => exact hw.owners.2.1 q pl o hpl ho
-  · obtain ⟨j, z, pr, hz, za, zo, zm, hpr, hh, hfp⟩ := hw.rootHeld q hr hu
-    refine ⟨j, List.mem_range.2 (lt_of_getElem? hz), ?_⟩
-    rw [hz]
-    refine ⟨za, zo, zm, ?_, fun l h => (hfp l).1 h, fun l h => (hfp l).2 h⟩
-    show OptP (s.P[q]?) _ False
-    rw [hpr]; exact hh
-
-/-- The clause §49.8 of `AuthRel766` holds at every authority of a state satisfying `WF3`
-(§49.8, §76.6). -/
-theorem authRel766_holder {s : S3} (hw : WF3 s) (a : Nat) :
-    OptP (s.A[a]?) (fun y => y.active = true → HolderLive s y.holder) True := by
-  cases hy : s.A[a]? with
-  | none => trivial
-  | some y => exact hw.holders a y hy
-
-/-- The clauses of `AuthRel766` hold at every authority of a state satisfying `WF3` and `I1`
-(§49, §50, §76.6). -/
-theorem authRel766_of {s : S3} (hw : WF3 s) (h1 : I1 s) (a : Nat) : AuthRel766 s a := by
-  refine ⟨?_, ?_, ?_, authRel766_holder hw a, fun b _ => ?_⟩
-  · cases hx : s.A[a]? with
-    | none => trivial
-    | some x => exact hw.footprints a x hx
-  · cases hy : s.A[a]? with
-    | none => trivial
-    | some y =>
-      show OptP y.origin _ True
-      cases ho : y.origin with
-      | none => trivial
-      | some o => exact hw.origins a y o hy ho
-  · cases hy : s.A[a]? with
-    | none => trivial
-    | some y =>
-      intro l hl hleaf
-      obtain ⟨x, z, r, hx, hz, hzo, hr, hlr, hfp⟩ := hw.rootChain a y l hy hl hleaf
-      refine ⟨x, ?_, ?_⟩
-      · rcases hx with rfl | hx
-        · exact List.mem_cons_self ..
-        · exact List.mem_cons_of_mem _ hx
-      · rw [hz]
-        exact ⟨hzo, r, List.mem_range.2 hr.1, hr, hlr, fun l' h => (hfp l').1 h,
-          fun l' h => (hfp l').2 h⟩
-  · cases hx : s.A[a]? with
-    | none => trivial
-    | some x =>
-      show OptP (s.A[b]?) _ True
-      cases hy : s.A[b]? with
-      | none => trivial
-      | some y =>
-        intro hab xa ya ⟨p, hpx, hpy⟩ hba hab'
-        exact h1 a b x y p hab hx hy xa ya hpx hpy hba hab'
-
-/-- Under the other preconditions of §76, the global reading of §76.6 gives the same verdict on
-the departure and on the arrival state: they differ only by `ArenaInv` of the new entry, which
-`NewArenaBase` gives (§76.6, §76 `ok` effect, §55). -/
-theorem newArena766Global_arrival_iff {L : LState} {st i : Nat} (h : NewArenaBase L.kern st i) :
-    NewArena766Global (newArenaEff L st i) ↔ NewArena766Global L := by
-  constructor
-  · rintro ⟨hw, h1, ha, hh, he⟩
-    exact ⟨hw, h1, ha, hh, fun E hE => he E (List.mem_append_left _ hE)⟩
-  · rintro ⟨hw, h1, ha, hh, he⟩
-    refine ⟨hw, h1, ha, hh, fun E hE hl => ?_⟩
-    rcases List.mem_append.1 hE with hE | hE
-    · exact he E hE hl
-    · rw [List.mem_singleton.1 hE]; exact (newEntry_inv h).1
-
-/-- Under the other preconditions of §76, the global reading of §76.6 implies the local one
-(§76.6). -/
-theorem newArena766Local_of_global {L : LState} {st i : Nat} (hg : NewArena766Global L)
-    (h : NewArenaBase L.kern st i) : NewArena766Local L.kern st i := by
-  obtain ⟨hw, h1, ha, hh, -⟩ := hg
-  refine ⟨placeRel766_of hw ha hh st, ?_, authRel766_of hw h1 i, (newEntry_inv h).1⟩
-  cases arenaValue L.kern ⟨st, i, footprint L.kern.P st, []⟩ with
-  | none => trivial
-  | some v => exact placeRel766_of hw ha hh v
-
-/-- The global reading of §76.6 holds, on the departure and on the arrival state, whenever the
-model accepts `newArena` (`NewArenaBase`, with or without the guard of §56) on a state satisfying
-the kernel invariant (§57) and the library invariant `LInv` (§55); generalizes
-`newArena_clause6`. `LInv` gives the registry conjunct, which is not a kernel predicate (§57). -/
-theorem newArena766Global_of_kinv {L : LState} {st i : Nat} (hk : KInv L.kern) (hi : LInv L)
-    (h : NewArenaBase L.kern st i) :
-    NewArena766Global L ∧ NewArena766Global (newArenaEff L st i) := by
-  have hg : NewArena766Global L :=
-    ⟨hk.1, hk.2.1.1.1, hk.2.1.2.1, hk.2.2.1, fun E hE hl => ((hi E hE).2 hl).1⟩
-  exact ⟨hg, (newArena766Global_arrival_iff h).2 hg⟩
-
-/-- The local reading of §76.6 holds whenever the model accepts `newArena` (`NewArenaBase`, with or
-without the guard of §56) on a state satisfying the kernel invariant (§57); generalizes
-`newArena_clause6`. -/
-theorem newArena766Local_of_kinv {s : S3} {st i : Nat} (hk : KInv s) (h : NewArenaBase s st i) :
-    NewArena766Local s st i :=
-  newArena766Local_of_global (L := ⟨s, []⟩) ⟨hk.1, hk.2.1.1.1, hk.2.1.2.1, hk.2.2.1,
-    fun _ hE => by cases hE⟩ h
-
-/-! ## Witnesses on library-reachable states (§78.3, §86, §55, §63)
-
-Runs from `LState.init Examples.st` (§47: static leaves 0 `Init`, 1 and 2 `Uninit`, with root
-authorities 0, 1 and 2 held by frame 0) under the test contract `Examples.K0`. In the runs for
-§78.3 and §86, leaf 0 is the arena value, leaf 1 the storage, leaf 2 the destination. Every
-precondition is decided by `decide`; `KInv ∧ KAux` of the final states is decided through
-`KInvB`. -/
+/-! ## Witness on a library-reachable state (§86)
+
+A run from `LState.init Examples.st` (§47: static leaves 0 `Init`, 1 and 2 `Uninit`, with root
+authorities 0, 1 and 2 held by frame 0) under the test contract `Examples.K0`: leaf 0 is the arena
+value, leaf 1 the storage, leaf 2 the destination. Every precondition is decided by `decide`;
+`KInv ∧ KAux` of the final state is decided through `KInvB`. -/
 
 namespace Witness
 
@@ -2472,46 +2453,6 @@ theorem w3_reach : LReach K0 st w3 := by
   have r2 : LReach K0 st w2 := .step r1 (.kernel (.store (.ok (by decide))))
   exact .step r2 (.newArena (others := []) (.ok (by decide)))
 
-/-- `issue(0, [], 2)`: `split(3, [[]])` then `store(4, 2)`; block 4 is active, of empty
-footprint, anchored on the usable destination 2 (§77). -/
-def c4 : LState :=
-  ⟨storeEff (splitEff w3.kern 3 [[]]) w3.kern.A.length 2, w3.arenas.set 0 (issueMeta w3.kern wE [])⟩
-
-/-- The entry after the issue of the empty region (§77 `ok` effect). -/
-def cE : ArenaEntry := ⟨1, 3, [1], [([], 4)]⟩
-
-/-- **§78.3 is not implied by §78.2 and I3** (spec problem). In a library-reachable state
-satisfying `KInv ∧ KAux`, after issuing the empty region (the empty region is always available,
-§46, §77.4), the live entry satisfies §78.1 and §78.2 and I3 holds, yet §78.3 fails: the usable
-destination 2 depends on the active empty block 4, in the strict origin subtree of `internal` 3.
-The contract of `reset` rejects, while `derive` of `internal` over the storage and `release` are
-`ok`: §78.3 stays an explicit contract check (`reset_as_kernel`). The sentence of §78.3 "Under
-precondition 2 and invariant I3, this condition follows from the absence of active descendants
-covering the storage" is false. -/
-theorem reset_clause3_not_implied :
-    LReach K0 st c4 ∧ KInv c4.kern ∧ KAux c4.kern ∧ c4.arenas[0]? = some cE ∧
-    Live c4.kern cE ∧ MetaRight c4.kern cE ∧
-    (∀ j ∈ List.range c4.kern.A.length, cE.internal ∈ c4.kern.ancs j → c4.kern.Active j →
-      ∀ l ∈ c4.kern.afp j, l ∉ footprint c4.kern.P cE.storage) ∧ I3 c4.kern ∧
-    ¬ ResetNoDeps c4.kern cE ∧
-    c4.kern.Active 4 ∧ c4.kern.afp 4 = [] ∧ 4 ∈ c4.kern.D 2 ∧ c4.kern.Usable 2 ∧
-    cE.internal ∈ c4.kern.ancs 4 ∧ ResetC 0 c4 .reject ∧
-    DeriveStep cE.internal (footprint c4.kern.P cE.storage) .modify c4.kern
-      (.ok (deriveEff c4.kern cE.internal (footprint c4.kern.P cE.storage) .modify)) ∧
-    ReleaseStep c4.kern.A.length
-      (deriveEff c4.kern cE.internal (footprint c4.kern.P cE.storage) .modify)
-      (.ok (releaseEff (deriveEff c4.kern cE.internal (footprint c4.kern.P cE.storage) .modify)
-        c4.kern.A.length)) := by
-  have hr : LReach K0 st c4 := .step w3_reach
-    (.issue (i := 0) (region := []) (dst := 2)
-      (.ok (E := wE) (by decide) (by decide) (by decide) (.ok (by decide)) (.ok (by decide))))
-  have hk := KInvB.sound (s := c4.kern) (by decide)
-  have hE : c4.arenas[0]? = some cE := by decide
-  have hn : ¬ ResetNoDeps c4.kern cE := by decide
-  exact ⟨hr, hk.1, hk.2, hE, by decide, by decide, by decide, hk.1.2.1.1.2.2.1, hn, by decide,
-    by decide, by decide, by decide, by decide, .reject hE fun h => hn h.noDeps, .ok (by decide),
-    .ok (by decide)⟩
-
 /-- `issue(0, [1], 2)`: `split(3, [[1]])` then `store(4, 2)` (§77). -/
 def r4 : LState :=
   ⟨storeEff (splitEff w3.kern 3 [[1]]) w3.kern.A.length 2,
@@ -2533,14 +2474,13 @@ def r8 : LState :=
   ⟨storeEff (splitEff r7.kern 3 [[1]]) r7.kern.A.length 2,
     r7.arenas.set 0 (issueMeta r7.kern rE' [1])⟩
 
-/-- **§86: a reissued block reads a former value** (spec problem). Leaf 1 is `Uninit` when it is
-first issued, is written through block 4, keeps `Init` across `endUse` of the destination, the
-legal `reset` (§78: "No leaf is made `Init` by `reset`", and no leaf is made `Uninit` either) and
-the reissue, which initializes only the destination 2 (§77). In the final library-reachable state,
-which satisfies `KInv ∧ KAux`, `read` of leaf 1 through the new block 6 is `ok` (§66.1 asks only
-that the leaf be `Init`): the reissued block reads the value written under the former issuance,
-with no initialization of it after the reissue. This contradicts §86, "Reissuance does not permit
-reading a former logical value without the required initialization". -/
+/-- v0.1 §86, example: a reissued leaf keeps its initialization state and a read of it remains
+subject to the ordinary conditions of the memory model. Leaf 1 is `Uninit` when it is first issued,
+is written through block 4, keeps `Init` across `endUse` of the destination, the legal `reset`
+(§78: "No leaf is made `Init` by `reset`") and the reissue, which modifies the initialization state
+of no leaf of the region (§86, `issue_keeps_init`) and initializes only the destination 2 (§77).
+In the final library-reachable state, `read` of leaf 1 through the new block 6 is `ok`: the leaf
+is `Init` and block 6 is exercisable (§66). -/
 theorem reissue_reads_former_value :
     LReach K0 st r8 ∧ KInv r8.kern ∧ KAux r8.kern ∧
     r4.kern.I 1 = .uninit ∧ r5.kern.I 1 = .init ∧ r7.kern.I 1 = .init ∧ r8.kern.I 1 = .init ∧
@@ -2562,159 +2502,6 @@ theorem reissue_reads_former_value :
   have hk := KInvB.sound (s := r8.kern) (by decide)
   exact ⟨h8, hk.1, hk.2, by decide, by decide, by decide, by decide, by decide, by decide,
     by decide, .ok (by decide)⟩
-
-/-! ### `ArenaInv` broken by an accepted `transfer` (§55, §57, §63)
-
-A run from the same initial state in which the storage of a live arena is the destination of an
-accepted `transfer` that closes an ownership cycle (§63 `ok` effect), the recorded §63 defect
-(`Access.reachable_kinv_false`). -/
-
-/-- `alloc(0, 0, [leaf])`: place 3, owned by the static place 0, root authority 3 (§71). -/
-def t1 : S3 := allocEff (S3.init st) 0 [(none, 0)]
-/-- `alloc(0, 3, [leaf])`: place 4, owned by place 3, root authority 4 (§71). -/
-def t2 : S3 := allocEff t1 3 [(none, 0)]
-/-- `alloc(0, 3, [leaf])`: place 5, owned by place 3, root authority 5 (§71). -/
-def t3 : S3 := allocEff t2 3 [(none, 0)]
-/-- `derive(4, [4], Modify)`: authority 6 on the leaf of place 4, held by frame 0 (§60). -/
-def t4 : S3 := deriveEff t3 4 [4] .modify
-/-- `store(6, 5)`: authority 6 becomes `internal`, held by the arena value 5 (§65). -/
-def t5 : LState := ⟨storeEff t4 6 5, []⟩
-/-- `newArena(4, 6)`: storage 4, `internal` 6, arena value 5 (§76). -/
-def t6 : LState := newArenaEff t5 4 6
-/-- `transfer(0, 4)`: the value of place 0 moves into the storage 4; place 3, owned by 0, becomes
-owned by 4, itself owned by 3 (§63 `ok` effect). -/
-def t7 : LState := ⟨transferEff t6.kern 0 4, t6.arenas⟩
-/-- The entry registered by `newArena(4, 6)` (§46, §76). -/
-def tE : ArenaEntry := ⟨4, 6, [4], []⟩
-
-/-- **`ArenaInv` fails on a library-reachable state** (spec problem; §55 item 1, §57, §63). From a
-library-reachable state satisfying `KInv ∧ KAux`, whose only entry is live with usable storage 4,
-`transfer(0, 4)` is accepted (§63) and closes the ownership cycle 3 ↔ 4. The entry stays live
-(`internal` 6 is active, §46), but its storage is no longer usable: §55 item 1 ("`storage`
-designates an existing, usable place") fails. No library step of the run is outside Part XIV. -/
-theorem arenaInv_broken_by_transfer :
-    LReach K0 st t7 ∧ KInv t6.kern ∧ KAux t6.kern ∧ t6.arenas = [tE] ∧ t6.kern.Usable 4 ∧
-    TransferStep K0 0 4 t6.kern (.ok t7.kern) ∧ t7.arenas = [tE] ∧ Live t7.kern tE ∧
-    ¬ t7.kern.Usable tE.storage ∧ ¬ ArenaInv t7.kern tE := by
-  have h1 : LReach K0 st ⟨t1, []⟩ := .step .init
-    (.kernel (KStep.alloc (pr := 0) (ow := 0) (ls := [(none, 0)])
-      (AllocStep.ok (by decide) trivial)))
-  have h2 : LReach K0 st ⟨t2, []⟩ := .step h1
-    (.kernel (KStep.alloc (pr := 0) (ow := 3) (ls := [(none, 0)])
-      (AllocStep.ok (by decide) trivial)))
-  have h3 : LReach K0 st ⟨t3, []⟩ := .step h2
-    (.kernel (KStep.alloc (pr := 0) (ow := 3) (ls := [(none, 0)])
-      (AllocStep.ok (by decide) trivial)))
-  have h4 : LReach K0 st ⟨t4, []⟩ := .step h3 (.kernel (.derive (.ok (by decide))))
-  have h5 : LReach K0 st t5 := .step h4 (.kernel (.store (.ok (by decide))))
-  have h6 : LReach K0 st t6 := .step h5 (.newArena (others := []) (.ok (by decide)))
-  have ht : TransferStep K0 0 4 t6.kern (.ok t7.kern) := .ok (by decide)
-  have hk := KInvB.sound (s := t6.kern) (by decide)
-  have hu : ¬ t7.kern.Usable tE.storage := by decide
-  exact ⟨.step h6 (.kernel (.transfer ht)), hk.1, hk.2, by decide, by decide, ht, by decide,
-    by decide, hu, fun h => hu h.storageUsable⟩
-
-/-- The conclusion of `lReach_inv` is false at `(K0, st)` (§55, §63): some live entry of a
-library-reachable state does not satisfy `ArenaInv` (`arenaInv_broken_by_transfer`). -/
-theorem lReach_inv_conclusion_false :
-    ¬ ∀ L, LReach K0 st L → ∀ E ∈ L.arenas, Live L.kern E → ArenaInv L.kern E := fun h =>
-  let ⟨hr, _, _, _, _, _, ha, hl, _, hn⟩ := arenaInv_broken_by_transfer
-  hn (h t7 hr tE (by rw [ha]; exact List.mem_singleton_self _) hl)
-
-/-- The hypothesis of `lReach_inv` and `lReachNG_inv` is false at `(K0, st)` (§57 as stated,
-§63): some kernel-reachable state violates `WF3` or `NoDangling`; otherwise `lReach_inv` would
-contradict `lReach_inv_conclusion_false`. -/
-theorem lReach_inv_hyp_false : ¬ ∀ s, Reachable K0 st s → WF3 s ∧ NoDangling s :=
-  fun hK => lReach_inv_conclusion_false fun _ h => lReach_inv hK h
-
-/-! ### `newArena` accepted where §76.6 fails (§76.6, §49.8, §55, §63)
-
-Two runs through the §63 ownership cycle, after which the model accepts `newArena` although the
-state violates `WF3`. -/
-
-/-- After `t7`, `derive(1, [1], Modify)`: authority 7 on the static leaf 1, held by frame 0
-(§60). -/
-def u8 : LState := ⟨deriveEff t7.kern 1 [1] .modify, t7.arenas⟩
-/-- `store(7, 2)`: authority 7 becomes `internal`, held by the arena value 2 (§65). -/
-def u9 : LState := ⟨storeEff u8.kern 7 2, u8.arenas⟩
-/-- `newArena(1, 7)`: storage 1, `internal` 7, arena value 2 (§76). -/
-def u10 : LState := newArenaEff u9 1 7
-
-/-- **The model accepts `newArena` where the global reading of §76.6 fails and the local one
-holds** (§76.6, §49.8, §55, §63). In the library-reachable state `u9`, reached through the §63
-cycle of `arenaInv_broken_by_transfer`, `newArena(1, 7)` is `ok`; `WF3` fails (§49.8: the active
-`internal` 6 of `tE` is held by the unusable place 5) and the live entry `tE` violates `ArenaInv`,
-so the global reading fails on the departure and on the arrival state; the local reading holds,
-since the storage 1, the arena value 2 and `internal` 7 are unaffected by the cycle. -/
-theorem newArena766_global_fails_local_holds :
-    LReach K0 st u9 ∧ NewArenaStep [] 1 7 u9 (.ok u10) ∧ u9.arenas = [tE] ∧ Live u9.kern tE ∧
-    ¬ ArenaInv u9.kern tE ∧ ¬ WF3 u9.kern ∧ ¬ NewArena766Global u9 ∧ ¬ NewArena766Global u10 ∧
-    NewArena766Local u9.kern 1 7 := by
-  have h8 : LReach K0 st u8 := .step arenaInv_broken_by_transfer.1
-    (.kernel (.derive (.ok (by decide))))
-  have h9 : LReach K0 st u9 := .step h8 (.kernel (.store (.ok (by decide))))
-  have hb : NewArenaBase u9.kern 1 7 := by decide
-  have hu : ¬ u9.kern.Usable tE.storage := by decide
-  have hh : ¬ OptP (u9.kern.A[6]?) (fun y => y.active = true → HolderLive u9.kern y.holder) True :=
-    by decide
-  have hw : ¬ WF3 u9.kern := fun hw => hh (authRel766_holder hw 6)
-  have hv : arenaValue u9.kern ⟨1, 7, footprint u9.kern.P 1, []⟩ = some 2 := by decide
-  have hloc : NewArena766Local u9.kern 1 7 := by
-    refine ⟨⟨by decide, by decide, fun h => h.frameOf, by decide, by decide, by decide⟩, ?_,
-      ⟨by decide, by decide, by decide, by decide, by decide⟩, (newEntry_inv hb).1⟩
-    rw [hv]
-    exact ⟨by decide, by decide, fun h => h.frameOf, by decide, by decide, by decide⟩
-  exact ⟨h9, .ok (by decide), by decide, by decide, fun h => hu h.storageUsable, hw,
-    fun h => hw h.1, fun h => hw h.1, hloc⟩
-
-/-- `derive(1, [1], Modify)` after `t3`: authority 6 on the static leaf 1, held by frame 0
-(§60). -/
-def v4 : S3 := deriveEff t3 1 [1] .modify
-/-- `store(6, 5)`: authority 6 becomes `internal`, held by the arena value 5, owned by place 3
-(§65). -/
-def v5 : S3 := storeEff v4 6 5
-/-- `derive(5, [5], Modify)`: authority 7 on the leaf of place 5, held by frame 0 (§60). -/
-def v6 : S3 := deriveEff v5 5 [5] .modify
-/-- `transfer(0, 4)`: places 3, 4 and 5 become unusable through the ownership cycle 3 ↔ 4 (§63
-`ok` effect). -/
-def v7 : LState := ⟨transferEff v6 0 4, []⟩
-/-- `newArena(1, 6)`: storage 1, `internal` 6, arena value 5 (§76). -/
-def v8 : LState := newArenaEff v7 1 6
-
-/-- The three allocations of the run of `arenaInv_broken_by_transfer` are library-reachable
-(§71, Part XIV). -/
-theorem t3_reach : LReach K0 st ⟨t3, []⟩ := by
-  have h1 : LReach K0 st ⟨t1, []⟩ := .step .init
-    (.kernel (KStep.alloc (pr := 0) (ow := 0) (ls := [(none, 0)])
-      (AllocStep.ok (by decide) trivial)))
-  have h2 : LReach K0 st ⟨t2, []⟩ := .step h1
-    (.kernel (KStep.alloc (pr := 0) (ow := 3) (ls := [(none, 0)])
-      (AllocStep.ok (by decide) trivial)))
-  exact .step h2
-    (.kernel (KStep.alloc (pr := 0) (ow := 3) (ls := [(none, 0)])
-      (AllocStep.ok (by decide) trivial)))
-
-/-- **The model accepts `newArena` where both readings of §76.6 fail** (§76.6, §49.8, §55, §63).
-In the library-reachable state `v7`, the §63 cycle makes the arena value 5 unusable, while
-`internal` 6 stays exercisable through authority 7, held by frame 0 (§43). `newArena(1, 6)` is
-`ok` and its entry satisfies `ArenaInv` (§55 does not ask the arena value to be usable), but
-`internal` is held by an unusable place: §49.8 fails at `internal`, so `WF3` and both readings of
-§76.6 fail (the registry is empty, so the global reading fails through its kernel part alone). -/
-theorem newArena766_local_fails :
-    LReach K0 st v7 ∧ NewArenaStep [] 1 6 v7 (.ok v8) ∧ v7.arenas = [] ∧
-    arenaValue v7.kern ⟨1, 6, [1], []⟩ = some 5 ∧ ¬ v7.kern.Usable 5 ∧
-    ArenaInv v7.kern ⟨1, 6, [1], []⟩ ∧ ¬ WF3 v7.kern ∧
-    ¬ NewArena766Global v7 ∧ ¬ NewArena766Global v8 ∧ ¬ NewArena766Local v7.kern 1 6 := by
-  have h4 : LReach K0 st ⟨v4, []⟩ := .step t3_reach (.kernel (.derive (.ok (by decide))))
-  have h5 : LReach K0 st ⟨v5, []⟩ := .step h4 (.kernel (.store (.ok (by decide))))
-  have h6 : LReach K0 st ⟨v6, []⟩ := .step h5 (.kernel (.derive (.ok (by decide))))
-  have h7 : LReach K0 st v7 := .step h6 (.kernel (.transfer (.ok (by decide))))
-  have hb : NewArenaBase v7.kern 1 6 := by decide
-  have hh : ¬ OptP (v7.kern.A[6]?) (fun y => y.active = true → HolderLive v7.kern y.holder) True :=
-    by decide
-  have hw : ¬ WF3 v7.kern := fun hw => hh (authRel766_holder hw 6)
-  exact ⟨h7, .ok (by decide), rfl, by decide, by decide, (newEntry_inv hb).1, hw,
-    fun h => hw h.1, fun h => hw h.1, fun h => hh h.internal.holder⟩
 
 end Witness
 
