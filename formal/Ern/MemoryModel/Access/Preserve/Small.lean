@@ -143,12 +143,13 @@ private theorem i5_of {k : K} {s s' : S3} (h : I5 k s) (hP : s'.P = s.P) (hF : s
     (hd : s'.dead = s.dead)
     (hpin : ∀ l, s'.pin l = true → s.pin l = true ∨ ∃ q, s.Usable q ∧ l ∈ footprint s.P q) :
     I5 k s' := by
-  intro l hl
+  intro l hlt hleaf hl
+  rw [hP] at hlt hleaf
   have hq : ∃ q, s.Usable q ∧ l ∈ footprint s.P q := by
     rcases hl with hk | hs
-    · exact h l (.inl hk)
+    · exact h l hlt hleaf (.inl hk)
     · rcases hpin l hs with hs | hq
-      · exact h l (.inr hs)
+      · exact h l hlt hleaf (.inr hs)
       · exact hq
   obtain ⟨q, hq, hlq⟩ := hq
   exact ⟨q, (S3.Usable.congr hP hF hd).2 hq, by rw [hP]; exact hlq⟩

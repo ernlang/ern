@@ -1276,24 +1276,31 @@ theorem exit_preserves_kAux {k : K} {s s' : S3} (ha : KAux s)
 
 /-! ## Preservation of `I5` (§57, §72, §73) -/
 
-/-- `enterFrame` preserves `I5` (§57; §72 `ok` effect): the pinning obligations are unchanged,
-and an existing usable place stays usable with the same footprint. -/
+/-- `enterFrame` preserves `I5` (§57; §72 `ok` effect): the pinning obligations are unchanged;
+an existing leaf is a leaf before the step, and an existing usable place stays usable with the
+same footprint; a new leaf is a local, usable since the new frame owns it, and lies in its own
+footprint (§40). -/
 theorem enter_preserves_i5 {k : K} {s s' : S3} {ps : List Nat} {ls : LocalShape} (h5 : I5 k s)
     (h : EnterStep ps ls s (.ok s')) : I5 k s' := by
   obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
-  intro l hl
+  intro l hlt hleaf hl
   rw [S3.pin_congr (pins_enterEff s ps ls)] at hl
-  obtain ⟨q, hq, hlq⟩ := h5 l hl
-  exact ⟨q, Frames.enter_usable_old hq, (Frames.enter_footprint_old hpre.localsOK hq.lt l).2 hlq⟩
+  by_cases hold : l < s.P.length
+  · obtain ⟨q, hq, hlq⟩ := h5 l hold ((Frames.enter_isLeaf_old hpre.localsOK hold).1 hleaf) hl
+    exact ⟨q, Frames.enter_usable_old hq, (Frames.enter_footprint_old hpre.localsOK hq.lt l).2 hlq⟩
+  · have hlt' : l < s.P.length + ls.length := by rw [← Frames.enterP_len s ls]; exact hlt
+    obtain ⟨i, rfl⟩ : ∃ i, l = s.P.length + i := ⟨l - s.P.length, by omega⟩
+    exact ⟨s.P.length + i, Frames.enter_usable_new (by omega),
+      mem_footprint.2 ⟨hlt, hleaf, hlt, .inl rfl⟩⟩
 
 /-- `exitFrame` preserves `I5` (§57; §73.3, §73 `ok` effect): the pinning obligations and the
 places are unchanged, and a usable place that becomes unusable has no pinned leaf (§73.3). -/
 theorem exit_preserves_i5 {k : K} {s s' : S3} (h5 : I5 k s) (h : ExitStep k s (.ok s')) :
     I5 k s' := by
   obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
-  intro l hl
+  intro l hlt hleaf hl
   rw [S3.pin_congr (pins_exitEff s)] at hl
-  obtain ⟨q, hq, hlq⟩ := h5 l hl
+  obtain ⟨q, hq, hlq⟩ := h5 l hlt hleaf hl
   by_cases hu : ({ s with F := s.F.tail } : S3).Usable q
   · exact ⟨q, Frames.exit_usable_iff.2 hu, hlq⟩
   · have hnp := hpre.notPinned q (List.mem_range.2 hq.lt) hq hu l hlq

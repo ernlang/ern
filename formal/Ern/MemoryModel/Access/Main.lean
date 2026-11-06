@@ -684,14 +684,17 @@ theorem reachable_kinv {k : K} {statics : Statics} {s : S3} (hdd : DDSound k)
     (hst : StaticsOK statics) (h : Reachable k statics s) : KInv s :=
   (reachable_inv hdd hst h).1
 
-/-- `I5` (§57) on reachable states: under `DDSound` (§80) and `StaticsOK` (§47), if `K.Pinned`
-meets its obligation on the initial state (§57, §80), every leaf pinned statically or by an
-active obligation (§74) belongs to a usable place in every reachable state. -/
+/-- `I5` (§57) on reachable states: under `DDSound` (§80) and `StaticsOK` (§47), every leaf
+pinned statically (`K.Pinned`) or by an active obligation (§74) belongs to a usable place in every
+reachable state. No hypothesis on `K.Pinned`: initially every static is usable (§47) and a leaf
+lies in its own footprint (§40). -/
 theorem reachable_i5 {k : K} {statics : Statics} {s : S3} (hdd : DDSound k)
-    (hst : StaticsOK statics) (h0 : I5 k (S3.init statics)) (h : Reachable k statics s) :
-    I5 k s := by
+    (hst : StaticsOK statics) (h : Reachable k statics s) : I5 k s := by
   induction h with
-  | init => exact h0
+  | init =>
+    intro l hlt hleaf _
+    exact ⟨l, init_usable hst (l + 1) l (Nat.lt_succ_self l) (by rwa [initP_len] at hlt),
+      mem_footprint.2 ⟨hlt, hleaf, hlt, .inl rfl⟩⟩
   | step hr h ih => exact kstep_preserves_i5 (reachable_kinv hdd hst hr).1 ih h
 
 open TransferWitness in

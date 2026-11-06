@@ -110,10 +110,12 @@ def NoDangling (s : S3) : Prop :=
 def Inv3 (s : S3) : Prop := Inv3base s ∧ AnchorOrder s ∧ NoDangling s
 
 /-- `I5` (§57): every pinned leaf, statically (`K.Pinned`) or dynamically (an active pinning
-obligation, §74), belongs to a usable place. A specialized obligation of `K.Pinned`, not a
-conjunct of the main invariant (§57). -/
+obligation, §74), belongs to a usable place. The quantifier ranges over the leaves of the state
+(§40): `K.Pinned` on an index that is not a leaf of `s` is not constrained. A specialized
+obligation of `K.Pinned`, not a conjunct of the main invariant (§57). -/
 def I5 (k : K) (s : S3) : Prop :=
-  ∀ l, (k.Pinned l ∨ s.pin l = true) → ∃ q, s.Usable q ∧ l ∈ footprint s.P q
+  ∀ l, l < s.P.length → isLeaf s.P l → (k.Pinned l ∨ s.pin l = true) →
+    ∃ q, s.Usable q ∧ l ∈ footprint s.P q
 
 /-! ## `NoOrphan` (§54) -/
 

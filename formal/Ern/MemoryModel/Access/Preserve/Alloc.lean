@@ -599,17 +599,22 @@ theorem alloc_preserves_kAux {k : K} {pr ow : Nat} {ls : LocalShape} {s s' : S3}
   cases h with
   | ok hst _ => exact Alloc.rootHeldConv hst hk.1 ha
 
-/-- `alloc` preserves `I5` (§57; §71 `ok`, §74): the pinning obligations are unchanged, and a
-place usable before the step stays usable with the same footprint. No other invariant is
-needed. -/
+/-- `alloc` preserves `I5` (§57; §71 `ok`, §74): the pinning obligations are unchanged; a former
+leaf is a leaf before the step, and a place usable before the step stays usable with the same
+footprint; a new leaf is a new place, usable since its owner is (§71.3), and lies in its own
+footprint (§40). No other invariant is needed. -/
 theorem alloc_preserves_i5 {k : K} {pr ow : Nat} {ls : LocalShape} {s s' : S3}
     (h5 : I5 k s) (h : AllocStep k pr ow ls s (.ok s')) : I5 k s' := by
   cases h with
   | ok hst _ =>
-    intro l hl
+    intro l hlt hleaf hl
     rw [S3.pin_congr (pins_allocEff s ow ls)] at hl
-    obtain ⟨q, hq, hlq⟩ := h5 l hl
-    exact ⟨q, Alloc.usable_old hq, (Alloc.footprint_old hst.shapeOK hq.lt l).2 hlq⟩
+    by_cases hold : l < s.P.length
+    · obtain ⟨q, hq, hlq⟩ := h5 l hold ((Alloc.isLeaf_old hst.shapeOK hold).1 hleaf) hl
+      exact ⟨q, Alloc.usable_old hq, (Alloc.footprint_old hst.shapeOK hq.lt l).2 hlq⟩
+    · have hlt' : l < s.P.length + ls.length := by rw [← Alloc.allocP_len s ow ls]; exact hlt
+      exact ⟨l, Alloc.usable_new hst.ownerUsable (Nat.le_of_not_lt hold) hlt',
+        mem_footprint.2 ⟨hlt, hleaf, hlt, .inl rfl⟩⟩
 
 /-- The `ok` effect of `alloc` (§71, `ok`): the former places are kept and the nonempty shape is
 appended with fresh identities, every new place owned by `owner`; among the new places exactly

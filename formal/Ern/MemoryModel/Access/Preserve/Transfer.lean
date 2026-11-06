@@ -721,9 +721,11 @@ place stays usable. `WF3` is used only for the last point. -/
 theorem transfer_preserves_i5 {k : K} {s s' : S3} {src dst : Nat} (hwf : WF3 s) (h5 : I5 k s)
     (h : TransferStep k src dst s (.ok s')) : I5 k s' := by
   obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
-  intro l hl
+  intro l hlt hleaf hl
+  rw [transfer_len] at hlt
+  replace hleaf : isLeaf s.P l := by simpa only [isLeaf, transfer_len, transfer_parentOf] using hleaf
   rw [S3.pin_congr (pins_transferEff s src dst)] at hl
-  obtain ⟨q, hq, hlq⟩ := h5 l hl
+  obtain ⟨q, hq, hlq⟩ := h5 l hlt hleaf hl
   exact ⟨q, transfer_usable_fwd hwf hpre.dstUsableAfter hq, by rw [transfer_footprint]; exact hlq⟩
 
 /-! ## §63.9 rejects the ownership-cycle run (§49.8, §54) -/

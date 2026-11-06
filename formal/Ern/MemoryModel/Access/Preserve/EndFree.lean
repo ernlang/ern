@@ -577,9 +577,9 @@ the pinning obligations are unchanged (§69 `ok` effect). -/
 theorem endUse_preserves_i5 {k : K} {s s' : S3} {p : Nat} (hw : WF3 s) (h5 : I5 k s)
     (h : EndUseStep k p s (.ok s')) : I5 k s' := by
   obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
-  intro l hl
+  intro l hlt hleaf hl
   rw [S3.pin_congr (pins_endUseEff s p)] at hl
-  obtain ⟨q, hq, hlq⟩ := h5 l hl
+  obtain ⟨q, hq, hlq⟩ := h5 l hlt hleaf hl
   obtain ⟨hlP, hleaf, hpart⟩ := mem_footprint.1 hlq
   have hlu : s.Usable l := usable_of_partOf hw (l + 1) l q (Nat.lt_succ_self l) hpart hq
   refine ⟨l, (cleanup_usable _ l).2 (Decidable.byContradiction fun hn => ?_),
@@ -889,9 +889,9 @@ a pinned leaf of a usable place belongs to the released unit if it stops being u
 theorem free_preserves_i5 {k : K} {s s' : S3} {p auth : Nat} (hw : WF3 s) (h5 : I5 k s)
     (h : FreeStep k p auth s (.ok s')) : I5 k s' := by
   obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
-  intro l hl
+  intro l hlt hleaf hl
   rw [S3.pin_congr (pins_freeEff s p)] at hl
-  obtain ⟨q, hq, hlq⟩ := h5 l hl
+  obtain ⟨q, hq, hlq⟩ := h5 l hlt hleaf hl
   obtain ⟨hlP, hleaf, hpart⟩ := mem_footprint.1 hlq
   have hlu : s.Usable l := usable_of_partOf hw (l + 1) l q (Nat.lt_succ_self l) hpart hq
   refine ⟨l, (cleanup_usable _ l).2 (Decidable.byContradiction fun hn => ?_),

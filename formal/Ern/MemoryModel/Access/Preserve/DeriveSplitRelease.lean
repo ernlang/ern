@@ -67,9 +67,10 @@ private theorem effAnchorOK_addAuth {s : S3} {y₀ : Authority} {x : Nat} {fd : 
 usability, footprints and pinned leaves, hence preserves I5 (§57; §40, §74). -/
 private theorem i5_congr {k : K} {s s' : S3} (hP : s'.P = s.P) (hF : s'.F = s.F)
     (hd : s'.dead = s.dead) (hpin : s'.pins = s.pins) (h5 : I5 k s) : I5 k s' := by
-  intro l hl
+  intro l hlt hleaf hl
+  rw [hP] at hlt hleaf
   rw [S3.pin_congr hpin] at hl
-  obtain ⟨q, hq, hlq⟩ := h5 l hl
+  obtain ⟨q, hq, hlq⟩ := h5 l hlt hleaf hl
   exact ⟨q, (S3.Usable.congr hP hF hd).2 hq, by rw [hP]; exact hlq⟩
 
 /-! ## Additions of one derived authority (§60, §61) -/
