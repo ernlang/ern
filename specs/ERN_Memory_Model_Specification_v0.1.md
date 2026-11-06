@@ -1,32 +1,13 @@
 # ERN — Memory Model Specification v0.1
 
-**Edition v0.1 — corrective candidate, not yet validated**
-
-Modified clauses, relative to v0 (each change is justified by a defect found while formalizing v0):
-
-- §36: `MetaRight` governs authorities over existing storage, not the fresh allocation of `alloc`; §36 and §71.2 contradicted each other.
-- §40: `RootHeld` restricted to usable root places, as in §49.7; the two clauses differed on unusable root places.
-- §47: the ownership graph of statics is acyclic; a static ownership cycle made §57 false in the initial state.
-- §51: a valid origin is an active origin; "valid" was undefined there.
-- §57: definition of I5, which v0 named without defining.
-- §59: "access operations" are O9–O11; read as all operations, §59 contradicted §69.
-- §60.1: a valid origin chain is an active one, read through §44.
-- §63.4: the active derived authorities covering the source from outside are named, and the authorities through which the step exercises its `Modify` right are exempt; without this exemption no value could be moved through a derived authority.
-- §63.9 (new): the destination is usable in the resulting state; without it an accepted transfer could create an ownership cycle and break §49.8 and §57.
-- §69.2 and §70.3: the same exemption as §63.4, and rejection when an authority made inactive by the step keeps an active descendant; without it an accepted step left an active authority with an inactive origin.
-- §71.2: the provider is a usable place; v0 did not require it to exist.
-- §74 and §75: each `pin` installs an obligation of fresh identity and `unpin` ends one designated obligation; per-leaf pin flags let an `unpin` lift a pin installed by another `pin`.
-- §76.6: the reading of the precondition (whole kernel state, `ArenaInv` of the new entry, resulting state); v0 admitted several readings with different verdicts.
-- §78.3: restricted to anchors covering a leaf of the administered storage; as written, its second sentence was false.
-- §82.2: address and provenance of a pointer to a region whose leaves all have zero physical size; v0 decided no address for that region.
-- §86: the last sentence is rewritten; as written, it was false, since `reset` and `issue` leave a recycled leaf `Init` and readable.
+**Edition v0.1 — November 6, 2026. Status: validated and frozen. Supersedes v0.**
 
 **Higher normative authority:** *ERN — Language Charter v0* (October 27, 2026).  
 This specification defines the normative rules of ERN's memory model. Technical names (`derive`, `transfer`, `issue`, etc.) designate **abstract semantic operations**; they do not constitute syntax decisions.
 
 ## Validation and Revision Procedure
 
-This edition is a corrective candidate, not yet validated; it acquires normative authority under the ERN Charter v0 only once validated. Any subsequent semantic change must identify the clauses concerned, justify the change, and preserve the guarantees of the ERN Charter v0. Formal models and proofs are instruments for verifying this specification, not sources of additional rules. Behaviors not determined within its scope are explicitly identified.
+This edition has been validated and acquires normative authority under the ERN Charter v0. Any subsequent semantic change must identify the clauses concerned, justify the change, and preserve the guarantees of the ERN Charter v0. Formal models and proofs are instruments for verifying this specification, not sources of additional rules. Behaviors not determined within its scope are explicitly identified.
 
 ## Scope
 
