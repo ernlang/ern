@@ -5,7 +5,7 @@ import Ern.MemoryModel.Arena
 
 **Non-normative.** This module formalizes the library contract "HandlePool v0.5": the HandlePool
 v0.4 annex (items D.1–D.4) as amended by the arbitrations Q3, Q4, Q5 and Q12 (items HP5-1 to
-HP5-7). `specs/ERN_Memory_Model_Specification_v0.1.md` does not define it (Part XIV preamble: "The
+HP5-7) and by the second follow-up to Q3 and Q5 (HP5-1', HP5-1''). `specs/ERN_Memory_Model_Specification_v0.1.md` does not define it (Part XIV preamble: "The
 contracts of `HandlePool` and `DataStack` belong to their library abstractions and are not defined
 here"). The normative clauses that constrain it are §36 (`MetaRight` is exercisable `Modify` on the
 administering value; `writeShared` alone is insufficient; the library adds no rights to the
@@ -59,8 +59,7 @@ deriving DecidableEq, Repr
 
 /-- Ghost record of a resolution (HandlePool v0.5, D.2; auxiliary information creating no right,
 §38): pool identity and `internal`, the companion, the mode, and the entry authorities tagged with
-their slot and resolved generation. Read by `unresolve`, by the content condition of `freeSlot`
-(the companions of a pool, HP5-1) and by the invariants. -/
+their slot and resolved generation. Read by `unresolve` and by the invariants. -/
 structure Res where
   pool : Nat
   internal : Nat
@@ -203,7 +202,7 @@ inductive AllocSlotStep (j dst : Nat) (L : PState) : Outcome3 PState → Prop wh
 
 /-! ## `resolve`, `resolveMany` (HandlePool v0.5, D.2, HP5-5, HP5-6) -/
 
-/-- Validity of a handle for pool `pl` (HandlePool v0.5, D.2, D.3, HP5-5, HP5-6; §89;
+/-- Validity of a handle for pool `pl` (HandlePool v0.5, D.2, D.3, HP5-5, HP5-6, HP5-1''; §89;
 non-normative library contract): the pool is live (`internal` active, §46 analogue: a handle of a
 dead pool is stale, HP5-5), the handle names the pool, and it designates a live slot at its
 generation (a handle of a free entry is stale, HP5-6); a slot index outside the pool designates
@@ -359,33 +358,33 @@ inductive UnresolveStep (c : Nat) (L : PState) : Outcome3 PState → Prop where
       releaseAll L.kern (unresolveList L.kern r) = some s' →
       UnresolveStep c L (.ok { L with kern := s' })
 
-/-! ## `freeSlot` (HandlePool v0.5, D.3 as amended by HP5-1) -/
+/-! ## `freeSlot` (HandlePool v0.5, D.3 as amended by HP5-1, HP5-1', HP5-1'') -/
 
-/-- No active strict descendant of a companion recorded for pool `pl` covers a leaf of place `q`
-(HandlePool v0.5, HP5-1, and D.4 (3) restricted to the companions of the slot's pool, HP5-4; §42:
-descendants along the origin chain; non-normative library contract). The companions of `pl` are
-those of the resolutions recorded for its identity. -/
-def NoCompDesc (L : PState) (pl : Pool) (q : Nat) : Prop :=
-  ∀ r ∈ L.res, r.pool = pl.id → ∀ x ∈ List.range L.kern.A.length, L.kern.Active x →
-    r.comp ∈ L.kern.ancs x → ∀ l ∈ L.kern.afp x, l ∉ footprint L.kern.P q
+/-- No active strict descendant of the `internal` of pool `pl` covers a leaf of place `q`
+(HandlePool v0.5, HP5-1 as amended by HP5-1': "aucune autorité active, descendante stricte de
+internal de ce pool, ne couvre l'entrée"; §42: descendants along the current origin chain, which
+covers the reanchoring of §73.4 onto `internal`; non-normative library contract). -/
+def NoInternalDesc (s : S3) (pl : Pool) (q : Nat) : Prop :=
+  ∀ x ∈ List.range s.A.length, s.Active x → pl.internal ∈ s.ancs x →
+    ∀ l ∈ s.afp x, l ∉ footprint s.P q
 
-/-- Decidability of `NoCompDesc` (HandlePool v0.5, HP5-1; §42). -/
-instance (L : PState) (pl : Pool) (q : Nat) : Decidable (NoCompDesc L pl q) := by
-  unfold NoCompDesc; infer_instance
+/-- Decidability of `NoInternalDesc` (HandlePool v0.5, HP5-1'; §42). -/
+instance (s : S3) (pl : Pool) (q : Nat) : Decidable (NoInternalDesc s pl q) := by
+  unfold NoInternalDesc; infer_instance
 
-/-- Content conditions of `freeSlot` on slot place `q` of pool `pl` (HandlePool v0.5, HP5-1;
-non-normative library contract; §41, §42). -/
+/-- Content conditions of `freeSlot` on slot place `q` of pool `pl` (HandlePool v0.5, HP5-1,
+HP5-1'; non-normative library contract; §41, §42). -/
 structure FreeContentOK (L : PState) (pl : Pool) (q : Nat) : Prop where
   /-- HandlePool v0.5, HP5-1: no leaf of the entry is `Init`; each is `Uninit` or `Moved`
   (§41). -/
   notInit : ∀ l ∈ footprint L.kern.P q, L.kern.I l ≠ .init
-  /-- HandlePool v0.5, HP5-1: no active authority derived from a companion of this pool (a strict
-  descendant of a companion recorded for this pool) covers a leaf of the entry. -/
-  noCompDesc : NoCompDesc L pl q
+  /-- HandlePool v0.5, HP5-1': no active strict descendant of `internal` of this pool covers a
+  leaf of the entry (§42). -/
+  noDesc : NoInternalDesc L.kern pl q
 
-/-- Decidability of `FreeContentOK` (HandlePool v0.5, HP5-1; §41, §42). -/
+/-- Decidability of `FreeContentOK` (HandlePool v0.5, HP5-1, HP5-1'; §41, §42). -/
 instance (L : PState) (pl : Pool) (q : Nat) : Decidable (FreeContentOK L pl q) :=
-  decidable_of_iff ((∀ l ∈ footprint L.kern.P q, L.kern.I l ≠ .init) ∧ NoCompDesc L pl q)
+  decidable_of_iff ((∀ l ∈ footprint L.kern.P q, L.kern.I l ≠ .init) ∧ NoInternalDesc L.kern pl q)
     ⟨fun ⟨a, b⟩ => ⟨a, b⟩, fun ⟨a, b⟩ => ⟨a, b⟩⟩
 
 /-- Effect of `freeSlot` on slot `i` of pool `j` (HandlePool v0.5, HP5-1; non-normative library
@@ -394,23 +393,21 @@ and the kernel state is unchanged (§36: the library adds no rights to the kerne
 def freeSlotEff (L : PState) (j : Nat) (pl : Pool) (i : Nat) (sl : Slot) : PState :=
   { L with pools := L.pools.set j (setSlot pl i ⟨sl.place, sl.gen + 1, false⟩) }
 
-/-- `freeSlot(h)` on pool `j` as a relation (HandlePool v0.5, D.3 corrected by §36, HP5-1; §58;
-non-normative library contract): `reject` without the pool or without the administration right
-(live pool and `MetaRight`); then `fail` for a handle of another pool, stale, absent or free; then
-`reject` unless the content conditions hold (`FreeContentOK`). This is the outcome order of
-HandlePool v0.4, kept by HP5-1: the order of HP5-5 (handle before right) concerns resolution
-(§89) only. -/
+/-- `freeSlot(h)` on pool `j` as a relation (HandlePool v0.5, D.3 corrected by §36, HP5-1; outcome
+order of HP5-1'' (Q5 extended to `freeSlot`); §58, §89; non-normative library contract): `reject`
+without the pool; then `fail` for a handle of a dead pool, of another pool, stale, absent or free,
+before the right is checked; then `reject` without the administration right (live pool and
+`MetaRight`); then `reject` unless the content conditions hold (`FreeContentOK`); then `ok`. -/
 inductive FreeSlotStep (j : Nat) (h : Handle) (L : PState) : Outcome3 PState → Prop where
   | noPool : L.pools[j]? = none → FreeSlotStep j h L .reject
-  | noRight {pl : Pool} : L.pools[j]? = some pl → ¬ AdminRight L.kern pl →
+  | fail {pl : Pool} : L.pools[j]? = some pl → ¬ HandleOK L.kern pl h → FreeSlotStep j h L .fail
+  | noRight {pl : Pool} : L.pools[j]? = some pl → HandleOK L.kern pl h → ¬ AdminRight L.kern pl →
       FreeSlotStep j h L .reject
-  | fail {pl : Pool} : L.pools[j]? = some pl → AdminRight L.kern pl → ¬ HandleOK L.kern pl h →
-      FreeSlotStep j h L .fail
-  | noContent {pl : Pool} {sl : Slot} : L.pools[j]? = some pl → AdminRight L.kern pl →
-      HandleOK L.kern pl h → pl.slots[h.slot]? = some sl → ¬ FreeContentOK L pl sl.place →
+  | noContent {pl : Pool} {sl : Slot} : L.pools[j]? = some pl → HandleOK L.kern pl h →
+      AdminRight L.kern pl → pl.slots[h.slot]? = some sl → ¬ FreeContentOK L pl sl.place →
       FreeSlotStep j h L .reject
-  | ok {pl : Pool} {sl : Slot} : L.pools[j]? = some pl → AdminRight L.kern pl →
-      HandleOK L.kern pl h → pl.slots[h.slot]? = some sl → FreeContentOK L pl sl.place →
+  | ok {pl : Pool} {sl : Slot} : L.pools[j]? = some pl → HandleOK L.kern pl h →
+      AdminRight L.kern pl → pl.slots[h.slot]? = some sl → FreeContentOK L pl sl.place →
       FreeSlotStep j h L (.ok (freeSlotEff L j pl h.slot sl))
 
 /-! ## Library runs (HandlePool v0.5; §38, §46, §47) -/
@@ -1146,32 +1143,23 @@ def EntriesDisjoint (L : PState) : Prop :=
 
 /-- `PoolInv`, item 2, `pool_no_stale_access` as a state predicate (HandlePool v0.5, D.4 (2);
 non-normative library contract): no active entry authority designates a free slot or a former
-generation (§89). It is false on a library-reachable state (`Witness.no_stale_after_exit`): the
-content condition of `freeSlot` (HP5-1, `NoCompDesc`) follows the current origin chain (§42), and
-the reanchoring of `exitFrame` (§73) can take a surviving entry authority out of the subtree of its
-companion. Whether "dérivée d'une compagne" (Q3) means the current origin chain or the entry
-authorities recorded for the pool is open, so `pool_no_stale_access` and `pool_inv_preserved` are
-not stated as theorems. -/
+generation (§89). -/
 def NoStale (L : PState) : Prop :=
   ∀ r ∈ L.res, ∀ e ∈ r.entries, L.kern.Active e.1 → ∃ pl ∈ L.pools, pl.id = r.pool ∧
     ∃ sl, pl.slots[e.2.1]? = some sl ∧ sl.gen = e.2.2 ∧ sl.live = true
 
-/-- `PoolInv`, item 3, the transition guarantee per pool (HandlePool v0.5, D.4 (3) restricted to
-the companions of the slot's pool, HP5-4: "`freeSlot` n'aboutit jamais si une descendante active
-d'une compagne couvre le slot concerné"; non-normative library contract): `freeSlot` never
-succeeds while an active strict descendant of a companion of the slot's pool covers a leaf of the
-slot (§42, §43). -/
+/-- `PoolInv`, item 3, the transition guarantee per pool (HandlePool v0.5, D.4 (3) as amended by
+HP5-1'; non-normative library contract; §42, §43): `freeSlot` never succeeds while an active strict
+descendant of the `internal` of the slot's pool covers a leaf of the slot. -/
 def FreeGuarantee (L : PState) : Prop :=
   ∀ (j : Nat) (h : Handle) (L' : PState), FreeSlotStep j h L (.ok L') →
     ∀ (pl : Pool) (sl : Slot), L.pools[j]? = some pl → pl.slots[h.slot]? = some sl →
-      ∀ r ∈ L.res, r.pool = pl.id → ∀ x, L.kern.Active x → r.comp ∈ L.kern.ancs x →
+      ∀ x, L.kern.Active x → pl.internal ∈ L.kern.ancs x →
         ∀ l ∈ L.kern.afp x, l ∉ footprint L.kern.P sl.place
 
-/-- `PoolInv` (HandlePool v0.5, D.4 per pool, HP5-4; non-normative library contract): entry
+/-- `PoolInv` (HandlePool v0.5, D.4 per pool, HP5-4, HP5-1'; non-normative library contract): entry
 disjointness, `pool_no_stale_access`, and the per-pool transition guarantee of `freeSlot` (§55
-analogue, §57). Items 1 and 3 hold (`pool_entries_disjoint`, `pool_freeSlot_no_companion_desc`);
-item 2, hence `PoolInv`, is false on a library-reachable state (`NoStale`,
-`Witness.no_stale_after_exit`). -/
+analogue, §57). -/
 def PoolInv (L : PState) : Prop := EntriesDisjoint L ∧ NoStale L ∧ FreeGuarantee L
 
 /-- `EntriesDisjoint` follows from the ghost well-formedness (HandlePool v0.5, D.4 (1); §40). -/
@@ -1188,18 +1176,350 @@ theorem pool_entries_disjoint {k : K} {statics : Statics} {L : PState} (h : PRea
     EntriesDisjoint L :=
   entriesDisjoint_of (pReach_poolWF h)
 
-/-- `pool_freeSlot_no_companion_desc` (HandlePool v0.5, D.4 (3) per pool, HP5-4): on every library
-state, `freeSlot` never succeeds while an active strict descendant of a companion of the slot's
-pool covers a leaf of the slot (§42, §43). It is the content condition of `freeSlot` (HP5-1). -/
-theorem pool_freeSlot_no_companion_desc (L : PState) : FreeGuarantee L := by
-  intro j h L' hst pl sl hpj hsl r hr hrp x hx hxr l hl hlq
+/-- `pool_freeSlot_no_internal_desc` (HandlePool v0.5, D.4 (3) as amended by HP5-1'): on every
+library state, `freeSlot` never succeeds while an active strict descendant of the `internal` of the
+slot's pool covers a leaf of the slot (§42, §43). It is the content condition of `freeSlot`. -/
+theorem pool_freeSlot_no_internal_desc (L : PState) : FreeGuarantee L := by
+  intro j h L' hst pl sl hpj hsl x hx hxi l hl hlq
   cases hst with
   | @ok pl' sl' hpj' _ _ hsl' hc =>
     rw [hpj] at hpj'; cases hpj'
     rw [hsl] at hsl'; cases hsl'
     obtain ⟨y, hy, ya⟩ := hx
-    exact hc.noCompDesc r hr hrp x (List.mem_range.2 (lt_of_getElem? hy)) ⟨y, hy, ya⟩ hxr l hl
-      hlq
+    exact hc.noDesc x (List.mem_range.2 (lt_of_getElem? hy)) ⟨y, hy, ya⟩ hxi l hl hlq
+
+/-! ## Origin chains of the companions and entry authorities (HandlePool v0.5, D.2, HP5-1') -/
+
+/-- Appending authorities keeps the origin chains of the former ones (§42). -/
+theorem ancs_append {s s' : S3} {l : List Authority} (hA : s'.A = s.A ++ l) {j : Nat}
+    (hj : j < s.A.length) : s'.ancs j = s.ancs j :=
+  chain_congr fun i hi => by
+    simp only [S3.org, hA, List.getElem?_append_left (Nat.lt_of_le_of_lt hi hj)]
+
+/-- A kernel step keeps on the origin chain of a former authority every ancestor still active
+after it (§42, §58; §60–§75 `ok` effects): only `exitFrame` changes origins, reanchoring a
+surviving authority to the first surviving active origin of its chain (§73.4), and an ancestor
+active after the exit survives. -/
+theorem kstep_ancs_keep {k : K} {s s' : S3} (h : KStep k s s') {x : Nat} (hx : x < s.A.length)
+    {w : Nat} (hw : w ∈ s.ancs x) (hwa : s'.Active w) : w ∈ s'.ancs x := by
+  cases h with
+  | derive hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; rw [ancs_append rfl hx]; exact hw
+  | split hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; rw [ancs_append rfl hx]; exact hw
+  | release hs =>
+    obtain ⟨hp, rfl⟩ := Guarded.ok_iff.1 hs
+    obtain ⟨y, hy, -⟩ := hp.active
+    rw [release_ancs hy]; exact hw
+  | transfer hs =>
+    obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; rw [(transfer_skel _ _ _).ancs]; exact hw
+  | depend hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact hw
+  | enter hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; rw [Frames.enter_ancs_lt hx]; exact hw
+  | exit hs =>
+    obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs
+    obtain ⟨z, hz, za⟩ := hwa
+    obtain ⟨z₀, -, rfl⟩ := Frames.exit_get hz
+    exact Frames.exit_ancs_keep (x + 1) x (Nat.lt_succ_self x) w hw (Frames.exitG_active za)
+  | read hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact hw
+  | write hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact hw
+  | writeShared hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact hw
+  | pin hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact hw
+  | unpin hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact hw
+  | endUse hs =>
+    rename_i p
+    obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs
+    rw [show endUseEff s p = cleanup (endUseS s p) from rfl,
+      ((EndFree.endUseS_releases s p).trans (EndFree.cleanup_releases _)).ancs]
+    exact hw
+  | free hs =>
+    rename_i p _
+    obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs
+    rw [show freeEff s p = cleanup (freeS s p) from rfl,
+      ((EndFree.freeS_releases s p).trans (EndFree.cleanup_releases _)).ancs]
+    exact hw
+  | alloc hs => cases hs with
+    | ok _ _ => rw [ancs_append rfl hx]; exact hw
+  | store hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; rw [(Arena.store_skel _ _ _).ancs]; exact hw
+
+/-- A sequence of kernel steps keeps on the origin chain of a former authority every ancestor still
+active at its end (§42, §73.4). -/
+theorem KSeq.ancs_keep {k : K} {s s' : S3} (h : KSeq k s s') {x : Nat} (hx : x < s.A.length)
+    {w : Nat} (hw : w ∈ s.ancs x) (hwa : s'.Active w) : w ∈ s'.ancs x := by
+  induction h with
+  | refl => exact hw
+  | tail h₁ hs ih =>
+    have hK := h₁.keep.1
+    exact kstep_ancs_keep hs (hK.lt hx)
+      (ih ((Arena.kstep_akeep hs).active_back hwa (hK.lt (Nat.lt_trans (chain_lt hw) hx)))) hwa
+
+/-- The companion and the entry authorities of every ghost resolution, while active, have the
+`internal` of their pool on their origin chain as long as `internal` is active (auxiliary, not a
+clause of the contract; HandlePool v0.5, D.2: the companion is derived from `internal`, each entry
+authority from the companion; §42, §73.4). -/
+def ResAnc (L : PState) : Prop :=
+  ∀ r ∈ L.res, ∀ x ∈ r.comp :: r.entries.map (·.1), L.kern.Active x →
+    L.kern.Active r.internal → r.internal ∈ L.kern.ancs x
+
+/-- The `internal`, the companion and the entry authorities of a ghost resolution exist (§42;
+HandlePool v0.5, D.2). -/
+theorem res_lt {L : PState} (hw : PoolWF L) {r : Res} (hr : r ∈ L.res) :
+    r.internal < L.kern.A.length ∧ ∀ x ∈ r.comp :: r.entries.map (·.1), x < L.kern.A.length := by
+  obtain ⟨sh, -, -, -, hlt, hc, he⟩ := hw.res r hr
+  obtain ⟨y, hy, -⟩ := optP_false_iff.1 hc
+  have hc' := lt_of_getElem? hy
+  refine ⟨Nat.lt_trans hlt hc', fun x hx => ?_⟩
+  rcases List.mem_cons.1 hx with rfl | hx
+  · exact hc'
+  · obtain ⟨e, he', rfl⟩ := List.mem_map.1 hx
+    obtain ⟨-, q, -, ho⟩ := he e he'
+    obtain ⟨z, hz, -⟩ := optP_false_iff.1 ho
+    exact lt_of_getElem? hz
+
+/-- A companion of origin `i` and entry authorities of origin the companion have `i` on their
+origin chain (§42, §60; HandlePool v0.5, D.2). -/
+theorem anc_new {s : S3} {i c : Nat} {es : List Nat} (hic : i < c)
+    (hc : OptP (s.A[c]?) (fun y => y.origin = some i) False)
+    (he : ∀ e ∈ es, c < e ∧ OptP (s.A[e]?) (fun y => y.origin = some c) False) :
+    ∀ x ∈ c :: es, i ∈ s.ancs x := by
+  obtain ⟨yc, hyc, hoc⟩ := optP_false_iff.1 hc
+  have hci : i ∈ s.ancs c := by
+    unfold S3.ancs; rw [chain_cons (by simp [S3.org, hyc, hoc]) hic]; exact List.mem_cons_self ..
+  intro x hx
+  rcases List.mem_cons.1 hx with rfl | hx
+  · exact hci
+  · obtain ⟨hlt, ho⟩ := he x hx
+    obtain ⟨y, hy, hoy⟩ := optP_false_iff.1 ho
+    unfold S3.ancs; rw [chain_cons (by simp [S3.org, hy, hoy]) hlt]
+    exact List.mem_cons_of_mem _ hci
+
+/-- `ResAnc` carries over a sequence of kernel steps (§42, §73.4; HandlePool v0.5, D.2). -/
+theorem ResAnc.kseq {k : K} {L : PState} {s' : S3} (h : ResAnc L) (hw : PoolWF L)
+    (hs : KSeq k L.kern s') : ResAnc { L with kern := s' } := by
+  intro r hr x hx hxa hia
+  obtain ⟨hil, hxl⟩ := res_lt hw hr
+  have hA := hs.keep.1
+  exact hs.ancs_keep (hxl x hx)
+    (h r hr x hx (hA.active_back hxa (hxl x hx)) (hA.active_back hia hil)) hia
+
+/-- `ResAnc` carries over the addition of authorities and of a resolution satisfying it (§42, §60;
+HandlePool v0.5, D.2). -/
+theorem ResAnc.addRes {L : PState} {s' : S3} {l : List Authority} {rn : Res} (h : ResAnc L)
+    (hw : PoolWF L) (hA : s'.A = L.kern.A ++ l)
+    (hrn : ∀ x ∈ rn.comp :: rn.entries.map (·.1), rn.internal ∈ s'.ancs x) :
+    ResAnc ⟨s', L.pools, L.nId, L.res ++ [rn]⟩ := by
+  intro r hr x hx hxa hia
+  rcases List.mem_append.1 hr with hr | hr
+  · obtain ⟨hil, hxl⟩ := res_lt hw hr
+    have hK := Arena.akeep_append hA
+    show r.internal ∈ s'.ancs x
+    rw [ancs_append hA (hxl x hx)]
+    exact h r hr x hx (hK.active_back hxa (hxl x hx)) (hK.active_back hia hil)
+  · rw [List.mem_singleton.1 hr] at hx ⊢; exact hrn x hx
+
+/-- Every library step keeps `ResAnc` (HandlePool v0.5, D.2; §42, §73.4): kernel steps and
+`unresolve` keep every active ancestor on the chains (`KSeq.ancs_keep`), `newPool`, `allocSlot` and
+`freeSlot` change neither the authorities nor the resolutions, and `resolve` and `resolveMany` add
+a companion of origin `internal` and entry authorities of origin the companion (§60, §61). -/
+theorem pstep_resAnc {k : K} {L L' : PState} (hw : PoolWF L) (h : ResAnc L) (hs : PStep k L L') :
+    ResAnc L' := by
+  cases hs with
+  | kernel hs => exact h.kseq hw (KSeq.single hs)
+  | newPool hs => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs; exact h
+  | allocSlot hs =>
+    cases hs with
+    | ok => exact h
+  | @resolve _ _ _ m hs =>
+    cases hs with
+    | @ok pl sl _ _ hR _ _ =>
+      obtain ⟨xi, hxi, -⟩ := hR.active
+      have hAe := resolve_A L.kern pl m (footprint L.kern.P sl.place)
+      refine h.addRes hw hAe (anc_new (lt_of_getElem? hxi) (by rw [hAe]; simp [OptP])
+        fun e he => ?_)
+      simp only [List.map_cons, List.map_nil, List.mem_singleton] at he
+      subst he
+      exact ⟨Nat.lt_succ_self _, by rw [hAe]; simp [OptP]⟩
+  | @resolveMany _ _ hl m hs =>
+    cases hs with
+    | @ok pl _ _ hR _ =>
+      obtain ⟨xi, hxi, -⟩ := hR.active
+      have hAe := resolveMany_A m L.kern pl hl
+      refine h.addRes hw hAe (anc_new (lt_of_getElem? hxi) (by rw [hAe]; simp [OptP])
+        fun e he => ?_)
+      obtain ⟨e', he', rfl⟩ := List.mem_map.1 he
+      obtain ⟨n, h, hh, rfl⟩ := mem_batchEntries he'
+      refine ⟨by simp; omega, ?_⟩
+      rw [hAe, List.getElem?_append_right (by omega)]
+      simp [show L.kern.A.length + 1 + n - L.kern.A.length = n + 1 by omega, hh, OptP]
+  | unresolve hs =>
+    cases hs with
+    | ok _ hr => exact h.kseq hw (releaseAll_kseq (k := k) hr)
+  | freeSlot hs =>
+    cases hs with
+    | ok => exact h
+
+/-- `ResAnc` holds on every library-reachable state (HandlePool v0.5, D.2; §47: no resolution
+initially). -/
+theorem pReach_resAnc {k : K} {statics : Statics} {L : PState} (h : PReach k statics L) :
+    ResAnc L := by
+  induction h with
+  | init => intro r hr; simp [PState.init] at hr
+  | step hr hs ih => exact pstep_resAnc (pReach_poolWF hr) ih hs
+
+/-! ## `pool_no_stale_access` and `pool_inv_preserved` (HandlePool v0.5, D.4, HP5-1') -/
+
+/-- An entry authority covers a leaf of the place of its slot (HandlePool v0.5, D.2; §40, §42). -/
+theorem entry_covers {L : PState} (hw : PoolWF L) {r : Res} (hr : r ∈ L.res)
+    {e : Nat × Nat × Nat} (he : e ∈ r.entries) {pl : Pool} (hpl : pl ∈ L.pools)
+    (hp : r.pool = pl.id) {sl : Slot} (hsl : pl.slots[e.2.1]? = some sl) :
+    ∃ l ∈ L.kern.afp e.1, l ∈ footprint L.kern.P sl.place := by
+  obtain ⟨sh, hsh, hid, -, -, -, hen⟩ := hw.res r hr
+  have e' : sh = pl.shape := eq_of_id hw.nodup hsh (List.mem_map_of_mem hpl) (hid.trans hp)
+  subst e'
+  obtain ⟨-, q, hq, ho⟩ := hen e he
+  have hq' : q = sl.place := by simp [Pool.shape, hsl] at hq; exact hq.symm
+  subst hq'
+  obtain ⟨y, hy, hfp⟩ := optP_false_iff.1 ho
+  obtain ⟨l, hl⟩ := (hw.pools _ (List.mem_map_of_mem hpl)).slotLeaf sl.place
+    (List.mem_map_of_mem (f := (·.place)) (List.mem_of_getElem? hsl))
+  exact ⟨l, by simp only [S3.afp, hy]; exact (hfp l).2 hl, hl⟩
+
+/-- A slot update keeps a live slot live at its generation, unless it is the updated slot of the
+updated pool and the update says otherwise (HandlePool v0.5, D.3; §89). -/
+theorem live_after_set {pools : List Pool} {j i : Nat} {pl : Pool} {x : Slot}
+    (hj : pools[j]? = some pl) {pl₀ : Pool} (h₀ : pl₀ ∈ pools) {a : Nat} {sl₀ : Slot}
+    (ha : pl₀.slots[a]? = some sl₀) (hlv : sl₀.live = true)
+    (hx : pl₀ = pl → a = i → x.gen = sl₀.gen ∧ x.live = true) :
+    ∃ pl' ∈ pools.set j (setSlot pl i x), pl'.id = pl₀.id ∧
+      ∃ sl', pl'.slots[a]? = some sl' ∧ sl'.gen = sl₀.gen ∧ sl'.live = true := by
+  obtain ⟨n, hn⟩ := List.mem_iff_getElem?.1 h₀
+  by_cases hnj : n = j
+  · subst hnj
+    have e : pl₀ = pl := Option.some.inj (hn.symm.trans hj)
+    refine ⟨setSlot pl i x, mem_set_self' hj, by rw [e]; rfl, ?_⟩
+    by_cases hai : a = i
+    · subst hai; obtain ⟨hg, hl⟩ := hx e rfl
+      exact ⟨x, getElem?_set_eq' (e ▸ ha), hg, hl⟩
+    · exact ⟨sl₀, by simp only [setSlot]; rw [getElem?_set_ne' hai]; exact e ▸ ha, rfl, hlv⟩
+  · exact ⟨pl₀, List.mem_of_getElem? (by rw [getElem?_set_ne' hnj]; exact hn), rfl, sl₀, ha, rfl,
+      hlv⟩
+
+/-- `NoStale` carries over a sequence of kernel steps (HandlePool v0.5, D.4 (2); §42). -/
+theorem NoStale.kseq {k : K} {L : PState} {s' : S3} (h : NoStale L) (hw : PoolWF L)
+    (hs : KSeq k L.kern s') : NoStale { L with kern := s' } := fun r hr e he ha =>
+  h r hr e he (hs.keep.1.active_back ha
+    ((res_lt hw hr).2 e.1 (List.mem_cons_of_mem _ (List.mem_map_of_mem he))))
+
+/-- `NoStale` carries over the addition of authorities and of a resolution whose entries designate
+live slots at their generation (HandlePool v0.5, D.2, D.4 (2); §60). -/
+theorem NoStale.addRes {L : PState} {s' : S3} {l : List Authority} {rn : Res} (h : NoStale L)
+    (hw : PoolWF L) (hA : s'.A = L.kern.A ++ l)
+    (hrn : ∀ e ∈ rn.entries, ∃ pl ∈ L.pools, pl.id = rn.pool ∧
+      ∃ sl, pl.slots[e.2.1]? = some sl ∧ sl.gen = e.2.2 ∧ sl.live = true) :
+    NoStale ⟨s', L.pools, L.nId, L.res ++ [rn]⟩ := by
+  intro r hr e he ha
+  rcases List.mem_append.1 hr with hr | hr
+  · exact h r hr e he ((Arena.akeep_append hA).active_back ha
+      ((res_lt hw hr).2 e.1 (List.mem_cons_of_mem _ (List.mem_map_of_mem he))))
+  · rw [List.mem_singleton.1 hr] at he ⊢; exact hrn e he
+
+/-- Every library step keeps `NoStale` (HandlePool v0.5, D.4 (2), HP5-1'), under `PoolWF` and
+`ResAnc`: kernel steps and `unresolve` reactivate no authority (§42); `allocSlot` makes a free slot
+live; `resolve` and `resolveMany` record entries of valid handles (§89); `freeSlot` cannot free the
+slot of an active entry authority, a strict descendant of `internal` covering the slot (`ResAnc`,
+`entry_covers`, HP5-1'). -/
+theorem pstep_noStale {k : K} {L L' : PState} (hw : PoolWF L) (ha : ResAnc L) (h : NoStale L)
+    (hs : PStep k L L') : NoStale L' := by
+  cases hs with
+  | kernel hs => exact h.kseq hw (KSeq.single hs)
+  | newPool hs =>
+    obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hs
+    intro r hr e he hea
+    obtain ⟨pl, hpl, rest⟩ := h r hr e he hea
+    exact ⟨pl, List.mem_append_left _ hpl, rest⟩
+  | allocSlot hs =>
+    cases hs with
+    | @ok pl i sl hpj _ hsl _ =>
+      intro r hr e he hea
+      obtain ⟨pl₀, hpl₀, hid, sl₀, hs₀, hg, hlv⟩ := h r hr e he hea
+      obtain ⟨pl', hpl', hid', sl', h₁, h₂, h₃⟩ := live_after_set (i := i)
+        (x := { sl with live := true }) hpj hpl₀ hs₀ hlv fun e₁ e₂ => by
+          subst e₁; rw [e₂, hsl] at hs₀; cases hs₀; exact ⟨rfl, rfl⟩
+      exact ⟨pl', hpl', hid'.trans hid, sl', h₁, h₂.trans hg, h₃⟩
+  | resolve hs =>
+    cases hs with
+    | @ok pl sl hpj hH _ _ _ =>
+      refine h.addRes hw (resolve_A _ _ _ _) fun e he => ?_
+      rw [List.mem_singleton.1 he]
+      obtain ⟨-, -, ho⟩ := hH
+      obtain ⟨sl', hsl', hg, hlv⟩ := optP_false_iff.1 ho
+      exact ⟨pl, List.mem_of_getElem? hpj, rfl, sl', hsl', hg, hlv⟩
+  | resolveMany hs =>
+    cases hs with
+    | @ok pl hpj hB _ _ =>
+      refine h.addRes hw (resolveMany_A _ _ _ _) fun e he => ?_
+      obtain ⟨n, hd, hh, rfl⟩ := mem_batchEntries he
+      obtain ⟨-, -, ho⟩ := hB.1 hd (List.mem_of_getElem? hh)
+      obtain ⟨sl', hsl', hg, hlv⟩ := optP_false_iff.1 ho
+      exact ⟨pl, List.mem_of_getElem? hpj, rfl, sl', hsl', hg, hlv⟩
+  | unresolve hs =>
+    cases hs with
+    | ok _ hr => exact h.kseq hw (releaseAll_kseq (k := k) hr)
+  | @freeSlot _ _ hd hs =>
+    cases hs with
+    | @ok pl sl hpj _ hR hsl hc =>
+      intro r hr e he hea
+      obtain ⟨pl₀, hpl₀, hid, sl₀, hs₀, hg, hlv⟩ := h r hr e he hea
+      obtain ⟨pl', hpl', hid', sl', h₁, h₂, h₃⟩ := live_after_set (i := hd.slot)
+        (x := ⟨sl.place, sl.gen + 1, false⟩) hpj hpl₀ hs₀ hlv fun e₁ e₂ => by
+        subst e₁
+        have hpl := List.mem_of_getElem? hpj
+        obtain ⟨hint, -⟩ := res_internal hw hr hpl hid.symm
+        have hanc := ha r hr e.1 (List.mem_cons_of_mem _ (List.mem_map_of_mem he)) hea
+          (hint ▸ hR.1)
+        obtain ⟨l, hl, hlq⟩ := entry_covers hw hr he hpl hid.symm (by rw [e₂]; exact hsl)
+        obtain ⟨y, hy, ya⟩ := hea
+        exact (hc.noDesc e.1 (List.mem_range.2 (lt_of_getElem? hy)) ⟨y, hy, ya⟩ (hint ▸ hanc) l
+          hl hlq).elim
+      exact ⟨pl', hpl', hid'.trans hid, sl', h₁, h₂.trans hg, h₃⟩
+
+/-- `pool_no_stale_access` (HandlePool v0.5, D.4 (2), under the content condition of HP5-1'): on
+every library-reachable state, every active entry authority designates a live slot of its pool at
+its resolved generation (§89). No kernel hypothesis is needed. -/
+theorem pool_no_stale_access {k : K} {statics : Statics} {L : PState} (h : PReach k statics L) :
+    NoStale L := by
+  induction h with
+  | init => intro r hr; simp [PState.init] at hr
+  | step hr hs ih => exact pstep_noStale (pReach_poolWF hr) (pReach_resAnc hr) ih hs
+
+/-- `pool_inv_preserved` (HandlePool v0.5, D.4 per pool, HP5-4, HP5-1'): `PoolInv` holds on every
+library-reachable state (§47, §57). -/
+theorem pool_inv_preserved {k : K} {statics : Statics} {L : PState} (h : PReach k statics L) :
+    PoolInv L :=
+  ⟨pool_entries_disjoint h, pool_no_stale_access h, pool_freeSlot_no_internal_desc L⟩
+
+/-- Nested pools, first fact (HandlePool v0.5, HP5-1'): on every library-reachable state, a live
+pool `pb` nested in an entry of pool `pa` (its `internal` a strict descendant of `internal` of `pa`,
+its storage sharing a leaf with the slot) blocks the freeing of that slot (§42, §43, §76.3). -/
+theorem pool_nested_blocks_entry {k : K} {statics : Statics} {L : PState} (hr : PReach k statics L)
+    {j : Nat} {h : Handle} {pa pb : Pool} {sl : Slot} (hpa : L.pools[j]? = some pa)
+    (hsl : pa.slots[h.slot]? = some sl) (hpb : pb ∈ L.pools) (hlive : L.kern.Active pb.internal)
+    (hanc : pa.internal ∈ L.kern.ancs pb.internal)
+    (hin : ∃ l ∈ footprint L.kern.P pb.storage, l ∈ footprint L.kern.P sl.place) :
+    ∀ L', ¬ FreeSlotStep j h L (.ok L') := by
+  intro L' hst
+  obtain ⟨l, hl, hlq⟩ := hin
+  have hok := (pReach_poolWF hr).pools _ (List.mem_map_of_mem hpb)
+  exact pool_freeSlot_no_internal_desc L j h L' hst pa sl hpa hsl pb.internal hlive hanc l
+    ((hok.fpEq l).2 hl) hlq
+
+/-- Nested pools, second fact (HandlePool v0.5, HP5-1'): `internal` of a pool and its ancestors —
+for a nested pool, the authorities of the parent pool from which its `internal` descends — are not
+strict descendants of that `internal`, so the content condition of `freeSlot` (`NoInternalDesc`)
+never counts them, and they do not block the freeing of the nested pool's slots (§42). -/
+theorem not_internal_desc_of_anc (s : S3) (pl : Pool) {x : Nat}
+    (hx : x = pl.internal ∨ x ∈ s.ancs pl.internal) : pl.internal ∉ s.ancs x := fun h => by
+  have h₁ := chain_lt h
+  rcases hx with rfl | hx
+  · exact Nat.lt_irrefl _ h₁
+  · exact Nat.lt_asymm h₁ (chain_lt hx)
 
 /-- `pool_resolve_modify_exclusive` per pool (HandlePool v0.5, D.2 restricted to the companions of
 the pool, HP5-4: "La propriété d'exclusivité concerne toutes les suites d'opérations admises du
@@ -1216,7 +1536,7 @@ theorem pool_resolve_modify_exclusive {k : K} {statics : Statics} (hdd : DDSound
   rw [hm] at this; cases this.1
 
 /-! ## Handle validation: dead pool, other pool, stale, absent or free slot (HandlePool v0.5, D.2,
-D.3, HP5-5, HP5-6; §89) -/
+D.3, HP5-5, HP5-6, HP5-1''; §89) -/
 
 /-- A handle of a dead pool is not valid (HandlePool v0.5, HP5-5; §46 analogue, §89). -/
 theorem not_handleOK_dead {s : S3} {pl : Pool} {h : Handle} (hd : ¬ s.Active pl.internal) :
@@ -1287,31 +1607,78 @@ theorem pool_resolve_free_fails {L : PState} {j : Nat} {pl : Pool} {h : Handle} 
     ResolveStep j h m L .fail ∧ ∀ o, ResolveStep j h m L o → o = .fail :=
   pool_resolve_invalid_fails hp (not_handleOK_free hsl hf)
 
-/-- With `AdminRight`, an invalid handle makes `freeSlot` fail, and `fail` is its only outcome
-(HandlePool v0.5, D.3: "`fail` si l'identité ou la génération ne correspond pas; un slot déjà
-libre n'est pas rendu libérable par cette seule égalité"; §58). -/
+/-- An invalid handle, a handle of a dead pool included, makes `freeSlot` fail, before the right is
+checked, and `fail` is its only outcome (HandlePool v0.5, D.3: "`fail` si l'identité ou la
+génération ne correspond pas; un slot déjà libre n'est pas rendu libérable par cette seule
+égalité"; HP5-1''; §58, §89). -/
 theorem pool_freeSlot_invalid_fails {L : PState} {j : Nat} {pl : Pool} {h : Handle}
-    (hp : L.pools[j]? = some pl) (hR : AdminRight L.kern pl) (hH : ¬ HandleOK L.kern pl h) :
+    (hp : L.pools[j]? = some pl) (hH : ¬ HandleOK L.kern pl h) :
     FreeSlotStep j h L .fail ∧ ∀ o, FreeSlotStep j h L o → o = .fail := by
-  refine ⟨.fail hp hR hH, fun o ho => ?_⟩
+  refine ⟨.fail hp hH, fun o ho => ?_⟩
   cases ho with
   | noPool hn => rw [hp] at hn; cases hn
-  | noRight hp' hn => rw [hp] at hp'; cases hp'; exact absurd hR hn
   | fail => rfl
-  | noContent hp' _ hH' => rw [hp] at hp'; cases hp'; exact absurd hH' hH
-  | ok hp' _ hH' => rw [hp] at hp'; cases hp'; exact absurd hH' hH
+  | noRight hp' hH' => rw [hp] at hp'; cases hp'; exact absurd hH' hH
+  | noContent hp' hH' => rw [hp] at hp'; cases hp'; exact absurd hH' hH
+  | ok hp' hH' => rw [hp] at hp'; cases hp'; exact absurd hH' hH
 
 /-- `freeSlot` of a stale handle, of a handle of another pool, or of a free slot at its generation
-fails (HandlePool v0.5, D.3; §58, §89). -/
+fails, whatever the right (HandlePool v0.5, D.3, HP5-1''; §58, §89). -/
 theorem pool_freeSlot_stale_other_free_fails {L : PState} {j : Nat} {pl : Pool} {h : Handle}
-    {sl : Slot} (hp : L.pools[j]? = some pl) (hR : AdminRight L.kern pl)
-    (hsl : pl.slots[h.slot]? = some sl) :
+    {sl : Slot} (hp : L.pools[j]? = some pl) (hsl : pl.slots[h.slot]? = some sl) :
     (sl.gen ≠ h.gen ∨ h.id ≠ pl.id ∨ sl.live = false) →
       FreeSlotStep j h L .fail ∧ ∀ o, FreeSlotStep j h L o → o = .fail := by
   rintro (hg | hid | hf)
-  · exact pool_freeSlot_invalid_fails hp hR (not_handleOK_stale hsl hg)
-  · exact pool_freeSlot_invalid_fails hp hR (not_handleOK_other hid)
-  · exact pool_freeSlot_invalid_fails hp hR (not_handleOK_free hsl hf)
+  · exact pool_freeSlot_invalid_fails hp (not_handleOK_stale hsl hg)
+  · exact pool_freeSlot_invalid_fails hp (not_handleOK_other hid)
+  · exact pool_freeSlot_invalid_fails hp (not_handleOK_free hsl hf)
+
+/-- A handle of a dead pool (`internal` inactive) is stale: `freeSlot` fails (HandlePool v0.5,
+HP5-1''; §89). -/
+theorem pool_freeSlot_dead_fails {L : PState} {j : Nat} {pl : Pool} {h : Handle}
+    (hp : L.pools[j]? = some pl) (hd : ¬ L.kern.Active pl.internal) :
+    FreeSlotStep j h L .fail ∧ ∀ o, FreeSlotStep j h L o → o = .fail :=
+  pool_freeSlot_invalid_fails hp (not_handleOK_dead hd)
+
+/-- A missing pool index makes `freeSlot` reject, and `reject` is its only outcome
+(HandlePool v0.5, HP5-1''; §58). -/
+theorem pool_freeSlot_missing_rejects {L : PState} {j : Nat} {h : Handle}
+    (hn : L.pools[j]? = none) : ∀ o, FreeSlotStep j h L o → o = .reject := by
+  intro o ho
+  cases ho with
+  | noPool => rfl
+  | fail hp => cases hp.symm.trans hn
+  | noRight hp => cases hp.symm.trans hn
+  | noContent hp => cases hp.symm.trans hn
+  | ok hp => cases hp.symm.trans hn
+
+/-- With a valid handle, `freeSlot` without the administration right rejects, and `reject` is its
+only outcome (HandlePool v0.5, D.3 corrected by §36, HP5-1''; §58). -/
+theorem pool_freeSlot_noRight_rejects {L : PState} {j : Nat} {pl : Pool} {h : Handle}
+    (hp : L.pools[j]? = some pl) (hH : HandleOK L.kern pl h) (hR : ¬ AdminRight L.kern pl) :
+    FreeSlotStep j h L .reject ∧ ∀ o, FreeSlotStep j h L o → o = .reject := by
+  refine ⟨.noRight hp hH hR, fun o ho => ?_⟩
+  cases ho with
+  | noPool => rfl
+  | fail hp' hn => rw [hp] at hp'; cases hp'; exact absurd hH hn
+  | noRight => rfl
+  | noContent => rfl
+  | ok hp' _ hR' => rw [hp] at hp'; cases hp'; exact absurd hR' hR
+
+/-- With a valid handle and the administration right, `freeSlot` rejects when the content
+conditions fail, and `reject` is its only outcome (HandlePool v0.5, HP5-1, HP5-1', HP5-1''; §58). -/
+theorem pool_freeSlot_content_rejects {L : PState} {j : Nat} {pl : Pool} {h : Handle} {sl : Slot}
+    (hp : L.pools[j]? = some pl) (hH : HandleOK L.kern pl h) (hR : AdminRight L.kern pl)
+    (hsl : pl.slots[h.slot]? = some sl) (hc : ¬ FreeContentOK L pl sl.place) :
+    FreeSlotStep j h L .reject ∧ ∀ o, FreeSlotStep j h L o → o = .reject := by
+  refine ⟨.noContent hp hH hR hsl hc, fun o ho => ?_⟩
+  cases ho with
+  | noPool => rfl
+  | fail hp' hn => rw [hp] at hp'; cases hp'; exact absurd hH hn
+  | noRight => rfl
+  | noContent => rfl
+  | ok hp' _ _ hsl' hc' =>
+    rw [hp] at hp'; cases hp'; rw [hsl] at hsl'; cases hsl'; exact absurd hc' hc
 
 /-! ## `resolveMany`: atomicity and distinctness (HandlePool v0.5, D.2, HP5-5) -/
 
@@ -1427,7 +1794,7 @@ theorem freeSlot_effect {L L' : PState} {j : Nat} {h : Handle}
       L'.kern = L.kern ∧ L'.res = L.res ∧
       L'.pools[j]? = some (setSlot pl h.slot ⟨sl.place, sl.gen + 1, false⟩) := by
   cases hst with
-  | @ok pl sl hp hR hH hsl hc =>
+  | @ok pl sl hp hH hR hsl hc =>
     exact ⟨pl, sl, hp, hsl, hR, hH, hc, rfl, rfl, rfl, getElem?_set_eq' hp⟩
 
 /-- After an accepted `freeSlot(h)`, the freed slot is free with generation `h.gen + 1`, and `h` is
@@ -1440,7 +1807,7 @@ theorem pool_freeSlot_then_stale {k : K} {L L' : PState} {j : Nat} {h : Handle}
     (∀ m o, ResolveStep j h m L' o → o = .fail) ∧
     (∀ hs m o, h ∈ hs → ResolveManyStep k j hs m L' o → o = .fail) := by
   cases hst with
-  | @ok pl sl hp _ hH hsl _ =>
+  | @ok pl sl hp hH _ hsl _ =>
     have hp' := getElem?_set_eq' (x := setSlot pl h.slot ⟨sl.place, sl.gen + 1, false⟩) hp
     have hs' := getElem?_set_eq' (x := (⟨sl.place, sl.gen + 1, false⟩ : Slot)) hsl
     have hn : ¬ HandleOK (freeSlotEff L j pl h.slot sl).kern
@@ -1780,8 +2147,9 @@ is derived from the root authority of the storage (§60) and stored in the pool 
 (§65). The local is place 5, created by `enterFrame` (§72) and owned by the current frame 1. The
 transfer is accepted through the exemption of v0.1 §63.4: the entry authority 7, which grounds the
 right over the source, its companion 6, `internal` 3 and its origin 0 cover the source from
-outside it. In the arrival state, slot 0 is free with generation 1, slot place 1 is `Moved` and the
-local is `Init`. -/
+outside it. `freeSlot` is accepted under the content condition of HP5-1': once 7 and 6 are released,
+no active strict descendant of `internal` 3 covers slot place 1. In the arrival state, slot 0 is
+free with generation 1, slot place 1 is `Moved` and the local is `Init`. -/
 theorem freeSlot_after_transfer :
     NewPoolStep [] 0 3 w2 (.ok w3) ∧ AllocSlotStep 0 4 w3 (.ok w4) ∧
     ResolveStep 0 ⟨0, 0, 0⟩ .modify x2 (.ok x3) ∧ Write3Step 7 [1] x3.kern (.ok x4.kern) ∧
@@ -1812,13 +2180,13 @@ theorem freeSlot_after_transfer :
   exact ⟨w3_step, w4_step, r3, w4', t5, u6, f7, h7, by decide, by decide, rfl, by decide,
     by decide, by decide⟩
 
-/-! ### `pool_no_stale_access` after a frame exit (HandlePool v0.5, D.4 (2), HP5-1; §42, §73)
+/-! ### `freeSlot` after a frame exit (HandlePool v0.5, D.4 (2), HP5-1'; §42, §73)
 
 Statics `cst` (§47): place 0 is the pool storage with leaf children 1 and 2 (`Uninit`); place 3 is
 the pool value (`Init`); place 4 is the handle destination; place 5 is a leaf of frame 0. Root
 authorities 0 to 3 cover places 0, 3, 4 and 5. Frame 1 resolves the handle in `Modify`; the entry
 authority is stored into place 5 of frame 0; at the exit of frame 1 the companion dies and the entry
-authority is reanchored to `internal` (§73); `freeSlot` is then accepted. -/
+authority is reanchored to `internal` (§73.4); `freeSlot` is then rejected (HP5-1'). -/
 
 /-- Statics of the run (§47; HandlePool v0.5, D.1). -/
 def cst : Statics :=
@@ -1855,22 +2223,16 @@ def c9 : PState := { c8 with kern := storeEff c8.kern 8 5 }
 /-- After `exitFrame`: the companion 7 dies with frame 1; the entry authority 8 survives,
 reanchored to `internal` 4 (§73; HandlePool v0.5). -/
 def c10 : PState := { c9 with kern := exitEff c9.kern }
-/-- After `freeSlot(⟨0, 0, 0⟩)` in frame 0 (HandlePool v0.5, HP5-1; §36, §38). -/
-def c11 : PState := freeSlotEff c10 0 pA4 0 ⟨1, 0, true⟩
-
-/-- Open point (HandlePool v0.5, D.4 (2), "aucune autorité d'entrée active ne désigne un slot libre
-ou une ancienne génération (`pool_no_stale_access`)", against the HP5-1 content condition read
-along the current origin chain, §42; non-normative library contract). Under `DDSound` (§80) and
-`StaticsOK` (§47), `c11` is library-reachable; in `c10` the entry authority 8, recorded for slot 0
-at generation 0, is active `Modify` over slot place 1 with origin `internal` 4 (reanchored, §73),
-and the companion 7 is inactive, so `freeSlot` is accepted; in `c11` slot 0 is free at generation 1
-while 8 is still active: `NoStale` and `PoolInv` are false. -/
+/-- The run of HP5-1' after a frame exit (HandlePool v0.5, D.4 (2), HP5-1'; non-normative library
+contract): `c10` is library-reachable; the entry authority 8, recorded for slot 0 at generation 0,
+is active `Modify` over slot place 1, held by place 5 of frame 0, with origin `internal` 4
+(reanchored, §73.4) while its companion 7 is inactive; it is a strict descendant of `internal`
+covering the slot, so `freeSlot(⟨0, 0, 0⟩)` rejects, and `reject` is its only outcome. -/
 theorem no_stale_after_exit :
-    DDSound K0 ∧ StaticsOK cst ∧ PReach K0 cst c11 ∧
-    (⟨0, 4, 7, .modify, [(8, 0, 0)]⟩ : Res) ∈ c10.res ∧
+    PReach K0 cst c10 ∧ (⟨0, 4, 7, .modify, [(8, 0, 0)]⟩ : Res) ∈ c10.res ∧
     c10.kern.A[8]? = some ⟨.modify, some 4, [1], .place 5, true⟩ ∧ ¬ c10.kern.Active 7 ∧
-    c11.pools = [⟨0, 0, 4, [⟨1, 1, false⟩, ⟨2, 0, false⟩]⟩] ∧ c11.kern.Active 8 ∧
-    ¬ NoStale c11 ∧ ¬ PoolInv c11 := by
+    c10.pools[0]? = some pA4 ∧ 4 ∈ c10.kern.ancs 8 ∧
+    FreeSlotStep 0 ⟨0, 0, 0⟩ c10 .reject ∧ ∀ o, FreeSlotStep 0 ⟨0, 0, 0⟩ c10 o → o = .reject := by
   have h3 : PReach K0 cst c3 :=
     .step (.step (.step .init (.kernel (.derive (Guarded.ok (by decide)))))
       (.kernel (.store (Guarded.ok (by decide))))) (.newPool (others := []) (Guarded.ok (by decide)))
@@ -1882,19 +2244,9 @@ theorem no_stale_after_exit :
     .ok (pl := pA4) (sl := ⟨1, 0, true⟩) rfl (by decide) (by decide) rfl (by decide)
   have h10 : PReach K0 cst c10 := .step (.step (.step h7 (.resolve r8))
     (.kernel (.store (Guarded.ok (by decide))))) (.kernel (.exit (Guarded.ok (by decide))))
-  have f11 : FreeSlotStep 0 ⟨0, 0, 0⟩ c10 (.ok c11) :=
-    .ok (pl := pA4) (sl := ⟨1, 0, true⟩) rfl (by decide) (by decide) rfl (by decide)
-  have hp : c11.pools = [⟨0, 0, 4, [⟨1, 1, false⟩, ⟨2, 0, false⟩]⟩] := by decide
-  have hn : ¬ NoStale c11 := fun h => by
-    obtain ⟨pl, hpl, -, sl, hsl, -, hlv⟩ :=
-      h ⟨0, 4, 7, .modify, [(8, 0, 0)]⟩ (by decide) (8, 0, 0) (by decide) (by decide)
-    rw [hp, List.mem_singleton] at hpl
-    subst hpl
-    simp only [List.getElem?_cons_zero, Option.some.injEq] at hsl
-    subst hsl
-    cases hlv
-  exact ⟨fun _ _ h => h.elim, by decide, .step h10 (.freeSlot f11), by decide, by decide,
-    by decide, hp, by decide, hn, fun hi => hn hi.2.1⟩
+  exact ⟨h10, by decide, by decide, by decide, rfl, by decide,
+    pool_freeSlot_content_rejects (sl := ⟨1, 0, true⟩) rfl (by decide) (by decide) rfl
+      (by decide)⟩
 
 /-! ### The write of HP5-3 on a pool value with a `Moved` leaf (HandlePool v0.5, HP5-3; §63, §67)
 
