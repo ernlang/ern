@@ -1,0 +1,17 @@
+{
+  "tool_use_id": "afa90ef914d6b24fa",
+  "agent_id": "afa90ef914d6b24fa",
+  "subagent_type": "workflow-subagent",
+  "files": [
+    "formal/Ern/MemoryModel/Access/Preserve/DeriveSplitRelease.lean"
+  ],
+  "token_usage": {
+    "input_tokens": 56,
+    "cache_creation_tokens": 127235,
+    "cache_read_tokens": 3478809,
+    "output_tokens": 23692,
+    "api_call_count": 28
+  },
+  "started_at": "2026-11-06T08:39:24.09288+01:00",
+  "completed_at": "2026-11-06T08:43:28.228123+01:00"
+}

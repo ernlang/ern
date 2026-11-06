@@ -1,0 +1,17 @@
+{
+  "tool_use_id": "a9d4d4f134da087b9",
+  "agent_id": "a9d4d4f134da087b9",
+  "subagent_type": "workflow-subagent",
+  "files": [
+    "formal/Ern/MemoryModel/Access/Preserve/Frames.lean"
+  ],
+  "token_usage": {
+    "input_tokens": 58,
+    "cache_creation_tokens": 147024,
+    "cache_read_tokens": 4003416,
+    "output_tokens": 21233,
+    "api_call_count": 29
+  },
+  "started_at": "2026-11-06T08:39:24.133241+01:00",
+  "completed_at": "2026-11-06T08:43:06.597507+01:00"
+}
