@@ -28,7 +28,8 @@ Twins that are not literally the same sequence without one faulty step:
   parameter on the static), H29 (a `Modify` parameter), H50 `transfer` (the stored authority on
   the local 4), H50 `issue` (the value 2), H51 direct form (the view on `u`), S63_8 (the stored
   authority on the local 6), S56 (`internal` 5), S77_2 (the destination 3 outside the region,
-  `fail`; the available region `[6]`, `ok`);
+  `fail`; the available region `[6]`, `ok`), B45 (the pin of `S` removed, so the obligation of
+  `pin(f1)` has identity 0 and `ExternalDone` names 0);
 * further steps that lift the blocking before the step under test: H11 (`endUse` of `v2` and of
   the leaf 6), H17 (`endUse` of the block value, then `free` of the storage 4 instead of the leaf
   5), H19 (`endUse` of the child value), H26 second twin (the contract with `ExternalDone` on the
@@ -587,6 +588,30 @@ theorem H26 : RunsTo KP [] h26o h26 ∧ FreeStep KP 2 7 h26.kern .reject ∧
     Runs KPd [] (h14p ++ [.pin 2, .unpin 0, .free 2 7]) :=
   ⟨runsTo (by decide), .reject (by decide), .reject (by decide), runsTo (by decide),
     runsTo (by decide)⟩
+
+/-- Test contract of B45 (§75, §80): `ExternalDone` on the pinning obligation 1. -/
+abbrev KB : K := KD.toK { done := [1] }
+/-- Test contract of the twin of B45 (§75, §80): `ExternalDone` on the pinning obligation 0. -/
+abbrev KBt : K := KD.toK { done := [0] }
+/-- Run of B45 (§72, §67, §74, §75): frame 1 with the structure `S` (0), its part `f1` (1) and the
+leaf `d` (2); `f1` written; `pin S` installs obligation 0, `pin f1` obligation 1, both on leaf 1;
+`unpin` of obligation 1. -/
+def b45o : List Op := [.enter [] [lf, pt 0, lf], .write 0 [1], .pin 0, .pin 1, .unpin 1]
+/-- State reached by `b45o` (§57). -/
+def b45 : LState := final KB [] b45o
+
+/-- **B45** (new case fixed by spec v0.1 §74, §75; arbitration Q23, B#45; class N3). `pin(S)`,
+`pin(f1)`, `unpin` of the obligation of `pin(f1)`, then `transfer(f1, d)`. Historical verdict
+(spec v0, per-leaf pin flags, reading B#45): `ok`, the `unpin` of `f1` cleared the flag of leaf 1
+although `pin(S)` had pinned it. Expected (v0.1 §75: `unpin` ends the designated obligation only,
+and a leaf stays pinned while another active obligation covers it; §74: `transfer` is rejected on
+a pinned leaf): `reject`. Obtained: `reject`; leaf 1 is still pinned by the active obligation 0.
+Twin, without `pin(S)` (the obligation of `pin(f1)` is then 0, under `KBt`): `transfer` `ok`. -/
+theorem B45 : RunsTo KB [] b45o b45 ∧
+    b45.kern.pins = [⟨0, [1], true⟩, ⟨1, [1], false⟩] ∧ b45.kern.pin 1 = true ∧
+    TransferStep KB 1 2 b45.kern .reject ∧
+    Runs KBt [] [.enter [] [lf, pt 0, lf], .write 0 [1], .pin 1, .unpin 0, .transfer 1 2] :=
+  ⟨runsTo (by decide), by decide, by decide, .reject (by decide), runsTo (by decide)⟩
 
 /-! ## F. Calls -/
 
