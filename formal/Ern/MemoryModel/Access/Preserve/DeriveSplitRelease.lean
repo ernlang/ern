@@ -756,9 +756,9 @@ end SplitWithoutDD
 
 open SplitWithoutDD in
 /-- Without the obligation `DDSound(K)` (§61, note; §80), an accepted `split` may violate I1 (§50):
-from `S3.init cst`, a state satisfying `KInv` and `KAux` (§57), `split` of the root authority into
-two copies of the same leaf, declared disjoint by `KDD`, is `ok` and reaches a state with two
-active unrelated `Modify` authorities on that leaf. -/
+from `S3.init cst`, a state satisfying `KInv` (§57) and `KAux` (§49.7), `split` of the root
+authority into two copies of the same leaf, declared disjoint by `KDD`, is `ok` and reaches a state
+with two active unrelated `Modify` authorities on that leaf. -/
 theorem split_unsound_without_DD :
     ¬ DDSound KDD ∧ KInv cs0 ∧ KAux cs0 ∧
       SplitStep KDD 0 [[0], [0]] cs0 (.ok (splitEff cs0 0 [[0], [0]])) ∧

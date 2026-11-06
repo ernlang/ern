@@ -2040,8 +2040,8 @@ theorem observe_repeat_ok :
 /-- `freeSlot` is not a kernel `endUse` (HandlePool v0.4 annex, D.3: "Le contrôle n'interprète pas
 `internal` comme un emprunt externe"; §69.2): on `w4`, `freeSlot(⟨0, 0, 0⟩)` is accepted, while the
 kernel `endUse` of slot place 1 is rejected, because `internal` (authority 3, derived, active,
-covering place 1) is held by the pool value outside the slot. Both states satisfy `KInv ∧ KAux`
-(§57), decided through `Arena.KInvB`. -/
+covering place 1) is held by the pool value outside the slot. Both states satisfy `KInv` (§57) and
+the auxiliary `KAux` (§40, §49.7; not a clause of §57), decided through `Arena.KInvB`. -/
 theorem freeSlot_not_endUse :
     (∃ L', FreeSlotStep K0 0 ⟨0, 0, 0⟩ w4 (.ok L') ∧ PReachI K0 hst L' ∧
       KInv L'.kern ∧ KAux L'.kern) ∧
