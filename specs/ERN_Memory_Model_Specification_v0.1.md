@@ -26,7 +26,7 @@ This specification defines the normative rules of ERN's memory model. Technical 
 
 ## Validation and Revision Procedure
 
-This edition has been validated and acquires normative authority under the ERN Charter v0. Any subsequent semantic change must identify the clauses concerned, justify the change, and preserve the guarantees of the ERN Charter v0. Formal models and proofs are instruments for verifying this specification, not sources of additional rules. Behaviors not determined within its scope are explicitly identified.
+This edition is a corrective candidate, not yet validated; it acquires normative authority under the ERN Charter v0 only once validated. Any subsequent semantic change must identify the clauses concerned, justify the change, and preserve the guarantees of the ERN Charter v0. Formal models and proofs are instruments for verifying this specification, not sources of additional rules. Behaviors not determined within its scope are explicitly identified.
 
 ## Scope
 
@@ -731,7 +731,7 @@ These transitions govern value consumption and the controlled movement of their 
 1. `source` and `destination` are usable, and the current frame has exercisable `Modify` over their relevant footprints.
 2. Source and destination have the **same shape of ordered subtrees**. The `i`-th child of each source part corresponds to the `i`-th child of the corresponding destination part; all nodes are matched. Structural field identity is positional, not an arbitrary matching of children.
 3. **All** source leaves are `Init`, and **no** destination leaf is `Init`. The source and destination footprints are disjoint.
-4. No exclusive authority is duplicated; validity of derived authorities and active projections is preserved. No active derived authority held outside `source` covers a source leaf, except the authorities through which the step exercises its `Modify` right over `source`: the exercisable authority on which that right rests and its origin chain. Other active authorities remain subject to this check.
+4. No exclusive authority is duplicated; validity of derived authorities and active projections is preserved. No active derived authority held outside `source` covers a source leaf, except the authorities through which the step exercises its `Modify` right over `source`: the exercisable authority on which that right rests and its origin chain. Other active authorities remain subject to this check. Authorities held by parts of `source` are transferred with the value and are controlled by §63.8.
 5. **No in-place source leaf is pinned**, either statically (`K.Pinned`) or dynamically (`pin`). Storage merely **owned** by the source, which is not itself moved by the transfer of that value, does not prevent this transfer.
 6. Dependencies of all still-usable places following the value remain valid; non-escape constraints and `AnchorOrder` are checked in the **resulting state**, including transferred anchors of owned places that remain usable.
 7. All moved held authorities, including those of owned storage, satisfy `AnchorOrderHeld` in the resulting state; no authority may escape a local anchor on the grounds that its containing value was transferred.
