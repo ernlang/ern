@@ -16,8 +16,9 @@ entry; `issue` (O18) and `reset` (O19) are defined twice:
   accepted `derive` on states satisfying I3 (`resetNoDeps_of_derive`).
 
 On library-reachable states, `issue_as_kernel` and `reset_as_kernel` show that both definitions
-have the same outcomes and the same arrival states, and `lReach_inv` that every live entry
-satisfies `ArenaInv` (§55). Library reachability (`LReach`, `LReachNG`) uses the derived
+have the same outcomes and the same arrival states, `reset_iff_derive_release` that `reset` is
+accepted or rejected exactly when `derive` then `release` is (Q7), and `lReach_inv` that every
+live entry satisfies `ArenaInv` (§55). Library reachability (`LReach`, `LReachNG`) uses the derived
 operations, so its kernel states are kernel-reachable (`newArena_as_library`) and satisfy the
 kernel invariant of §57 (`Access.reachable_kinv`).
 -/
@@ -605,7 +606,7 @@ instance (s : S3) (storage internal : Nat) : Decidable (NewArenaBase s storage i
 §76.4 over the arena registry and the other registries `others` (§56). -/
 structure NewArenaPre (s : S3) (arenas : List ArenaEntry) (others : List (List Nat))
     (storage internal : Nat) : Prop where
-  /-- §76.1–§76.3, §76.5. -/
+  /-- §76.1–§76.3, §76.5, §76.6 (read on the resulting state, v0.1 §76.6). -/
   base : NewArenaBase s storage internal
   /-- §76.4, §56: no live administration of any relevant registry uses `internal`. -/
   guard : Guard56 (liveInternals s arenas :: others) internal
@@ -1959,6 +1960,45 @@ theorem newEntry_inv {s : S3} {st i : Nat} (h : NewArenaBase s st i) :
     EntryInv s ⟨st, i, footprint s.P st, []⟩ :=
   ⟨h.arenaInv, fun _ he => by cases he⟩
 
+/-- On states satisfying the kernel invariant (§57), §76.1–§76.3 imply every conjunct of §76.6
+(v0.1 §76.6, read on the resulting state, whose kernel component is `s`, `newArena_kernel`):
+`WF3`, `I1`, `AnchorOrder` and `AnchorOrderHeld` are parts of `KInv`, and the new entry satisfies
+`ArenaInv` (§55) by §76.1 (`storage` usable), §76.2 (`internal` active, of own mode `Modify`) and
+§76.3 (`internal` held by a place, of the footprint of `storage`). The §76.6 fields of
+`NewArenaBase` are thus redundant on such states. On reachable states:
+`newArena_clause6_reachable`. -/
+theorem newArena_clause6_of_kinv {s : S3} {st i : Nat} (hk : KInv s) (hu : s.Usable st)
+    (hia : OptP (s.A[i]?) (fun y => y.active = true ∧ y.mode = .modify) False)
+    (hpl : OptP (s.A[i]?) (fun y => y.holder.isPlace = true) False)
+    (hsub : ∀ l ∈ s.afp i, l ∈ footprint s.P st)
+    (hsup : ∀ l ∈ footprint s.P st, l ∈ s.afp i) :
+    WF3 s ∧ I1 s ∧ AnchorOrder s ∧ AnchorOrderHeld s ∧
+      ArenaInv s ⟨st, i, footprint s.P st, []⟩ := by
+  refine ⟨hk.1, hk.2.1.1.1, hk.2.1.2.1, hk.2.2.1, ?_⟩
+  cases hy : s.A[i]? with
+  | none => rw [hy] at hia; exact hia.elim
+  | some y =>
+    rw [hy] at hia hpl
+    refine ⟨hu, fun l => ⟨hsub l, hsup l⟩, ⟨y, hy, hia.1⟩, ?_, fun l hl => hl,
+      fun _ he => (by cases he), fun _ he => (by cases he), fun _ he => (by cases he),
+      fun _ he => (by cases he)⟩
+    show OptP (s.A[i]?) _ False
+    rw [hy]; exact ⟨hia.2, hpl⟩
+
+/-- `newArena_clause6_of_kinv` on reachable states (§76.6, §57): under `DDSound` (§80) and
+`StaticsOK` (§47), on every kernel-reachable state (the kernel state of a library-reachable state
+is one, `LReachNG.reachable`), §76.1–§76.3 imply every conjunct of §76.6. -/
+theorem newArena_clause6_reachable {k : K} {statics : Statics} (hdd : DDSound k)
+    (hst : StaticsOK statics) {s : S3} (hr : Reachable k statics s) {st i : Nat}
+    (hu : s.Usable st)
+    (hia : OptP (s.A[i]?) (fun y => y.active = true ∧ y.mode = .modify) False)
+    (hpl : OptP (s.A[i]?) (fun y => y.holder.isPlace = true) False)
+    (hsub : ∀ l ∈ s.afp i, l ∈ footprint s.P st)
+    (hsup : ∀ l ∈ footprint s.P st, l ∈ s.afp i) :
+    WF3 s ∧ I1 s ∧ AnchorOrder s ∧ AnchorOrderHeld s ∧
+      ArenaInv s ⟨st, i, footprint s.P st, []⟩ :=
+  newArena_clause6_of_kinv (reachable_kinv hdd hst hr) hu hia hpl hsub hsup
+
 /-- `newArena` without the guard preserves the library invariant (§55, §76). -/
 theorem lInv_newArena {L : LState} {st i : Nat} (h : NewArenaBase L.kern st i) (hi : LInv L) :
     LInv (newArenaEff L st i) := by
@@ -2134,12 +2174,52 @@ theorem issue_as_kernel {k : K} {statics : Statics} (hdd : DDSound k) (hst : Sta
 same arrival state, kernel part included (literal equality, `resetKEff_eq`). The kernel invariant
 (`Access.reachable_kinv`) and `ArenaInv` of the entry (`lReach_inv`) hold there; by I3 the check
 of §78.3 never rejects after an accepted `derive` (`resetNoDeps_of_derive`), so the derived
-operation is the kernel sequence `derive` then `release`. -/
+operation is the kernel sequence `derive` then `release` (`reset_iff_derive_release`). -/
 theorem reset_as_kernel {k : K} {statics : Statics} (hdd : DDSound k) (hst : StaticsOK statics)
     {L : LState} (hr : LReach k statics L) {i : Nat} (o : Outcome3 LState) :
     ResetC i L o ↔ ResetD i L o :=
   reset_as_kernel_of_inv (reachable_kinv hdd hst hr.ng.reachable)
     (fun E hE hl => lReach_inv hdd hst hr E (List.mem_of_getElem? hE) hl) o
+
+/-- `reset` and its kernel sequence, both directions (Part XIV, §78, v0.1 §78.3; arbitration
+Q7): on every library-reachable state, under `DDSound` (§80) and `StaticsOK` (§47), the contract
+of `reset` of an existing entry `i` is `ok` iff `derive` of `internal` at `Modify` over the
+storage (O1, §60) then `release` of the derived authority `|A|` (O3, §62) are both `ok`, the
+arrival kernel state being the arrival state of `release` and the entry becoming `resetMeta`; it is
+`reject` iff `derive` or `release` is `reject`. The explicit check of §78.3, kept in `ResetD` as
+the contract requires, never rejects after an accepted `derive` there (`resetNoDeps_of_derive`,
+I3 on reachable states, `Access.reachable_kinv`). A missing entry is rejected
+(`ResetC.noEntry`). -/
+theorem reset_iff_derive_release {k : K} {statics : Statics} (hdd : DDSound k)
+    (hst : StaticsOK statics) {L : LState} (hr : LReach k statics L) {i : Nat} {E : ArenaEntry}
+    (hE : L.arenas[i]? = some E) :
+    (∀ L', ResetC i L (.ok L') ↔ ∃ s₁ s₂,
+      DeriveStep E.internal (footprint L.kern.P E.storage) .modify L.kern (.ok s₁) ∧
+      ReleaseStep L.kern.A.length s₁ (.ok s₂) ∧
+      L' = ⟨s₂, L.arenas.set i (resetMeta L.kern E)⟩) ∧
+    (ResetC i L .reject ↔
+      DeriveStep E.internal (footprint L.kern.P E.storage) .modify L.kern .reject ∨
+      ∃ s₁, DeriveStep E.internal (footprint L.kern.P E.storage) .modify L.kern (.ok s₁) ∧
+        ReleaseStep L.kern.A.length s₁ .reject) := by
+  have h3 : I3 L.kern := (reachable_kinv hdd hst hr.ng.reachable).2.1.1.2.2.1
+  refine ⟨fun L' => (reset_as_kernel hdd hst hr _).trans ⟨fun h => ?_, fun h => ?_⟩,
+    (reset_as_kernel hdd hst hr _).trans ⟨fun h => ?_, fun h => ?_⟩⟩
+  · cases h with
+    | @ok E' s₁ s₂ hE' hd hrl _ =>
+      rw [hE] at hE'; cases hE'
+      exact ⟨s₁, s₂, hd, hrl, rfl⟩
+  · obtain ⟨s₁, s₂, hd, hrl, rfl⟩ := h
+    exact .ok hE hd hrl (resetNoDeps_of_derive h3 (Guarded.ok_iff.1 hd).1)
+  · cases h with
+    | noEntry h0 => rw [hE] at h0; cases h0
+    | derive hE' hd => rw [hE] at hE'; cases hE'; exact .inl hd
+    | release hE' hd hrl => rw [hE] at hE'; cases hE'; exact .inr ⟨_, hd, hrl⟩
+    | contract hE' hd _ hn =>
+      rw [hE] at hE'; cases hE'
+      exact absurd (resetNoDeps_of_derive h3 (Guarded.ok_iff.1 hd).1) hn
+  · rcases h with hd | ⟨s₁, hd, hrl⟩
+    · exact .derive hE hd
+    · exact .release hE hd hrl
 
 /-! ## Safe reuse after `reset` (§78, §86) -/
 
@@ -2265,10 +2345,27 @@ theorem lInv_resetC {k : K} {statics : Statics} (hdd : DDSound k) (hst : Statics
     {L L' : LState} (hr : LReach k statics L) {i : Nat} (hs : ResetC i L (.ok L')) : LInv L' :=
   lReachNG_inv hdd hst (hr.step (.reset ((reset_as_kernel hdd hst hr _).1 hs))).ng
 
+/-- `ArenaInv` (§55) after an `ok` of the contract of `issue` (§77), per step: on a state
+satisfying the kernel invariant (§57) and the library invariant, through `issue_as_kernel_of_inv`
+and `lInv_issue`. On library-reachable states: `lInv_issueC`. -/
+theorem lInv_issueC_of_inv (k : K) {L L' : LState} {i : Nat} {region : List Nat} {dst : Nat}
+    (hk : KInv L.kern) (hs : IssueC i region dst L (.ok L')) (hi : LInv L) : LInv L' :=
+  lInv_issue ((issue_as_kernel_of_inv k hk
+    (fun E hE hl => ((hi E (List.mem_of_getElem? hE)).2 hl).1) _).1 hs) hi
+
+/-- `ArenaInv` (§55) after an `ok` of the contract of `reset` (§78), per step: on a state
+satisfying the kernel invariant (§57) and the library invariant, through `reset_as_kernel_of_inv`
+and `lInv_reset`. On library-reachable states: `lInv_resetC`. -/
+theorem lInv_resetC_of_inv {L L' : LState} {i : Nat} (hk : KInv L.kern)
+    (hs : ResetC i L (.ok L')) (hi : LInv L) : LInv L' :=
+  lInv_reset ((reset_as_kernel_of_inv hk
+    (fun E hE hl => ((hi E (List.mem_of_getElem? hE)).2 hl).1) _).1 hs) hi
+
 /-- "Through `derive` or `split`" (Part XIV): under `WF3`, `I1` and `I2`, `derive` at `Modify` of
 `src` on a region of existing leaves and `split` of `src` on that one region have the same
 preconditions (§60, §61) and the same effect (`deriveEff_eq_split`). I2 (§51) gives the active
-origin chain that §60.1 asks of `derive` and §61.1 does not list. -/
+origin chain that §60.1 asks of `derive` and §61.1 does not list. On reachable states:
+`derive_iff_split_reachable`. -/
 theorem derive_iff_split (k : K) {s : S3} {src : Nat} {R : List Nat} (hw : WF3 s) (h1 : I1 s)
     (h2 : I2 s) (hR : ∀ l ∈ R, l < s.P.length ∧ isLeaf s.P l) :
     DerivePre s src R .modify ↔ SplitPre k s src [R] := by
@@ -2305,6 +2402,18 @@ theorem derive_iff_split (k : K) {s : S3} {src : Nat} {R : List Nat} (hw : WF3 s
       obtain ⟨h₁, h₂⟩ := new_vs_old h1 hx xa xl (hal l hl) hy ya hly hb1 hb2
       exact ⟨h₂, h₁⟩
     · trivial
+
+/-- "Through `derive` or `split`" (Part XIV) on reachable states (§57): under `DDSound` (§80) and
+`StaticsOK` (§47), on every kernel-reachable state (the kernel state of a library-reachable state
+is one, `LReachNG.reachable`), `derive` at `Modify` of `src` on a region of existing leaves and
+`split` of `src` on that one region have the same preconditions (§60, §61); `derive_iff_split`
+without invariant hypotheses. -/
+theorem derive_iff_split_reachable (k : K) {statics : Statics} (hdd : DDSound k)
+    (hst : StaticsOK statics) {s : S3} (hr : Reachable k statics s) {src : Nat} {R : List Nat}
+    (hR : ∀ l ∈ R, l < s.P.length ∧ isLeaf s.P l) :
+    DerivePre s src R .modify ↔ SplitPre k s src [R] :=
+  have hk := reachable_kinv hdd hst hr
+  derive_iff_split k hk.1 hk.2.1.1.1 hk.2.1.1.2.1 hR
 
 /-! ## Uniqueness of live administration in the arena registry (§56) -/
 
