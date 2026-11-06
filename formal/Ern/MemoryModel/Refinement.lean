@@ -1,10 +1,10 @@
 import Ern.MemoryModel.Machine
-import Ern.MemoryModel.Access.Preserve.Common
+import Ern.MemoryModel.Access.Main
 
 /-!
-# Refinement of the access kernel into the elementary memory machine (spec v0, Part XVII)
+# Refinement of the access kernel into the elementary memory machine (spec v0.1, Part XVII)
 
-Source: `specs/ERN_Memory_Model_Specification_v0.md`, §82 (items 1–8) with §10, §16, §17, §23.
+Source: `specs/ERN_Memory_Model_Specification_v0.1.md`, §82 (items 1–8) with §10, §16, §17, §23.
 
 * A layout of places in allocations and its interface `LayoutWF` (§82.1, §23).
 * The representation relation `Repr` between a kernel state (`Access.S3`) and an admissible state
@@ -12,9 +12,11 @@ Source: `specs/ERN_Memory_Model_Specification_v0.md`, §82 (items 1–8) with §
 * For every kernel operation O1–O16, the sequence of raw operations that realizes its `ok` step,
   proven to be a sequence of `ok` raw steps that keeps `Repr` (§82 preamble, §82.2, §82.4, §82.5).
 * Safe reads and writes (§82.2), lifetimes (§82.5), deallocation contracts (§82.4), pinned
-  addresses (§82.6), exclusivity of bytes (§82.8), pointers written by `store` (§82.3).
+  addresses under pinning obligations (§82.6, §74, §75), exclusivity of bytes (§82.8), pointers
+  written by `store` (§82.2, §82.3), every region included.
 * A simulation of runs from the initial state with parameters fixed once per run, and concrete
-  runs checked by evaluation.
+  runs checked by evaluation. On reachable states (§57, `Access.reachable_kinv`) the per-step
+  results hold without invariant hypotheses (`*_reachable`).
 
 The sequential fragment only (§18, §29): no theorem here says anything about concurrency.
 -/
@@ -1013,9 +1015,9 @@ carries the provenance `prov` (§10 ¶4). -/
 def PtrEncAt (pe : PtrEnc) (addr : Nat) (prov : Option Nat) : Prop :=
   pe.decode (pe.enc addr prov) = addr ∧ ∀ i, (pe.enc addr prov i).2 = prov
 
-/-- The allocation of the effective anchor of authority `a` (§44, §82.3; provenance rule recorded
-for §82.3): the allocation of the root authority reached along its origin chain, read on the first
-leaf of its footprint. -/
+/-- The allocation of the effective anchor of authority `a` (§44; §82.2: the provenance of a
+reference to the region of `a`): the allocation of the root authority reached along its origin
+chain, read on the first leaf of its footprint. -/
 def anchorAlloc (L : Layout) (s3 : S3) (a : Nat) : Nat :=
   (L ((s3.afp (s3.effAnchor a)).headD 0)).alloc
 
@@ -1048,68 +1050,40 @@ theorem minOver_mem (f : Nat → Nat) :
       · exact .inr ⟨l, List.mem_cons_self .., Nat.min_eq_right hle⟩
     · exact .inr ⟨l', List.mem_cons_of_mem _ hl', h⟩
 
-/-- Address of the reference to the region of authority `a` in `s2` (§82.3, address rules recorded
-for §82.3): the lowest address among the leaves of the region with a nonzero size; for the empty
-region, the base of the allocation of the effective anchor. `none` for a nonempty region whose
-leaves all have size zero: neither rule covers it. -/
-def ptrAddr (s2 : Machine.State) (L : Layout) (s3 : S3) (a : Nat) : Option Nat :=
+/-- Address of the reference to the region of authority `a` in `s2`: for a region whose leaves all
+have zero physical size, the empty region included, the base of the allocation of the effective
+anchor (§82.2, last sentence); otherwise the lowest address among the leaves of the region with a
+nonzero size (lowest-address rule, recorded for §82.3). -/
+def ptrAddr (s2 : Machine.State) (L : Layout) (s3 : S3) (a : Nat) : Nat :=
   match (s3.afp a).filter (fun l => decide (0 < (L l).len)) with
-  | l :: ls => some (minOver (leafAddr s2 L) (leafAddr s2 L l) ls)
-  | [] => if s3.afp a = [] then some (baseOf s2 (anchorAlloc L s3 a)) else none
+  | l :: ls => minOver (leafAddr s2 L) (leafAddr s2 L l) ls
+  | [] => baseOf s2 (anchorAlloc L s3 a)
 
-/-- The region of authority `a` is empty or has a leaf of nonzero size: the domain where the
-the address rules recorded for §82.3 define the address of a reference. -/
-def PtrDecided (L : Layout) (s3 : S3) (a : Nat) : Prop :=
-  s3.afp a = [] ∨ ∃ l ∈ s3.afp a, 0 < (L l).len
-
-/-- Decidability of `PtrDecided` (§82.3). -/
-instance (L : Layout) (s3 : S3) (a : Nat) : Decidable (PtrDecided L s3 a) := by
-  unfold PtrDecided; infer_instance
-
-/-- The address of a reference is defined exactly on `PtrDecided` (§82.3). -/
-theorem ptrAddr_isSome {s2 : Machine.State} {L : Layout} {s3 : S3} {a : Nat}
-    (h : PtrDecided L s3 a) : ∃ ad, ptrAddr s2 L s3 a = some ad := by
-  unfold ptrAddr
-  split
-  · exact ⟨_, rfl⟩
-  · rename_i he
-    rcases h with h | ⟨l, hl, hpos⟩
-    · exact ⟨_, by rw [ite_eq_left h]⟩
-    · have : l ∈ (s3.afp a).filter (fun l => decide (0 < (L l).len)) :=
-        List.mem_filter.2 ⟨hl, by simpa using hpos⟩
-      rw [he] at this; cases this
-
-/-- The raw operation realizing `store(authority, target)` (§82.3, §65): one write into the range
-of the leaf `target` of the reference to the region of the authority, with the address of
-`ptrAddr` and the provenance of the allocation of its effective anchor (address rules recorded
-for §82.3). No operation when the address is undefined (outside `PtrDecided`). -/
+/-- The raw operation realizing `store(authority, target)` (§82.2, §82.3, §65): one write into the
+range of the leaf `target` of the reference to the region of the authority, with the address of
+`ptrAddr` and the provenance of the allocation of its effective anchor (§82.2). -/
 def storeOps {Ty : Type} (pe : PtrEnc) (s2 : Machine.State) (L : Layout) (ty : Nat → Ty) (s3 : S3)
     (a p : Nat) : List (Machine.Op Ty) :=
-  match ptrAddr s2 L s3 a with
-  | some ad => writeOps s2 L ty (fun _ => pe.enc ad (some (anchorAlloc L s3 a))) [p]
-  | none => []
+  writeOps s2 L ty (fun _ => pe.enc (ptrAddr s2 L s3 a) (some (anchorAlloc L s3 a))) [p]
 
 /-- The target of an `ok` `store` is a leaf of a usable place (§65.2). -/
 theorem store_target {s3 : S3} {a p : Nat} (hpre : StorePre s3 a p) : LeafOfUsable s3 p :=
   ⟨p, List.mem_range.2 hpre.usable.lt, hpre.usable,
     mem_footprint.2 ⟨hpre.usable.lt, hpre.leaf, hpre.usable.lt, .inl rfl⟩⟩
 
-/-- Realization of `store` (§82 preamble, §82.3, §65, §16): under `Repr`, `WF3`, an `ok` step of
-`store(authority, target)` whose region has a reference address (`PtrDecided`, address rules)
-and the parametric obligations of the write, the write of the reference into the range of
-`target` is an `ok` raw step, and `Repr` holds after the step. `PtrDecided` is not a clause of
-the spec: it excludes the nonempty regions whose leaves all have size zero, for which no address
-rule is recorded (§82.3 fixes no address). -/
+/-- Realization of `store` (§82 preamble, §82.2, §82.3, §65, §16): under `Repr`, `WF3`, an `ok`
+step of `store(authority, target)` and the parametric obligations of the write, the write of the
+reference into the range of `target` is an `ok` raw step, and `Repr` holds after the step. Every
+region has a reference address (§82.2). -/
 theorem r6_store {Ty : Type} {C : Nat → Nat → Prop} {ObR : Machine.ReadOblSpec Ty}
     {ObW : Machine.WriteOblSpec Ty} {ty : Nat → Ty} {pe : PtrEnc} {L : Layout} {rtok : Nat → Nat}
     {s3 s3' : S3} {s2 : Machine.State} {a p : Nat} (hR : Repr L rtok s3 s2) (hw : WF3 s3)
-    (h : StoreStep a p s3 (.ok s3')) (hpd : PtrDecided L s3 a)
+    (h : StoreStep a p s3 (.ok s3'))
     (hob : OblAlong ObR ObW s2 (storeOps pe s2 L ty s3 a p)) :
     Machine.Exec C ObR ObW (storeOps pe s2 L ty s3 a p) s2 (run s2 (storeOps pe s2 L ty s3 a p)) ∧
       Repr L rtok s3' (run s2 (storeOps pe s2 L ty s3 a p)) := by
   obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
-  obtain ⟨ad, had⟩ := ptrAddr_isSome (s2 := s2) hpd
-  simp only [storeOps, had] at hob ⊢
+  simp only [storeOps] at hob ⊢
   refine writes_repr hR hw (fun l hl => by rw [List.mem_singleton.1 hl]; exact store_target hpre)
     hob ?_ ?_ ?_ ?_ <;> unfold storeEff <;> split
   · rfl
@@ -1189,19 +1163,20 @@ theorem anchorAlloc_eq {L : Layout} {s3 : S3} {s2 : Machine.State} (hlw : Layout
   unfold anchorAlloc
   rw [hlw.alloc_part (mem_footprint.1 hh).2.2, hlw.alloc_part hlr]
 
-/-- Pointer soundness of `store` (§82.2 pointer validity, §82.3 with the reference rules recorded
-for it): under `Repr`, `WF3`, `NoDangling`, an `ok` step of `store(authority, target)` whose
-reference has the address `ad` (`ptrAddr`), the obligations of the write, a target of pointer size
-(pointer-size rule, a stated hypothesis: types and ABI, §81) and the obligation of the encoding for
-that reference, the range of `target` after the write decodes to `ad` and carries the provenance
-of the allocation of the effective anchor. Every leaf of the region lies in that allocation, which
-is live and contains the range of the leaf. For the empty region, `ad` is the base of that
-allocation (empty-region rule); otherwise `ad` is the address of a leaf of nonzero size of the
-region, the lowest among them (lowest-address rule). -/
+/-- Pointer soundness of `store` (§82.2 pointer validity and its last sentence, §82.3 with the
+lowest-address rule recorded for it): under `Repr`, `WF3`, `NoDangling`, an `ok` step of
+`store(authority, target)` whose reference has the address `ad` (`ptrAddr`), the obligations of the
+write, a target of pointer size (pointer-size rule, a stated hypothesis: types and ABI, §81) and the
+obligation of the encoding for that reference, the range of `target` after the write decodes to
+`ad` and carries the provenance of the allocation of the effective anchor. Every leaf of the region
+lies in that allocation, which is live and contains the range of the leaf. For a region whose
+leaves all have zero physical size, the empty region included, `ad` is the base of that allocation
+(§82.2); otherwise `ad` is the address of a leaf of nonzero size of the region, the lowest among
+them (lowest-address rule). -/
 theorem pointer_sound_store {Ty : Type} {ty : Nat → Ty} {pe : PtrEnc} {L : Layout}
     {rtok : Nat → Nat}
     {s3 s3' : S3} {s2 : Machine.State} {a p ad : Nat} (hR : Repr L rtok s3 s2) (hw : WF3 s3)
-    (hnd : NoDangling s3) (h : StoreStep a p s3 (.ok s3')) (had : ptrAddr s2 L s3 a = some ad)
+    (hnd : NoDangling s3) (h : StoreStep a p s3 (.ok s3')) (had : ptrAddr s2 L s3 a = ad)
     (hsz : (L p).len = pe.size) (henc : PtrEncAt pe ad (some (anchorAlloc L s3 a))) :
     pe.decode (bytesOf (run s2 (storeOps (Ty := Ty) pe s2 L ty s3 a p)) L p) = ad ∧
       (∀ i, i < (L p).len →
@@ -1209,8 +1184,8 @@ theorem pointer_sound_store {Ty : Type} {ty : Nat → Ty} {pe : PtrEnc} {L : Lay
           some (anchorAlloc L s3 a)) ∧
       (∀ l ∈ s3.afp a, (L l).alloc = anchorAlloc L s3 a ∧
         AllocP s2 (L l).alloc fun al => al.live = true ∧ (L l).off + (L l).len ≤ al.size) ∧
-      (s3.afp a = [] → ad = baseOf s2 (anchorAlloc L s3 a)) ∧
-      (s3.afp a ≠ [] → ∃ l ∈ s3.afp a, 0 < (L l).len ∧ ad = leafAddr s2 L l ∧
+      ((∀ l ∈ s3.afp a, (L l).len = 0) → ad = baseOf s2 (anchorAlloc L s3 a)) ∧
+      ((∃ l ∈ s3.afp a, 0 < (L l).len) → ∃ l ∈ s3.afp a, 0 < (L l).len ∧ ad = leafAddr s2 L l ∧
         ∀ l' ∈ s3.afp a, 0 < (L l').len → ad ≤ leafAddr s2 L l') := by
   obtain ⟨hpre, -⟩ := Guarded.ok_iff.1 h
   obtain ⟨hpP, hpf, hpu⟩ := leaf_of_leafOfUsable hw (store_target hpre)
@@ -1230,7 +1205,7 @@ theorem pointer_sound_store {Ty : Type} {ty : Nat → Ty} {pe : PtrEnc} {L : Lay
     · exact h.elim
   obtain ⟨y, hy, ya⟩ := hy
   have hafp : s3.afp a = y.footprint := by simp [S3.afp, hy]
-  refine ⟨?_, fun i hi => by rw [hbytes i hi]; exact henc.2 i, fun l hl => ?_, fun he => ?_,
+  refine ⟨?_, fun i hi => by rw [hbytes i hi]; exact henc.2 i, fun l hl => ?_, fun hz => ?_,
     fun hne => ?_⟩
   · rw [pe.reads _ _ fun i hi => hbytes i (hsz ▸ hi)]; exact henc.1
   · rw [hafp] at hl
@@ -1240,12 +1215,18 @@ theorem pointer_sound_store {Ty : Type} {ty : Nat → Ty} {pe : PtrEnc} {L : Lay
     have hur : s3.Usable r := Decidable.of_not_not fun hn =>
       hnd a y hy ya r hn l (mem_footprint.2 ⟨hlP, hlf, hlr⟩) hl
     exact hR.leaf_live hw hlP hlf (usable_of_partOf hw (l + 1) l r (Nat.lt_succ_self l) hlr hur)
-  · simp only [ptrAddr, he, List.filter_nil, ↓reduceIte, Option.some.injEq] at had
-    exact had.symm
+  · rw [← had]; unfold ptrAddr
+    split
+    · rename_i l0 ls hf
+      have : l0 ∈ (s3.afp a).filter (fun l => decide (0 < (L l).len)) := by
+        rw [hf]; exact List.mem_cons_self ..
+      have hpos := of_decide_eq_true (List.mem_filter.1 this).2
+      rw [hz l0 (List.mem_filter.1 this).1] at hpos
+      exact absurd hpos (Nat.lt_irrefl 0)
+    · rfl
   · unfold ptrAddr at had
     split at had
     · rename_i l0 ls hf
-      simp only [Option.some.injEq] at had
       have hmem : ∀ x, x ∈ l0 :: ls → x ∈ s3.afp a ∧ 0 < (L x).len := fun x hx => by
         rw [← hf] at hx; simpa using List.mem_filter.1 hx
       obtain ⟨hle0, hle⟩ := minOver_le (leafAddr s2 L) ls (leafAddr s2 L l0)
@@ -1261,9 +1242,11 @@ theorem pointer_sound_store {Ty : Type} {ty : Nat → Ty} {pe : PtrEnc} {L : Lay
         exact ⟨l0, h1, h2, by rw [← had, e], hlow⟩
       · obtain ⟨h1, h2⟩ := hmem l' (List.mem_cons_of_mem _ hl')
         exact ⟨l', h1, h2, by rw [← had, e], hlow⟩
-    · split at had
-      · exact absurd ‹_› hne
-      · cases had
+    · rename_i hf
+      obtain ⟨l, hl, hpos⟩ := hne
+      have : l ∈ (s3.afp a).filter (fun l => decide (0 < (L l).len)) :=
+        List.mem_filter.2 ⟨hl, by simpa using hpos⟩
+      rw [hf] at this; cases this
 
 
 /-! ## Transfer (§63, §82.2, §82.3) -/
@@ -1884,7 +1867,7 @@ theorem r6_enter {Ty : Type} {C : Nat → Nat → Prop} {ObR : Machine.ReadOblSp
 `repr_init`). -/
 def S3.base : S3 :=
   { F := [0], nF := 1, P := [], I := fun _ => .uninit, A := [], D := fun _ => [],
-    dead := fun _ => false, pin := fun _ => false }
+    dead := fun _ => false, pins := [] }
 
 /-- The kernel state without places is represented by the empty memory state (§9 ¶9, §82). -/
 theorem repr_base (L : Layout) (rtok : Nat → Nat) : Repr L rtok S3.base Machine.State.empty := by
@@ -2078,8 +2061,8 @@ inductive KOp where
   | writeShared (a : Nat) (ls : List Nat) (w : Nat → Nat → UInt8 × Option Nat)
   /-- O15 `pin` (§74). -/
   | pin (p : Nat)
-  /-- O16 `unpin` (§75). -/
-  | unpin (p : Nat)
+  /-- O16 `unpin` (§75), designating a dynamic pinning obligation by its identity. -/
+  | unpin (o : Nat)
   /-- O12 `endUse` (§69). -/
   | endUse (p : Nat)
   /-- O13 `free` (§70). -/
@@ -2102,7 +2085,7 @@ def OpStep (k : K) : KOp → S3 → S3 → Prop
   | .write a ls _, s, s' => Write3Step a ls s (.ok s')
   | .writeShared a ls _, s, s' => WriteSharedStep k a ls s (.ok s')
   | .pin p, s, s' => PinStep p s (.ok s')
-  | .unpin p, s, s' => UnpinStep k p s (.ok s')
+  | .unpin o, s, s' => UnpinStep k o s (.ok s')
   | .endUse p, s, s' => EndUseStep k p s (.ok s')
   | .free p auth, s, s' => FreeStep k p auth s (.ok s')
   | .alloc pr ow ls, s, s' => AllocStep k pr ow ls s (.ok s')
@@ -2172,10 +2155,10 @@ def opsOf {Ty : Type} (π : Params Ty) : KOp → S3 → Machine.State → List (
   | .store a p, s3, s2 => storeOps π.pe s2 π.L π.ty s3 a p
   | _, _, _ => []
 
-/-- Obligations of one step (§20.3, §82): the parametric obligations of its reads and writes; the
-layout of new places (`enterFrame`, `alloc`, §82.1); the instantiation of `K.FreeCompat` (`free`,
-§80, §82.4); a reference address defined by the address rules (`store`, §82.3; not a clause of
-the spec, see `r6_store`). -/
+/-- Obligations of one step (§20.3, §82): the parametric obligations of its reads and writes
+(§20.3, §15, §16); the layout of new places (`enterFrame`, `alloc`, §82.1, §23 `LayoutWF`); the
+instantiation of `K.FreeCompat` on the deallocation compatibility of the machine (`free`, §80,
+§70.2, §82.4). -/
 def StepObl {Ty : Type} (k : K) (C : Nat → Nat → Prop) (ObR : Machine.ReadOblSpec Ty)
     (ObW : Machine.WriteOblSpec Ty) (π : Params Ty) (op : KOp) (s3 : S3) (s2 : Machine.State) :
     Prop :=
@@ -2185,7 +2168,6 @@ def StepObl {Ty : Type} (k : K) (C : Nat → Nat → Prop) (ObR : Machine.ReadOb
     | .alloc _ ow ls => NewLayout π.L (allocP s3 ow ls) s3.P.length s2.next π.geom
         (rootIdx ls.toShape)
     | .free p auth => k.FreeCompat p auth → FreeCompatInst C π.rtok p auth
-    | .store a _ => PtrDecided π.L s3 a
     | _ => True
 
 /-- Realization of every kernel step (§82 preamble, R6): under the obligations of the parameters,
@@ -2222,17 +2204,16 @@ theorem r6 {Ty : Type} {k : K} {C : Nat → Nat → Prop} {ObR : Machine.ReadObl
     have := r6_free (ObR := ObR) (ObW := ObW) hR hw hnd h hx
     exact ⟨this.1, this.2.2⟩
   | alloc => exact (r6_alloc hR hw h hpl hg hx).2
-  | store => exact r6_store hR hw h hx hob
+  | store => exact r6_store hR hw h hob
 
 /-! ## Simulation (§82 preamble) -/
 
 /-- Runs of the kernel from `S3.init statics` translated into the memory machine, with the
 contract `K`, the deallocation compatibility `C`, the obligations `ObR`, `ObW` and the parameters
 `π` fixed once for the run (§20.3 ¶3, §82): the initial state with the creations and writes of the
-statics (`repr_init`); then each `ok` kernel step from a state satisfying `WF3` and `NoDangling`
-(parts of the kernel invariant, §57) under its obligations, followed by its raw operations. The
-invariant is a hypothesis on the states of the run, not a consequence of reachability, since
-`transfer` can break it (an ownership cycle, §63 against §49.8 and §54). -/
+statics (`repr_init`); then each `ok` kernel step under its obligations (`StepObl`), followed by
+its raw operations. No invariant is assumed on the states of the run: they are reachable, so the
+kernel invariant holds on them (§57, `Access.reachable_kinv`). -/
 inductive SimRun {Ty : Type} (k : K) (C : Nat → Nat → Prop) (ObR : Machine.ReadOblSpec Ty)
     (ObW : Machine.WriteOblSpec Ty) (statics : Statics) (π : Params Ty) :
     S3 → Machine.State → Prop where
@@ -2245,25 +2226,36 @@ inductive SimRun {Ty : Type} (k : K) (C : Nat → Nat → Prop) (ObR : Machine.R
       SimRun k C ObR ObW statics π (S3.init statics)
         (run Machine.State.empty (initOps π.pl π.geom π.rtok π.L π.ty π.ival statics))
   | step {op : KOp} {s3 s3' : S3} {s2 : Machine.State} : SimRun k C ObR ObW statics π s3 s2 →
-      WF3 s3 → NoDangling s3 → OpStep k op s3 s3' → StepObl k C ObR ObW π op s3 s2 →
+      OpStep k op s3 s3' → StepObl k C ObR ObW π op s3 s2 →
       SimRun k C ObR ObW statics π s3' (run s2 (opsOf π op s3 s2))
 
-/-- Simulation (§82 preamble, §57, §9 ¶9): for every translated run, the memory state is reached
-from the empty state by an execution of `ok` raw steps, it is related to the kernel state by
-`Repr` (admissibility included), and the kernel state is reachable from `S3.init statics` by the
-kernel steps O1–O16. -/
+/-- The statics of a translated run are well formed (§47; `SimRun.init`). -/
+theorem SimRun.staticsOK {Ty : Type} {k : K} {C : Nat → Nat → Prop} {ObR : Machine.ReadOblSpec Ty}
+    {ObW : Machine.WriteOblSpec Ty} {statics : Statics} {π : Params Ty} {s3 : S3}
+    {s2 : Machine.State} (h : SimRun k C ObR ObW statics π s3 s2) : StaticsOK statics := by
+  induction h with
+  | init hst _ _ => exact hst
+  | step _ _ _ ih => exact ih
+
+/-- Simulation (§82 preamble, §57, §9 ¶9): under `DDSound(K)` (§80), for every translated run, the
+memory state is reached from the empty state by an execution of `ok` raw steps, it is related to
+the kernel state by `Repr` (admissibility included), and the kernel state is reachable from
+`S3.init statics` by the kernel steps O1–O16. -/
 theorem simulation {Ty : Type} {k : K} {C : Nat → Nat → Prop} {ObR : Machine.ReadOblSpec Ty}
     {ObW : Machine.WriteOblSpec Ty} {statics : Statics} {π : Params Ty} {s3 : S3}
-    {s2 : Machine.State} (hπ : ParamsOK C π) (h : SimRun k C ObR ObW statics π s3 s2) :
+    {s2 : Machine.State} (hdd : DDSound k) (hπ : ParamsOK C π)
+    (h : SimRun k C ObR ObW statics π s3 s2) :
     (∃ ops, Machine.Exec C ObR ObW ops Machine.State.empty s2) ∧ Repr π.L π.rtok s3 s2 ∧
       Access.Reachable k statics s3 := by
+  have hst := h.staticsOK
   induction h with
   | init hst hlay hob =>
     obtain ⟨hex, hR⟩ := repr_init (C := C) hst hπ.1 hπ.2.1 hlay hob
     exact ⟨⟨_, hex⟩, hR, .init⟩
-  | step _ hw hnd hs hob ih =>
+  | step _ hs hob ih =>
     obtain ⟨⟨ops, hex⟩, hR, hr⟩ := ih
-    obtain ⟨hex', hR'⟩ := r6 hπ hR hw hnd hs hob
+    have hk := reachable_kinv hdd hst hr
+    obtain ⟨hex', hR'⟩ := r6 hπ hR hk.1 hk.2.1.2.2 hs hob
     exact ⟨⟨_, exec_append hex hex'⟩, hR', .step hr hs.kstep⟩
 
 /-! ## Pinned addresses (§82.6, §74, §75) -/
@@ -2305,14 +2297,17 @@ theorem Repr.leaf_of_alloc {L : Layout} {rtok : Nat → Nat} {s3 : S3} {s2 : Mac
   exact mem_footprint.2 ⟨hl, hlf, hlr'⟩
 
 /-- `pinned_address_stable` (§82.6, §74, §75; §63.5, §69.4, §70.4, §73.3): for every realized
-kernel step (`r6`), a leaf pinned dynamically or by `K.Pinned` whose allocation is live before the
-step keeps a live allocation and the same address after the raw operations of the step. The
+kernel step (`r6`), a leaf covered by an active dynamic pinning obligation (§74: a leaf is pinned
+while an active obligation covers it) or pinned by `K.Pinned`, whose allocation is live before the
+step, keeps a live allocation and the same address after the raw operations of the step. The
 memory machine never moves an allocation (§13); the content is that no deallocation of the step
 touches a pinned leaf. -/
 theorem pinned_address_stable {Ty : Type} {k : K} {π : Params Ty} {op : KOp}
     {s3 s3' : S3} {s2 : Machine.State} (hR : Repr π.L π.rtok s3 s2) (hw : WF3 s3)
     (hnd : NoDangling s3) (h : OpStep k op s3 s3') {l : Nat} (hl : l < s3.P.length)
-    (hlf : isLeaf s3.P l) (hpin : s3.pin l = true ∨ k.Pinned l)
+    (hlf : isLeaf s3.P l)
+    (hpin : (∃ (o : Nat) (ob : PinOb), s3.pins[o]? = some ob ∧ ob.active = true ∧
+      l ∈ ob.leaves) ∨ k.Pinned l)
     (hlive : LiveAlloc s2 (π.L l).alloc) :
     LiveAlloc (run s2 (opsOf π op s3 s2)) (π.L l).alloc ∧
       leafAddr (run s2 (opsOf π op s3 s2)) π.L l = leafAddr s2 π.L l := by
@@ -2325,7 +2320,7 @@ theorem pinned_address_stable {Ty : Type} {k : K} {π : Params Ty} {op : KOp}
     fun hn => live_run _ _ hwf hn hlive
   have hpinned : ¬ (s3.pin l = false ∧ ¬ k.Pinned l) := fun ⟨h1, h2⟩ => by
     rcases hpin with h | h
-    · rw [h1] at h; cases h
+    · rw [S3.pin_iff.2 h] at h1; cases h1
     · exact h2 h
   cases op with
   | transfer => exact hnod (copyOps_noDealloc _ _ _ _)
@@ -2337,12 +2332,7 @@ theorem pinned_address_stable {Ty : Type} {k : K} {π : Params Ty} {op : KOp}
   | write => exact hnod (writeOps_noDealloc _ _ _ _ _)
   | writeShared => exact hnod (writeOps_noDealloc _ _ _ _ _)
   | alloc => exact hnod (allocOps_noDealloc _ _ _ _ _ _)
-  | store a p =>
-    refine hnod fun o ho => ?_
-    simp only [opsOf, storeOps] at ho
-    split at ho
-    · exact writeOps_noDealloc _ _ _ _ _ o ho
-    · cases ho
+  | store => exact hnod (writeOps_noDealloc _ _ _ _ _)
   | free p auth =>
     obtain ⟨hpre, -⟩ := Guarded.ok_iff.1 h
     have hrt := (free_usable hw hnd hpre).1
@@ -2400,18 +2390,20 @@ theorem copyOps_read {Ty : Type} (L : Layout) (ty : Nat → Ty) :
     · obtain ⟨q, hq, rfl⟩ := copyOps_read L ty _ ps h
       exact ⟨q, List.mem_cons_of_mem _ hq, by simp only [leafAcc, leafAddr, baseOf_write]⟩
 
-/-- The move half of §82.6 on the kernel step (§63.5, §87, §35 ¶2): an `ok` `transfer` moves no
-pinned in-place leaf. A leaf pinned dynamically or by `K.Pinned` before the step is not an
-in-place leaf of the source (the leaves that the step moves), and its initialization state does
-not become `Moved`. -/
+/-- The move half of §82.6 on the kernel step (§63.5, §74, §87, §35 ¶2): an `ok` `transfer` moves
+no pinned in-place leaf. A leaf covered before the step by an active dynamic pinning obligation
+(§74) or pinned by `K.Pinned` is not an in-place leaf of the source (the leaves that the step
+moves), and its initialization state does not become `Moved`. -/
 theorem transfer_pinned_not_moved {k : K} {s3 s3' : S3} {src dst l : Nat}
-    (h : TransferStep k src dst s3 (.ok s3')) (hpin : s3.pin l = true ∨ k.Pinned l) :
+    (h : TransferStep k src dst s3 (.ok s3'))
+    (hpin : (∃ (o : Nat) (ob : PinOb), s3.pins[o]? = some ob ∧ ob.active = true ∧
+      l ∈ ob.leaves) ∨ k.Pinned l) :
     l ∉ footprint s3.P src ∧ (s3'.I l = .moved → s3.I l = .moved) := by
   obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
   have hns : l ∉ footprint s3.P src := fun hl => by
     obtain ⟨h1, h2⟩ := hpre.notPinned l hl
     rcases hpin with hp | hp
-    · rw [h2] at hp; cases hp
+    · rw [S3.pin_iff.2 hp] at h2; cases h2
     · exact h1 hp
   refine ⟨hns, fun hm => ?_⟩
   simp only [transferEff] at hm
@@ -2419,20 +2411,141 @@ theorem transfer_pinned_not_moved {k : K} {s3 s3' : S3} {src dst l : Nat}
   · simp [hd] at hm
   · simpa [hd, hns] using hm
 
-/-- The move half of §82.6 on the realization (§63.5, §87, §82.3): every read among the raw
+/-- The move half of §82.6 on the realization (§63.5, §74, §87, §82.3): every read among the raw
 operations realizing an `ok` `transfer`, by which a value is copied into the destination, is the
-access to the range of an in-place leaf of the source that is pinned neither dynamically nor by
-`K.Pinned`. -/
+access to the range of an in-place leaf of the source that no active dynamic pinning obligation
+covers (§74) and that `K.Pinned` does not pin. -/
 theorem transfer_reads_unpinned {Ty : Type} {k : K} {π : Params Ty} {s3 s3' : S3}
     {s2 : Machine.State} {src dst : Nat} (h : TransferStep k src dst s3 (.ok s3'))
     {ac : Machine.Access} {t : Ty}
     (hr : Machine.Op.read ac t ∈ opsOf π (.transfer src dst) s3 s2) :
-    ∃ l ∈ footprint s3.P src, (s3.pin l = false ∧ ¬ k.Pinned l) ∧
+    ∃ l ∈ footprint s3.P src,
+      ((∀ (o : Nat) (ob : PinOb), s3.pins[o]? = some ob → ob.active = true → l ∉ ob.leaves) ∧
+        ¬ k.Pinned l) ∧
       ac = leafAcc s2 π.L .read l := by
   obtain ⟨⟨l, l'⟩, hq, rfl⟩ := copyOps_read π.L π.ty s2 _ hr
   obtain ⟨hl, -⟩ := mem_transferPairs.1 hq
   obtain ⟨h1, h2⟩ := (Guarded.ok_iff.1 h).1.notPinned l hl
-  exact ⟨l, hl, ⟨h2, h1⟩, rfl⟩
+  refine ⟨l, hl, ⟨fun o ob ho ha hlo => ?_, h1⟩, rfl⟩
+  rw [S3.pin_iff.2 ⟨o, ob, ho, ha, hlo⟩] at h2; cases h2
+
+/-! ## Reachable states (§57)
+
+On a state reachable from `S3.init statics`, the kernel invariant holds under `DDSound(K)` (§80)
+and well-formed statics (`StaticsOK`, §47) (`Access.reachable_kinv`), and so does `I5`
+(`Access.reachable_i5`). The per-step results above therefore hold there without invariant
+hypotheses. -/
+
+/-- R1 on reachable states (§82.2, §66, §15, §57): `r1_read` without invariant hypothesis. -/
+theorem r1_read_reachable {Ty : Type} {k : K} {statics : Statics} {ObR : Machine.ReadOblSpec Ty}
+    {ty : Nat → Ty} {L : Layout} {rtok : Nat → Nat} {s3 : S3} {s2 : Machine.State} {a : Nat}
+    {ls : List Nat} (hdd : DDSound k) (hst : StaticsOK statics)
+    (hr : Access.Reachable k statics s3) (hR : Repr L rtok s3 s2) (hpre : Read3Pre s3 a ls)
+    {l : Nat} (hl : l ∈ ls)
+    (hob : ObR.dec s2 (leafAcc s2 L .read l) (ty l) ∧ ObR.stat s2 (leafAcc s2 L .read l) (ty l)) :
+    ∃ al, s2.allocs (L l).alloc = some al ∧ al.live = true ∧ al.InitRange (L l).off (L l).len ∧
+      Machine.ReadStep ObR (leafAcc s2 L .read l) (ty l) s2
+        (.ok (al.bytesAt (L l).off (L l).len)) :=
+  r1_read hR (reachable_kinv hdd hst hr).1 hpre hl hob
+
+/-- R6 on reachable states (§82 preamble, §57): `r6` without invariant hypothesis. For `read`,
+`write` and `writeShared`, the execution is that of the reads and writes of R1 and R2
+(`readOps`, `writeOps`, §82.2). -/
+theorem r6_reachable {Ty : Type} {k : K} {statics : Statics} {C : Nat → Nat → Prop}
+    {ObR : Machine.ReadOblSpec Ty} {ObW : Machine.WriteOblSpec Ty} {π : Params Ty} {op : KOp}
+    {s3 s3' : S3} {s2 : Machine.State} (hdd : DDSound k) (hst : StaticsOK statics)
+    (hr : Access.Reachable k statics s3) (hπ : ParamsOK C π) (hR : Repr π.L π.rtok s3 s2)
+    (h : OpStep k op s3 s3') (hob : StepObl k C ObR ObW π op s3 s2) :
+    Machine.Exec C ObR ObW (opsOf π op s3 s2) s2 (run s2 (opsOf π op s3 s2)) ∧
+      Repr π.L π.rtok s3' (run s2 (opsOf π op s3 s2)) :=
+  have hk := reachable_kinv hdd hst hr
+  r6 hπ hR hk.1 hk.2.1.2.2 h hob
+
+/-- R4 on reachable states (§82.5, §54, §57): `r4_no_dead_cover` without invariant
+hypothesis. -/
+theorem r4_no_dead_cover_reachable {k : K} {statics : Statics} {L : Layout} {rtok : Nat → Nat}
+    {s3 : S3} {s2 : Machine.State} (hdd : DDSound k) (hst : StaticsOK statics)
+    (hr : Access.Reachable k statics s3) (hR : Repr L rtok s3 s2) {j : Nat} {y : Authority}
+    (hy : s3.A[j]? = some y) (ya : y.active = true) {l : Nat} (hl : l ∈ y.footprint) :
+    l < s3.P.length ∧ isLeaf s3.P l ∧
+      AllocP s2 (L l).alloc fun a => a.live = true ∧ (L l).off + (L l).len ≤ a.size :=
+  have hk := reachable_kinv hdd hst hr
+  r4_no_dead_cover hR hk.1 hk.2.1.2.2 hy ya hl
+
+/-- Dependencies and storage on reachable states (§82.5, §52, §57): `r4_anchors` without
+invariant hypothesis. -/
+theorem r4_anchors_reachable {k : K} {statics : Statics} {L : Layout} {rtok : Nat → Nat}
+    {s3 : S3} {s2 : Machine.State} (hdd : DDSound k) (hst : StaticsOK statics)
+    (hr : Access.Reachable k statics s3) (hR : Repr L rtok s3 s2) {q x : Nat}
+    (hq : s3.Usable q) (hx : x ∈ s3.D q) :
+    s3.Active x ∧ ∀ l ∈ s3.afp x,
+      AllocP s2 (L l).alloc fun a => a.live = true ∧ (L l).off + (L l).len ≤ a.size :=
+  have hk := reachable_kinv hdd hst hr
+  r4_anchors hR hk.1 hk.2.1.1.2.2.1 hk.2.1.2.2 hq hx
+
+/-- `freeSound_derived` on reachable states (§82.4, §70.2, §80, §57), without invariant
+hypothesis. -/
+theorem freeSound_derived_reachable {k : K} {statics : Statics} {C : Nat → Nat → Prop}
+    {L : Layout} {rtok : Nat → Nat} {s3 : S3} {s2 : Machine.State} {p auth : Nat}
+    (hdd : DDSound k) (hst : StaticsOK statics) (hr : Access.Reachable k statics s3)
+    (hR : Repr L rtok s3 s2) (hpre : FreePre k s3 p auth)
+    (hinst : k.FreeCompat p auth → FreeCompatInst C rtok p auth) :
+    Machine.CanDealloc C s2 (L p).alloc auth :=
+  have hk := reachable_kinv hdd hst hr
+  freeSound_derived hR hk.1 hk.2.1.2.2 hpre hinst
+
+/-- Pointer soundness of `store` on reachable states (§82.2, §82.3, §57): `pointer_sound_store`
+without invariant hypothesis. -/
+theorem pointer_sound_store_reachable {Ty : Type} {k : K} {statics : Statics} {ty : Nat → Ty}
+    {pe : PtrEnc} {L : Layout} {rtok : Nat → Nat} {s3 s3' : S3} {s2 : Machine.State}
+    {a p ad : Nat} (hdd : DDSound k) (hst : StaticsOK statics)
+    (hr : Access.Reachable k statics s3) (hR : Repr L rtok s3 s2)
+    (h : StoreStep a p s3 (.ok s3')) (had : ptrAddr s2 L s3 a = ad) (hsz : (L p).len = pe.size)
+    (henc : PtrEncAt pe ad (some (anchorAlloc L s3 a))) :
+    pe.decode (bytesOf (run s2 (storeOps (Ty := Ty) pe s2 L ty s3 a p)) L p) = ad ∧
+      (∀ i, i < (L p).len →
+        (bytesOf (run s2 (storeOps (Ty := Ty) pe s2 L ty s3 a p)) L p i).2 =
+          some (anchorAlloc L s3 a)) ∧
+      (∀ l ∈ s3.afp a, (L l).alloc = anchorAlloc L s3 a ∧
+        AllocP s2 (L l).alloc fun al => al.live = true ∧ (L l).off + (L l).len ≤ al.size) ∧
+      ((∀ l ∈ s3.afp a, (L l).len = 0) → ad = baseOf s2 (anchorAlloc L s3 a)) ∧
+      ((∃ l ∈ s3.afp a, 0 < (L l).len) → ∃ l ∈ s3.afp a, 0 < (L l).len ∧ ad = leafAddr s2 L l ∧
+        ∀ l' ∈ s3.afp a, 0 < (L l').len → ad ≤ leafAddr s2 L l') :=
+  have hk := reachable_kinv hdd hst hr
+  pointer_sound_store hR hk.1 hk.2.1.2.2 h had hsz henc
+
+/-- `exclusive_bytes` on reachable states (§82.8, §50, §23, §57), without the hypothesis
+`I1`. -/
+theorem exclusive_bytes_reachable {k : K} {statics : Statics} {L : Layout} {s3 : S3}
+    {s2 : Machine.State} (hdd : DDSound k) (hst : StaticsOK statics)
+    (hr : Access.Reachable k statics s3) (hlw : LayoutWF L s3 s2) {a b l l' : Nat}
+    (hl : l < s3.P.length) (hlf : isLeaf s3.P l) (hl' : l' < s3.P.length)
+    (hlf' : isLeaf s3.P l') (ha : effective s3 a l = some .modify) (hab : a ≠ b)
+    (hsame : (L l).alloc = (L l').alloc)
+    (hover : ¬ Machine.RangeDisjoint (L l).off (L l).len (L l').off (L l').len) :
+    effective s3 b l' = none :=
+  exclusive_bytes hlw (reachable_kinv hdd hst hr).2.1.1.1 hl hlf hl' hlf' ha hab hsame hover
+
+/-- `pinned_address_stable` on reachable states (§82.6, §74, §75, §57): a leaf covered by an
+active dynamic pinning obligation or pinned by `K.Pinned` belongs to a usable place (`I5`), so
+its allocation is live before the step; it stays live, with the same address, after the raw
+operations of the step. No invariant or liveness hypothesis. -/
+theorem pinned_address_stable_reachable {Ty : Type} {k : K} {statics : Statics} {π : Params Ty}
+    {op : KOp} {s3 s3' : S3} {s2 : Machine.State} (hdd : DDSound k) (hst : StaticsOK statics)
+    (hr : Access.Reachable k statics s3) (hR : Repr π.L π.rtok s3 s2)
+    (h : OpStep k op s3 s3') {l : Nat} (hl : l < s3.P.length) (hlf : isLeaf s3.P l)
+    (hpin : (∃ (o : Nat) (ob : PinOb), s3.pins[o]? = some ob ∧ ob.active = true ∧
+      l ∈ ob.leaves) ∨ k.Pinned l) :
+    LiveAlloc s2 (π.L l).alloc ∧ LiveAlloc (run s2 (opsOf π op s3 s2)) (π.L l).alloc ∧
+      leafAddr (run s2 (opsOf π op s3 s2)) π.L l = leafAddr s2 π.L l := by
+  have hk := reachable_kinv hdd hst hr
+  obtain ⟨q, hq, hlq⟩ := reachable_i5 hdd hst hr l hl hlf
+    (hpin.elim (fun h => .inr (S3.pin_iff.2 h)) .inl)
+  obtain ⟨-, -, hlq⟩ := mem_footprint.1 hlq
+  have hlive : LiveAlloc s2 (π.L l).alloc :=
+    (hR.leaf_live hk.1 hl hlf (usable_of_partOf hk.1 (l + 1) l q (Nat.lt_succ_self l) hlq hq)).mono
+      fun _ h => h.1
+  exact ⟨hlive, pinned_address_stable hR hk.1 hk.2.1.2.2 h hl hlf hpin hlive⟩
 
 /-! ## Decidable sufficient conditions for `WF3` and `NoDangling` (§49, §54)
 
@@ -2618,7 +2731,7 @@ def OpPre (k : K) : KOp → S3 → Prop
   | .write a ls _, s => Write3Pre s a ls
   | .writeShared a ls _, s => WriteSharedPre k s a ls
   | .pin p, s => PinPre s p
-  | .unpin p, s => UnpinPre k s p
+  | .unpin o, s => UnpinPre k s o
   | .endUse p, s => EndUsePre k s p
   | .free p auth, s => FreePre k s p auth
   | .alloc pr ow ls, s => AllocStatic k s pr ow ls ∧ k.Satisfiable pr ls s
@@ -2636,8 +2749,8 @@ def opEff3 : KOp → S3 → S3
   | .read _ _, s => s
   | .write _ ls _, s => write3Eff s ls
   | .writeShared _ ls _, s => write3Eff s ls
-  | .pin p, s => pinEff s p true
-  | .unpin p, s => pinEff s p false
+  | .pin p, s => pinEff s p
+  | .unpin o, s => unpinEff s o
   | .endUse p, s => endUseEff s p
   | .free p _, s => freeEff s p
   | .alloc _ ow ls, s => allocEff s ow ls
@@ -2668,10 +2781,10 @@ instance stepOblDec (op : KOp) (s3 : S3) (s2 : Machine.State) :
     Decidable (StepObl k C ObR ObW π op s3 s2) := by
   unfold StepObl; cases op <;> dsimp only <;> infer_instance
 
-/-- One translated step: when the bounded invariant checks, the preconditions and the obligations
-hold, the effect of the step and the memory state after its raw operations (§82). -/
+/-- One translated step: when the preconditions and the obligations hold, the effect of the step
+and the memory state after its raw operations (§82). -/
 def sstep (st : S3 × Machine.State) (op : KOp) : Option (S3 × Machine.State) :=
-  if WF3Check st.1 ∧ NoDanglingCheck st.1 ∧ OpPre k op st.1 ∧ StepObl k C ObR ObW π op st.1 st.2
+  if OpPre k op st.1 ∧ StepObl k C ObR ObW π op st.1 st.2
   then some (opEff3 op st.1, run st.2 (opsOf π op st.1 st.2)) else none
 
 /-- A translated run of a list of operations, in order (§82). -/
@@ -2704,8 +2817,7 @@ theorem srun_sound {k : K} [∀ r r', Decidable (k.DeclaredDisjoint r r')]
       split at hs
       · rename_i hc
         simp only [Option.some.injEq] at hs; subst hs
-        exact srun_sound ops _ st' (.step h (wf3_of_check hc.1) (noDangling_of_check hc.2.1)
-          (opStep_of_pre hc.2.2.1) hc.2.2.2) he
+        exact srun_sound ops _ st' (.step h (opStep_of_pre hc.1) hc.2) he
       · cases hs
 
 /-- An option known to be `some` is `some` of its value (§82, runs). -/
@@ -2825,19 +2937,21 @@ theorem sim_of {statics : Statics} {π : Params Unit} {ops : List KOp}
       ((srun K0 (· = ·) obR obW π (sinit statics π) ops).getD (sinit statics π)).2 ∧
     Access.Reachable K0 statics
       ((srun K0 (· = ·) obR obW π (sinit statics π) ops).getD (sinit statics π)).1 :=
-  simulation hπ (srun_sound ops (sinit statics π) _ (.init hst hlay hob) (some_getD _ h))
+  simulation (fun _ _ h => h.elim) hπ
+    (srun_sound ops (sinit statics π) _ (.init hst hlay hob) (some_getD _ h))
 
 /-! ### A run through most kernel operations -/
 
 /-- One static leaf `0`, `Init` (§47). -/
 def stD : Statics := [((none, none, 0), true)]
 
-/-- The operations of the run (§60–§75): frame 1 with locals 1, 2, 3; write, pin, unpin of 1;
-storage 4 allocated from provider 1 for owner 2; transfer of 1 into 3, end of use of 1, shared
-write of 1, dependency of 3 on the root of 1; authority 5 derived from the root of 4, written,
-read, stored in 3, released; 4 freed; exit of frame 1. -/
+/-- The operations of the run (§60–§75): frame 1 with locals 1, 2, 3; write and pin of 1, unpin of
+the obligation 0 installed by that pin (§74, §75); storage 4 allocated from provider 1 for owner 2;
+transfer of 1 into 3, end of use of 1, shared write of 1, dependency of 3 on the root of 1;
+authority 5 derived from the root of 4, written, read, stored in 3, released; 4 freed; exit of
+frame 1. -/
 def opsD : List KOp :=
-  [.enter [] [(none, 0), (none, 0), (none, 0)], .write 1 [1] wv, .pin 1, .unpin 1,
+  [.enter [] [(none, 0), (none, 0), (none, 0)], .write 1 [1] wv, .pin 1, .unpin 0,
    .alloc 1 2 [(none, 0)], .transfer 1 3, .endUse 1, .writeShared 1 [1] wv, .depend 3 1,
    .derive 4 [4] .modify, .write 5 [4] wv, .read 5 [4], .store 5 3, .release 5, .free 4 104,
    .exit]
@@ -2849,8 +2963,7 @@ def πD : Params Unit := piOf (kernelRun (S3.init stD) opsD).P []
 def finD : S3 × Machine.State :=
   (srun K0 (· = ·) obR obW πD (sinit stD πD) opsD).getD (sinit stD πD)
 
-/-- Every step of the run passes its invariant checks (§49, §54), preconditions (§60–§75) and
-obligations (§82). -/
+/-- Every step of the run passes its preconditions (§60–§75) and obligations (§82). -/
 theorem runD_ok : (srun K0 (· = ·) obR obW πD (sinit stD πD) opsD).isSome = true := by decide
 
 /-- Non-vacuity of the refinement (§82, `formal/DESIGN.md` "Layout interface"): the run of 16
@@ -2881,7 +2994,7 @@ def πZ : Params Unit := piOf (kernelRun (S3.init []) opsZ).P [2]
 /-- Final states of the run (§82). -/
 def finZ : S3 × Machine.State := (srun K0 (· = ·) obR obW πZ (sinit [] πZ) opsZ).getD (sinit [] πZ)
 
-/-- Every step of the run passes its checks (§49, §54, §60–§75, §82). -/
+/-- Every step of the run passes its checks (§60–§75, §82). -/
 theorem runZ_ok : (srun K0 (· = ·) obR obW πZ (sinit [] πZ) opsZ).isSome = true := by decide
 
 /-- The zero-physical-size case (§82.4, §71.1, §9 ¶3): `alloc` of a one-leaf shape is realized by
@@ -2892,7 +3005,7 @@ theorem runZ_sim :
     (finZ.2.allocs (πZ.L 2).alloc).map (·.size) = some 0 ∧ (πZ.L 2).len = 0 :=
   ⟨sim_of (piOf_ok _ [2]) (by decide) (by decide) (by decide) runZ_ok, by decide, by decide⟩
 
-/-! ### Corpus case H15: references to empty regions (§82.3, empty-region rule) -/
+/-! ### Corpus case H15: references to empty regions (§82.2, last sentence) -/
 
 /-- The run of corpus case H15 with the library `issue` replaced by its kernel realization
 (§82.3; Part XIV preamble: `split` then `store`): frame 1 with locals 0–4; storage 5 with leaf 6,
@@ -2909,10 +3022,10 @@ def π15 : Params Unit := piOf (kernelRun (S3.init []) ops15).P []
 def fin15 : S3 × Machine.State :=
   (srun K0 (· = ·) obR obW π15 (sinit [] π15) ops15).getD (sinit [] π15)
 
-/-- Every step of the run passes its checks (§49, §54, §60–§75, §82). -/
+/-- Every step of the run passes its checks (§60–§75, §82). -/
 theorem run15_ok : (srun K0 (· = ·) obR obW π15 (sinit [] π15) ops15).isSome = true := by decide
 
-/-- **Corpus case H15** (§82.3, empty-region rule): a reference to an empty region has as
+/-- **Corpus case H15** (§82.2, last sentence): a reference to an empty region has as
 address the base of the allocation of the effective anchor of its authority and as provenance
 that allocation. Leaf 2 holds the empty block split from the root of storage 5: it decodes to the
 base of the allocation of 5, every byte carries that allocation. Leaf 4 holds the empty region
@@ -2946,7 +3059,7 @@ def π16 : Params Unit := piOf (kernelRun (S3.init []) ops16).P []
 def fin16 : S3 × Machine.State :=
   (srun K0 (· = ·) obR obW π16 (sinit [] π16) ops16).getD (sinit [] π16)
 
-/-- Every step of the run passes its checks (§49, §54, §60–§75, §82). -/
+/-- Every step of the run passes its checks (§60–§75, §82). -/
 theorem run16_ok : (srun K0 (· = ·) obR obW π16 (sinit [] π16) ops16).isSome = true := by decide
 
 /-- **Corpus case H16** (§82.3, lowest-address rule): the reference to the region `[5, 4]`, whose
@@ -2963,18 +3076,15 @@ theorem H16 :
   ⟨sim_of (piOf_ok _ []) (by decide) (by decide) (by decide) run16_ok, by decide, by decide,
     by decide, by decide, by decide⟩
 
-/-! ### A nonempty region whose leaves all have size zero (§82.3, §71.1)
-
-The address rules recorded for §82.3 (empty region: base of the allocation of the effective
-anchor; otherwise: lowest address among the leaves of nonzero size) give no address to a nonempty
-region whose leaves all have size zero. The run below reaches such a region with a layout
-satisfying `LayoutWF`. -/
+/-! ### A nonempty region whose leaves all have size zero (§82.2, §71.1) -/
 
 /-- Frame 1 with locals 0, 1, 2; storage 3 of zero physical size (§71.1), owned by 1, allocated
-from provider 0; `split(3, [[3]])` gives authority 4 on the nonempty region `[3]` (§61). -/
+from provider 0; `split(3, [[3]])` gives authority 4 on the nonempty region `[3]` (§61);
+`store(4, 2)` writes the reference into leaf 2 (§65). `split` then `store` is how the derived
+`issue` is realized (Part XIV). -/
 def opsU : List KOp :=
   [.enter [] [(none, 0), (none, 0), (none, 0)], .write 0 [0] wv, .alloc 0 1 [(none, 0)],
-   .split 3 [[3]]]
+   .split 3 [[3]], .store 4 2]
 
 /-- Parameters of the run, fixed once from its final places, storage 3 of size zero (§71.1,
 §82). -/
@@ -2984,146 +3094,24 @@ def πU : Params Unit := piOf (kernelRun (S3.init []) opsU).P [3]
 def finU : S3 × Machine.State :=
   (srun K0 (· = ·) obR obW πU (sinit [] πU) opsU).getD (sinit [] πU)
 
-/-- Every step of the run passes its checks (§49, §54, §60–§75, §82). -/
+/-- Every step of the run passes its checks (§60–§75, §82). -/
 theorem runU_ok : (srun K0 (· = ·) obR obW πU (sinit [] πU) opsU).isSome = true := by decide
 
-/-- **A reachable `store` outside the address rules** (gap of the address rules recorded for
-§82.3; §71.1, §65). The run is translated with `Repr` (so the layout satisfies `LayoutWF`), its
-final kernel state is reachable and satisfies `WF3` and `NoDangling`, and `store(4, 2)` is an `ok`
-kernel step from it (§65); `split` then `store` is how the derived `issue` is realized (Part
-XIV). The region of 4 is `[3]`,
-nonempty, and its only leaf has size zero: `PtrDecided` fails, `ptrAddr` is undefined, and the
-obligations of the step (`StepObl`) do not hold, so neither `r6_store` nor `SimRun` covers this
-step (`arena_issue` and `LSimRun` require the same `PtrDecided` for the `store` of an `issue`). -/
-theorem store_zero_size_undecided :
+/-- **A reference to a nonempty region whose leaves all have zero physical size** (§82.2, last
+sentence; §71.1, §65). The run, whose last step stores authority 4 on the region `[3]` into leaf
+2, is translated with `Repr`, and its final kernel state is reachable. The region is nonempty and
+its only leaf has size zero; the reference has as address the base of the allocation of the
+effective anchor (the root authority of storage 3), a nonzero address, and every byte carries
+that allocation as provenance. -/
+theorem store_zero_size_decided :
     ((∃ os, Machine.Exec (· = ·) obR obW os Machine.State.empty finU.2) ∧
       Repr πU.L πU.rtok finU.1 finU.2 ∧ Access.Reachable K0 [] finU.1) ∧
-    LayoutWF πU.L finU.1 finU.2 ∧ ParamsOK (· = ·) πU ∧ WF3 finU.1 ∧ NoDangling finU.1 ∧
-    StoreStep 4 2 finU.1 (.ok (storeEff finU.1 4 2)) ∧ finU.1.afp 4 = [3] ∧ (πU.L 3).len = 0 ∧
-    ¬ PtrDecided πU.L finU.1 4 ∧ ptrAddr finU.2 πU.L finU.1 4 = none ∧
-    ¬ StepObl K0 (· = ·) obR obW πU (.store 4 2) finU.1 finU.2 := by
-  have h := sim_of (piOf_ok _ [3]) (by decide) (by decide) (by decide) runU_ok
-  have hpd : ¬ PtrDecided πU.L finU.1 4 := by decide
-  exact ⟨h, h.2.1.layout, piOf_ok _ [3], wf3_of_check (by decide), noDangling_of_check (by decide),
-    .ok (by decide), by decide, by decide, hpd, by decide, fun hob => hpd hob.2⟩
-
-end Runs
-
-/-! ## Decidable sufficient conditions for `KInv` and `KAux` (§50–§54, §57) -/
-
-/-- Bounded `I1` for one pair (§50). -/
-def I1Pair (s : S3) (a b : Nat) : Prop :=
-  a ≠ b → OptP (s.A[a]?) (fun x => OptP (s.A[b]?) (fun y => x.active = true → y.active = true →
-    (∃ p ∈ x.footprint, p ∈ y.footprint) → a ∉ s.ancs b → b ∉ s.ancs a →
-      x.mode = .observe ∧ y.mode = .observe) True) True
-
-/-- Decidability of `I1Pair` (§50). -/
-instance (s : S3) (a b : Nat) : Decidable (I1Pair s a b) := by unfold I1Pair; infer_instance
-
-/-- Bounded `I1` (§50). -/
-def I1Check (s : S3) : Prop := ∀ a < s.A.length, ∀ b < s.A.length, I1Pair s a b
-
-/-- The origin of `y` exists, with a mode at least that of `y` and a footprint containing that of
-`y` (§51). -/
-def OriginOK (s : S3) (y : Authority) : Prop :=
-  OptP y.origin (fun a => OptP (s.A[a]?)
-    (fun x => y.mode.le x.mode ∧ ∀ p ∈ y.footprint, p ∈ x.footprint) False) True
-
-/-- Decidability of `OriginOK` (§51). -/
-instance (s : S3) (y : Authority) : Decidable (OriginOK s y) := by
-  unfold OriginOK; infer_instance
-
-/-- Bounded `I2` (§51). -/
-def I2Check (s : S3) : Prop := ∀ b < s.A.length, OptP (s.A[b]?) (fun y => OriginOK s y) True
-
-/-- Bounded `I3` (§52). -/
-def I3Check (s : S3) : Prop := ∀ q < s.P.length, s.Usable q → ∀ x ∈ s.D q, s.Active x
-
-/-- Bounded `RootHeldConv` for one authority (§40, §49.7). -/
-def RootConvOK (s : S3) (z : Authority) : Prop :=
-  z.origin = none → ∀ l ∈ z.footprint, ∀ r < s.P.length, RootPlace s.P r → partOf s.P l r →
-    OptP (s.P[r]?) (fun pr => z.holder = pr.owner) False
-
-/-- Decidability of `RootConvOK` (§49.7). -/
-instance (s : S3) (z : Authority) : Decidable (RootConvOK s z) := by
-  unfold RootConvOK; infer_instance
-
-/-- Bounded `RootHeldConv` (§40, §49.7). -/
-def RootHeldConvCheck (s : S3) : Prop :=
-  ∀ x < s.A.length, OptP (s.A[x]?) (fun z => RootConvOK s z) True
-
-/-- Decidability of the bounded clauses (§50). -/
-instance (s : S3) : Decidable (I1Check s) := by unfold I1Check; infer_instance
-/-- Decidability of the bounded clauses (§51). -/
-instance (s : S3) : Decidable (I2Check s) := by unfold I2Check; infer_instance
-/-- Decidability of the bounded clauses (§52). -/
-instance (s : S3) : Decidable (I3Check s) := by unfold I3Check; infer_instance
-/-- Decidability of the bounded clauses (§49.7). -/
-instance (s : S3) : Decidable (RootHeldConvCheck s) := by unfold RootHeldConvCheck; infer_instance
-
-/-- The bounded checks imply `KInv` (§57) and `KAux` (§49.7). -/
-theorem kInv_kAux_of_check {s : S3} (hw : WF3Check s) (h1 : I1Check s) (h2 : I2Check s)
-    (h3 : I3Check s) (ho : AnchorOrder s) (hnd : NoDanglingCheck s) (hoh : AnchorOrderHeld s)
-    (hc : RootHeldConvCheck s) : KInv s ∧ KAux s := by
-  refine ⟨kInv_of (wf3_of_check hw) ⟨⟨?_, ?_, ?_, i4_always s⟩, ho, noDangling_of_check hnd⟩ hoh,
-    ?_⟩
-  · intro a b x y p hab ha hb xa ya hpx hpy hba hab'
-    have h := h1 a (lt_of_getElem? ha) b (lt_of_getElem? hb) hab
-    rw [ha] at h; simp only [OptP] at h; rw [hb] at h
-    exact h xa ya ⟨p, hpx, hpy⟩ hba hab'
-  · intro b y a hb hy
-    have h := optP_of hb (h2 b (lt_of_getElem? hb))
-    unfold OriginOK at h
-    rw [hy] at h; simp only [OptP] at h
-    cases hx : s.A[a]? with
-    | none => rw [hx] at h; exact h.elim
-    | some x => rw [hx] at h; exact ⟨x, rfl, h⟩
-  · intro q hq x hx
-    exact h3 q hq.lt hq x hx
-  · intro x z l r hx hzo hl hr hlr
-    have h := optP_of hx (hc x (lt_of_getElem? hx)) hzo l hl r hr.1 hr hlr
-    cases hpr : s.P[r]? with
-    | none => rw [hpr] at h; exact h.elim
-    | some pr => rw [hpr] at h; exact ⟨pr, rfl, h⟩
-
-namespace Runs
-
-open Ern.MemoryModel.Access.Examples
-
-/-! ### Pinned leaves and `transfer` (§74, §63.5, §82.6) -/
-
-/-- Two static leaves `0` and `1`, `Init` (§47). -/
-def stP : Statics := [((none, none, 0), true), ((none, none, 0), true)]
-
-/-- Storage 2 allocated from provider 1 for owner 0, storage 3 for owner 2; `pin(2)` (§71, §74). -/
-def opsP : List KOp := [.alloc 1 0 [(none, 0)], .alloc 1 2 [(none, 0)], .pin 2]
-
-/-- Parameters of the run, fixed once from its final places (§82). -/
-def πP : Params Unit := piOf (kernelRun (S3.init stP) opsP).P []
-
-/-- Final states of the run (§82). -/
-def finP : S3 × Machine.State :=
-  (srun K0 (· = ·) obR obW πP (sinit stP πP) opsP).getD (sinit stP πP)
-
-/-- Every step of the run passes its checks (§49, §54, §60–§75, §82). -/
-theorem runP_ok : (srun K0 (· = ·) obR obW πP (sinit stP πP) opsP).isSome = true := by decide
-
-/-- A pinned leaf need not stay usable across an `ok` `transfer` under the reference definitions
-(§74 "While it is active, `transfer` ... rejected if they act on leaves it pins"; §63.5 checks the
-in-place source leaves only, and `transfer` can close an ownership cycle, §63 against §49.8 and
-§54). From a reachable state satisfying `KInv` and `KAux` where leaf 2 is pinned
-and usable, `transfer(0, 3)` is accepted and leaf 2 is no longer usable. Its allocation stays live
-with the same address (`pinned_address_stable`: no raw operation of `transfer` deallocates), so
-`pinned_address_stable` does not rest on the usability of pinned leaves. -/
-theorem pinned_not_usable_after_transfer :
-    Access.Reachable K0 stP finP.1 ∧ KInv finP.1 ∧ KAux finP.1 ∧
-      TransferStep K0 0 3 finP.1 (.ok (transferEff finP.1 0 3)) ∧
-      finP.1.pin 2 = true ∧ finP.1.Usable 2 ∧ ¬ (transferEff finP.1 0 3).Usable 2 := by
-  have hsim := sim_of (piOf_ok _ []) (by decide) (by decide) (by decide) runP_ok
-  exact ⟨hsim.2.2, kInv_kAux_of_check (by decide) (by decide) (by decide) (by decide) (by decide)
-    (by decide) (by decide) (by decide) |>.1, kInv_kAux_of_check (by decide) (by decide)
-    (by decide) (by decide) (by decide) (by decide) (by decide) (by decide) |>.2,
-    .ok (by decide), by decide, by decide, by decide⟩
+    finU.1.afp 4 = [3] ∧ (πU.L 3).len = 0 ∧
+    decodedAt πU finU.2 2 = baseOf finU.2 (πU.L 3).alloc ∧
+    (∀ i < 8, (bytesOf finU.2 πU.L 2 i).2 = some (πU.L 3).alloc) ∧
+    baseOf finU.2 (πU.L 3).alloc ≠ 0 :=
+  ⟨sim_of (piOf_ok _ [3]) (by decide) (by decide) (by decide) runU_ok, by decide, by decide,
+    by decide, by decide, by decide⟩
 
 end Runs
 

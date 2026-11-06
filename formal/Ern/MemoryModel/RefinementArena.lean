@@ -3,9 +3,9 @@ import Ern.MemoryModel.Arena
 import Ern.MemoryModel.Access.Preserve.DeriveSplitRelease
 
 /-!
-# Refinement of the derived arena operations into the memory machine (spec v0, §82.7)
+# Refinement of the derived arena operations into the memory machine (spec v0.1, §82.7)
 
-Source: `specs/ERN_Memory_Model_Specification_v0.md`, §82.7 with Part XIV (§76–§78), the §82
+Source: `specs/ERN_Memory_Model_Specification_v0.1.md`, §82.7 with Part XIV (§76–§78), the §82
 preamble, §82.2–§82.5 and §86.
 
 * Library operations (`LOp`) and their `ok` steps (`LOpStep`): the kernel operations O1–O16 and
@@ -14,9 +14,12 @@ preamble, §82.2–§82.5 and §86.
   `split` then `store` for `issue`, `derive` then `release` for `reset`. The raw operations of a
   library step (`lopsOf`) are the raw operations of these kernel steps (`ktrace`).
 * Per derived operation: realization, reads, writes and lifetimes (`arena_newArena`,
-  `arena_issue`, `arena_reset`, `reset_split`, `issue_pointer_sound`).
+  `arena_issue`, `arena_reset`, `reset_split`, `issue_pointer_sound`); the bytes of an issued
+  region are unchanged by the realization of `issue` (`issue_keeps_bytes`, §86). Theorems with
+  invariant hypotheses on their pre-state have a `_reachable` corollary without them (§57).
 * Library runs translated into the memory machine with parameters fixed once per run
-  (`LSimRun`): every such run is a kernel simulation run (`LSimRun.simRun`); `lsimulation`.
+  (`LSimRun`), with no invariant hypothesis: every such run is a kernel simulation run
+  (`LSimRun.simRun`); `lsimulation`.
 * §82.7: the machine trace of a library run is the trace of its kernel steps, and no kernel step
   after a legal `reset` uses an authority that the `reset` invalidated (`arena_realized`).
 
@@ -160,6 +163,18 @@ theorem KPath.mem {k : K} {s s' : S3} {t : List (KOp × S3)} (hp : KPath k s t s
     · obtain ⟨hk, hs⟩ := ih q hq
       exact ⟨(kstep_akeep h.kstep).trans hk, hs⟩
 
+/-- The steps of a kernel sequence from a reachable state start from reachable states (§57,
+§58). -/
+theorem KPath.reach {k : K} {statics : Statics} {s s' : S3} {t : List (KOp × S3)}
+    (hp : KPath k s t s') (hr : Reachable k statics s) : ∀ q ∈ t, Reachable k statics q.2 := by
+  induction hp with
+  | nil => intro q hq; cases hq
+  | cons h _ ih =>
+    intro q hq
+    rcases List.mem_cons.1 hq with rfl | hq
+    · exact hr
+    · exact ih (hr.step h.kstep) q hq
+
 /-- The kernel steps of a library step start from states satisfying `WF3` and `NoDangling` when
 the library state does (§49, §54): the states after `split` and after `derive` keep both
 (§60, §61). -/
@@ -270,6 +285,33 @@ theorem lr6 {Ty : Type} {k : K} {C : Nat → Nat → Prop} {ObR : Machine.ReadOb
       Refinement.Repr π.L π.rtok L'.kern (run s2 (lopsOf π lop L s2)) :=
   r6_path hπ (kexp_path h) (kexp_inv h hw hnd) hob hR
 
+/-- Realization of a kernel sequence from a reachable state (§82 preamble, §57): `r6_path` without
+invariant hypothesis, under `DDSound(K)` (§80) and `StaticsOK` (§47); every step of the sequence
+starts from a reachable state (`KPath.reach`), where `WF3` and `NoDangling` hold
+(`Access.reachable_kinv`). -/
+theorem r6_path_reachable {Ty : Type} {k : K} {statics : Statics} {C : Nat → Nat → Prop}
+    {ObR : Machine.ReadOblSpec Ty} {ObW : Machine.WriteOblSpec Ty} {π : Params Ty}
+    (hdd : DDSound k) (hst : StaticsOK statics) (hπ : ParamsOK C π) {s3 s3' : S3}
+    {t : List (KOp × S3)} (hp : KPath k s3 t s3') (hr : Reachable k statics s3)
+    {s2 : Machine.State} (hob : KObl k C ObR ObW π t s2)
+    (hR : Refinement.Repr π.L π.rtok s3 s2) :
+    Machine.Exec C ObR ObW (ktrace π t s2) s2 (run s2 (ktrace π t s2)) ∧
+      Refinement.Repr π.L π.rtok s3' (run s2 (ktrace π t s2)) :=
+  r6_path hπ hp (fun q hq =>
+    have hk := reachable_kinv hdd hst (hp.reach hr q hq)
+    ⟨hk.1, hk.2.1.2.2⟩) hob hR
+
+/-- Realization of a library step from a library-reachable state (§82.7, §82 preamble, §57):
+`lr6` without invariant hypothesis, under `DDSound(K)` (§80) and `StaticsOK` (§47). -/
+theorem lr6_reachable {Ty : Type} {k : K} {statics : Statics} {C : Nat → Nat → Prop}
+    {ObR : Machine.ReadOblSpec Ty} {ObW : Machine.WriteOblSpec Ty} {π : Params Ty} {lop : LOp}
+    {L L' : LState} {s2 : Machine.State} (hdd : DDSound k) (hst : StaticsOK statics)
+    (hL : LReach k statics L) (hπ : ParamsOK C π) (hR : Refinement.Repr π.L π.rtok L.kern s2)
+    (h : LOpStep k lop L L') (hob : KObl k C ObR ObW π (kexp lop L) s2) :
+    Machine.Exec C ObR ObW (lopsOf π lop L s2) s2 (run s2 (lopsOf π lop L s2)) ∧
+      Refinement.Repr π.L π.rtok L'.kern (run s2 (lopsOf π lop L s2)) :=
+  r6_path_reachable hdd hst hπ (kexp_path h) hL.ng.reachable hob hR
+
 /-! ## R4 transported by the derived operations (§82.5, §54) -/
 
 /-- The conclusion of R4 (`r4_no_dead_cover`, §82.5, §54): every leaf covered by an active
@@ -284,6 +326,13 @@ theorem liveCover_of {L : Layout} {rtok : Nat → Nat} {s3 : S3} {s2 : Machine.S
     (hR : Refinement.Repr L rtok s3 s2) (hw : WF3 s3) (hnd : NoDangling s3) :
     LiveCover L s3 s2 :=
   fun _ _ hy ya _ hl => r4_no_dead_cover hR hw hnd hy ya hl
+
+/-- R4 on reachable states (§82.5, §54, §57): `liveCover_of` without invariant hypothesis, under
+`DDSound(K)` (§80) and `StaticsOK` (§47). -/
+theorem liveCover_reachable {k : K} {statics : Statics} {L : Layout} {rtok : Nat → Nat}
+    {s3 : S3} {s2 : Machine.State} (hdd : DDSound k) (hst : StaticsOK statics)
+    (hr : Reachable k statics s3) (hR : Refinement.Repr L rtok s3 s2) : LiveCover L s3 s2 :=
+  fun _ _ hy ya _ hl => r4_no_dead_cover_reachable hdd hst hr hR hy ya hl
 
 /-- A live allocation containing a range stays so along raw operations without deallocation
 (§13 ¶3, §16 ¶3). -/
@@ -300,11 +349,8 @@ theorem liveWithin_run {Ty : Type} {s2 : Machine.State} (hwf : Machine.WF s2)
 
 /-- The raw operations of `store` deallocate nothing (§65, §16). -/
 theorem storeOps_noDealloc {Ty : Type} (pe : PtrEnc) (s2 : Machine.State) (L : Layout)
-    (ty : Nat → Ty) (s3 : S3) (a p : Nat) : ∀ o ∈ storeOps pe s2 L ty s3 a p, NoDealloc o := by
-  unfold storeOps
-  split
-  · exact writeOps_noDealloc _ _ _ _ _
-  · intro o ho; cases ho
+    (ty : Nat → Ty) (s3 : S3) (a p : Nat) : ∀ o ∈ storeOps pe s2 L ty s3 a p, NoDealloc o :=
+  writeOps_noDealloc _ _ _ _ _
 
 /-! ## The derived operations (§76–§78, §82.2–§82.5, §82.7) -/
 
@@ -329,24 +375,22 @@ theorem issue_ops {Ty : Type} {π : Params Ty} {L : LState} {i : Nat} {region : 
   rfl
 
 /-- R1, R2, R4, R6 for the derived `issue` of entry `i` (§77, Part XIV, §82.2, §82.3, §82.5,
-§82.7). Under `Repr` and `WF3`, for an `ok` issue, when the block's region has a reference address
-(`PtrDecided`, not a clause of the spec, see `r6_store`) and the parametric obligations of the
-write hold: `split` realizes no raw operation and `store` realizes exactly one raw write, of the
-range of the destination, with the bytes of the reference to the block (address `ad`, provenance
-the allocation of its effective anchor); no read (R1); the write is an `ok` raw step (R2) and
-`Repr` holds after it (R6); `LiveCover` (R4) is kept, the new block included. -/
+§82.7). Under `Repr` and `WF3`, for an `ok` issue and the parametric obligations of the write:
+`split` realizes no raw operation and `store` realizes exactly one raw write, of the range of the
+destination, with the bytes of the reference to the block (address `ptrAddr`, decided for every
+region by §82.2; provenance the allocation of its effective anchor); no read (R1); the write is an
+`ok` raw step (R2) and `Repr` holds after it (R6); `LiveCover` (R4) is kept, the new block
+included. -/
 theorem arena_issue {Ty : Type} {k : K} {C : Nat → Nat → Prop} {ObR : Machine.ReadOblSpec Ty}
     {ObW : Machine.WriteOblSpec Ty} {π : Params Ty} {L L' : LState} {i : Nat}
     {region : List Nat} {dst : Nat} {E : ArenaEntry} {s2 : Machine.State}
     (hE : L.arenas[i]? = some E) (hR : Refinement.Repr π.L π.rtok L.kern s2) (hw : WF3 L.kern)
     (hs : IssueD k i region dst L (.ok L'))
-    (hpd : PtrDecided π.L (splitEff L.kern E.internal [region]) L.kern.A.length)
     (hob : OblAlong ObR ObW s2
       (storeOps π.pe s2 π.L π.ty (splitEff L.kern E.internal [region]) L.kern.A.length dst)) :
-    (∃ ad, ptrAddr s2 π.L (splitEff L.kern E.internal [region]) L.kern.A.length = some ad ∧
-      lopsOf π (.issue i region dst) L s2 = [.write (leafAcc s2 π.L .write dst) (π.ty dst)
-        (π.pe.enc ad (some (anchorAlloc π.L (splitEff L.kern E.internal [region])
-          L.kern.A.length)))]) ∧
+    lopsOf π (.issue i region dst) L s2 = [.write (leafAcc s2 π.L .write dst) (π.ty dst)
+      (π.pe.enc (ptrAddr s2 π.L (splitEff L.kern E.internal [region]) L.kern.A.length)
+        (some (anchorAlloc π.L (splitEff L.kern E.internal [region]) L.kern.A.length)))] ∧
     Machine.Exec C ObR ObW (lopsOf π (.issue i region dst) L s2) s2
       (run s2 (lopsOf π (.issue i region dst) L s2)) ∧
     Refinement.Repr π.L π.rtok L'.kern (run s2 (lopsOf π (.issue i region dst) L s2)) ∧
@@ -361,12 +405,10 @@ theorem arena_issue {Ty : Type} {k : K} {C : Nat → Nat → Prop} {ObR : Machin
   subst e₁
   have hpre := (Guarded.ok_iff.1 hsp).1
   have hw₁ := split_preserves_wf3 hw hsp
-  obtain ⟨hex, hR₂⟩ := r6_store (C := C) (r6_split hR hsp) hw₁ hst hpd hob
+  obtain ⟨hex, hR₂⟩ := r6_store (C := C) (r6_split hR hsp) hw₁ hst hob
   have e₂ := (Guarded.ok_iff.1 hst).2
   subst e₂
-  obtain ⟨ad, had⟩ := ptrAddr_isSome (s2 := s2) hpd
-  refine ⟨⟨ad, had, by simp only [storeOps, had, writeOps, List.map_cons, List.map_nil]⟩, hex,
-    hR₂, ?_⟩
+  refine ⟨rfl, hex, hR₂, ?_⟩
   unfold LiveCover
   intro hlc j y hy ya l hl
   have hwf := hR.adm.wf
@@ -397,6 +439,76 @@ theorem arena_issue {Ty : Type} {k : K} {C : Nat → Nat → Prop} {ObR : Machin
     obtain ⟨h1, h2, h3⟩ := hlc _ yi hyi yia l hl'
     exact ⟨h1, h2, liveWithin_run hwf hn h3⟩
 
+/-- `arena_issue` on library-reachable states (§77, Part XIV, §82.7, §57): without invariant
+hypothesis, under `DDSound(K)` (§80) and `StaticsOK` (§47). -/
+theorem arena_issue_reachable {Ty : Type} {k : K} {statics : Statics} {C : Nat → Nat → Prop}
+    {ObR : Machine.ReadOblSpec Ty} {ObW : Machine.WriteOblSpec Ty} {π : Params Ty}
+    {L L' : LState} {i : Nat} {region : List Nat} {dst : Nat} {E : ArenaEntry}
+    {s2 : Machine.State} (hdd : DDSound k) (hst : StaticsOK statics) (hL : LReach k statics L)
+    (hE : L.arenas[i]? = some E) (hR : Refinement.Repr π.L π.rtok L.kern s2)
+    (hs : IssueD k i region dst L (.ok L'))
+    (hob : OblAlong ObR ObW s2
+      (storeOps π.pe s2 π.L π.ty (splitEff L.kern E.internal [region]) L.kern.A.length dst)) :
+    lopsOf π (.issue i region dst) L s2 = [.write (leafAcc s2 π.L .write dst) (π.ty dst)
+      (π.pe.enc (ptrAddr s2 π.L (splitEff L.kern E.internal [region]) L.kern.A.length)
+        (some (anchorAlloc π.L (splitEff L.kern E.internal [region]) L.kern.A.length)))] ∧
+    Machine.Exec C ObR ObW (lopsOf π (.issue i region dst) L s2) s2
+      (run s2 (lopsOf π (.issue i region dst) L s2)) ∧
+    Refinement.Repr π.L π.rtok L'.kern (run s2 (lopsOf π (.issue i region dst) L s2)) ∧
+    (LiveCover π.L L.kern s2 →
+      LiveCover π.L L'.kern (run s2 (lopsOf π (.issue i region dst) L s2))) :=
+  arena_issue hE hR (reachable_kinv hdd hst hL.ng.reachable).1 hs hob
+
+/-- A write through the access to leaf `p` leaves the bytes of the range of leaf `l` unchanged
+when the two ranges are in different allocations or disjoint (§16 ¶3, §9 ¶3). -/
+private theorem bytesOf_write_disjoint {s2 : Machine.State} {L : Layout} {p l : Nat}
+    {w : Nat → UInt8 × Option Nat}
+    (hd : (L p).alloc ≠ (L l).alloc ∨
+      Machine.RangeDisjoint (L p).off (L p).len (L l).off (L l).len)
+    {n : Nat} (hn : n < (L l).len) :
+    bytesOf (s2.write (leafAcc s2 L .write p) w) L l n = bytesOf s2 L l n := by
+  by_cases e : (L l).alloc = (L p).alloc
+  · cases ha : s2.allocs (L l).alloc with
+    | none =>
+      have he : (s2.write (leafAcc s2 L .write p) w).allocs (L l).alloc = none := by
+        rw [write_allocs, ha]; split <;> rfl
+      simp only [bytesOf, he, ha]
+    | some a =>
+      have hpa : s2.allocs (L p).alloc = some a := e ▸ ha
+      have he : (s2.write (leafAcc s2 L .write p) w).allocs (L l).alloc =
+          some (a.write (L p).off (L p).len w) := by
+        rw [e, write_allocs, leafAcc_of hpa]
+        simp only [↓reduceIte, hpa, Option.map_some, Nat.add_sub_cancel_left]
+      have hout : ¬ ((L p).off ≤ (L l).off + n ∧ (L l).off + n < (L p).off + (L p).len) :=
+        fun ⟨h1, h2⟩ => hd.elim (fun h => h e.symm)
+          fun h => h _ h1 h2 (Nat.le_add_right _ _) (Nat.add_lt_add_left hn _)
+      simp only [bytesOf, he, ha, Machine.Alloc.write_bytes_out a w hout]
+  · have he : (s2.write (leafAcc s2 L .write p) w).allocs (L l).alloc = s2.allocs (L l).alloc := by
+      rw [write_allocs]; exact ite_eq_right e
+    simp only [bytesOf, he]
+
+/-- v0.1 §86 (bytes): the realization of an accepted derived `issue` (§77, Part XIV, §82.7)
+modifies no byte of the issued region, so a reissued leaf keeps its bytes. Its raw operations are
+one write of the range of the destination (`arena_issue`), a leaf that is not in the region
+(§77.2); under the layout interface (§82.1, §23, part of `Repr`), the range of every leaf of the
+region is in another allocation or disjoint from it. No invariant hypothesis. -/
+theorem issue_keeps_bytes {Ty : Type} {k : K} {π : Params Ty} {L L' : LState} {i : Nat}
+    {region : List Nat} {dst : Nat} {s2 : Machine.State}
+    (hR : Refinement.Repr π.L π.rtok L.kern s2) (hs : IssueD k i region dst L (.ok L')) :
+    ∀ l ∈ region, ∀ n < (π.L l).len,
+      bytesOf (run s2 (lopsOf π (.issue i region dst) L s2)) π.L l n = bytesOf s2 π.L l n := by
+  cases hs with
+  | @ok E s₁ s₂ hE hsta _ _ _ =>
+  intro l hl n hn
+  rw [issue_ops hE]
+  simp only [storeOps, writeOps, List.map_cons, List.map_nil, run, opEff]
+  obtain ⟨hlP, hlf, -⟩ := mem_footprint.1 (hsta.regionIn l hl)
+  have hne : dst ≠ l := fun h => hsta.dstNotIn (h ▸ hl)
+  refine bytesOf_write_disjoint ?_ hn
+  by_cases e : (π.L dst).alloc = (π.L l).alloc
+  · exact .inr (hR.layout.disjoint dst l hsta.dstUsable.lt hlP hsta.dstLeaf hlf hne e)
+  · exact .inl e
+
 /-- The issued region and the memory machine (§82.7, §82.3, §77): after an `ok` issue, under
 `Repr`, `WF3` and `NoDangling`, the address `ad` of the reference to the block and the obligation
 of the encoding for it (the pointer-size rule and `PtrEncAt`, hypotheses of
@@ -407,7 +519,7 @@ theorem issue_pointer_sound {Ty : Type} {k : K} {π : Params Ty} {L L' : LState}
     {region : List Nat} {dst : Nat} {E : ArenaEntry} {s2 : Machine.State} {ad : Nat}
     (hE : L.arenas[i]? = some E) (hR : Refinement.Repr π.L π.rtok L.kern s2) (hw : WF3 L.kern)
     (hnd : NoDangling L.kern) (hs : IssueD k i region dst L (.ok L'))
-    (had : ptrAddr s2 π.L (splitEff L.kern E.internal [region]) L.kern.A.length = some ad)
+    (had : ptrAddr s2 π.L (splitEff L.kern E.internal [region]) L.kern.A.length = ad)
     (hsz : (π.L dst).len = π.pe.size)
     (henc : PtrEncAt π.pe ad
       (some (anchorAlloc π.L (splitEff L.kern E.internal [region]) L.kern.A.length))) :
@@ -429,6 +541,26 @@ theorem issue_pointer_sound {Ty : Type} {k : K} {π : Params Ty} {L L' : LState}
   have hafp : (splitEff L.kern E.internal [region]).afp L.kern.A.length = region := by
     simp [S3.afp, split_block]
   exact ⟨h.1, h.2.1, fun l hl => h.2.2.1 l (by rw [hafp]; exact hl)⟩
+
+/-- `issue_pointer_sound` on library-reachable states (§82.7, §82.3, §77, §57): without invariant
+hypothesis, under `DDSound(K)` (§80) and `StaticsOK` (§47). -/
+theorem issue_pointer_sound_reachable {Ty : Type} {k : K} {statics : Statics} {π : Params Ty}
+    {L L' : LState} {i : Nat} {region : List Nat} {dst : Nat} {E : ArenaEntry}
+    {s2 : Machine.State} {ad : Nat} (hdd : DDSound k) (hst : StaticsOK statics)
+    (hL : LReach k statics L) (hE : L.arenas[i]? = some E)
+    (hR : Refinement.Repr π.L π.rtok L.kern s2) (hs : IssueD k i region dst L (.ok L'))
+    (had : ptrAddr s2 π.L (splitEff L.kern E.internal [region]) L.kern.A.length = ad)
+    (hsz : (π.L dst).len = π.pe.size)
+    (henc : PtrEncAt π.pe ad
+      (some (anchorAlloc π.L (splitEff L.kern E.internal [region]) L.kern.A.length))) :
+    π.pe.decode (bytesOf (run s2 (lopsOf π (.issue i region dst) L s2)) π.L dst) = ad ∧
+    (∀ n, n < (π.L dst).len → (bytesOf (run s2 (lopsOf π (.issue i region dst) L s2)) π.L dst n).2 =
+      some (anchorAlloc π.L (splitEff L.kern E.internal [region]) L.kern.A.length)) ∧
+    ∀ l ∈ region,
+      (π.L l).alloc = anchorAlloc π.L (splitEff L.kern E.internal [region]) L.kern.A.length ∧
+      AllocP s2 (π.L l).alloc fun al => al.live = true ∧ (π.L l).off + (π.L l).len ≤ al.size :=
+  have hk := reachable_kinv hdd hst hL.ng.reachable
+  issue_pointer_sound hE hR hk.1 hk.2.1.2.2 hs had hsz henc
 
 /-- The raw operations of the derived `reset` (§78, Part XIV): `derive` and `release` realize
 none (§60, §62: no storage is created or deallocated). -/
@@ -466,14 +598,34 @@ theorem arena_reset {Ty : Type} {π : Params Ty} {L L' : LState} {i : Nat} {s2 :
     | zero => rw [h0] at hy; simp at hy; rw [← hy] at ya; cases ya
     | succ n => rw [h0] at hy; simp at hy
 
-/-- `reset` through `split` (Part XIV: "through `derive` or `split`"; §61, §62): on a state
-satisfying `WF3` and `I1` (parts of `KInv`, §57, under which `derive` and `split` have the same
-preconditions, `derive_iff_split`), the derivation of an `ok` reset may be performed by `split`
-of `internal` on the storage: `split` then `release` reach the same kernel state, and realize no
-raw operation either. -/
+/-- `derive` at `Modify` of `src` on one region gives the preconditions of `split` of `src` on
+that region (§60, §61): the forward direction of `Arena.derive_iff_split`, which needs no
+invariant. -/
+private theorem splitPre_of_derivePre (k : K) {s : S3} {src : Nat} {R : List Nat}
+    (hd : DerivePre s src R .modify) : SplitPre k s src [R] := by
+  have hm : ∀ p ∈ R, effective s src p = some .modify :=
+    fun p hp => allows_modify_iff.1 (hd.modeOK p hp)
+  refine ⟨hd.active, hd.exercisable, ?_, ?_, List.pairwise_singleton _ _, ?_⟩
+  · intro r hr p hp; rw [List.mem_singleton.1 hr] at hp; exact hm p hp
+  · intro r hr p hp; rw [List.mem_singleton.1 hr] at hp
+    exact ⟨hd.within p hp, by rw [hm p hp]; simp⟩
+  · intro r hr p hp j _ hdx
+    rw [List.mem_singleton.1 hr] at hp
+    unfold DistribExcl at hdx
+    cases hj : s.A[j]? with
+    | none => rw [hj] at hdx; exact hdx
+    | some y =>
+      rw [hj] at hdx; obtain ⟨ya, hanc, hpy, hmy⟩ := hdx
+      exact effective_ne_modify_of_desc hj ya hpy hanc hmy (hm p hp)
+
+/-- `reset` through `split` (Part XIV: "through `derive` or `split`"; §60, §61, §62): the
+derivation of an `ok` reset may be performed by `split` of `internal` on the storage, whose
+preconditions follow from those of the accepted `derive` (`splitPre_of_derivePre`): `split` then
+`release` reach the same kernel state, and realize no raw operation either. No invariant
+hypothesis. -/
 theorem reset_split {Ty : Type} {k : K} {π : Params Ty} {L L' : LState} {i : Nat}
-    {E : ArenaEntry} {s2 : Machine.State} (hE : L.arenas[i]? = some E) (hw : WF3 L.kern)
-    (h1 : I1 L.kern) (hs : ResetD i L (.ok L')) :
+    {E : ArenaEntry} {s2 : Machine.State} (hE : L.arenas[i]? = some E)
+    (hs : ResetD i L (.ok L')) :
     KPath k L.kern [(.split E.internal [footprint L.kern.P E.storage], L.kern),
       (.release L.kern.A.length, splitEff L.kern E.internal [footprint L.kern.P E.storage])]
       L'.kern ∧
@@ -486,7 +638,7 @@ theorem reset_split {Ty : Type} {k : K} {π : Params Ty} {L L' : LState} {i : Na
   rw [hE] at hE'
   cases hE'
   obtain ⟨hdp, rfl⟩ := Guarded.ok_iff.1 hd
-  exact .cons (.ok ((derive_iff_split k hw h1 hdp.leaves).1 hdp)) (.cons hrl (.nil _))
+  exact .cons (.ok (splitPre_of_derivePre k hdp)) (.cons hrl (.nil _))
 
 /-! ## Library runs in the memory machine (§82 preamble, §82.7) -/
 
@@ -494,9 +646,9 @@ theorem reset_split {Ty : Type} {k : K} {π : Params Ty} {L L' : LState} {i : Na
 `K`, the deallocation compatibility `C`, the obligations `ObR`, `ObW` and the parameters `π` fixed
 once for the run (§20.3 ¶3, §82, §82.7): the initial state with the creations and writes of the
 statics (as `SimRun.init`); then each `ok` library step, kernel steps and arena operations
-interleaved, from a library state whose kernel state satisfies `WF3` and `NoDangling` (parts of
-the kernel invariant, §57, as in `SimRun`), under the obligations of its kernel steps, followed by
-the raw operations of its kernel steps. -/
+interleaved, under the obligations of its kernel steps, followed by the raw operations of its
+kernel steps. No invariant is assumed on the states of the run: they are library-reachable
+(`LSimRun.lreach`), so the kernel invariant holds on them (§57, `Access.reachable_kinv`). -/
 inductive LSimRun {Ty : Type} (k : K) (C : Nat → Nat → Prop) (ObR : Machine.ReadOblSpec Ty)
     (ObW : Machine.WriteOblSpec Ty) (statics : Statics) (π : Params Ty) :
     LState → Machine.State → Prop where
@@ -508,25 +660,22 @@ inductive LSimRun {Ty : Type} (k : K) (C : Nat → Nat → Prop) (ObR : Machine.
             (rootIdx (statics.map (·.1))))) π.L π.ty π.ival (initLeaves statics)) →
       LSimRun k C ObR ObW statics π (LState.init statics) (minit π statics)
   | step {lop : LOp} {L L' : LState} {s2 : Machine.State} : LSimRun k C ObR ObW statics π L s2 →
-      WF3 L.kern → NoDangling L.kern → LOpStep k lop L L' → KObl k C ObR ObW π (kexp lop L) s2 →
+      LOpStep k lop L L' → KObl k C ObR ObW π (kexp lop L) s2 →
       LSimRun k C ObR ObW statics π L' (run s2 (lopsOf π lop L s2))
 
-/-- A kernel simulation run extends along a kernel sequence whose steps start from states
-satisfying `WF3` and `NoDangling`, under their obligations (§82 preamble). -/
+/-- A kernel simulation run extends along a kernel sequence under the obligations of its steps
+(§82 preamble). -/
 theorem simRun_path {Ty : Type} {k : K} {C : Nat → Nat → Prop} {ObR : Machine.ReadOblSpec Ty}
     {ObW : Machine.WriteOblSpec Ty} {statics : Statics} {π : Params Ty} {s3 s3' : S3}
     {t : List (KOp × S3)} (hp : KPath k s3 t s3') :
     ∀ {s2 : Machine.State}, SimRun k C ObR ObW statics π s3 s2 →
-      (∀ q ∈ t, WF3 q.2 ∧ NoDangling q.2) → KObl k C ObR ObW π t s2 →
-      SimRun k C ObR ObW statics π s3' (run s2 (ktrace π t s2)) := by
+      KObl k C ObR ObW π t s2 → SimRun k C ObR ObW statics π s3' (run s2 (ktrace π t s2)) := by
   induction hp with
-  | nil => intro s2 h _ _; exact h
+  | nil => intro s2 h _; exact h
   | cons h _ ih =>
-    intro s2 hs hinv hob
-    obtain ⟨hw, hnd⟩ := hinv _ (List.mem_cons_self ..)
+    intro s2 hs hob
     obtain ⟨hob₁, hob₂⟩ := hob
-    have := ih (SimRun.step hs hw hnd h hob₁) (fun q hq => hinv q (List.mem_cons_of_mem _ hq))
-      hob₂
+    have := ih (SimRun.step hs h hob₁) hob₂
     simp only [ktrace]
     rw [run_append]
     exact this
@@ -539,7 +688,7 @@ theorem LSimRun.simRun {Ty : Type} {k : K} {C : Nat → Nat → Prop} {ObR : Mac
     SimRun k C ObR ObW statics π L.kern s2 := by
   induction h with
   | init hst hlay hob => exact SimRun.init hst hlay hob
-  | step _ hw hnd hs hob ih => exact simRun_path (kexp_path hs) ih (kexp_inv hs hw hnd) hob
+  | step _ hs hob ih => exact simRun_path (kexp_path hs) ih hob
 
 /-- The library states of a translated library run are library-reachable (Part XIV, §82.7). -/
 theorem LSimRun.lreach {Ty : Type} {k : K} {C : Nat → Nat → Prop} {ObR : Machine.ReadOblSpec Ty}
@@ -547,27 +696,30 @@ theorem LSimRun.lreach {Ty : Type} {k : K} {C : Nat → Nat → Prop} {ObR : Mac
     {s2 : Machine.State} (h : LSimRun k C ObR ObW statics π L s2) : LReach k statics L := by
   induction h with
   | init => exact .init
-  | step _ _ _ hs _ ih => exact .step ih hs.lstep
+  | step _ hs _ ih => exact .step ih hs.lstep
 
-/-- Simulation of library runs (§82 preamble, §82.7, §9 ¶9): for every translated library run,
-the memory state is reached from the empty state by an execution of `ok` raw steps, it is related
-to the kernel state by `Repr`, and the library state is library-reachable. -/
+/-- Simulation of library runs (§82 preamble, §82.7, §9 ¶9): under `DDSound(K)` (§80), for every
+translated library run, the memory state is reached from the empty state by an execution of `ok`
+raw steps, it is related to the kernel state by `Repr`, and the library state is
+library-reachable. -/
 theorem lsimulation {Ty : Type} {k : K} {C : Nat → Nat → Prop} {ObR : Machine.ReadOblSpec Ty}
     {ObW : Machine.WriteOblSpec Ty} {statics : Statics} {π : Params Ty} {L : LState}
-    {s2 : Machine.State} (hπ : ParamsOK C π) (h : LSimRun k C ObR ObW statics π L s2) :
+    {s2 : Machine.State} (hdd : DDSound k) (hπ : ParamsOK C π)
+    (h : LSimRun k C ObR ObW statics π L s2) :
     (∃ ops, Machine.Exec C ObR ObW ops Machine.State.empty s2) ∧
       Refinement.Repr π.L π.rtok L.kern s2 ∧ LReach k statics L := by
-  obtain ⟨hex, hR, -⟩ := simulation hπ h.simRun
+  obtain ⟨hex, hR, -⟩ := simulation hdd hπ h.simRun
   exact ⟨hex, hR, h.lreach⟩
 
-/-- R4 along library runs (§82.5, §54): in every state of a translated library run whose kernel
-state satisfies `WF3` and `NoDangling`, every leaf covered by an active authority has a live
-allocation containing its range. -/
+/-- R4 along library runs (§82.5, §54, §57): under `DDSound(K)` (§80), in every state of a
+translated library run, every leaf covered by an active authority has a live allocation
+containing its range. -/
 theorem lsim_r4 {Ty : Type} {k : K} {C : Nat → Nat → Prop} {ObR : Machine.ReadOblSpec Ty}
     {ObW : Machine.WriteOblSpec Ty} {statics : Statics} {π : Params Ty} {L : LState}
-    {s2 : Machine.State} (hπ : ParamsOK C π) (h : LSimRun k C ObR ObW statics π L s2)
-    (hw : WF3 L.kern) (hnd : NoDangling L.kern) : LiveCover π.L L.kern s2 :=
-  liveCover_of (lsimulation hπ h).2.1 hw hnd
+    {s2 : Machine.State} (hdd : DDSound k) (hπ : ParamsOK C π)
+    (h : LSimRun k C ObR ObW statics π L s2) : LiveCover π.L L.kern s2 :=
+  have hs := lsimulation hdd hπ h
+  liveCover_reachable hdd h.simRun.staticsOK hs.2.2.ng.reachable hs.2.1
 
 /-! ## No access after invalidation (§82.7, §78, §86) -/
 
@@ -619,7 +771,7 @@ theorem LSimRun.trace {Ty : Type} {k : K} {C : Nat → Nat → Prop} {ObR : Mach
       s2 = run (minit π statics) (ktrace π (ltrace t) (minit π statics)) := by
   induction h with
   | init => exact ⟨[], .nil _, rfl⟩
-  | step _ _ _ hs _ ih =>
+  | step _ hs _ ih =>
     obtain ⟨t, hp, rfl⟩ := ih
     refine ⟨_, hp.snoc hs, ?_⟩
     rw [ltrace_append, ktrace_append, run_append]
@@ -732,6 +884,22 @@ theorem reset_no_access_issued {k : K} {L L₁ L₂ : LState} {i : Nat} {E : Are
   obtain ⟨l, hl⟩ := List.exists_mem_of_ne_nil _ hne
   exact reset_no_access hE hr hp hj ⟨l, by simp [S3.afp, hy, hf, hl], hinv.1.issuedIn e he l hl⟩
 
+/-- `reset_no_access_issued` on library-reachable states (§82.7, §78, §86, §57): without the
+hypothesis `EntryInv`, under `DDSound(K)` (§80) and `StaticsOK` (§47). The entry is live (§78.1,
+through §60.1) and satisfies `EntryInv` there (`Arena.lReachNG_inv`). -/
+theorem reset_no_access_issued_reachable {k : K} {statics : Statics} (hdd : DDSound k)
+    (hst : StaticsOK statics) {L L₁ L₂ : LState} (hL : LReach k statics L) {i : Nat}
+    {E : ArenaEntry} {t : List (LOp × LState)} (hE : L.arenas[i]? = some E)
+    (hr : ResetD i L (.ok L₁)) (hp : LPath k L₁ t L₂) :
+    ∀ e ∈ E.issued, e.1 ≠ [] → ∀ q ∈ ltrace t, usedAuth q.1 ≠ some e.2 := by
+  have hlive : Live L.kern E := by
+    cases hr with
+    | @ok E' _ _ hE' hd _ _ =>
+      rw [hE] at hE'; cases hE'
+      exact (Guarded.ok_iff.1 hd).1.active
+  exact reset_no_access_issued hE
+    ((lReachNG_inv hdd hst hL.ng E (List.mem_of_getElem? hE)).2 hlive) hr hp
+
 /-- §82.7 for translated library runs: the kernel steps of the derived operations are realized
 by O1–O16 without reintroducing access after invalidation. The run is a labelled library run from
 the initial library state; its memory state is reached from the initial memory state by the raw
@@ -816,36 +984,28 @@ def πA : Params Unit := piOf (S3.init st).P []
 /-- Final memory state of the run (§82.7). -/
 def finA : Machine.State := lrunM πA tA (minit πA st)
 
-/-- The run is a translated library run (§82.7, non-vacuity of `LSimRun`): each step starts from
-a state satisfying `WF3` and `NoDangling`, is an `ok` library step, and its kernel steps satisfy
-their obligations under the fixed parameters. -/
+/-- The run is a translated library run (§82.7, non-vacuity of `LSimRun`): each step is an `ok`
+library step and its kernel steps satisfy their obligations under the fixed parameters. -/
 theorem runA_lsim : LSimRun K0 (· = ·) obR obW st πA Witness.r8 finA := by
   have h0 : LSimRun K0 (· = ·) obR obW st πA Witness.w0 (minit πA st) :=
     .init (by decide) (by decide) (by decide)
   have h1 := LSimRun.step (lop := .kernel (.derive 1 [1] .modify)) (L' := Witness.w1) h0
-    (wf3_of_check (by decide)) (noDangling_of_check (by decide)) ⟨.ok (by decide), rfl⟩
-    (by decide)
+    ⟨.ok (by decide), rfl⟩ (by decide)
   have h2 := LSimRun.step (lop := .kernel (.store 3 0)) (L' := Witness.w2) h1
-    (wf3_of_check (by decide)) (noDangling_of_check (by decide)) ⟨.ok (by decide), rfl⟩
+    ⟨.ok (by decide), rfl⟩ (by decide)
+  have h3 := LSimRun.step (lop := .newArena [] 1 3) (L' := Witness.w3) h2 (.ok (by decide))
     (by decide)
-  have h3 := LSimRun.step (lop := .newArena [] 1 3) (L' := Witness.w3) h2
-    (wf3_of_check (by decide)) (noDangling_of_check (by decide)) (.ok (by decide)) (by decide)
   have h4 := LSimRun.step (lop := .issue 0 [1] 2) (L' := Witness.r4) h3
-    (wf3_of_check (by decide)) (noDangling_of_check (by decide))
     (IssueD.ok (E := Witness.wE) (by decide) (by decide) (by decide) (.ok (by decide))
       (.ok (by decide))) (by decide)
   have h5 := LSimRun.step (lop := .kernel (.write 4 [1] wv)) (L' := Witness.r5) h4
-    (wf3_of_check (by decide)) (noDangling_of_check (by decide)) ⟨.ok (by decide), rfl⟩
-    (by decide)
+    ⟨.ok (by decide), rfl⟩ (by decide)
   have h6 := LSimRun.step (lop := .kernel (.endUse 2)) (L' := Witness.r6) h5
-    (wf3_of_check (by decide)) (noDangling_of_check (by decide)) ⟨.ok (by decide), rfl⟩
-    (by decide)
+    ⟨.ok (by decide), rfl⟩ (by decide)
   have h7 := LSimRun.step (lop := .reset 0) (L' := Witness.r7) h6
-    (wf3_of_check (by decide)) (noDangling_of_check (by decide))
     (ResetD.ok (E := Witness.rE) (by decide) (.ok (by decide)) (.ok (by decide)) (by decide))
     (by decide)
   exact LSimRun.step (lop := .issue 0 [1] 2) (L' := Witness.r8) h7
-    (wf3_of_check (by decide)) (noDangling_of_check (by decide))
     (IssueD.ok (E := Witness.rE') (by decide) (by decide) (by decide) (.ok (by decide))
       (.ok (by decide))) (by decide)
 
@@ -854,9 +1014,10 @@ of `ok` raw steps from the empty state, `Repr` holds at its end, the final libra
 library-reachable, and the machine trace is the trace of the kernel steps. The reference written
 into the arena value 0 and the one written into the destination 2 by the second issue decode to
 the address of the storage leaf 1, which is nonzero and whose allocation is live. The range of
-leaf 1 still holds the bytes written through block 4 before the `reset`: the reissued block 6
-designates the former value in the memory machine too (no rule of §77 or §78 changes these bytes;
-see `Arena.Witness.reissue_reads_former_value` for §86). -/
+leaf 1 still holds the bytes written through block 4 before the `reset`: reissued in block 6, the
+leaf keeps its bytes in the memory machine (v0.1 §86: reissuance modifies neither the bytes,
+`issue_keeps_bytes`, nor the initialization state, `Arena.issue_keeps_init`; see
+`Arena.Witness.reissue_reads_former_value`). -/
 theorem runA_sim :
     ((∃ ops, Machine.Exec (· = ·) obR obW ops Machine.State.empty finA) ∧
       Refinement.Repr πA.L πA.rtok Witness.r8.kern finA ∧ LReach K0 st Witness.r8) ∧
@@ -864,8 +1025,8 @@ theorem runA_sim :
     decodedAt πA finA 0 = leafAddr finA πA.L 1 ∧ decodedAt πA finA 2 = leafAddr finA πA.L 1 ∧
     leafAddr finA πA.L 1 ≠ 0 ∧ (finA.allocs (πA.L 1).alloc).map (·.live) = some true ∧
     ∀ n < 8, bytesOf finA πA.L 1 n = wv 1 n :=
-  ⟨lsimulation (piOf_ok _ []) runA_lsim, lrunM_eq _ _ _, by decide, by decide, by decide,
-    by decide, by decide⟩
+  ⟨lsimulation (fun _ _ h => h.elim) (piOf_ok _ []) runA_lsim, lrunM_eq _ _ _, by decide,
+    by decide, by decide, by decide, by decide⟩
 
 end Runs
 
