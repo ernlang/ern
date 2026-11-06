@@ -21,6 +21,16 @@ import Ern.MemoryModel.Access.Preserve.EndFree
 import Ern.MemoryModel.Access.Preserve.Frames
 import Ern.MemoryModel.Access.Preserve.Small
 import Ern.MemoryModel.Access.Preserve.Transfer
+import Ern.MemoryModel.Access.Rename.Basic
+import Ern.MemoryModel.Access.Rename.Derived
+import Ern.MemoryModel.Access.Rename.Init
+import Ern.MemoryModel.Access.Rename.Invariants
+import Ern.MemoryModel.Access.Rename.Main
+import Ern.MemoryModel.Access.Rename.OpsEndFree
+import Ern.MemoryModel.Access.Rename.OpsFrames
+import Ern.MemoryModel.Access.Rename.OpsSmall
+import Ern.MemoryModel.Access.Rename.OpsTransfer
+import Ern.MemoryModel.Access.Rename.Places
 import Ern.MemoryModel.Access.Statics
 import Ern.MemoryModel.Access.TransferSource
 import Ern.MemoryModel.Arena
