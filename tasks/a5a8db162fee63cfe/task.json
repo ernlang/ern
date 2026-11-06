@@ -1,0 +1,17 @@
+{
+  "tool_use_id": "a5a8db162fee63cfe",
+  "agent_id": "a5a8db162fee63cfe",
+  "subagent_type": "workflow-subagent",
+  "files": [
+    "formal/Ern/Corpus/DataStack.lean"
+  ],
+  "token_usage": {
+    "input_tokens": 82,
+    "cache_creation_tokens": 281950,
+    "cache_read_tokens": 6527580,
+    "output_tokens": 41657,
+    "api_call_count": 41
+  },
+  "started_at": "2026-11-06T11:27:01.751655+01:00",
+  "completed_at": "2026-11-06T11:45:01.161825+01:00"
+}
