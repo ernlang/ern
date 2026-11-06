@@ -5,7 +5,7 @@ import Ern.MemoryModel.Access.Rename.Derived
 
 Correspondence under a renaming of identities (§49, last paragraph) of the operations O12
 `endUse` (§69), O13 `free` (§70) and O14 `alloc` (§71) of
-`specs/ERN_Memory_Model_Specification.md`: the release of authorities whose holder died
+`specs/ERN_Memory_Model_Specification_v0.1.md`: the release of authorities whose holder died
 (§69, §70 `ok` effects), the effects and preconditions of each operation, `Satisfiable` (§71) under
 the interface obligation `KExt`, the correspondence of outcomes (§58), and the preservation by `ok`
 steps of downward links and of field order (§63.2).

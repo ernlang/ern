@@ -6,7 +6,7 @@ import Ern.MemoryModel.Access.Preserve.Common
 Both effects only make authorities inactive and mark places dead, then release the authorities
 whose holder died (§69, §70 `ok` effects). The shared argument is in namespace `EndFree`; the
 per-operation results state that each step preserves `KInv` (§57 of
-`specs/ERN_Memory_Model_Specification.md`), separately the auxiliary `KAux` (§40, §49.7) and
+`specs/ERN_Memory_Model_Specification_v0.1.md`), separately the auxiliary `KAux` (§40, §49.7) and
 `I5` (§57), and the effects of §69 and §70: the ended place stays usable, its leaves become
 `Uninit`, transitively owned storage and the released unit are dead, pinned leaves block the step
 (§69.4, §70.4).

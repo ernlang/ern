@@ -3,7 +3,7 @@ import Ern.MemoryModel.Access.Main
 /-!
 # Arenas: the reference library abstraction (Part XIV)
 
-Arenas of `specs/ERN_Memory_Model_Specification.md`, Part XIV (§76–§78), with §36, §46, §55,
+Arenas of `specs/ERN_Memory_Model_Specification_v0.1.md`, Part XIV (§76–§78), with §36, §46, §55,
 §56, §58, §79, §86 and §88. An arena is a library abstraction (Part XIV): its entries live in a
 library state separate from the kernel state `S₃` (§38, §46). `newArena` (O17) only registers an
 entry; `issue` (O18) and `reset` (O19) are defined twice:

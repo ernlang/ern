@@ -5,7 +5,7 @@ import Ern.Corpus.Runner
 
 The cases of corpus MM3-H of the Jalon 3 material (`ERN_Jalon3_materiel.md`, §1; non-normative
 design material), run on the reference kernel and arena of
-`specs/ERN_Memory_Model_Specification.md` (§60–§78), plus new cases fixed by spec clauses and
+`specs/ERN_Memory_Model_Specification_v0.1.md` (§60–§78), plus new cases fixed by spec clauses and
 the usage scenario W3 (material §5b). This is a test module: no model module imports it.
 
 Each case is a run from `LState.init statics` (§47) by the runner (`Ern.Corpus.Runner`):

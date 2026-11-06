@@ -5,7 +5,7 @@ import Ern.MemoryModel.Access.Preserve.DeriveSplitRelease
 /-!
 # Refinement of the derived arena operations into the memory machine (spec v0.1, §82.7)
 
-Source: `specs/ERN_Memory_Model_Specification.md`, §82.7 with Part XIV (§76–§78), the §82
+Source: `specs/ERN_Memory_Model_Specification_v0.1.md`, §82.7 with Part XIV (§76–§78), the §82
 preamble, §82.2–§82.5 and §86.
 
 * Library operations (`LOp`) and their `ok` steps (`LOpStep`): the kernel operations O1–O16 and

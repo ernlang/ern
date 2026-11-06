@@ -9,7 +9,7 @@ import Ern.MemoryModel.Access.Rename.Init
 # Renaming of identities: the kernel bisimulation
 
 Assembly of the renaming bisimulation of the access kernel for
-`specs/ERN_Memory_Model_Specification.md` §49, last paragraph: per operation O1–O16
+`specs/ERN_Memory_Model_Specification_v0.1.md` §49, last paragraph: per operation O1–O16
 (§58, §60–§75), per run (§57, §58), on reachable states (§57) from the initial states of two
 `StaticsOK` numberings of one declaration (§47; §63.2), and the transfer of `KInv`, `I5` (§57)
 and `DDSound` (§80): `StaticsOK` (b), under the interface obligation `KExt` on `Satisfiable` (§71,

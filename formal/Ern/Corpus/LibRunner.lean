@@ -6,7 +6,7 @@ import Ern.Lib.DataStack
 # Combined library runner (test module)
 
 A computable executor for the library corpus cases of
-`specs/ERN_Memory_Model_Specification.md`, over one combined library state: the kernel state
+`specs/ERN_Memory_Model_Specification_v0.1.md`, over one combined library state: the kernel state
 `S₃` shared by the arena registry of `Ern.MemoryModel.Arena` (Part XIV, §46), the pool registry of
 `Ern.Lib.HandlePool` (contract "HandlePool v0.5", non-normative) and the stack registry of
 `Ern.Lib.DataStack` (contract "DS-v2", non-normative), with the fresh pool identity, the ghost

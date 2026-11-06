@@ -1,7 +1,7 @@
 /-!
 # Elementary memory machine (spec v0.1, Parts II–III, §8–§20)
 
-Source: `specs/ERN_Memory_Model_Specification.md`. Citations: `§N.k` is numbered item `k`
+Source: `specs/ERN_Memory_Model_Specification_v0.1.md`. Citations: `§N.k` is numbered item `k`
 of section `N`; `§N ¶p` is the `p`-th paragraph of section `N`, a list belonging to the
 paragraph that introduces it.
 

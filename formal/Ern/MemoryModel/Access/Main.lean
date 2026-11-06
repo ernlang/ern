@@ -9,7 +9,7 @@ import Ern.MemoryModel.Access.Preserve.Alloc
 # Access kernel: steps, reachable states and the main invariant
 
 Assembles the per-operation results of `Ern.MemoryModel.Access.Preserve.*` into the statements of
-§57, §58 and §59 of `specs/ERN_Memory_Model_Specification.md`:
+§57, §58 and §59 of `specs/ERN_Memory_Model_Specification_v0.1.md`:
 
 * kernel operations O1–O16 as data, their outcome relation, and the correspondence of `KStep` and
   `Reachable` with the labelled steps and their reflexive-transitive closure (§57, §58);

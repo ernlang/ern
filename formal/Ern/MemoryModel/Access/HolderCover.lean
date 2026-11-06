@@ -4,7 +4,7 @@ import Ern.MemoryModel.Access.Main
 # Access kernel: no active authority covers a leaf of its own holder
 
 The auxiliary invariant `NoSelfLock` (not a clause of §57 of
-`specs/ERN_Memory_Model_Specification.md`): no authority satisfies `SelfLock` (§63.8). It
+`specs/ERN_Memory_Model_Specification_v0.1.md`): no authority satisfies `SelfLock` (§63.8). It
 holds initially (§47) and every kernel step keeps it from a `WF3` state (§49): `transfer` through
 §63.8, `store` through §65.3, `alloc` because its new root covers only new leaves (§71), the other
 steps because they move no holder onto a covered place (§60–§75 `ok` effects). Hence it holds on

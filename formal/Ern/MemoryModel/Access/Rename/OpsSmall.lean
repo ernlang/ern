@@ -5,7 +5,7 @@ import Ern.MemoryModel.Access.Rename.Derived
 
 Correspondence under related states (§49, last paragraph) of the steps `derive` (§60), `split`
 (§61), `release` (§62), `depend` (§64), `store` (§65), `read` (§66), `write` (§67), `writeShared`
-(§68), `pin` (§74) and `unpin` (§75) of `specs/ERN_Memory_Model_Specification.md`, with the
+(§68), `pin` (§74) and `unpin` (§75) of `specs/ERN_Memory_Model_Specification_v0.1.md`, with the
 arguments renamed as in `KernelOp.ren`. Per operation: the preconditions correspond (`…Pre_ren`),
 the effects are related (`…Eff_ren`), the step relations correspond (`…_corr`), and an `ok`
 outcome keeps downward links (`…_down`) and the field order of `π` (`…_sib`).

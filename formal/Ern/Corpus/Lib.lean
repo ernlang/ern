@@ -6,7 +6,7 @@ import Ern.MemoryModel.Access.TransferSource
 
 Library cases of the Jalon 3 material (`ERN_Jalon3_materiel.md`; non-normative design material)
 and of the handle-pool contract, run on the reference kernel of
-`specs/ERN_Memory_Model_Specification.md` (§60–§75), the arena of Part XIV (§76–§78), the
+`specs/ERN_Memory_Model_Specification_v0.1.md` (§60–§75), the arena of Part XIV (§76–§78), the
 handle pool of `Ern.Lib.HandlePool` (contract "HandlePool v0.5", non-normative: the HandlePool v0.4
 annex corrected by §36 and §56 and amended by HP5-1 to HP5-7, HP5-1' and HP5-1'') and the stack of
 `Ern.Lib.DataStack` (contract "DS-v2", non-normative). This is a test module: no model or library

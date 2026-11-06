@@ -3,7 +3,7 @@ import Ern.MemoryModel.Access.Ops
 /-!
 # Access kernel: invariants, initial state, reachability
 
-Invariants of `specs/ERN_Memory_Model_Specification.md`: `WF3` (§49), `I1`–`I4` (§50–§53),
+Invariants of `specs/ERN_Memory_Model_Specification_v0.1.md`: `WF3` (§49), `I1`–`I4` (§50–§53),
 `NoDangling` and `NoOrphan` (§54), `Inv3` and `I5` (§57), the declared statics and `S3.init`
 (§47), `StaticPinnedBottom` (§75), and reachability from `S3.init statics` under the kernel steps
 O1–O16 (§57). `AnchorOrder` and `AnchorOrderHeld` (§44) are in

@@ -3,7 +3,7 @@ import Ern.MemoryModel.Access.Preserve.Common
 /-!
 # Access kernel: `transfer` (O4, §63)
 
-Properties of `transfer` (§63 of `specs/ERN_Memory_Model_Specification.md`), its
+Properties of `transfer` (§63 of `specs/ERN_Memory_Model_Specification_v0.1.md`), its
 preservation of the kernel invariant `KInv` (§57), of the auxiliary `KAux`
 (`transfer_preserves_kAux`), of the auxiliary `HeldAnchored` (`transfer_preserves_heldAnchored`)
 and of `I5` (`transfer_preserves_i5`).

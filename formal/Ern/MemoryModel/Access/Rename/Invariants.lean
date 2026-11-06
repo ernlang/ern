@@ -3,7 +3,7 @@ import Ern.MemoryModel.Access.Rename.Derived
 /-!
 # Renaming of identities: invariants
 
-Transfer of the invariants of `specs/ERN_Memory_Model_Specification.md` along related states
+Transfer of the invariants of `specs/ERN_Memory_Model_Specification_v0.1.md` along related states
 (§49, last paragraph): `WF3` and its clauses `RootChain`, `RootHeld` (§49), `I1`–`I3` (§50–§52),
 `NoDangling` and `NoOrphan` (§54), `Inv3`, the main kernel invariant `KInv` and `I5` (§57). `I4`
 holds in every state (`i4_always`) and needs no transfer.

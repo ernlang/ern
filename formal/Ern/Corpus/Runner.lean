@@ -3,7 +3,7 @@ import Ern.MemoryModel.Arena
 /-!
 # Corpus runner (test module)
 
-A computable executor for the corpus cases of `specs/ERN_Memory_Model_Specification.md`: the
+A computable executor for the corpus cases of `specs/ERN_Memory_Model_Specification_v0.1.md`: the
 kernel operations O1–O16 (§60–§75) and the arena operations O17–O19 of Part XIV (§76–§78), over
 the library state of `Ern.MemoryModel.Arena` (§46: the kernel state `S₃` and, separately, the arena
 registry). This module is a test module: no model module imports it.

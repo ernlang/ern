@@ -1,7 +1,7 @@
 /-!
 # Access kernel: state and derived notions
 
-Abstract authority machine of `specs/ERN_Memory_Model_Specification.md`, Parts IV–VII:
+Abstract authority machine of `specs/ERN_Memory_Model_Specification_v0.1.md`, Parts IV–VII:
 frames (§39), places, leaves and footprints (§40), initialization states (§41), authorities
 (§42), dynamic pinning obligations (§74, §75), the state `S3` (§38), the external contract `K`
 (§48, §80), and the derived notions that the operations of §60–§75 read: usability (§40),

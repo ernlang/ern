@@ -4,7 +4,7 @@ import Ern.MemoryModel.Access.Main
 # Renaming of identities: core definitions
 
 Foundation of the renaming bisimulation of the access kernel for
-`specs/ERN_Memory_Model_Specification.md` §49, last paragraph: renamings of place and
+`specs/ERN_Memory_Model_Specification_v0.1.md` §49, last paragraph: renamings of place and
 authority identities (`Ren`), the relation they induce on places, authorities, pinning
 obligations (§74, §75) and states (§38), the order facts carried along runs (`Down`, `SibMono`),
 the renamed contract (§48, §80), the renamed operations (§60–§75), and the relation of outcomes
