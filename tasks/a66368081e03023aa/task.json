@@ -1,0 +1,17 @@
+{
+  "tool_use_id": "a66368081e03023aa",
+  "agent_id": "a66368081e03023aa",
+  "subagent_type": "workflow-subagent",
+  "files": [
+    "formal/Ern/MemoryModel/Access/Invariants.lean"
+  ],
+  "token_usage": {
+    "input_tokens": 50,
+    "cache_creation_tokens": 144703,
+    "cache_read_tokens": 2687827,
+    "output_tokens": 20025,
+    "api_call_count": 25
+  },
+  "started_at": "2026-11-06T08:55:37.786874+01:00",
+  "completed_at": "2026-11-06T08:58:47.966631+01:00"
+}
