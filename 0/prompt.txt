@@ -1,0 +1,44 @@
+<pasted_content id="c845">
+**Q3 — décision du propriétaire (2026-11-06)**
+
+La disjonction suffit : `pool_entries_meta_disjoint` établit ce qui était exigé, à savoir que l'écriture des métadonnées ne touche jamais une entrée. La possession du stockage par la valeur du pool n'est pas requise. Un pool sur un stockage fourni de l'extérieur, comme dans `Witness.hst`, est légitime. Ma demande précédente sur un « stockage possédé » était une approximation de la disjonction et ne doit pas être reprise.
+
+Fermer le point ouvert dans la PR, avec cette justification inscrite au tableau. Aucune autre modification. La PR reste en draft.
+</pasted_content id="c845">
+
+---
+
+OK, pas de question ouverte à rétablir. Les deux constats restent des descriptions : la sur-approximation des métadonnées est sans risque grâce à la disjonction, et (c) est limité aux feuilles parce que `S₃` ne modélise pas les valeurs. La correspondance au niveau des valeurs relève du raffinement concret.
+
+---
+
+juste pour savoir, on est d'accord que les commentaires dans les fichiers `.lean` ne font que ce qu'ils sont censés faire et ne font pas d'historique de decision?
+
+---
+
+Yes, clean up
+
+---
+
+tu as reformulé ou tu as retiré?
+
+---
+
+donc il n'y a plus d'historique on est d'accord?
+
+---
+
+<pasted_content id="c845">
+**Spec 1 v0.1 validée par le propriétaire le [date]. Finalisation de la PR #2.**
+
+1. Vérifier que DS2-4 (justification corrigée : lectures incomparables) et MM23-H16 (étiqueté réalisation de référence / frontière Spec 3) sont fermés. S'ils ne le sont pas, les fermer.
+2. Dans la description de la PR, lister comme frontières inter-spécifications : KExt (obligation d'interface sur K, §42), le typage des valeurs réémises (§86 → Spec 4) et H16 (→ Spec 3).
+3. Spec v0.1, document normatif final :
+   - en-tête : « Edition v0.1 — [date]. Status: validated and frozen. Supersedes v0. » ;
+   - retirer la liste des clauses modifiées, après l'avoir déplacée telle quelle dans la description de la PR ;
+   - ligne 29 : reprendre la formulation de validation de la v0, adaptée à la v0.1 ;
+   - ne renuméroter ni ne fusionner aucune section, et ne modifier aucune règle.
+4. Renommer `specs/ERN_Memory_Model_Specification_v0.1.md` en `specs/ERN_Memory_Model_Specification.md` avec `git mv`, et mettre à jour toutes les références dans `formal/`, `AGENTS.md` et `CLAUDE.md`.
+5. Supprimer `specs/ERN_Memory_Model_Specification_v0.md`. Avant la fusion, je poserai moi-même le tag `memory-model-v0` sur le commit de main qui le contient.
+6. Relancer `lake build`, la recherche des tokens interdits et le relevé des axiomes. Passer la PR en « ready for review ». Ne pas fusionner.
+</pasted_content id="c845">
