@@ -1,0 +1,8 @@
+<pasted_content id="c845">
+Annuler le renommage sans version, qui n'était pas une décision du propriétaire. La convention du projet garde la version dans le nom du fichier.
+
+1. `git mv specs/ERN_Memory_Model_Specification.md specs/ERN_Memory_Model_Specification_v0.1.md`
+2. Dans les commentaires d'en-tête des fichiers Lean de `formal/` (34 fichiers modifiés par 3f9fee2), remplacer `specs/ERN_Memory_Model_Specification.md` par `specs/ERN_Memory_Model_Specification_v0.1.md`. Ne modifier que ces commentaires, et faire de même dans la description de la PR.
+3. Ne pas restaurer `specs/ERN_Memory_Model_Specification_v0.md` : la v0 reste retirée de `specs/`. Ne pas toucher au contenu validé de la v0.1. Aucune autre modification.
+4. Relancer `lake build` et vérifier par grep qu'aucune référence à `ERN_Memory_Model_Specification.md` ne subsiste.
+</pasted_content id="c845">
