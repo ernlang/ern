@@ -192,8 +192,9 @@ structure NewMutexPreBase (L : MutexLayout) (adm : List Nat) (s : SC) (reg : Syn
     PlaceUsable s.flat y.holder) False
   /-- WC2 C13.2: ordinary exercisable `Modify` over `guarded`. -/
   exercisable : (s.view c).ExercisableAt g .modify
-  /-- WC2 C13.3: the controller association exists (positional `ControlOf`, WC2 C12). -/
-  control : ControlOf L s ⟨g, none⟩ ≠ none
+  /-- WC2 C13.3 with WC2 C12: the positional `ControlOf` designates a controller, and it is a leaf
+(WC2 C12: `ControlOf` "identifies the synchronization-control leaf"). -/
+  control : OptP (ControlOf L s ⟨g, none⟩) (fun ctl => isLeaf s.P ctl) False
   /-- WC2 C13.5: when `guarded` is stored (derived), Spec 1 §65.3 holds: it covers neither a leaf
   of its holder nor a leaf of storage transitively owned by it. -/
   stored : OptP (s.A[g]?) (fun y => y.origin ≠ none → StoredOK s.P y) False
@@ -209,7 +210,8 @@ instance (L : MutexLayout) (adm : List Nat) (s : SC) (reg : SyncReg) (c g : Nat)
     Decidable (NewMutexPreBase L adm s reg c g) :=
   decidable_of_iff (OptP (s.A[g]?) (fun y => y.active = true ∧ y.mode = .modify ∧
       PlaceUsable s.flat y.holder) False ∧
-    (s.view c).ExercisableAt g .modify ∧ ControlOf L s ⟨g, none⟩ ≠ none ∧
+    (s.view c).ExercisableAt g .modify ∧
+    OptP (ControlOf L s ⟨g, none⟩) (fun ctl => isLeaf s.P ctl) False ∧
     OptP (s.A[g]?) (fun y => y.origin ≠ none → StoredOK s.P y) False ∧
     (∀ e ∈ reg, e.Live s → e.guarded ≠ g) ∧ g ∉ adm ∧ NoCoveringDesc s g)
     ⟨fun ⟨a, b, c, d, e, f, h⟩ => ⟨a, b, c, d, e, f, h⟩,
