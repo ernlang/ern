@@ -504,4 +504,90 @@ theorem conservative_ok (hs : s.Single) (hfr : FramesC s) {op : KernelOp} {s' : 
 
 end Ops
 
+/-! ## The reachable sequential domain (WC2 C24) -/
+
+/-- A kernel step of Spec 1 keeps the stack, pushes `nF` (§72) or pops the top (§73). -/
+theorem kstep_F {k : K} {t t' : S3} (h : KStep k t t') :
+    t'.F = t.F ∨ t'.F = t.nF :: t.F ∨ t'.F = t.F.tail := by
+  cases h with
+  | derive h => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h; exact .inl rfl
+  | split h => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h; exact .inl rfl
+  | release h =>
+    obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h; left; unfold releaseEff; split <;> rfl
+  | transfer h => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h; exact .inl rfl
+  | depend h => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h; exact .inl rfl
+  | enter h => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h; exact .inr (.inl rfl)
+  | exit h => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h; exact .inr (.inr rfl)
+  | read h => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h; exact .inl rfl
+  | write h => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h; exact .inl rfl
+  | writeShared h => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h; exact .inl rfl
+  | pin h => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h; exact .inl rfl
+  | unpin h => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h; exact .inl rfl
+  | endUse h => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h; exact .inl rfl
+  | free h => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h; exact .inl rfl
+  | alloc h => cases h; exact .inl rfl
+  | store h =>
+    obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h; left; unfold storeEff; split <;> rfl
+
+/-- The stack of every state reachable in Spec 1 (§57) is strictly decreasing: `enterFrame`
+pushes the fresh `nF` (§72, §49.1). -/
+theorem reachable_decreasing {k : K} {statics : Statics} {t : S3} (hdd : DDSound k)
+    (hst : StaticsOK statics) (h : Reachable k statics t) : t.F.Pairwise (· > ·) := by
+  induction h with
+  | init => simp [S3.init]
+  | @step t t' hr hs ih =>
+    rcases kstep_F hs with e | e | e <;> rw [e]
+    · exact ih
+    · have hw := (reachable_kinv hdd hst hr).1
+      exact List.pairwise_cons.2 ⟨fun f hf => hw.frames.2.2 f hf, ih⟩
+    · exact ih.sublist (List.tail_sublist _)
+
+/-- `parIn` in a strictly decreasing list gives a smaller element of the list (WC2 C3). -/
+theorem parIn_lt : ∀ {F : List Nat}, F.Pairwise (· > ·) → ∀ {f g : Nat},
+    parIn none f F = some g → g ∈ F ∧ g < f
+  | [], _, _, _, h => by cases h
+  | a :: F, hd, f, g, h => by
+    obtain ⟨hlt, hdF⟩ := List.pairwise_cons.1 hd
+    by_cases e : a = f
+    · subst e
+      cases F with
+      | nil => simp [parIn] at h
+      | cons b F' =>
+        simp only [parIn, ↓reduceIte, List.head?_cons, Option.some_or, Option.some.injEq] at h
+        subst h
+        exact ⟨List.mem_cons_of_mem _ (List.mem_cons_self ..), hlt _ (List.mem_cons_self ..)⟩
+    · rw [parIn_cons_ne e] at h
+      obtain ⟨hm, hg⟩ := parIn_lt hdF h
+      exact ⟨List.mem_cons_of_mem _ hm, hg⟩
+
+/-- Projection of the single-context state of an `S3` (WC2 C24). -/
+theorem toS3_ofS3 (t : S3) : (SC.ofS3 t).toS3 = t := by cases t; rfl
+
+/-- WC2 C24 ("the reachable sequential domain ... must correspond"): every state reachable in
+Spec 1 (§57) is the projection of a single-context state with the frame structure `FramesC`, the
+domain of `conservative_op`; with `single_kInvC`, the re-indexed kernel invariant holds there. -/
+theorem reachable_single {k : K} {statics : Statics} {t : S3} (hdd : DDSound k)
+    (hst : StaticsOK statics) (h : Reachable k statics t) :
+    (SC.ofS3 t).Single ∧ FramesC (SC.ofS3 t) ∧ (SC.ofS3 t).toS3 = t ∧ KInvC (SC.ofS3 t) := by
+  have hw := (reachable_kinv hdd hst h).1
+  have hd := reachable_decreasing hdd hst h
+  have hs : (SC.ofS3 t).Single := ⟨_, rfl⟩
+  have hstk : (SC.ofS3 t).stk 0 = t.F := rfl
+  have hfr : FramesC (SC.ofS3 t) := by
+    have hlt : ∀ c, (SC.ofS3 t).Live c → c = 0 := fun c hc => by
+      unfold SC.Live at hc; unfold OptP at hc; split at hc
+      · rename_i x hx
+        have := lt_of_getElem? hx; simp [SC.ofS3] at this; exact this
+      · exact hc.elim
+    refine ⟨by simp [SC.ofS3, OptP], fun c hc => ?_, ?_, ?_, fun c h0 hc => absurd (hlt c hc) h0,
+      fun f hf g hg => ?_⟩
+    · rw [hlt c hc, hstk]; exact hw.frames.1
+    · rw [single_frames hs, hstk]; exact hw.frames.2.1
+    · rw [single_frames hs, hstk]; exact hw.frames.2.2
+    · rw [single_parC hs, hstk] at hg
+      rw [single_frames hs, hstk]
+      exact parIn_lt hd hg
+  refine ⟨hs, hfr, toS3_ofS3 t, (single_kInvC hs).2 ⟨hfr, ?_⟩⟩
+  rw [toS3_ofS3]; exact reachable_kinv hdd hst h
+
 end Ern.Concurrency
