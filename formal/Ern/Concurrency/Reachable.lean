@@ -40,9 +40,9 @@ theorem lstep_kInvCA {k : K} {L : MutexLayout} {lbl : Label} {st st' : SC × Syn
     KInvCA st'.1 := by
   cases h with
   | @kernel s s' reg c op h =>
-    by_cases hx : op = .exit
-    · subst hx; exact exitFrameC_preserves hk.1 hk.2.1 hk.2.2 h
-    · exact opStepC_preservesC hdd hk hx h
+    cases op
+    case exit => exact exitFrameC_preserves hk.1 hk.2.1 hk.2.2 h
+    all_goals exact opStepC_preservesC hdd hk (fun e => by cases e) h
   | spawn h => exact spawn_preservesC hk h
   | terminate h => exact terminate_preserves hk.1 hk.2.1 hk.2.2 h
   | join h => exact join_preservesC hk h
