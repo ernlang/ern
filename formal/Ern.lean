@@ -3,6 +3,7 @@
 import Ern.Concurrency.Conservativity
 import Ern.Concurrency.Context
 import Ern.Concurrency.Frames
+import Ern.Concurrency.Reparent
 import Ern.Concurrency.Sync
 import Ern.Concurrency.SyncLib
 import Ern.Concurrency.Traces
