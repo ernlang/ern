@@ -2,6 +2,7 @@
 -- Import modules here that should be built as part of the library.
 import Ern.Concurrency.Conservativity
 import Ern.Concurrency.Context
+import Ern.Concurrency.EncapTraces
 import Ern.Concurrency.Frames
 import Ern.Concurrency.Preservation
 import Ern.Concurrency.Reachable
