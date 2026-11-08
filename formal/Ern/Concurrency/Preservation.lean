@@ -656,14 +656,14 @@ theorem viewOp_preserves {k : K} {s : SC} {c : Nat} {op : KernelOp} {t : S3} (hd
 /-! ## Skeleton transport (the helpers of `Ern.MemoryModel.Access` §64, §65 preservation,
 private there) -/
 
-/-- Equal authority lists have the same skeletons (Spec 1 §42; copy of a private helper of the
-§64–§75 preservation proofs). -/
+/-- Equal authority lists have the same skeletons (Spec 1 §42; copy of the private `skel_of_A` of
+`Preserve/Small.lean`). -/
 theorem skel_of_A {s s' : S3} (hA : s'.A = s.A) : SameSkel s s' :=
   ⟨by rw [hA], fun j => by rw [hA]⟩
 
 /-- `WF3` (Spec 1 §49) carries over to a state with the same places, stack, fresh frame bound
 and death markers, the same skeletons, the same authorities with no origin, and live holders for
-its active authorities (copy of a private helper of the Spec 1 preservation proofs). -/
+its active authorities (copy of the private `wf3_skel` of `Preserve/Small.lean`). -/
 theorem wf3_skel {s s' : S3} (hw : WF3 s) (sk : SameSkel s s') (hP : s'.P = s.P)
     (hF : s'.F = s.F) (hn : s'.nF = s.nF) (hd : s'.dead = s.dead)
     (hroot : ∀ (i : Nat) (z : Authority), z.origin = none → (s'.A[i]? = some z ↔ s.A[i]? = some z))
@@ -683,8 +683,9 @@ theorem wf3_skel {s s' : S3} (hw : WF3 s) (sk : SameSkel s s') (hP : s'.P = s.P)
       fun i z hz _ hzo => (hroot i z hzo).2 hz
     holders := fun a y hy ya => (HolderLive.congr hP hF hd _).2 (hhold a y hy ya) }
 
-/-- `I1`–`I4` (Spec 1 §50–§53) carry over to a state with the same places, stack, death markers
-and skeletons, whose anchors of usable places are active (copy of a private helper). -/
+/-- `I1`–`I4` (Spec 1 §50–§53) carry over to a state with the same places, stack, death markers and
+skeletons, whose anchors of usable places are active (copy of the private `inv3base_skel` of
+`Preserve/Small.lean`). -/
 theorem inv3base_skel {s s' : S3} (hi : Inv3base s) (sk : SameSkel s s')
     (hP : s'.P = s.P) (hF : s'.F = s.F) (hd : s'.dead = s.dead)
     (hD : ∀ q : Nat, s.Usable q → ∀ x ∈ s'.D q, s.Active x) : Inv3base s' := by
@@ -693,7 +694,7 @@ theorem inv3base_skel {s s' : S3} (hi : Inv3base s) (sk : SameSkel s s')
     fun q hq x hx => sk.active.2 (hD q ((S3.Usable.congr hP hF hd).1 hq) x hx), i4_always _⟩
 
 /-- `NoDangling` (Spec 1 §54) carries over to a state with the same places, stack, death markers
-and skeletons (copy of a private helper). -/
+and skeletons (copy of the private `noDangling_skel` of `Preserve/Small.lean`). -/
 theorem noDangling_skel {s s' : S3} (h : NoDangling s) (sk : SameSkel s s')
     (hP : s'.P = s.P) (hF : s'.F = s.F) (hd : s'.dead = s.dead) : NoDangling s' := by
   intro j y hy ya q hq l hl hly
@@ -704,7 +705,8 @@ theorem noDangling_skel {s s' : S3} (h : NoDangling s) (sk : SameSkel s s')
     (fun hu => hq ((S3.Usable.congr hP hF hd).2 hu)) l hl (by rw [← e.2.2.1]; exact hly)
 
 /-- `RootHeldConv` (Spec 1 §40, §49.7) carries over to a state with the same places whose
-authorities with no origin are authorities of the previous state (copy of a private helper). -/
+authorities with no origin are authorities of the previous state (copy of the private
+`rootHeldConv_of` of `Preserve/Small.lean`). -/
 theorem rootHeldConv_of {s s' : S3} (h : RootHeldConv s) (hP : s'.P = s.P)
     (hroot : ∀ (i : Nat) (z : Authority), z.origin = none → s'.A[i]? = some z → s.A[i]? = some z) :
     RootHeldConv s' :=
@@ -806,8 +808,8 @@ section Store
 
 variable {t : S3} {a p : Nat} {y : Authority}
 
-/-- The effect of `store` on an existing authority (Spec 1 §65 `ok` effect; copy of a private
-helper). -/
+/-- The effect of `store` on an existing authority (Spec 1 §65 `ok` effect; copy of the private
+`storeEff_eq` of `Preserve/Small.lean`). -/
 theorem storeEff_eq (hy : t.A[a]? = some y) :
     storeEff t a p = { t with
       A := t.A.set a { y with holder := .place p }
@@ -815,13 +817,14 @@ theorem storeEff_eq (hy : t.A[a]? = some y) :
       I := fun l => if l = p then .init else t.I l } := by
   unfold storeEff; rw [hy]
 
-/-- The authorities after `store` (Spec 1 §65 `ok` effect; copy of a private helper). -/
+/-- The authorities after `store` (Spec 1 §65 `ok` effect; copy of the private `store_get` of
+`Preserve/Small.lean`). -/
 theorem store_get (hy : t.A[a]? = some y) (j : Nat) :
     (storeEff t a p).A[j]? = if a = j then some { y with holder := .place p } else t.A[j]? := by
   rw [storeEff_eq hy]; exact set_get (lt_of_getElem? hy)
 
-/-- `store` changes only the holder of `a` (Spec 1 §65 `ok` effect; copy of a private
-helper). -/
+/-- `store` changes only the holder of `a` (Spec 1 §65 `ok` effect; copy of the private `store_skel`
+of `Preserve/Small.lean`). -/
 theorem store_skel (hy : t.A[a]? = some y) : SameSkel t (storeEff t a p) := by
   refine ⟨by rw [storeEff_eq hy]; simp, fun j => ?_⟩
   rw [store_get hy]; split
@@ -829,7 +832,7 @@ theorem store_skel (hy : t.A[a]? = some y) : SameSkel t (storeEff t a p) := by
   · rfl
 
 /-- `store` of a derived authority keeps the authorities with no origin (Spec 1 §65.1, §65 `ok`
-effect; copy of a private helper). -/
+effect; copy of the private `store_root` of `Preserve/Small.lean`). -/
 theorem store_root (hy : t.A[a]? = some y) (ho : y.origin ≠ none) (i : Nat) (z : Authority)
     (hzo : z.origin = none) : (storeEff t a p).A[i]? = some z ↔ t.A[i]? = some z := by
   rw [store_get hy]; split
@@ -837,7 +840,8 @@ theorem store_root (hy : t.A[a]? = some y) (ho : y.origin ≠ none) (i : Nat) (z
     constructor <;> intro h <;> cases h <;> exact absurd hzo ho
   · exact Iff.rfl
 
-/-- The anchors after `store(a, p)` (Spec 1 §65 `ok` effect; copy of a private helper). -/
+/-- The anchors after `store(a, p)` (Spec 1 §65 `ok` effect; copy of the private `store_D` of
+`Preserve/Small.lean`). -/
 theorem store_D (hy : t.A[a]? = some y) {q x : Nat} (hx : x ∈ (storeEff t a p).D q) :
     x ∈ t.D q ∨ (q = p ∧ x = a) := by
   rw [storeEff_eq hy] at hx; simp only at hx
@@ -1089,8 +1093,8 @@ theorem enter_rootHeldConv' (hwf : WF3 s) (hpar : ParamsOK s ps) (hr : RootHeldC
     obtain rfl := rootOf_unique hrp hroot hlr (mem_footprint.1 hl).2.2
     exact ⟨_, enterP_new hil, rfl⟩
 
-/-- An element of an appended list comes from one of the two parts (Spec 1 §42; copy of a private
-helper). -/
+/-- An element of an appended list comes from one of the two parts (Spec 1 §42; copy of the private
+`getElem?_append_cases` of `Access/Main.lean`). -/
 theorem getElem?_append_cases {α : Type} {l E : List α} {x : Nat} {y : α}
     (h : (l ++ E)[x]? = some y) : l[x]? = some y ∨ y ∈ E := by
   by_cases hx : x < l.length
@@ -1551,15 +1555,16 @@ section TransferS3
 
 variable {s : S3} {src dst : Nat}
 
-/-- `OptP` with default `False` holds on a present value (Spec 1 §38; copy of a private
-helper). -/
+/-- `OptP` with default `False` holds on a present value (Spec 1 §38; copy of the private
+`optP_false_iff` of `Preserve/Transfer.lean`). -/
 theorem optP_false_iff' {α : Type} {o : Option α} {P : α → Prop} :
     OptP o P False ↔ ∃ y, o = some y ∧ P y := by
   cases o with
   | none => exact ⟨fun h => h.elim, fun ⟨_, h, _⟩ => by cases h⟩
   | some y => exact ⟨fun h => ⟨y, rfl, h⟩, fun ⟨_, h, hy⟩ => by cases h; exact hy⟩
 
-/-- Membership in `movedTo` (Spec 1 §63 `ok` effect, fourth item; copy of a private helper). -/
+/-- Membership in `movedTo` (Spec 1 §63 `ok` effect, fourth item; copy of the private `mem_movedTo`
+of `Preserve/Transfer.lean`). -/
 theorem mem_movedTo' {x q : Nat} :
     x ∈ movedTo s src dst q ↔
       ∃ r, partOf s.P r src ∧ corr s.P src dst r = some q ∧ x ∈ s.D r := by
@@ -1568,14 +1573,15 @@ theorem mem_movedTo' {x q : Nat} :
   · rintro ⟨r, ⟨-, hr, hc⟩, hx⟩; exact ⟨r, hr, hc, hx⟩
   · rintro ⟨r, hr, hc, hx⟩; exact ⟨r, ⟨hr.1, hr, hc⟩, hx⟩
 
-/-- An anchor of a part of `src` is checked by Spec 1 §63.6 (copy of a private helper). -/
+/-- An anchor of a part of `src` is checked by Spec 1 §63.6 (copy of the private
+`mem_movedDeps_part` of `Preserve/Transfer.lean`). -/
 theorem mem_movedDeps_part' {r x : Nat} (hr : partOf s.P r src) (hx : x ∈ s.D r) :
     x ∈ movedDeps s src := by
   simp only [movedDeps, List.mem_flatMap, List.mem_filter, List.mem_range, decide_eq_true_eq]
   exact ⟨r, ⟨hr.1, .inl hr⟩, hx⟩
 
 /-- Under `WF3`, a part of `dst` is not a part of `src` when their footprints are disjoint (Spec
-1 §40, §63.3; copy of a private helper). -/
+1 §40, §63.3; copy of the private `not_partOf_src` of `Preserve/Transfer.lean`). -/
 theorem not_partOf_src' (hw : WF3 s) {r : Nat} (hdis : ¬ overlap s.P src dst)
     (hr : partOf s.P r dst) : ¬ partOf s.P r src := fun hs => by
   obtain ⟨l, hl⟩ := exists_mem_footprint hw (s.P.length - r + 1) r (by omega) hr.1
