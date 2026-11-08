@@ -4,6 +4,7 @@ import Ern.Concurrency.Conservativity
 import Ern.Concurrency.Context
 import Ern.Concurrency.Frames
 import Ern.Concurrency.Preservation
+import Ern.Concurrency.Reachable
 import Ern.Concurrency.Reparent
 import Ern.Concurrency.Sync
 import Ern.Concurrency.SyncLib
