@@ -1,0 +1,52 @@
+{
+  "cli_version": "0.12.2",
+  "checkpoint_id": "01M6Y5RAHTP6BHAXDB2F21S0QD",
+  "strategy": "manual-commit",
+  "branch": "reference/memory-model-v0",
+  "checkpoints_count": 10,
+  "files_touched": [
+    "docs/.gitkeep",
+    "formal/.gitignore",
+    "formal/README.md",
+    "formal/lake-manifest.json",
+    "formal/lakefile.toml",
+    "formal/lean-toolchain"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 6,
+    "cache_creation_tokens": 9507,
+    "cache_read_tokens": 1564004,
+    "output_tokens": 7306,
+    "api_call_count": 4,
+    "subagent_tokens": {
+      "input_tokens": 1160,
+      "cache_creation_tokens": 3210229,
+      "cache_read_tokens": 100911597,
+      "output_tokens": 572637,
+      "api_call_count": 588
+    }
+  },
+  "redaction": {
+    "replacements": 667,
+    "layers": {
+      "betterleaks": 0,
+      "connection_string": 0,
+      "credential_key": 0,
+      "credential_value": 0,
+      "credentialed_uri": 0,
+      "entropy": 662,
+      "key_context": 5,
+      "provider_token": 0,
+      "shell_stdin": 0
+    }
+  }
+}
