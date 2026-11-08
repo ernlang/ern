@@ -1,0 +1,15 @@
+{
+  "tool_use_id": "toolu_01QJo3tSYk4bUTUphuLfufGZ",
+  "agent_id": "a6eeae654b9328636",
+  "subagent_type": "general-purpose",
+  "task_description": "Verify report claims against code",
+  "token_usage": {
+    "input_tokens": 110,
+    "cache_creation_tokens": 272468,
+    "cache_read_tokens": 10031591,
+    "output_tokens": 85138,
+    "api_call_count": 55
+  },
+  "started_at": "2026-11-08T20:19:30.614516+01:00",
+  "completed_at": "2026-11-08T20:34:01.232031+01:00"
+}
