@@ -1,0 +1,132 @@
+@"/Users/guygouri/Downloads/ERN_Concurrency_Model_WC2.md"
+
+<pasted_content id="c7c6">
+# Brief Claude Code — ERN Spec 2, jalon 1 : modèle abstrait concurrent
+
+## Nature du travail
+
+Formalisation exploratoire. Branche `formal/spec2-m1`, créée depuis `main`. Jamais mergée. Pas de push sur `main`, pas de PR.
+
+Le document joint `ERN_Concurrency_Model_WC2.md` (Working Candidate 2 corrigée) est **non normatif** et **ne doit pas être commité**.
+
+Ne modifie ni `specs/`, ni `AGENTS.md`, ni `CLAUDE.md`, ni `formal/DESIGN.md`.
+
+## Sources de sémantique
+
+1. `specs/ERN_Memory_Model_Specification_v0.1.md` — normatif. Lire en entier §§38–57, 60–73, 76–78, 80, 82 avant de coder, et lister les passages dans le rapport.
+2. `ERN_Concurrency_Model_WC2.md` — candidate de conception, pour les ajouts C1–C25.
+
+Règles :
+
+- La Spec 1 l'emporte sur la candidate.
+- Là où la candidate est silencieuse, ambiguë ou en contradiction avec la Spec 1 : **arrête-toi et rapporte** le passage avec un exemple concret. Ne choisis jamais une interprétation.
+- Là où la candidate écrit « applicable » (C4.5, C5.4, C6.1, C7), la règle à appliquer est la clause de la Spec 1 nommée au même endroit (O6, O4, O7). Si une clause ne se transpose pas à plusieurs piles sans décision, rapporte-la.
+
+## Style de formalisation
+
+- `formal/DESIGN.md`, section Représentation : relations de pas ; interpréteurs à carburant prouvés cohérents avec les relations.
+- Aucun modèle d'événements mémoire au jalon 1. OB-C01 à OB-C06 sont hors périmètre par construction.
+- L'attente (`join` sur un contexte vivant, `acquire` sur un contrôleur pris) est une transition **non habilitée**. Aucune nouvelle issue d'`Outcome3`.
+- La décision de style du jalon 4 de `DESIGN.md` n'est pas prise par ce travail. Signale dans le rapport toute décision de conception que `DESIGN.md` ne règle pas, sans la prendre.
+
+## Première tâche : audit des axiomes hérités
+
+Avant tout nouveau code, exécute `#print axioms` sur les théorèmes de la Spec 1 que le jalon 1 réutilisera (au minimum `Access.Main.reachable_kinv` et les lemmes de préservation de `Access/Preserve/*`). Consigne dans le rapport l'ensemble exact des axiomes de chacun. Trois preuves de référence utilisent `Classical.byContradiction` (`Access/Statics.lean:194`, `Access/Rename/Basic.lean:146`, `Access/Rename/Places.lean:264`) ; détermine quels théorèmes en dépendent effectivement.
+
+## Modules à créer
+
+Sous `formal/Ern/Concurrency/`, chacun enregistré dans `Ern.lean`.
+
+| Module | Contenu | Source |
+|---|---|---|
+| `Context.lean` | `S_C = (C, F_C, P, I, A, D)` ; états de cycle de vie des contextes ; frame courante par contexte ; relation `ancestor_C` ; projection `toS3` sur les états à un contexte ; `ConcurrentWF` par ré-indexation de WF3.1–8 (« la pile » → frames vivantes globales ; « frame courante » → frame courante du contexte exécutant) | C1–C3, C20 ; Spec 1 §§38–45, 49 |
+| `Frames.lean` | `spawn` (sur O6) ; `exitFrameC` (O7 + reparentage des frames initiales d'enfants vers `parent(f)`) ; `terminate` (O7 sur la frame initiale d'un contexte) ; `join` | C4, C6–C8 ; §§72–73 |
+| `Transfer.lean` | Composite `spawn` par valeur : préconditions d'O4, avec O4.1 côté destination remplacé par la condition de construction C5.2–C5.3 ; O4.1 côté source conservé | C5 ; §63 |
+| `Sync.lean` | `K_C` : extension de `K` avec projection sur `K` ; `K_C.SyncAuthorized` **opaque** (prédicat de contrat, comme `K.SharedMutable`) ; transition noyau `deriveSync` : O1 avec le conjoint `ExercisableAt` d'O1.1 remplacé par `K_C.SyncAuthorized`, O1.1 (validité de chaîne et d'anchors) et O1.2–O1.4 conservés | C14–C15 ; §60 |
+| `SyncLib.lean` | État de bibliothèque séparé de `S_C`, sur le patron de `Arena.lean` : `SyncEntry`, `SyncInv`, `GrantDiscipline`, `ControlOf` positionnel ; opérations dérivées `newMutex`, `acquire`, `unlock`, `resetLock` ; **instanciation de `K_C.SyncAuthorized` par la bibliothèque, limitée à des faits de registre et de contrôleur** : entrée vivante ∧ `grant = none` ∧ la frame demandeuse a un mode effectif sur `ControlOf(e)` | C12–C13, C16–C18, C21–C22 ; §§46, 55–56, 76–78 |
+| `Conservativity.lean` | Théorèmes de C24 | C24 |
+| `Traces.lean` | Traces minimales nécessaires aux théorèmes ci-dessous (constructions positives, contre-exemples), sur le patron de `Corpus/Runner.lean`. **Le corpus S1a–S15 et ses jumeaux positifs est le jalon 3, pas celui-ci.** | §V (références seulement) |
+
+## Théorèmes cibles
+
+Chaque énoncé déclare le fragment couvert. Chacun est prouvé, réfuté par contre-exemple, ou rapporté ouvert avec l'état du but.
+
+1. **Conservativité** (C24). Pour tout état à un contexte sans entrée de synchronisation vivante, et pour chaque O1–O16 : habilitation équivalente et effet projeté égal à celui de `S₃` ; `ancestor_C` coïncide avec §39 ; `K_C.SyncAuthorized` faux sur ce domaine, donc `deriveSync` jamais habilitée.
+2. **Préservation** (C20, C23). `ConcurrentWF ∧ Inv3 ∧ AnchorOrderHeld ∧ NoOrphan` ré-indexés, sous O1–O16 ré-indexées et sous `spawn`, `exitFrameC`, `terminate`, `join`, `deriveSync`, `spawn` par valeur.
+3. **Reparentage** (OB-C13). `exitFrameC` préserve `AnchorOrder` et `AnchorOrderHeld` pour les frames reparentées et ne modifie ni `A` ni `D` au-delà des effets d'O7.
+4. **`SyncInv` et `GrantDiscipline`** (C21–C23). Préservation sous toutes les transitions, **sous une hypothèse d'encapsulation explicite** formulée comme prédicat sur les traces (`EncapsulatedTrace`), jamais glissée dans les préconditions d'une opération noyau. Et le contre-exemple **sans** cette hypothèse : `derive(guarded, Observe, footprint(T))` par le propriétaire exclusif rend `acquire` non habilitée alors que `grant = none`.
+5. **Réalisabilité** (C25). Sous `SyncInv ∧ GrantDiscipline`, l'instanciation de `K_C.SyncAuthorized` par la bibliothèque (faits de registre et de contrôleur seulement) entraîne les préconditions d'autorité de `deriveSync` : aucun descendant actif de `guarded` ne couvre une feuille, I1 respecté pour le grant de footprint complet, chaîne d'origines valide. **Interdit** : définir `SyncAuthorized` en y incluant ce que le théorème doit démontrer. Si le théorème échoue, rapporte le but et l'hypothèse manquante.
+6. **Exclusivité des grants**. Deux grants actifs issus du même `guarded`, de footprint non vide, sont impossibles (I1, §50).
+
+## Règles Lean
+
+- Aucun `sorry`, `admit`, `axiom`, `native_decide` ; aucun `noncomputable`.
+- Axiomes admis par `#print axioms` de chaque théorème : `{propext, Quot.sound}`. Cette règle est plus stricte que celle d'`AGENTS.md` et prévaut pour ce travail. Toute dépendance héritée à `Classical.choice` est **signalée dans le rapport** avec le théorème concerné et la chaîne de dépendance ; elle n'est ni contournée, ni corrigée dans la référence Spec 1. Si l'audit de la première tâche révèle une telle dépendance sur un théorème indispensable, arrête-toi après l'audit et rapporte.
+- `lake build` dans `formal/` sans nouvel avertissement ; `grep -rnE '\b(sorry|admit|native_decide)\b|^\s*axiom\b' --include='*.lean' --exclude-dir=.lake .` ne renvoie rien.
+- Chaque définition et théorème cite sa source en docstring (« Spec 1 §63.4 » ou « WC2 C5.2 ») sans la reformuler.
+- Aucune définition plus permissive que sa source, aucune hypothèse ajoutée, aucun énoncé ni dépendance modifié pour faire passer une preuve. Si bloqué : arrête-toi et rapporte l'état du but.
+
+## Rapport
+
+`formal/reports/spec2-m1.md`, en français :
+
+- passages implémentés, par localisation (Spec 1 et WC2) ;
+- audit des axiomes hérités ;
+- théorèmes prouvés, réfutés (avec le contre-exemple), ouverts (avec l'état du but) ;
+- problèmes de la candidate trouvés : passage, exemple concret ;
+- décisions de représentation prises ; décisions de conception proposées, non prises ;
+- écarts avec la Spec 1 détectés.
+
+Code, docstrings et messages de commit en anglais. Conventional Commits, sans `Co-Authored-By`.
+
+## Ordre
+
+Lecture et liste des passages → audit des axiomes → `Context` → `Frames` → `Conservativity` (théorème 1) → `Sync` + `SyncLib` → `Transfer` → préservation (théorèmes 2–3) → théorèmes 4–6 → traces minimales → rapport. Commit à chaque module compilant.
+</pasted_content id="c7c6">
+
+---
+
+<task-notification>
+<task-id>a9df1b08eb590751f</task-id>
+<tool-use-id>toolu_01WouPUKoSyBTdcweMcojH79</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-guygouri-Devlab-ernlang-ern/e6419d94-65c2-4a67-8a07-67ae7e574ad6/tasks/a9df1b08eb590751f.output</output-file>
+<status>completed</status>
+<summary>Agent "Prove theorem 3 (reparenting)" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>Fork B: theorem 3 (reparenting, OB-C13) and theorem 2 for `exitFrameC` and `terminate`. All targets are proven, nothing is open.
+
+**Where.** `formal/Ern/Concurrency/Reparent.lean`, commit `0ec5594` on branch `worktree-agent-a9df1b08eb590751f`. I fast-forwarded the branch to ad8c1bf first, because the worktree had started at d0c2d87. No existing file was touched and Ern.lean was not edited, so you need to add `import Ern.Concurrency.Reparent` when you merge. The lake glob already builds the module. `lake build` passes with no warnings, there is no sorry/admit/axiom/native_decide/noncomputable, and all 64 theorems of the module depend only on `{propext, Quot.sound}`. I checked that with a module-scoped `collectAxioms` script: `scratchpad/forkB/AuditR.lean`.
+
+**Public theorems** (namespace `Ern.Concurrency`, with `s`, `c`, `k` implicit):
+
+- **Live frames and ancestry, `exitEffC_ancestorC`.** Hypotheses: `FramesC s` and `(s.stk c).tail ≠ []`. Conclusion:
+  - `y ∈ (exitEffC s c).frames ↔ y ∈ s.frames ∧ y ≠ (s.stk c).headD 0`;
+  - for `g`, `y` live after the step: `(exitEffC s c).ancestorC g y ↔ s.ancestorC g y`.
+- **Same for `terminate`, `termEffC_ancestorC`.** Hypotheses: `FramesC s`, `(s.stk c).length = 1`, `s.ctxParent c ≠ none`.
+- **Frame structure kept, `exitEffC_framesC`.** `FramesC (exitEffC s c)`, under the same hypotheses as `exitEffC_ancestorC`.
+- **Same for `terminate`, `termEffC_framesC`.** Needs `c ≠ 0` in addition to the `terminate` hypotheses.
+- **Reparenting target, `exitEffC_reparent` and `termEffC_reparent`.**
+  - `s.parC f = some p`, so `p` is the immediate parent of the exiting frame `f`, not an arbitrary ancestor.
+  - Every context live after the step gets `ctxParent d = if s.ctxParent d = some f then some p else s.ctxParent d`.
+- **Kernel effect, `exitEffC_kernel` and `termEffC_kernel`.**
+  - `A` and `D` equal `(exitEff (s.view c)).A` and `.D`.
+  - `P`, `I`, `dead`, `pins` and `nF` are unchanged.
+  - So reparenting changes only `C`.
+- **Theorem 3, `exitFrameC_anchorOrder`.** From `FramesC s`, `WF3 s.flat`, `AnchorOrderC s` and an `ok` step `opStepC k .exit c s (.ok s')`, it gives `AnchorOrderC s' ∧ AnchorOrderHeldC s'`.
+- **Theorem 3, `terminate_anchorOrder`.** The same for `TermStep k s c (.ok s')`.
+- **Theorem 2, `exitFrameC_preserves` and `terminate_preserves`.** From `KInvC s`, `RootHeldConv s.flat` and `HeldAnchored s.flat`, an `ok` step gives `KInvC s' ∧ RootHeldConv s'.flat ∧ HeldAnchored s'.flat`. The two auxiliaries are used only for their own conjuncts; the `KInvC` part needs `KInvC s` alone (`ReparentAux.Pop.kInvC`).
+
+**How it is built.** The shared structure `ReparentAux.Pop` describes "pop the top frame `f` of `c`, reparent to `p`" and both steps instantiate it. Under it, the parent chain after the step is the chain before with `f` filtered out, which gives the ancestry result.
+
+For `AnchorOrderC` I adapted Spec 1's `exit_anchorOrder` to `ancestorC`. That needed one extra fact the linear proof never uses: the holder frame of the surviving root anchor is itself a live frame after the step. It comes from `Frames.exit_root_survives`.
+
+`WF3`, `Inv3base`, `NoDangling` and `RootHeldConv` reuse Spec 1's `Frames.exit_*` lemmas on `s.view c`, bridged to the new flat state by membership congruence. `HeldAnchored` follows the exit case of Spec 1's `op_preserves_heldAnchored`.
+
+**Watch out.** `List.getElem?_modify`, `getElem?_modify_eq` and `getElem?_modify_ne` depend on `Classical.choice`. I replaced them with a local `ReparentAux.getElem?_modify'`. Forks A and C will hit the same thing if they rewrite the context list.
+
+**Definitions and WC2.** I found no problem with C6 or C7, and no definition needed changing. One observation: `exitFrameC` can never reparent its own context's initial frame, because under `FramesC` that frame's parent is smaller than every frame of its stack. The proof gets this for free through the `repO` form.
+
+I did not check how this module interacts with the files forks A and C are writing, or whether merging leaves duplicate helper names in the namespace.</result>
+<usage><subagent_tokens>588022</subagent_tokens><tool_uses>58</tool_uses><duration_ms>746562</duration_ms></usage>
+<worktree><worktreePath>/Users/guygouri/Devlab/ernlang/ern/.claude/worktrees/agent-a9df1b08eb590751f</worktreePath><worktreeBranch>worktree-agent-a9df1b08eb590751f</worktreeBranch></worktree>
+</task-notification>
