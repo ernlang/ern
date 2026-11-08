@@ -6,6 +6,7 @@ import Ern.Concurrency.Frames
 import Ern.Concurrency.Reparent
 import Ern.Concurrency.Sync
 import Ern.Concurrency.SyncLib
+import Ern.Concurrency.SyncPreserve
 import Ern.Concurrency.Traces
 import Ern.Concurrency.Transfer
 import Ern.Corpus.DataStack
