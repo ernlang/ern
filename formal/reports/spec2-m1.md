@@ -76,7 +76,7 @@ Fragment : états à un contexte (`SC.Single`) munis de `FramesC`.
 - `lstep_kInvCA` : tout pas étiqueté du noyau avec la bibliothèque (`LStep`) préserve `KInvCA`, sous `DDSound` et `SyncInv` ; `SyncInv` (C21.1) fournit le mode `Modify` de `guarded` pour `deriveSync` et `acquire`.
 - **Ouvert** : le composite `spawn` par valeur, dont la relation n'est pas définie (D2).
 
-Réutilisation de Spec 1 : les clauses lues seulement par appartenance viennent des lemmes de Spec 1 appliqués à `s.view c` (congruence d'appartenance) ; les ordres d'ancres sont prouvés à nouveau sur `ancestorC`. Les lemmes de Spec 1 qui prennent une structure de précondition contenant une clause d'ancêtre linéaire, ou qui sont privés, ont été recopiés ou adaptés dans `Preservation.lean` avec les seuls champs utilisés ; la docstring de chaque copie nomme le lemme de Spec 1 et son fichier (`enter_wf`, `enter_rootHeld`, `enter_noDangling`, `enter_rootHeldConv`, les lemmes privés de `Preserve/Transfer` et de `Preserve/Small`, `endUse` et `free`).
+Réutilisation de Spec 1 : les clauses lues seulement par appartenance viennent des lemmes de Spec 1 appliqués à `s.view c` (congruence d'appartenance) ; les ordres d'ancres sont prouvés à nouveau sur `ancestorC`. Les lemmes de Spec 1 qui prennent une structure de précondition contenant une clause d'ancêtre linéaire, ou qui sont privés, ont été recopiés ou adaptés dans `Preservation.lean` avec les seuls champs utilisés ; la docstring de chaque copie nomme le lemme de Spec 1 recopié ou adapté, et son fichier quand il est privé (`enter_wf`, `enter_rootHeld`, `enter_noDangling`, `enter_rootHeldConv`, les lemmes privés de `Preserve/Transfer` et de `Preserve/Small`, `endUse` et `free`).
 
 ### Théorème 3 — reparentage (OB-C13) : prouvé
 

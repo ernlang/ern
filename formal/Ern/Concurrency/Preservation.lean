@@ -714,7 +714,7 @@ theorem rootHeldConv_of {s s' : S3} (h : RootHeldConv s) (hP : s'.P = s.P)
 
 /-- `EffAnchorOKC` is unchanged by a step keeping places, contexts, skeletons and the authorities
 with no origin: under `WF3` the effective anchor has no origin (Spec 1 §44; mirrors the private
-`effAnchorOK_skel` of the Spec 1 proofs). -/
+`effAnchorOK_skel` of `Preserve/Small.lean`). -/
 theorem effAnchorOKC_skel {s : SC} {t : S3} (hw : WF3 s.flat) (sk : SameSkel s.flat t)
     (hP : t.P = s.P)
     (hroot : ∀ (i : Nat) (z : Authority), z.origin = none → (t.A[i]? = some z ↔ s.A[i]? = some z))
@@ -1587,7 +1587,8 @@ theorem not_partOf_src' (hw : WF3 s) {r : Nat} (hdis : ¬ overlap s.P src dst)
   obtain ⟨l, hl⟩ := exists_mem_footprint hw (s.P.length - r + 1) r (by omega) hr.1
   exact hdis ⟨l, footprint_sub hw hs hl, footprint_sub hw hr hl⟩
 
-/-- Spec 1 §49.7 after a transfer of a usable `src` (copy of the private `transfer_rootHeld`). -/
+/-- Spec 1 §49.7 after a transfer of a usable `src` (copy of the private `transfer_rootHeld` of
+`Preserve/Transfer.lean`). -/
 theorem transfer_rootHeld' (hw : WF3 s) (hsrc : s.Usable src) :
     RootHeld (transferEff s src dst) := by
   intro r hrp hur
@@ -1608,7 +1609,7 @@ theorem transfer_rootHeld' (hw : WF3 s) (hsrc : s.Usable src) :
       by rw [transfer_P_get, hpr]; simp [hc'], hzh, hf⟩
 
 /-- `RootHeldConv` after a transfer (Spec 1 §40, §49.7, §63; copy of the private
-`transfer_rootHeldConv`). -/
+`transfer_rootHeldConv` of `Preserve/Transfer.lean`). -/
 theorem transfer_rootHeldConv' (hr : RootHeldConv s) : RootHeldConv (transferEff s src dst) := by
   intro x z' l r hx ho hl hrp hlr
   rw [transfer_A_get] at hx
