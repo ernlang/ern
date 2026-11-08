@@ -81,6 +81,14 @@ theorem dropWhile_ne_nil : ∀ {F : List Nat} {f : Nat}, f ∉ F → F.dropWhile
     simp only [List.dropWhile_cons, bne_iff_ne, ne_eq, e, not_false_eq_true, ↓reduceIte]
     exact dropWhile_ne_nil fun h => hf (List.mem_cons_of_mem _ h)
 
+/-- A filter rejecting every element is empty (WC2 C2). -/
+theorem filter_nil_of {α : Type} {p : α → Bool} : ∀ {l : List α}, (∀ a ∈ l, p a = false) →
+    l.filter p = []
+  | [], _ => rfl
+  | a :: l, h => by
+    rw [List.filter_cons, h a (List.mem_cons_self ..)]
+    exact filter_nil_of fun b hb => h b (List.mem_cons_of_mem _ hb)
+
 /-! ## Single-context states (WC2 C24) -/
 
 section Single
@@ -110,7 +118,7 @@ theorem single_view (hs : s.Single) : s.view 0 = s.toS3 := by
   simp only [SC.view, single_flat hs, single_frames hs, SC.toS3]
   congr 1
   have : (s.stk 0).filter (fun f => decide (f ∉ s.stk 0)) = [] :=
-    List.filter_eq_nil_iff.2 fun f hf => by simpa using hf
+    filter_nil_of (fun f hf => by simpa using hf)
   rw [this, List.append_nil]
 
 /-- The parent relation of a single-context state follows its stack (WC2 C3, C24). -/
