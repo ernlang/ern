@@ -165,4 +165,14 @@ theorem readings_differ : SpawnValPreBase K0 w0 0 [3] [(none, 0)] 0 3 ∧
     SrcRightBefore w0 0 0 ∧ ¬ SrcRightAfterSpawn w0 0 [3] [(none, 0)] 0 := by
   decide
 
+open TransferWitness in
+/-- In the final state of the composite of `readings_differ` (accepted under reading (a)), the new
+frame 1 holds the active `Modify` authority 3 over leaf 0 of the creator, now `Moved`, and the
+destination leaf 3 is `Init` (WC2 C5 effect, Spec 1 §63 effect). -/
+theorem readingA_final :
+    (spawnValEff w0 0 [3] [(none, 0)] 0 3).A[3]? = some ⟨.modify, some 0, [0], .frame 1, true⟩ ∧
+    (spawnValEff w0 0 [3] [(none, 0)] 0 3).I 0 = .moved ∧
+    (spawnValEff w0 0 [3] [(none, 0)] 0 3).I 3 = .init := by
+  decide
+
 end Ern.Concurrency
