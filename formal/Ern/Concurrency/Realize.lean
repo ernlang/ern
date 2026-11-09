@@ -262,30 +262,71 @@ C4–C8, C13–C18; Spec 1 §82 preamble, §82.2–§82.5), at the grain of abst
 - `join` (WC4 C8) and `deriveSync` (WC4 C15, O1 has no storage effect, Spec 1 §60): none;
 - `newMutex`, `acquire`, `unlock`, `resetLock` (WC4 C13, C16–C18): none, the registry only; the
   physical controller and its correspondence with the registry are the realization obligation
-  WC4 OB-C05, not modelled. -/
+  WC4 OB-C05, not modelled;
+- the arena operations (Spec 1 §76–§78, §82.7; WC4 C19), with the arena registry `ar`: the
+  realizations of their kernel steps executed by `c`, in order (Part XIV, as
+  `Ern.MemoryModel.RefinementArena.lopsOf`): none for `newArena`; `split` of `internal` (none)
+  then `store` of the block into the destination (Spec 1 §82.3) for `issue`; `derive` then
+  `release` (none) for `reset`. -/
 def realize {Ty : Type} (π : Refinement.Params Ty) (w : Nat → Nat → UInt8 × Option Nat) :
-    Label → SC → Machine.State → List (Machine.Op Ty)
-  | .kernel c op, s, m => opsOf π (kopOf op w) (s.view c) m
-  | .spawn c _ ls, s, m => allocOps π.pl π.geom π.rtok (s.view c).P.length m (rootIdx ls.toShape)
-  | .spawnVal c _ ls vs, s, m =>
+    Label → SC → ArenaReg → Machine.State → List (Machine.Op Ty)
+  | .kernel c op, s, _, m => opsOf π (kopOf op w) (s.view c) m
+  | .spawn c _ ls, s, _, m =>
+    allocOps π.pl π.geom π.rtok (s.view c).P.length m (rootIdx ls.toShape)
+  | .spawnVal c _ ls vs, s, _, m =>
     allocOps π.pl π.geom π.rtok (s.view c).P.length m (rootIdx ls.toShape) ++
       valOps π c (spawnCreate s c ls) vs
         (run m (allocOps (Ty := Ty) π.pl π.geom π.rtok (s.view c).P.length m (rootIdx ls.toShape)))
-  | .terminate c, s, _ => exitOps π.L π.rtok (s.view c)
-  | .join .., _, _ => []
-  | .deriveSync .., _, _ => []
-  | .newMutex .., _, _ => []
-  | .acquire .., _, _ => []
-  | .unlock .., _, _ => []
-  | .resetLock .., _, _ => []
+  | .terminate c, s, _, _ => exitOps π.L π.rtok (s.view c)
+  | .join .., _, _, _ => []
+  | .deriveSync .., _, _, _ => []
+  | .newMutex .., _, _, _ => []
+  | .acquire .., _, _, _ => []
+  | .unlock .., _, _, _ => []
+  | .resetLock .., _, _, _ => []
+  | .newArena .., _, _, _ => []
+  | .issue c i region dst, s, ar, m =>
+    match ar[i]? with
+    | some E =>
+      opsOf π (kopOf (.split E.internal [region]) w) (s.view c) m ++
+        opsOf π (kopOf (.store s.A.length dst) w)
+          ((s.set (splitEff (s.view c) E.internal [region])).view c)
+          (run m (opsOf π (kopOf (.split E.internal [region]) w) (s.view c) m))
+    | none => []
+  | .reset c i, s, ar, m =>
+    match ar[i]? with
+    | some E =>
+      opsOf π (kopOf (.derive E.internal (footprint s.P E.storage) .modify) w) (s.view c) m ++
+        opsOf π (kopOf (.release s.A.length) w)
+          ((s.set (deriveEff (s.view c) E.internal (footprint s.P E.storage) .modify)).view c) m
+    | none => []
 
 /-- WC4 OB-C05: `newMutex`, `acquire`, `unlock` and `resetLock` have no raw operation in this
 realization; their physical controller update is not modelled. -/
 theorem realize_sync {Ty : Type} (π : Refinement.Params Ty) (w : Nat → Nat → UInt8 × Option Nat)
-    (s : SC) (m : Machine.State) (c g i : Nat) (adm : List Nat) :
-    realize π w (.newMutex c g adm) s m = [] ∧ realize π w (.acquire c i) s m = [] ∧
-      realize π w (.unlock c i) s m = [] ∧ realize π w (.resetLock c i) s m = [] :=
+    (s : SC) (ar : ArenaReg) (m : Machine.State) (c g i : Nat) :
+    realize π w (.newMutex c g) s ar m = [] ∧ realize π w (.acquire c i) s ar m = [] ∧
+      realize π w (.unlock c i) s ar m = [] ∧ realize π w (.resetLock c i) s ar m = [] :=
   ⟨rfl, rfl, rfl, rfl⟩
+
+/-- The realization of `issue` of a registered entry is the `store` of the block into the
+destination on the state after `split` (Spec 1 §77, §82.3; Part XIV): `split` has none. -/
+theorem realize_issue {Ty : Type} (π : Refinement.Params Ty)
+    (w : Nat → Nat → UInt8 × Option Nat) {s : SC} {ar : ArenaReg} {m : Machine.State}
+    {c i dst : Nat} {region : List Nat} {E : Arena.ArenaEntry} (hE : ar[i]? = some E) :
+    realize π w (.issue c i region dst) s ar m =
+      storeOps π.pe m π.L π.ty ((s.set (splitEff (s.view c) E.internal [region])).view c)
+        s.A.length dst := by
+  simp only [realize, hE]; rfl
+
+/-- `newArena` and `reset` have no raw operation (Spec 1 §76, §78; Part XIV: `derive` and
+`release` have none, Spec 1 §60, §62). -/
+theorem realize_arena_nil {Ty : Type} (π : Refinement.Params Ty)
+    (w : Nat → Nat → UInt8 × Option Nat) (s : SC) (ar : ArenaReg) (m : Machine.State)
+    (c st i : Nat) :
+    realize π w (.newArena c st i) s ar m = [] ∧ realize π w (.reset c i) s ar m = [] := by
+  refine ⟨rfl, ?_⟩
+  simp only [realize]; split <;> rfl
 
 /-- The obligations of one labelled step (Spec 1 §20.3, §82; WC4 C2): for an inherited operation
 executed by `c`, those of `Refinement.StepObl` on the view of `c` (the parametric obligations of
@@ -295,13 +336,14 @@ obligations of its raw operations and the layout of the new locals (§82.1, §23
 labels, the parametric obligations of their raw operations. -/
 def StepOblC {Ty : Type} (k : K) (C : Nat → Nat → Prop) (ObR : Machine.ReadOblSpec Ty)
     (ObW : Machine.WriteOblSpec Ty) (π : Refinement.Params Ty)
-    (w : Nat → Nat → UInt8 × Option Nat) : Label → SC → Machine.State → Prop
-  | .kernel c op, s, m => StepObl k C ObR ObW π (kopOf op w) (s.view c) m
-  | .spawn c ps ls, s, m => OblAlong ObR ObW m (realize π w (.spawn c ps ls) s m) ∧
+    (w : Nat → Nat → UInt8 × Option Nat) : Label → SC → ArenaReg → Machine.State → Prop
+  | .kernel c op, s, _, m => StepObl k C ObR ObW π (kopOf op w) (s.view c) m
+  | .spawn c ps ls, s, ar, m => OblAlong ObR ObW m (realize π w (.spawn c ps ls) s ar m) ∧
       NewLayout π.L (enterP (s.view c) ls) (s.view c).P.length m.next π.geom (rootIdx ls.toShape)
-  | .spawnVal c ps ls vs, s, m => OblAlong ObR ObW m (realize π w (.spawnVal c ps ls vs) s m) ∧
+  | .spawnVal c ps ls vs, s, ar, m =>
+    OblAlong ObR ObW m (realize π w (.spawnVal c ps ls vs) s ar m) ∧
       NewLayout π.L (enterP (s.view c) ls) (s.view c).P.length m.next π.geom (rootIdx ls.toShape)
-  | lbl, s, m => OblAlong ObR ObW m (realize π w lbl s m)
+  | lbl, s, ar, m => OblAlong ObR ObW m (realize π w lbl s ar m)
 
 /-! ## R1, step by step -/
 
@@ -467,14 +509,16 @@ every memory state `m` with `ReprC` of `st.1`, under the obligations of the para
 (`Refinement.ParamsOK`), the kernel invariant `KInvCA` of `st.1` and the obligations of the step
 (`StepOblC`, explicit), the realization of `lbl` is an execution of `ok` raw steps from `m` to a
 state related to `st'.1` by `ReprC`. -/
-theorem r1_lstep {L : MutexLayout} {lbl : Label} {st st' : SC × SyncReg} {m : Machine.State}
-    (hπ : Refinement.ParamsOK C π) (hR : ReprC π.L π.rtok st.1 m) (hk : KInvCA st.1)
-    (h : LStep k L lbl st st') (hob : StepOblC k C ObR ObW π w lbl st.1 m) :
-    Machine.Exec C ObR ObW (realize π w lbl st.1 m) m (run m (realize π w lbl st.1 m)) ∧
-      ReprC π.L π.rtok st'.1 (run m (realize π w lbl st.1 m)) := by
+theorem r1_lstep {L : MutexLayout} {lbl : Label} {st st' : SC × SyncReg × ArenaReg}
+    {m : Machine.State} (hπ : Refinement.ParamsOK C π) (hR : ReprC π.L π.rtok st.1 m)
+    (hk : KInvCA st.1) (h : LStep k L lbl st st')
+    (hob : StepOblC k C ObR ObW π w lbl st.1 st.2.2 m) :
+    Machine.Exec C ObR ObW (realize π w lbl st.1 st.2.2 m) m
+        (run m (realize π w lbl st.1 st.2.2 m)) ∧
+      ReprC π.L π.rtok st'.1 (run m (realize π w lbl st.1 st.2.2 m)) := by
   cases h with
   | kernel h => exact r1_kernel hπ hR hk h hob
-  | @spawn s s' reg c ps ls h =>
+  | @spawn s s' reg ar c ps ls h =>
     obtain ⟨-, h⟩ := h; obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
     obtain ⟨hw, -, -, -, -⟩ := view_facts hk c
     obtain ⟨hex, hR'⟩ := realize_enter (C := C) (ObR := ObR) (ObW := ObW) (ps := ps)
@@ -484,7 +528,7 @@ theorem r1_lstep {L : MutexLayout} {lbl : Label} {st st' : SC × SyncReg} {m : M
     rw [hpush.mem]
     show f ∈ s.nF :: (s.view c).F ↔ _
     rw [List.mem_cons, SC.mem_view_F]
-  | @spawnVal s s' reg c ps ls vs h =>
+  | @spawnVal s s' reg ar c ps ls vs h =>
     obtain ⟨-, h⟩ := h; obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
     obtain ⟨hob, hlay⟩ := hob
     simp only [realize] at hob ⊢
@@ -521,7 +565,7 @@ theorem r1_lstep {L : MutexLayout} {lbl : Label} {st st' : SC × SyncReg} {m : M
       (fun v hv => spawn_frameOwned (hpre.freshDst v hv)) hframe hR₁' hob₂
     rw [run_append]
     exact ⟨exec_append hex₁ hex₂, reprC_yield hR₂⟩
-  | @terminate s s' reg c h =>
+  | @terminate s s' reg ar c h =>
     obtain ⟨-, h⟩ := h; obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
     obtain ⟨hw, -, -, -, -⟩ := view_facts hk c
     have hfr := hk.1.1.1
@@ -549,6 +593,45 @@ theorem r1_lstep {L : MutexLayout} {lbl : Label} {st st' : SC × SyncReg} {m : M
     obtain ⟨-, e, g, -, -, -, -, -, rfl⟩ := h
     refine ⟨.nil _, reprC_set_same ?_ ?_ ?_ hR⟩ <;> unfold releaseEff <;> split <;> rfl
   | resetLock h => obtain ⟨-, -, -, -, -, -, rfl⟩ := h; exact ⟨.nil _, hR⟩
+  | newArena h => obtain ⟨-, -, rfl⟩ := newArenaStepC_ok h; exact ⟨.nil _, hR⟩
+  | @issue s reg ar c i region dst st' h =>
+    rcases st' with ⟨s', ar'⟩
+    obtain ⟨E, s₁, hE, -, -, hsp, hsto, -⟩ := issueStepC_ok h
+    dsimp only at hsto ⊢
+    obtain ⟨t, hR₁, rfl⟩ := viewStep_ok hsp
+    have hR₁' : SplitStep k E.internal [region] (s.view c) (.ok t) := hR₁
+    have hwt : WF3 t := split_preserves_wf3 (view_facts hk c).1 hR₁'
+    obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hR₁'
+    have hv : (s.set (splitEff (s.view c) E.internal [region])).view c =
+        splitEff (s.view c) E.internal [region] := SC.view_set rfl
+    obtain ⟨-, h2⟩ := hsto; obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h2
+    have hob' := hob
+    simp only [StepOblC, realize_issue π w hE] at hob' ⊢
+    have hR₁'' : ReprC π.L π.rtok (s.set (splitEff (s.view c) E.internal [region])) m :=
+      reprC_set_same rfl rfl rfl hR
+    obtain ⟨hex, hR'⟩ := realize_store (C := C) (ty := π.ty) (pe := π.pe) (a := s.A.length)
+      ((reprC_view c).1 hR₁'') (by rw [hv]; exact hwt) hpre.usable hpre.leaf hob'
+    refine ⟨hex, (reprC_set fun f => ?_).2 hR'⟩
+    have : (storeEff ((s.set (splitEff (s.view c) E.internal [region])).view c) s.A.length
+        dst).F = ((s.set (splitEff (s.view c) E.internal [region])).view c).F := by
+      unfold storeEff; split <;> rfl
+    rw [this]; exact SC.mem_view_F
+  | @reset s reg ar c i st' h =>
+    rcases st' with ⟨s', ar'⟩
+    obtain ⟨E, s₁, hE, hd, hrl, -, -⟩ := resetStepC_ok (k := k) h
+    dsimp only at hrl ⊢
+    rw [(realize_arena_nil π w s ar m c 0 i).2]
+    obtain ⟨t₁, hR₁, rfl⟩ := viewStep_ok hd
+    obtain ⟨t₂, hR₂, rfl⟩ := viewStep_ok hrl
+    have hR₁' : DeriveStep E.internal (footprint s.P E.storage) .modify (s.view c) (.ok t₁) := hR₁
+    obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hR₁'
+    have hR₂' : ReleaseStep s.A.length
+        ((s.set (deriveEff (s.view c) E.internal (footprint s.P E.storage) .modify)).view c)
+        (.ok t₂) := hR₂
+    obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hR₂'
+    refine ⟨.nil _, ?_⟩
+    rw [SC.set_set]
+    refine reprC_set_same ?_ ?_ ?_ hR <;> unfold releaseEff <;> split <;> rfl
 
 end R1
 
@@ -560,10 +643,10 @@ operation O1–O16 executed by the context is the realization `opsOf` of
 those of `Refinement.StepObl` on the projection, and `ReprC` is `Repr` of the projection. -/
 theorem r5_realize {Ty : Type} {k : K} {C : Nat → Nat → Prop} {ObR : Machine.ReadOblSpec Ty}
     {ObW : Machine.WriteOblSpec Ty} {π : Refinement.Params Ty}
-    {w : Nat → Nat → UInt8 × Option Nat} {s : SC} (hs : s.Single) (op : KernelOp)
-    (m : Machine.State) :
-    realize π w (.kernel 0 op) s m = opsOf π (kopOf op w) s.toS3 m ∧
-      (StepOblC k C ObR ObW π w (.kernel 0 op) s m ↔
+    {w : Nat → Nat → UInt8 × Option Nat} {s : SC} (hs : s.Single) (ar : ArenaReg)
+    (op : KernelOp) (m : Machine.State) :
+    realize π w (.kernel 0 op) s ar m = opsOf π (kopOf op w) s.toS3 m ∧
+      (StepOblC k C ObR ObW π w (.kernel 0 op) s ar m ↔
         StepObl k C ObR ObW π (kopOf op w) s.toS3 m) ∧
       (ReprC π.L π.rtok s m ↔ Refinement.Repr π.L π.rtok s.toS3 m) := by
   refine ⟨?_, ?_, ?_⟩
@@ -577,9 +660,9 @@ theorem r5_realize {Ty : Type} {k : K} {C : Nat → Nat → Prop} {ObR : Machine
 /-! ## R2 and R3: simulation of encapsulated runs (WC4 C22, C23, C25; Spec 1 §82 preamble) -/
 
 /-- Extension of an encapsulated trace by one encapsulated step (WC4 C22, C23). -/
-theorem EncapsulatedTrace.snoc {k : K} {L : MutexLayout} {st₀ st st' : SC × SyncReg}
+theorem EncapsulatedTrace.snoc {k : K} {L : MutexLayout} {st₀ st st' : SC × SyncReg × ArenaReg}
     {lbls : List Label} {lbl : Label} (h : EncapsulatedTrace k L st₀ lbls st)
-    (he : Encap L st lbl) (hs : LStep k L lbl st st') :
+    (he : Encap L (st.1, st.2.1) lbl) (hs : LStep k L lbl st st') :
     EncapsulatedTrace k L st₀ (lbls ++ [lbl]) st' := by
   induction h with
   | nil => exact .cons he hs .nil
@@ -594,19 +677,19 @@ and writes of the statics (`Refinement.repr_init`); then each step of an `Encaps
 `w`, followed by its realization. Contexts interleave at the grain of abstract steps. -/
 inductive SimRunC {Ty : Type} (k : K) (L : MutexLayout) (C : Nat → Nat → Prop)
     (ObR : Machine.ReadOblSpec Ty) (ObW : Machine.WriteOblSpec Ty) (statics : Statics)
-    (π : Refinement.Params Ty) : SC × SyncReg → Machine.State → Prop where
+    (π : Refinement.Params Ty) : SC × SyncReg × ArenaReg → Machine.State → Prop where
   | init : StaticsOK statics →
       NewLayout π.L (S3.init statics).P 0 0 π.geom (rootIdx (statics.map (·.1))) →
       OblAlong ObR ObW (run Machine.State.empty (allocOps (Ty := Ty) π.pl π.geom π.rtok 0
         Machine.State.empty (rootIdx (statics.map (·.1))))) (writeOps (run Machine.State.empty
           (allocOps (Ty := Ty) π.pl π.geom π.rtok 0 Machine.State.empty
             (rootIdx (statics.map (·.1))))) π.L π.ty π.ival (initLeaves statics)) →
-      SimRunC k L C ObR ObW statics π (SC.ofS3 (S3.init statics), [])
+      SimRunC k L C ObR ObW statics π (SC.ofS3 (S3.init statics), [], [])
         (run Machine.State.empty (initOps π.pl π.geom π.rtok π.L π.ty π.ival statics))
-  | step {lbl : Label} {w : Nat → Nat → UInt8 × Option Nat} {st st' : SC × SyncReg}
-      {m : Machine.State} : SimRunC k L C ObR ObW statics π st m → Encap L st lbl →
-      LStep k L lbl st st' → StepOblC k C ObR ObW π w lbl st.1 m →
-      SimRunC k L C ObR ObW statics π st' (run m (realize π w lbl st.1 m))
+  | step {lbl : Label} {w : Nat → Nat → UInt8 × Option Nat} {st st' : SC × SyncReg × ArenaReg}
+      {m : Machine.State} : SimRunC k L C ObR ObW statics π st m → Encap L (st.1, st.2.1) lbl →
+      LStep k L lbl st st' → StepOblC k C ObR ObW π w lbl st.1 st.2.2 m →
+      SimRunC k L C ObR ObW statics π st' (run m (realize π w lbl st.1 st.2.2 m))
 
 /-- **R2** (WC4 C22, C23, C25; Spec 1 §82 preamble, §9 ¶9), at the grain of abstract steps: under
 `DDSound(K)` (Spec 1 §80) and the obligations of the parameters, for every translated run of
@@ -615,13 +698,14 @@ encapsulated labelled steps, the memory state is reached from the empty state by
 `EncapsulatedTrace` from the initial state of Spec 1 §47. -/
 theorem simulationC {Ty : Type} {k : K} {L : MutexLayout} {C : Nat → Nat → Prop}
     {ObR : Machine.ReadOblSpec Ty} {ObW : Machine.WriteOblSpec Ty} {statics : Statics}
-    {π : Refinement.Params Ty} {st : SC × SyncReg} {m : Machine.State} (hdd : DDSound k)
-    (hπ : Refinement.ParamsOK C π) (h : SimRunC k L C ObR ObW statics π st m) :
+    {π : Refinement.Params Ty} {st : SC × SyncReg × ArenaReg} {m : Machine.State}
+    (hdd : DDSound k) (hπ : Refinement.ParamsOK C π) (h : SimRunC k L C ObR ObW statics π st m) :
     (∃ ops, Machine.Exec C ObR ObW ops Machine.State.empty m) ∧ ReprC π.L π.rtok st.1 m ∧
-      ∃ lbls, EncapsulatedTrace k L (SC.ofS3 (S3.init statics), []) lbls st := by
+      ∃ lbls, EncapsulatedTrace k L (SC.ofS3 (S3.init statics), [], []) lbls st := by
   have key : ((∃ ops, Machine.Exec C ObR ObW ops Machine.State.empty m) ∧
       ReprC π.L π.rtok st.1 m ∧
-      ∃ lbls, EncapsulatedTrace k L (SC.ofS3 (S3.init statics), []) lbls st) ∧ KInvCA st.1 := by
+      ∃ lbls, EncapsulatedTrace k L (SC.ofS3 (S3.init statics), [], []) lbls st) ∧
+      KInvCA st.1 := by
     induction h with
     | init hst hlay hob =>
       obtain ⟨hex, hR⟩ := repr_init (C := C) hst hπ.1 hπ.2.1 hlay hob
@@ -666,10 +750,10 @@ step has a `ub` outcome in the state where it runs. -/
 theorem r3_step {Ty : Type} {k : K} {C : Nat → Nat → Prop} {ObR : Machine.ReadOblSpec Ty}
     {ObW : Machine.WriteOblSpec Ty} {π : Refinement.Params Ty}
     {w : Nat → Nat → UInt8 × Option Nat} {L : MutexLayout} {lbl : Label}
-    {st st' : SC × SyncReg} {m : Machine.State} (hπ : Refinement.ParamsOK C π)
+    {st st' : SC × SyncReg × ArenaReg} {m : Machine.State} (hπ : Refinement.ParamsOK C π)
     (hR : ReprC π.L π.rtok st.1 m) (hk : KInvCA st.1) (h : LStep k L lbl st st')
-    (hob : StepOblC k C ObR ObW π w lbl st.1 m) :
-    Along (NoUB C ObR ObW) m (realize π w lbl st.1 m) :=
+    (hob : StepOblC k C ObR ObW π w lbl st.1 st.2.2 m) :
+    Along (NoUB C ObR ObW) m (realize π w lbl st.1 st.2.2 m) :=
   exec_noUB (r1_lstep hπ hR hk h hob).1
 
 /-- **R3** (Spec 1 §20.1, §82; WC4 C25), corollary of R2 on the fragment where contexts interleave
@@ -679,8 +763,8 @@ It says nothing about concurrent byte accesses, atomicity, memory orders or data
 OB-C01–OB-C06). -/
 theorem concrete_safety {Ty : Type} {k : K} {L : MutexLayout} {C : Nat → Nat → Prop}
     {ObR : Machine.ReadOblSpec Ty} {ObW : Machine.WriteOblSpec Ty} {statics : Statics}
-    {π : Refinement.Params Ty} {st : SC × SyncReg} {m : Machine.State} (hdd : DDSound k)
-    (hπ : Refinement.ParamsOK C π) (h : SimRunC k L C ObR ObW statics π st m) :
+    {π : Refinement.Params Ty} {st : SC × SyncReg × ArenaReg} {m : Machine.State}
+    (hdd : DDSound k) (hπ : Refinement.ParamsOK C π) (h : SimRunC k L C ObR ObW statics π st m) :
     ∃ ops, Machine.Exec C ObR ObW ops Machine.State.empty m ∧
       Along (NoUB C ObR ObW) Machine.State.empty ops := by
   obtain ⟨⟨ops, hex⟩, -, -⟩ := simulationC hdd hπ h
@@ -698,8 +782,8 @@ variable (k : K) [∀ r r', Decidable (k.DeclaredDisjoint r r')] [DecidablePred 
   (w : Nat → Nat → UInt8 × Option Nat)
 
 /-- Decidability of the obligations of a labelled step (Spec 1 §20.3, §82). -/
-instance stepOblCDec (lbl : Label) (s : SC) (m : Machine.State) :
-    Decidable (StepOblC k C ObR ObW π w lbl s m) := by
+instance stepOblCDec (lbl : Label) (s : SC) (ar : ArenaReg) (m : Machine.State) :
+    Decidable (StepOblC k C ObR ObW π w lbl s ar m) := by
   cases lbl <;> unfold StepOblC <;> infer_instance
 
 end Dec
@@ -718,34 +802,36 @@ def mS0 : Machine.State :=
 
 /-- After `enterFrame` of context 0 (Spec 1 §72). -/
 def mS1 : Machine.State :=
-  run mS0 (realize πS wv (.kernel 0 (.enter [] [(none, 0), (none, 0)])) q0 mS0)
+  run mS0 (realize πS wv (.kernel 0 (.enter [] [(none, 0), (none, 0)])) q0 [] mS0)
 /-- After `write` of `v` (Spec 1 §67). -/
-def mS2 : Machine.State := run mS1 (realize πS wv (.kernel 0 (.write 1 [1])) q1 mS1)
+def mS2 : Machine.State := run mS1 (realize πS wv (.kernel 0 (.write 1 [1])) q1 [] mS1)
 /-- After `write` of `p` (Spec 1 §67). -/
-def mS3 : Machine.State := run mS2 (realize πS wv (.kernel 0 (.write 2 [2])) q2 mS2)
+def mS3 : Machine.State := run mS2 (realize πS wv (.kernel 0 (.write 2 [2])) q2 [] mS2)
 /-- After `alloc` (Spec 1 §71). -/
-def mS4 : Machine.State := run mS3 (realize πS wv (.kernel 0 (.alloc 2 1 [(none, 0)])) q3 mS3)
+def mS4 : Machine.State := run mS3 (realize πS wv (.kernel 0 (.alloc 2 1 [(none, 0)])) q3 [] mS3)
 /-- After the by-value composite (WC4 C5). -/
-def mS5 : Machine.State := run mS4 (realize πS wv (.spawnVal 0 [] [(none, 0)] [(1, 4)]) q4 mS4)
+def mS5 : Machine.State := run mS4 (realize πS wv (.spawnVal 0 [] [(none, 0)] [(1, 4)]) q4 [] mS4)
 /-- After `exitFrameC` of frame 1 (WC4 C6). -/
-def mS6 : Machine.State := run mS5 (realize πS wv (.kernel 0 .exit) q5 mS5)
+def mS6 : Machine.State := run mS5 (realize πS wv (.kernel 0 .exit) q5 [] mS5)
 
 /-- The trace of WC4 S4 (`Traces.s4_trace`) is a translated run: each step satisfies its
 obligations under the fixed parameters (non-vacuity of `SimRunC`, Spec 1 §82). -/
-theorem s4_simRun : SimRunC K0 L0 (· = ·) obR obW s4st πS (q6, []) mS6 := by
-  have h0 : SimRunC K0 L0 (· = ·) obR obW s4st πS (q0, []) mS0 :=
+theorem s4_simRun : SimRunC K0 L0 (· = ·) obR obW s4st πS (q6, [], []) mS6 := by
+  have h0 : SimRunC K0 L0 (· = ·) obR obW s4st πS (q0, [], []) mS0 :=
     .init (by decide) (by decide) (by decide)
   have h1 := SimRunC.step (w := wv) (lbl := .kernel 0 (.enter [] [(none, 0), (none, 0)]))
-    (st' := (q1, [])) h0 trivial (.kernel s4_steps.1) (by decide)
-  have h2 := SimRunC.step (w := wv) (lbl := .kernel 0 (.write 1 [1])) (st' := (q2, [])) h1
+    (st' := (q1, [], [])) h0 trivial (.kernel s4_steps.1) (by decide)
+  have h2 := SimRunC.step (w := wv) (lbl := .kernel 0 (.write 1 [1])) (st' := (q2, [], [])) h1
     trivial (.kernel s4_steps.2.1) (by decide)
-  have h3 := SimRunC.step (w := wv) (lbl := .kernel 0 (.write 2 [2])) (st' := (q3, [])) h2
+  have h3 := SimRunC.step (w := wv) (lbl := .kernel 0 (.write 2 [2])) (st' := (q3, [], [])) h2
     trivial (.kernel s4_steps.2.2.1) (by decide)
-  have h4 := SimRunC.step (w := wv) (lbl := .kernel 0 (.alloc 2 1 [(none, 0)])) (st' := (q4, []))
+  have h4 := SimRunC.step (w := wv) (lbl := .kernel 0 (.alloc 2 1 [(none, 0)]))
+    (st' := (q4, [], []))
     h3 trivial (.kernel s4_steps.2.2.2.1) (by decide)
-  have h5 := SimRunC.step (w := wv) (lbl := .spawnVal 0 [] [(none, 0)] [(1, 4)]) (st' := (q5, []))
+  have h5 := SimRunC.step (w := wv) (lbl := .spawnVal 0 [] [(none, 0)] [(1, 4)])
+    (st' := (q5, [], []))
     h4 ⟨fun _ h => (by cases h), trivial⟩ (.spawnVal s4_steps.2.2.2.2.1) (by decide)
-  exact SimRunC.step (w := wv) (lbl := .kernel 0 .exit) (st' := (q6, [])) h5 trivial
+  exact SimRunC.step (w := wv) (lbl := .kernel 0 .exit) (st' := (q6, [], [])) h5 trivial
     (.kernel s4_steps.2.2.2.2.2) (by decide)
 
 /-- Non-vacuity of R2 and R3 (WC4 S4, C5, C6; Spec 1 §82): the run of S4, where context 0 creates
@@ -756,7 +842,7 @@ dead; the allocation of `d` is live and holds the bytes written into `v` before 
 theorem s4_realized :
     ((∃ ops, Machine.Exec (· = ·) obR obW ops Machine.State.empty mS6) ∧
       ReprC πS.L πS.rtok q6 mS6 ∧
-      ∃ lbls, EncapsulatedTrace K0 L0 (SC.ofS3 (S3.init s4st), []) lbls (q6, [])) ∧
+      ∃ lbls, EncapsulatedTrace K0 L0 (SC.ofS3 (S3.init s4st), [], []) lbls (q6, [], [])) ∧
     (∃ ops, Machine.Exec (· = ·) obR obW ops Machine.State.empty mS6 ∧
       Along (NoUB (· = ·) obR obW) Machine.State.empty ops) ∧
     (mS6.allocs (πS.L 1).alloc).map (·.live) = some false ∧

@@ -709,8 +709,8 @@ theorem init_set {L : MutexLayout} {s : SC} {reg : SyncReg} {i : Nat} {e e' : Sy
     · exact hci x (List.mem_of_getElem? hj) hl
 
 /-- `newMutex` (WC4 C13; C13.10: `initM`) preserves `SyncState`. -/
-theorem newMutex_syncState {k : K} {L : MutexLayout} {adm : List Nat} {s : SC} {reg : SyncReg}
-    {c g : Nat} {st' : SC × SyncReg} (h : NewMutexOk k L adm s reg c g st') (hw : WF3 s.flat)
+theorem newMutex_syncState {k : K} {L : MutexLayout} {ar : ArenaReg} {s : SC} {reg : SyncReg}
+    {c g : Nat} {st' : SC × SyncReg} (h : NewMutexOk k L ar s reg c g st') (hw : WF3 s.flat)
     (hs : SyncState L s reg) : SyncState L st'.1 st'.2 := by
   obtain ⟨hc, hu, hsi, hci⟩ := syncState_iff.1 hs
   have hcore := newMutex_preserves h hc
@@ -916,17 +916,38 @@ open SyncPreserveAux SyncInitAux
 
 /-! ## Theorem 4, preservation half -/
 
+/-- A kernel step that is neither `transfer` nor `endUse`, taken under `Encap`, preserves
+`SyncState` (WC4 C21, C22, C23). -/
+theorem kernel_syncState {k : K} {L : MutexLayout} {reg : SyncReg} {c : Nat} {op : KernelOp}
+    {s s' : SC} (h : opStepC k op c s (.ok s')) (he : Encap L (s, reg) (.kernel c op))
+    (hnt : ∀ src dst, op ≠ .transfer src dst) (hne : ∀ p, op ≠ .endUse p) (hw : WF3 s.flat)
+    (hw' : WF3 s'.flat) (hs : SyncState L s reg) : SyncState L s' reg :=
+  facts_syncState (opStep_facts h he hnt hw) (opStep_init h hnt hne) hw hw' hs
+
+/-- `WF3` of the globally live frames after an operation run on the view of `c` that keeps the
+stack (WC4 C2). -/
+theorem wf3_after_view {k : K} {op : KernelOp} {c : Nat} {s s' : SC} (hfr : FramesC s)
+    (h : ViewStep (op.Step k) c s (.ok s'))
+    (hW : ∀ t', op.Step k (s.view c) (.ok t') → WF3 t' ∧ t'.F = (s.view c).F) :
+    WF3 s'.flat := by
+  obtain ⟨t', hR, rfl⟩ := SyncPreserveAux.viewStep_ok h
+  obtain ⟨hwt, hF⟩ := hW t' hR
+  have hv : (s.set t').view c = t' := SC.view_set hF
+  exact SC.wf3_flat_of_view (c := c) (by rw [hv]; exact hwt) hfr.nodup
+
 /-- Theorem 4 (WC4 C21, C22, C23) on one labelled step: every labelled step taken under `Encap`
 (WC4 C22.1–C22.3, C22.5), `transfer` and the by-value composite included, preserves `SyncState`
 (`SyncInv`, WC4 C21.1–C21.7, and `GrantDiscipline`, WC4 C22). `KInvCA` before the step and `WF3`
-after it are supplied by theorem 2. -/
-theorem lstep_preserves {k : K} {L : MutexLayout} {lbl : Label} {st st' : SC × SyncReg}
-    (h : LStep k L lbl st st') (he : Encap L st lbl) (hk : KInvCA st.1) (hw' : WF3 st'.1.flat)
-    (hs : SyncState L st.1 st.2) :
-    SyncState L st'.1 st'.2 := by
+after it are supplied by theorem 2. For `issue` and `reset`, whose kernel steps derive from the
+`internal` of an arena (Spec 1 Part XIV), the separation of the registries `AdminSep` (Spec 1 §56,
+WC4 C13.7) excludes that `internal` be the `guarded` of a live entry. -/
+theorem lstep_preserves {k : K} {L : MutexLayout} {lbl : Label} {st st' : SC × SyncReg × ArenaReg}
+    (h : LStep k L lbl st st') (he : Encap L (st.1, st.2.1) lbl) (hk : KInvCA st.1)
+    (hw' : WF3 st'.1.flat) (hsep : AdminSep st.1 st.2.1 st.2.2) (hs : SyncState L st.1 st.2.1) :
+    SyncState L st'.1 st'.2.1 := by
   have hw : WF3 st.1.flat := hk.1.1.2
   cases h with
-  | @kernel s s' reg c op h =>
+  | @kernel s s' reg ar c op h =>
     cases op
     case transfer src dst =>
       obtain ⟨-, h'⟩ := h; obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h'
@@ -935,15 +956,15 @@ theorem lstep_preserves {k : K} {L : MutexLayout} {lbl : Label} {st st' : SC × 
     all_goals
       exact facts_syncState (opStep_facts (reg := reg) h he (fun _ _ h => by cases h) hw)
         (opStep_init h (fun _ _ h => by cases h) (fun _ h => by cases h)) hw hw' hs
-  | @spawn s s' reg c ps ls h =>
+  | @spawn s s' reg ar c ps ls h =>
     obtain ⟨-, h'⟩ := h; obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h'
     exact facts_syncState (spawnEff_facts hpre.params hpre.localsOK) (spawn_init hpre.localsOK)
       hw hw' hs
-  | @terminate s s' reg c h =>
+  | @terminate s s' reg ar c h =>
     have hf := term_facts (reg := reg) hw h
     obtain ⟨-, h'⟩ := h; obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h'
     exact facts_syncState hf (initFacts_same rfl rfl) hw hw' hs
-  | @join s s' reg c d h =>
+  | @join s s' reg ar c d h =>
     have hf := join_facts (reg := reg) h
     cases h
     exact facts_syncState hf (initFacts_same rfl rfl) hw hw' hs
@@ -953,6 +974,34 @@ theorem lstep_preserves {k : K} {L : MutexLayout} {lbl : Label} {st st' : SC × 
   | unlock h => exact unlock_syncState h hw hw' hs
   | resetLock h => exact resetLock_syncState h hs
   | spawnVal h => exact spawnVal_syncState hk h he hs
+  | newArena h => obtain ⟨-, -, rfl⟩ := newArenaStepC_ok h; exact hs
+  | @issue s reg ar c i region dst st' h =>
+    obtain ⟨E, s₁, hE, -, -, hsp, hsto, -⟩ := issueStepC_ok h
+    have hsep' : ∀ e ∈ reg, e.Live s → E.internal ≠ e.guarded := fun e hm hl heq =>
+      hsep e hm E (List.mem_of_getElem? hE) hl
+        (by show s.flat.Active E.internal; rw [heq]; exact hl) heq.symm
+    have hw₁ : WF3 s₁.flat := wf3_after_view hk.1.1.1
+      (show ViewStep ((KernelOp.split E.internal [region]).Step k) c s (.ok s₁) from hsp)
+      fun t' hR => by
+        have hR' : SplitStep k E.internal [region] (s.view c) (.ok t') := hR
+        refine ⟨split_preserves_wf3 (SC.wf3_view hk.1.1.1 hw) hR', ?_⟩
+        obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hR'; rfl
+    exact kernel_syncState hsto trivial (fun _ _ e => by cases e) (fun _ e => by cases e) hw₁ hw'
+      (kernel_syncState hsp hsep' (fun _ _ e => by cases e) (fun _ e => by cases e) hw hw₁ hs)
+  | @reset s reg ar c i st' h =>
+    obtain ⟨E, s₁, hE, hd, hrl, -, -⟩ := resetStepC_ok (k := k) h
+    have hsep' : ∀ e ∈ reg, e.Live s → E.internal ≠ e.guarded := fun e hm hl heq =>
+      hsep e hm E (List.mem_of_getElem? hE) hl
+        (by show s.flat.Active E.internal; rw [heq]; exact hl) heq.symm
+    have hw₁ : WF3 s₁.flat := wf3_after_view hk.1.1.1
+      (show ViewStep ((KernelOp.derive E.internal (footprint s.P E.storage) .modify).Step k) c s
+        (.ok s₁) from hd)
+      fun t' hR => by
+        have hR' : DeriveStep E.internal (footprint s.P E.storage) .modify (s.view c) (.ok t') := hR
+        refine ⟨derive_preserves_wf3 (SC.wf3_view hk.1.1.1 hw) hR', ?_⟩
+        obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hR'; rfl
+    exact kernel_syncState hrl trivial (fun _ _ e => by cases e) (fun _ e => by cases e) hw₁ hw'
+      (kernel_syncState hd hsep' (fun _ _ e => by cases e) (fun _ e => by cases e) hw hw₁ hs)
 
 /-! ## A transfer onto a live mutex value is rejected (WC4 S18, C21.7; Spec 1 §63.3) -/
 

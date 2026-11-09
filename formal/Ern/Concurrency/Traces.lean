@@ -101,8 +101,8 @@ theorem unlock_enabled : UnlockOk L0 c2 reg2 0 0 (c3, reg1) :=
 
 /-- An encapsulated trace `newMutex`, `acquire`, `unlock` from `c0` with an empty registry (WC4
 C13, C16, C17, C22). -/
-theorem mutex_trace : EncapsulatedTrace K0 L0 (c0, [])
-    [.newMutex 0 1 [], .acquire 0 0, .unlock 0 0] (c3, reg1) :=
+theorem mutex_trace : EncapsulatedTrace K0 L0 (c0, [], [])
+    [.newMutex 0 1, .acquire 0 0, .unlock 0 0] (c3, reg1, []) :=
   .cons trivial (.newMutex newMutex_ok.1) <|
   .cons trivial (.acquire acquire_enabled) <|
   .cons trivial (.unlock unlock_enabled) .nil
@@ -249,8 +249,8 @@ theorem distinct_controllers_ok : NewMutexOk K0 L0 [] d1 [] 0 2 (d1, [⟨2, none
 
 /-- The two constructions of `distinct_controllers_ok` as an `EncapsulatedTrace` from `d1` with an
 empty registry (WC4 C22, C23). -/
-theorem distinct_controllers_trace : EncapsulatedTrace K0 L0 (d1, [])
-    [.newMutex 0 2 [], .newMutex 0 3 []] (d1, [⟨2, none⟩, ⟨3, none⟩]) :=
+theorem distinct_controllers_trace : EncapsulatedTrace K0 L0 (d1, [], [])
+    [.newMutex 0 2, .newMutex 0 3] (d1, [⟨2, none⟩, ⟨3, none⟩], []) :=
   .cons trivial (.newMutex distinct_controllers_ok.1) <|
   .cons trivial (.newMutex distinct_controllers_ok.2.1) .nil
 
@@ -286,10 +286,10 @@ theorem s4_steps : opStepC K0 (.enter [] [(none, 0), (none, 0)]) 0 q0 (.ok q1) �
     ⟨by decide, .ok (by decide)⟩, ⟨by decide, .ok (by decide)⟩⟩
 
 /-- The steps of S4 as an `EncapsulatedTrace` from `q0` with an empty registry (WC4 C22, C23). -/
-theorem s4_trace : EncapsulatedTrace K0 L0 (q0, [])
+theorem s4_trace : EncapsulatedTrace K0 L0 (q0, [], [])
     [.kernel 0 (.enter [] [(none, 0), (none, 0)]), .kernel 0 (.write 1 [1]),
      .kernel 0 (.write 2 [2]), .kernel 0 (.alloc 2 1 [(none, 0)]),
-     .spawnVal 0 [] [(none, 0)] [(1, 4)], .kernel 0 .exit] (q6, []) :=
+     .spawnVal 0 [] [(none, 0)] [(1, 4)], .kernel 0 .exit] (q6, [], []) :=
   .cons trivial (.kernel s4_steps.1) <| .cons trivial (.kernel s4_steps.2.1) <|
   .cons trivial (.kernel s4_steps.2.2.1) <| .cons trivial (.kernel s4_steps.2.2.2.1) <|
   .cons ⟨fun _ h => (by cases h), trivial⟩ (.spawnVal s4_steps.2.2.2.2.1) <|

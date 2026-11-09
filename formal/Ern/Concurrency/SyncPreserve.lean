@@ -1052,8 +1052,8 @@ theorem uniq_append {s : SC} {reg : SyncReg} {e' : SyncEntry} (hu : Uniq s reg)
 /-! ### `newMutex`, `acquire`, `unlock`, `resetLock` -/
 
 /-- `newMutex` (WC4 C13) preserves `SyncCore`. -/
-theorem newMutex_preserves {k : K} {L : MutexLayout} {adm : List Nat} {s : SC} {reg : SyncReg}
-    {c g : Nat} {st' : SC × SyncReg} (h : NewMutexOk k L adm s reg c g st')
+theorem newMutex_preserves {k : K} {L : MutexLayout} {ar : ArenaReg} {s : SC} {reg : SyncReg}
+    {c g : Nat} {st' : SC × SyncReg} (h : NewMutexOk k L ar s reg c g st')
     (hs : SyncCore L s reg) : SyncCore L st'.1 st'.2 := by
   obtain ⟨-, hpre, rfl⟩ := h
   obtain ⟨hes, hu⟩ := hs
@@ -1246,8 +1246,8 @@ theorem ctlUnique_append {L : MutexLayout} {s : SC} {reg : SyncReg} {e' : SyncEn
   · rfl
 
 /-- `newMutex` (WC4 C13.8) preserves controller uniqueness. -/
-theorem newMutex_ctlUnique {k : K} {L : MutexLayout} {adm : List Nat} {s : SC} {reg : SyncReg}
-    {c g : Nat} {st' : SC × SyncReg} (h : NewMutexOk k L adm s reg c g st')
+theorem newMutex_ctlUnique {k : K} {L : MutexLayout} {ar : ArenaReg} {s : SC} {reg : SyncReg}
+    {c g : Nat} {st' : SC × SyncReg} (h : NewMutexOk k L ar s reg c g st')
     (hu : CtlUnique L s reg) : CtlUnique L st'.1 st'.2 := by
   obtain ⟨-, hpre, rfl⟩ := h
   refine ctlUnique_append hu fun ctl hc => ?_

@@ -1,5 +1,6 @@
 import Ern.Concurrency.Sync
 import Ern.Concurrency.Transfer
+import Ern.MemoryModel.Arena
 
 /-!
 # Reference synchronization library
@@ -14,6 +15,11 @@ Library state separate from `S_C` (WC4 C2, C12), on the pattern of `Ern.MemoryMo
   contract obligation `SyncSound` of WC4 C14 ("cannot be used outside the corresponding valid
   synchronization contract");
 * derived operations `newMutex` (C13), `acquire` (C16), `unlock` (C17), `resetLock` (C18);
+* the arena registry of Spec 1 §46 beside the synchronization registry (WC4 C2, C19), and the
+  derived arena operations O17–O19 of `Ern.MemoryModel.Arena` (Spec 1 §76–§78, Part XIV) executed
+  by a context: `newArena`, `issue` (`split` then `store`, both as executed by the context, WC4
+  C2), `reset` (`derive` then `release` on the view of the context); the guard of Spec 1 §56
+  (§76.4, WC4 C13.7) of `newArena` and `newMutex` reads both registries;
 * labelled library steps, the by-value composite included (WC4 C23), runs, and the encapsulation
   hypothesis `EncapsulatedTrace` (WC4 C22.1–C22.3, C22.5; C23), a predicate on runs, never a
   precondition of a kernel operation.
@@ -21,7 +27,7 @@ Library state separate from `S_C` (WC4 C2, C12), on the pattern of `Ern.MemoryMo
 
 namespace Ern.Concurrency
 
-open Ern.MemoryModel.Access
+open Ern.MemoryModel Ern.MemoryModel.Access
 
 /-! ## Registry (WC4 C12) -/
 
@@ -216,6 +222,17 @@ structure SyncInv (L : MutexLayout) (s : SC) (reg : SyncReg) : Prop where
   /-- WC4 C21.7: the controller leaf is `Init`. -/
   ctlInit : CtlInit L s reg
 
+/-! ## Arena registry and the registries of live administrations (Spec 1 §46, §56) -/
+
+/-- The arena registry (Spec 1 §46): library state separate from the kernel state and from the
+synchronization registry (WC4 C2: library administration states remain separate from `S_C`). -/
+abbrev ArenaReg := List Arena.ArenaEntry
+
+/-- The synchronization registry as a registry of live administrations (Spec 1 §56; WC4 C13.7):
+the `guarded` identities of its live entries. -/
+def liveGuardeds (s : SC) (reg : SyncReg) : List Nat :=
+  (reg.filter fun e => decide (e.Live s)).map (·.guarded)
+
 /-! ## Derived operations (WC4 C13, C16–C18) -/
 
 /-- The mutex value `M` of WC4 C12, C13: the immediate structural parent of the place `slot`
@@ -225,11 +242,11 @@ def mutexOf (s : SC) (g : Nat) : Option Nat :=
   | some (Holder.place h) => parentOf s.P h
   | _ => none
 
-/-- Preconditions of `newMutex(guarded)` executed by `c` (WC4 C13.1–C13.10), with `adm` the
-identities used by the other live administrations (Spec 1 §56). The interface and realization
+/-- Preconditions of `newMutex(guarded)` executed by `c` (WC4 C13.1–C13.10), the arena registry
+`ar` being the other registry of live administrations (Spec 1 §56). The interface and realization
 obligations of WC4 C13 (C13.3, C13.6, former C13.10) are not represented: WC4 C13 says they "are
 not claimed to follow from the authority-only state `S_C`". -/
-structure NewMutexPre (k : K) (L : MutexLayout) (adm : List Nat) (s : SC) (reg : SyncReg)
+structure NewMutexPre (k : K) (L : MutexLayout) (ar : ArenaReg) (s : SC) (reg : SyncReg)
     (c g : Nat) : Prop where
   /-- WC4 C13.1: `guarded` is active, of own mode `Modify`, and held by a usable place. -/
   guarded : OptP (s.A[g]?) (fun y => y.active = true ∧ y.mode = .modify ∧
@@ -250,8 +267,9 @@ structure NewMutexPre (k : K) (L : MutexLayout) (adm : List Nat) (s : SC) (reg :
   sharedMutable : OptP (ControlOf L s ⟨g, none⟩) k.SharedMutable False
   /-- WC4 C13.7, Spec 1 §56: `guarded` is not the identity of another live entry. -/
   unique : ∀ e ∈ reg, e.Live s → e.guarded ≠ g
-  /-- WC4 C13.7, Spec 1 §56: `guarded` is not the identity of another live administration. -/
-  otherAdmin : g ∉ adm
+  /-- WC4 C13.7, Spec 1 §56: `guarded` is not the `internal` identity of a live arena of the
+  arena registry. -/
+  otherAdmin : g ∉ Arena.liveInternals s.flat ar
   /-- WC4 C13.8: no other live entry is associated with `ctl`. -/
   ctlUnique : OptP (ControlOf L s ⟨g, none⟩) (fun ctl => ∀ e ∈ reg, e.Live s →
     ControlOf L s e ≠ some ctl) False
@@ -259,8 +277,8 @@ structure NewMutexPre (k : K) (L : MutexLayout) (adm : List Nat) (s : SC) (reg :
   available : NoCoveringDesc s g
 
 /-- Decidability of the preconditions of `newMutex` (WC4 C13). -/
-instance (k : K) [DecidablePred k.SharedMutable] (L : MutexLayout) (adm : List Nat) (s : SC)
-    (reg : SyncReg) (c g : Nat) : Decidable (NewMutexPre k L adm s reg c g) :=
+instance (k : K) [DecidablePred k.SharedMutable] (L : MutexLayout) (ar : ArenaReg) (s : SC)
+    (reg : SyncReg) (c g : Nat) : Decidable (NewMutexPre k L ar s reg c g) :=
   decidable_of_iff (OptP (s.A[g]?) (fun y => y.active = true ∧ y.mode = .modify ∧
       PlaceUsable s.flat y.holder) False ∧
     (s.view c).ExercisableAt g .modify ∧
@@ -269,7 +287,7 @@ instance (k : K) [DecidablePred k.SharedMutable] (L : MutexLayout) (adm : List N
     OptP (mutexOf s g) (fun m => ∀ l ∈ footprint s.P m, s.I l = .init) False ∧
     OptP (s.A[g]?) (fun y => y.origin ≠ none → StoredOK s.P y) False ∧
     OptP (ControlOf L s ⟨g, none⟩) k.SharedMutable False ∧
-    (∀ e ∈ reg, e.Live s → e.guarded ≠ g) ∧ g ∉ adm ∧
+    (∀ e ∈ reg, e.Live s → e.guarded ≠ g) ∧ g ∉ Arena.liveInternals s.flat ar ∧
     OptP (ControlOf L s ⟨g, none⟩) (fun ctl => ∀ e ∈ reg, e.Live s →
       ControlOf L s e ≠ some ctl) False ∧
     NoCoveringDesc s g)
@@ -279,9 +297,9 @@ instance (k : K) [DecidablePred k.SharedMutable] (L : MutexLayout) (adm : List N
 /-- `newMutex(guarded)` executed by `c` (WC4 C13): registers the entry `⟨guarded, none⟩`; the
 kernel state is unchanged and no authority is created (WC4 C13 effect). WC4 C13 states no outcome
 other than success; only `ok` is defined. -/
-def NewMutexOk (k : K) (L : MutexLayout) (adm : List Nat) (s : SC) (reg : SyncReg) (c g : Nat)
+def NewMutexOk (k : K) (L : MutexLayout) (ar : ArenaReg) (s : SC) (reg : SyncReg) (c g : Nat)
     (st' : SC × SyncReg) : Prop :=
-  s.Live c ∧ NewMutexPre k L adm s reg c g ∧ st' = (s, reg ++ [⟨g, none⟩])
+  s.Live c ∧ NewMutexPre k L ar s reg c g ∧ st' = (s, reg ++ [⟨g, none⟩])
 
 /-- `acquire` on entry `i` executed by `c` (WC4 C16): with the library instantiation of
 `SyncAuthorized` for the entry, `deriveSync(guarded)` on the registry `reg` and the record of the
@@ -315,6 +333,163 @@ def ResetLockOk (L : MutexLayout) (s : SC) (reg : SyncReg) (c i : Nat) (st' : SC
     OptP (ControlOf L s e) (fun ctl => s.flat.Usable ctl ∧ isLeaf s.P ctl) False ∧
     st' = (s, reg.set i { e with grant := none })
 
+/-! ## Derived arena operations executed by a context (Spec 1 §76–§78; WC4 C2, C19) -/
+
+/-- Preconditions of `newArena(storage, internal)` executed by `c` (Spec 1 §76; WC4 C2): the
+clauses of `Arena.NewArenaBase` on the view of `c`, §76.6 being read on the concurrent kernel state
+(WC4 C2, C3, C20: `WF3` and `I1` over the globally live frames, `AnchorOrder` and
+`AnchorOrderHeld` on `ancestorC`), and the guard of §76.4 over the arena registry and the
+synchronization registry (Spec 1 §56: "all relevant registries of live administrations"; WC4
+C13.7, OB-C16), with `Arena.Guard56`. -/
+structure NewArenaPreC (s : SC) (reg : SyncReg) (ar : ArenaReg) (c storage internal : Nat) :
+    Prop where
+  /-- Spec 1 §76.1: `storage` is an existing, usable place. -/
+  storageUsable : (s.view c).Usable storage
+  /-- Spec 1 §76.1: `storage` is under exercisable `Modify` by the current frame. -/
+  storageRight : HasRight (s.view c) .modify storage
+  /-- Spec 1 §76.2: `internal` exists, is active and has own mode `Modify`. -/
+  internalAuth : OptP (s.A[internal]?) (fun y => y.active = true ∧ y.mode = .modify) False
+  /-- Spec 1 §76.2: `ExercisableAt(s, internal, Modify)`. -/
+  exercisable : (s.view c).ExercisableAt internal .modify
+  /-- Spec 1 §76.3: `internal` is held by a place, the arena value. -/
+  heldByPlace : OptP (s.A[internal]?) (fun y => y.holder.isPlace = true) False
+  /-- Spec 1 §76.3: `footprint(internal) ⊆ footprint(storage)`. -/
+  fpSub : ∀ l ∈ s.flat.afp internal, l ∈ footprint s.P storage
+  /-- Spec 1 §76.3: `footprint(storage) ⊆ footprint(internal)`. -/
+  fpSup : ∀ l ∈ footprint s.P storage, l ∈ s.flat.afp internal
+  /-- Spec 1 §76.5: all leaves of the arena value are already `Init`. -/
+  valueInit : OptP (s.A[internal]?) (fun y => Arena.LeavesInit s.flat y.holder) True
+  /-- Spec 1 §76.6: `WF3` (§49) over the whole kernel state (WC4 C2, C20). -/
+  wf3 : WF3 s.flat
+  /-- Spec 1 §76.6: `I1` (§50) over the whole kernel state (WC4 C2). -/
+  i1 : I1 s.flat
+  /-- Spec 1 §76.6 re-indexed (WC4 C3): `AnchorOrder` (§44) on `ancestorC`. -/
+  anchorOrder : AnchorOrderC s
+  /-- Spec 1 §76.6 re-indexed (WC4 C3): `AnchorOrderHeld` (§44) on `ancestorC`. -/
+  anchorOrderHeld : AnchorOrderHeldC s
+  /-- Spec 1 §76.6: the new entry satisfies `ArenaInv` (§55). -/
+  arenaInv : Arena.ArenaInv s.flat ⟨storage, internal, footprint s.P storage, []⟩
+  /-- Spec 1 §76.4, §56 (WC4 C13.7, OB-C16): no live administration of the arena registry nor of
+  the synchronization registry uses `internal`. -/
+  guard : Arena.Guard56 [Arena.liveInternals s.flat ar, liveGuardeds s reg] internal
+
+/-- Decidability of the preconditions of `newArena` executed by `c` (Spec 1 §76). -/
+instance (s : SC) (reg : SyncReg) (ar : ArenaReg) (c storage internal : Nat) :
+    Decidable (NewArenaPreC s reg ar c storage internal) :=
+  decidable_of_iff ((s.view c).Usable storage ∧ HasRight (s.view c) .modify storage ∧
+    OptP (s.A[internal]?) (fun y => y.active = true ∧ y.mode = .modify) False ∧
+    (s.view c).ExercisableAt internal .modify ∧
+    OptP (s.A[internal]?) (fun y => y.holder.isPlace = true) False ∧
+    (∀ l ∈ s.flat.afp internal, l ∈ footprint s.P storage) ∧
+    (∀ l ∈ footprint s.P storage, l ∈ s.flat.afp internal) ∧
+    OptP (s.A[internal]?) (fun y => Arena.LeavesInit s.flat y.holder) True ∧
+    WF3 s.flat ∧ I1 s.flat ∧ AnchorOrderC s ∧ AnchorOrderHeldC s ∧
+    Arena.ArenaInv s.flat ⟨storage, internal, footprint s.P storage, []⟩ ∧
+    Arena.Guard56 [Arena.liveInternals s.flat ar, liveGuardeds s reg] internal)
+    ⟨fun ⟨a, b, c, d, e, f, g, h, i, j, l, m, n, o⟩ => ⟨a, b, c, d, e, f, g, h, i, j, l, m, n, o⟩,
+     fun ⟨a, b, c, d, e, f, g, h, i, j, l, m, n, o⟩ => ⟨a, b, c, d, e, f, g, h, i, j, l, m, n, o⟩⟩
+
+/-- `newArena(storage, internal)` executed by `c` (Spec 1 §76, §58: `ok` or `reject`): the entry of
+`Arena.newArenaEff` is registered; the kernel state and the synchronization registry are
+unchanged (§76 `ok` effect). A context that is not live executes nothing. -/
+def NewArenaStepC (s : SC) (reg : SyncReg) (ar : ArenaReg) (c storage internal : Nat)
+    (o : Outcome3 (SC × ArenaReg)) : Prop :=
+  s.Live c ∧ Guarded (NewArenaPreC s reg ar c storage internal)
+    (s, ar ++ [⟨storage, internal, footprint s.P storage, []⟩]) o
+
+/-- `issue(arena, region, destination)` of entry `i` executed by `c` (Spec 1 §77, §58; Part XIV: a
+derived operation, on the pattern of `Arena.IssueD`): the static checks (§77.1, §77.2) and the
+availability `fail` (§77.4) on the view of `c`; then `split` of `internal` on the region (O2) and
+`store` of the block, of fresh identity `|A|`, into the destination (O8), both as executed by `c`
+(`opStepC`; WC4 C2, C3: §65.4 and §65.5 read `ancestorC`); the metadata is updated on `ok`
+(`Arena.issueMeta`). A context that is not live executes nothing. -/
+inductive IssueStepC (k : K) (s : SC) (ar : ArenaReg) (c i : Nat) (region : List Nat)
+    (dst : Nat) : Outcome3 (SC × ArenaReg) → Prop where
+  | noEntry : s.Live c → ar[i]? = none → IssueStepC k s ar c i region dst .reject
+  | static {E : Arena.ArenaEntry} : s.Live c → ar[i]? = some E →
+      ¬ Arena.IssueStatic (s.view c) E region dst → IssueStepC k s ar c i region dst .reject
+  | fail {E : Arena.ArenaEntry} : s.Live c → ar[i]? = some E →
+      Arena.IssueStatic (s.view c) E region dst → ¬ Arena.Avail E region →
+      IssueStepC k s ar c i region dst .fail
+  | split {E : Arena.ArenaEntry} : ar[i]? = some E → Arena.IssueStatic (s.view c) E region dst →
+      Arena.Avail E region → opStepC k (.split E.internal [region]) c s .reject →
+      IssueStepC k s ar c i region dst .reject
+  | store {E : Arena.ArenaEntry} {s₁ : SC} : ar[i]? = some E →
+      Arena.IssueStatic (s.view c) E region dst → Arena.Avail E region →
+      opStepC k (.split E.internal [region]) c s (.ok s₁) →
+      opStepC k (.store s.A.length dst) c s₁ .reject → IssueStepC k s ar c i region dst .reject
+  | ok {E : Arena.ArenaEntry} {s₁ s₂ : SC} : ar[i]? = some E →
+      Arena.IssueStatic (s.view c) E region dst → Arena.Avail E region →
+      opStepC k (.split E.internal [region]) c s (.ok s₁) →
+      opStepC k (.store s.A.length dst) c s₁ (.ok s₂) →
+      IssueStepC k s ar c i region dst (.ok (s₂, ar.set i (Arena.issueMeta s.flat E region)))
+
+/-- `reset(arena)` of entry `i` executed by `c` (Spec 1 §78, §58; Part XIV): the derived operation
+`Arena.ResetD` (`derive` of `internal` at `Modify` over the storage, `release`, the check of §78.3)
+on the view of `c`, written back (WC4 C2); `derive` and `release` read neither `ancestor` nor the
+stack beyond its top and its membership. A context that is not live executes nothing. -/
+def ResetStepC (s : SC) (ar : ArenaReg) (c i : Nat) (o : Outcome3 (SC × ArenaReg)) : Prop :=
+  s.Live c ∧ ∃ o₃, Arena.ResetD i ⟨s.view c, ar⟩ o₃ ∧
+    o = omap (fun L' => (s.set L'.kern, L'.arenas)) o₃
+
+/-- Writing back into `s` an `S3` whose stack is that of the view of `c`, then taking the view of
+`c`, gives that `S3` back (WC4 C2). -/
+theorem SC.view_set {s : SC} {c : Nat} {t : S3} (hF : t.F = (s.view c).F) :
+    (s.set t).view c = t := by
+  have h : (s.set t).view c = { t with F := (s.view c).F } := rfl
+  rw [h, ← hF]
+
+/-- Writing back twice keeps the second state only (WC4 C2). -/
+theorem SC.set_set (s : SC) (t u : S3) : (s.set t).set u = s.set u := rfl
+
+/-- An `ok` outcome of `newArena` executed by `c` (Spec 1 §76): the preconditions hold and the
+entry is registered. -/
+theorem newArenaStepC_ok {s : SC} {reg : SyncReg} {ar : ArenaReg} {c st i : Nat}
+    {st' : SC × ArenaReg} (h : NewArenaStepC s reg ar c st i (.ok st')) :
+    s.Live c ∧ NewArenaPreC s reg ar c st i ∧
+      st' = (s, ar ++ [⟨st, i, footprint s.P st, []⟩]) :=
+  ⟨h.1, Guarded.ok_iff.1 h.2⟩
+
+/-- An `ok` outcome of `issue` executed by `c` (Spec 1 §77, Part XIV): the static checks and
+availability, then `split` then `store` executed by `c`, then the metadata update. -/
+theorem issueStepC_ok {k : K} {s : SC} {ar : ArenaReg} {c i : Nat} {region : List Nat}
+    {dst : Nat} {st' : SC × ArenaReg} (h : IssueStepC k s ar c i region dst (.ok st')) :
+    ∃ E s₁, ar[i]? = some E ∧ Arena.IssueStatic (s.view c) E region dst ∧
+      Arena.Avail E region ∧ opStepC k (.split E.internal [region]) c s (.ok s₁) ∧
+      opStepC k (.store s.A.length dst) c s₁ (.ok st'.1) ∧
+      st'.2 = ar.set i (Arena.issueMeta s.flat E region) := by
+  cases h with
+  | ok hE hst hav hsp hsto => exact ⟨_, _, hE, hst, hav, hsp, hsto, rfl⟩
+
+/-- An `ok` outcome of `reset` executed by `c` (Spec 1 §78, Part XIV): `derive` of `internal` at
+`Modify` over the storage then `release` of the derived authority, both executed by `c` (WC4 C2),
+the check of §78.3 holding, then the metadata update. -/
+theorem resetStepC_ok {k : K} {s : SC} {ar : ArenaReg} {c i : Nat} {st' : SC × ArenaReg}
+    (h : ResetStepC s ar c i (.ok st')) :
+    ∃ E s₁, ar[i]? = some E ∧
+      opStepC k (.derive E.internal (footprint s.P E.storage) .modify) c s (.ok s₁) ∧
+      opStepC k (.release s.A.length) c s₁ (.ok st'.1) ∧ Arena.ResetNoDeps (s.view c) E ∧
+      st'.2 = ar.set i (Arena.resetMeta s.flat E) := by
+  obtain ⟨hl, o₃, hr, ho⟩ := h
+  cases hr with
+  | noEntry => cases ho
+  | derive => cases ho
+  | release => cases ho
+  | contract => cases ho
+  | @ok E t₁ t₂ hE hd hrl hnd =>
+    cases ho
+    have hF : t₁.F = (s.view c).F := by obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hd; rfl
+    refine ⟨E, s.set t₁, hE, ⟨hl, .ok t₁, hd, rfl⟩, ?_, hnd, rfl⟩
+    refine ⟨hl, .ok t₂, ?_, rfl⟩
+    rw [SC.view_set hF]; exact hrl
+
+/-- Separation of the two registries of live administrations (Spec 1 §56: "An authority identity
+may serve as `internal` for at most one live administrative abstraction"; WC4 C13.7, OB-C16): no
+identity is at once the `guarded` of a live synchronization entry and the `internal` of a live
+arena. -/
+def AdminSep (s : SC) (reg : SyncReg) (ar : ArenaReg) : Prop :=
+  ∀ e ∈ reg, ∀ E ∈ ar, e.Live s → Arena.Live s.flat E → e.guarded ≠ E.internal
+
 /-! ## Labelled steps, runs, encapsulation (WC4 C22, C23) -/
 
 /-- Label of a step of the kernel with the synchronization library. -/
@@ -324,38 +499,55 @@ inductive Label where
   | terminate (c : Nat)
   | join (c d : Nat)
   | deriveSync (c g : Nat)
-  | newMutex (c g : Nat) (adm : List Nat)
+  | newMutex (c g : Nat)
   | acquire (c i : Nat)
   | unlock (c i : Nat)
   | resetLock (c i : Nat)
   | spawnVal (c : Nat) (ps : List Nat) (ls : LocalShape) (vs : List (Nat × Nat))
+  | newArena (c storage internal : Nat)
+  | issue (c arena : Nat) (region : List Nat) (dst : Nat)
+  | reset (c arena : Nat)
 
-/-- Labelled `ok` step of the concurrent kernel with the synchronization library (WC4 C2, C4,
-C5, C6–C8, C13, C15–C18; WC4 C23 for the by-value composite): kernel and
-frame steps keep the registry; raw `deriveSync` runs under the
-library instantiation of `SyncAuthorized` on the current registry (WC4 C14). -/
-inductive LStep (k : K) (L : MutexLayout) : Label → SC × SyncReg → SC × SyncReg → Prop where
-  | kernel {s s' : SC} {reg : SyncReg} {c : Nat} {op : KernelOp} :
-      opStepC k op c s (.ok s') → LStep k L (.kernel c op) (s, reg) (s', reg)
-  | spawn {s s' : SC} {reg : SyncReg} {c : Nat} {ps : List Nat} {ls : LocalShape} :
-      SpawnStep s c ps ls (.ok s') → LStep k L (.spawn c ps ls) (s, reg) (s', reg)
-  | terminate {s s' : SC} {reg : SyncReg} {c : Nat} :
-      TermStep k s c (.ok s') → LStep k L (.terminate c) (s, reg) (s', reg)
-  | join {s s' : SC} {reg : SyncReg} {c d : Nat} :
-      JoinStep s c d (.ok s') → LStep k L (.join c d) (s, reg) (s', reg)
-  | deriveSync {s s' : SC} {reg : SyncReg} {c g : Nat} :
-      DeriveSyncStep (libKC k L) reg s c g (.ok s') → LStep k L (.deriveSync c g) (s, reg) (s', reg)
-  | newMutex {s : SC} {reg : SyncReg} {c g : Nat} {adm : List Nat} {st' : SC × SyncReg} :
-      NewMutexOk k L adm s reg c g st' → LStep k L (.newMutex c g adm) (s, reg) st'
-  | acquire {s : SC} {reg : SyncReg} {c i : Nat} {st' : SC × SyncReg} :
-      AcquireOk k L s reg c i st' → LStep k L (.acquire c i) (s, reg) st'
-  | unlock {s : SC} {reg : SyncReg} {c i : Nat} {st' : SC × SyncReg} :
-      UnlockOk L s reg c i st' → LStep k L (.unlock c i) (s, reg) st'
-  | resetLock {s : SC} {reg : SyncReg} {c i : Nat} {st' : SC × SyncReg} :
-      ResetLockOk L s reg c i st' → LStep k L (.resetLock c i) (s, reg) st'
-  | spawnVal {s s' : SC} {reg : SyncReg} {c : Nat} {ps : List Nat} {ls : LocalShape}
-      {vs : List (Nat × Nat)} :
-      SpawnValStep k s c ps ls vs (.ok s') → LStep k L (.spawnVal c ps ls vs) (s, reg) (s', reg)
+/-- Labelled `ok` step of the concurrent kernel with the synchronization and arena libraries
+(WC4 C2, C4, C5, C6–C8, C13, C15–C18, C19; WC4 C23 for the by-value composite; Spec 1 §76–§78 for
+the arenas): kernel and frame steps keep both registries; raw `deriveSync` runs under the library
+instantiation of `SyncAuthorized` on the current registry (WC4 C14); the mutex operations change
+the synchronization registry, the arena operations the arena registry (Spec 1 §46). -/
+inductive LStep (k : K) (L : MutexLayout) :
+    Label → SC × SyncReg × ArenaReg → SC × SyncReg × ArenaReg → Prop where
+  | kernel {s s' : SC} {reg : SyncReg} {ar : ArenaReg} {c : Nat} {op : KernelOp} :
+      opStepC k op c s (.ok s') → LStep k L (.kernel c op) (s, reg, ar) (s', reg, ar)
+  | spawn {s s' : SC} {reg : SyncReg} {ar : ArenaReg} {c : Nat} {ps : List Nat}
+      {ls : LocalShape} :
+      SpawnStep s c ps ls (.ok s') → LStep k L (.spawn c ps ls) (s, reg, ar) (s', reg, ar)
+  | terminate {s s' : SC} {reg : SyncReg} {ar : ArenaReg} {c : Nat} :
+      TermStep k s c (.ok s') → LStep k L (.terminate c) (s, reg, ar) (s', reg, ar)
+  | join {s s' : SC} {reg : SyncReg} {ar : ArenaReg} {c d : Nat} :
+      JoinStep s c d (.ok s') → LStep k L (.join c d) (s, reg, ar) (s', reg, ar)
+  | deriveSync {s s' : SC} {reg : SyncReg} {ar : ArenaReg} {c g : Nat} :
+      DeriveSyncStep (libKC k L) reg s c g (.ok s') →
+      LStep k L (.deriveSync c g) (s, reg, ar) (s', reg, ar)
+  | newMutex {s : SC} {reg : SyncReg} {ar : ArenaReg} {c g : Nat} {st' : SC × SyncReg} :
+      NewMutexOk k L ar s reg c g st' → LStep k L (.newMutex c g) (s, reg, ar) (st'.1, st'.2, ar)
+  | acquire {s : SC} {reg : SyncReg} {ar : ArenaReg} {c i : Nat} {st' : SC × SyncReg} :
+      AcquireOk k L s reg c i st' → LStep k L (.acquire c i) (s, reg, ar) (st'.1, st'.2, ar)
+  | unlock {s : SC} {reg : SyncReg} {ar : ArenaReg} {c i : Nat} {st' : SC × SyncReg} :
+      UnlockOk L s reg c i st' → LStep k L (.unlock c i) (s, reg, ar) (st'.1, st'.2, ar)
+  | resetLock {s : SC} {reg : SyncReg} {ar : ArenaReg} {c i : Nat} {st' : SC × SyncReg} :
+      ResetLockOk L s reg c i st' → LStep k L (.resetLock c i) (s, reg, ar) (st'.1, st'.2, ar)
+  | spawnVal {s s' : SC} {reg : SyncReg} {ar : ArenaReg} {c : Nat} {ps : List Nat}
+      {ls : LocalShape} {vs : List (Nat × Nat)} :
+      SpawnValStep k s c ps ls vs (.ok s') →
+      LStep k L (.spawnVal c ps ls vs) (s, reg, ar) (s', reg, ar)
+  | newArena {s : SC} {reg : SyncReg} {ar : ArenaReg} {c st i : Nat} {st' : SC × ArenaReg} :
+      NewArenaStepC s reg ar c st i (.ok st') →
+      LStep k L (.newArena c st i) (s, reg, ar) (st'.1, reg, st'.2)
+  | issue {s : SC} {reg : SyncReg} {ar : ArenaReg} {c i : Nat} {region : List Nat} {dst : Nat}
+      {st' : SC × ArenaReg} :
+      IssueStepC k s ar c i region dst (.ok st') →
+      LStep k L (.issue c i region dst) (s, reg, ar) (st'.1, reg, st'.2)
+  | reset {s : SC} {reg : SyncReg} {ar : ArenaReg} {c i : Nat} {st' : SC × ArenaReg} :
+      ResetStepC s ar c i (.ok st') → LStep k L (.reset c i) (s, reg, ar) (st'.1, reg, st'.2)
 
 /-- WC4 C22.3 for the source `src` of a transfer in state `st`: for each live entry, `src` is
 neither the place `slot` holding `guarded`, nor a strict structural subplace of `slot`, nor the
@@ -393,23 +585,25 @@ def Encap (L : MutexLayout) (st : SC × SyncReg) : Label → Prop
   | _ => True
 
 /-- Runs of labelled steps. -/
-inductive LRun (k : K) (L : MutexLayout) : SC × SyncReg → List Label → SC × SyncReg → Prop where
-  | nil {st : SC × SyncReg} : LRun k L st [] st
-  | cons {st st₁ st₂ : SC × SyncReg} {lbl : Label} {lbls : List Label} :
+inductive LRun (k : K) (L : MutexLayout) :
+    SC × SyncReg × ArenaReg → List Label → SC × SyncReg × ArenaReg → Prop where
+  | nil {st : SC × SyncReg × ArenaReg} : LRun k L st [] st
+  | cons {st st₁ st₂ : SC × SyncReg × ArenaReg} {lbl : Label} {lbls : List Label} :
       LStep k L lbl st st₁ → LRun k L st₁ lbls st₂ → LRun k L st (lbl :: lbls) st₂
 
 /-- `EncapsulatedTrace` (WC4 C22, C23: "Any lemma conditional on encapsulation must expose that
 condition in its theorem statement or the reachable-trace assumptions"): a run every step of which
-satisfies `Encap` in the state where it is taken. -/
+satisfies `Encap` in the state where it is taken, read on the kernel state and the
+synchronization registry. -/
 inductive EncapsulatedTrace (k : K) (L : MutexLayout) :
-    SC × SyncReg → List Label → SC × SyncReg → Prop where
-  | nil {st : SC × SyncReg} : EncapsulatedTrace k L st [] st
-  | cons {st st₁ st₂ : SC × SyncReg} {lbl : Label} {lbls : List Label} :
-      Encap L st lbl → LStep k L lbl st st₁ → EncapsulatedTrace k L st₁ lbls st₂ →
+    SC × SyncReg × ArenaReg → List Label → SC × SyncReg × ArenaReg → Prop where
+  | nil {st : SC × SyncReg × ArenaReg} : EncapsulatedTrace k L st [] st
+  | cons {st st₁ st₂ : SC × SyncReg × ArenaReg} {lbl : Label} {lbls : List Label} :
+      Encap L (st.1, st.2.1) lbl → LStep k L lbl st st₁ → EncapsulatedTrace k L st₁ lbls st₂ →
       EncapsulatedTrace k L st (lbl :: lbls) st₂
 
 /-- An encapsulated trace is a run. -/
-theorem EncapsulatedTrace.run {k : K} {L : MutexLayout} {st st' : SC × SyncReg}
+theorem EncapsulatedTrace.run {k : K} {L : MutexLayout} {st st' : SC × SyncReg × ArenaReg}
     {lbls : List Label} (h : EncapsulatedTrace k L st lbls st') : LRun k L st lbls st' := by
   induction h with
   | nil => exact .nil

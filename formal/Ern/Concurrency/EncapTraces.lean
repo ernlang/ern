@@ -132,9 +132,9 @@ theorem encap_verdicts : Encap L0 (e2, reg1) (.kernel 0 (.transfer 0 4)) ∧
 
 /-- Variant A as an `EncapsulatedTrace` from the initial state with an empty registry (WC4 C22,
 C23). -/
-theorem traceA : EncapsulatedTrace K0 L0 (e0, [])
-    [.kernel 0 (.derive 1 [3] .modify), .kernel 0 (.store 4 1), .newMutex 0 4 [],
-     .kernel 0 (.transfer 0 4)] (eA, reg1) :=
+theorem traceA : EncapsulatedTrace K0 L0 (e0, [], [])
+    [.kernel 0 (.derive 1 [3] .modify), .kernel 0 (.store 4 1), .newMutex 0 4,
+     .kernel 0 (.transfer 0 4)] (eA, reg1, []) :=
   .cons (fun e he => by cases he) (.kernel step_derive) <|
   .cons trivial (.kernel step_store) <|
   .cons trivial (.newMutex step_newMutex.1) <|
@@ -142,9 +142,9 @@ theorem traceA : EncapsulatedTrace K0 L0 (e0, [])
 
 /-- Variant B as an `EncapsulatedTrace` from the initial state with an empty registry (WC4 C22,
 C23). -/
-theorem traceB : EncapsulatedTrace K0 L0 (e0, [])
-    [.kernel 0 (.derive 1 [3] .modify), .kernel 0 (.store 4 1), .newMutex 0 4 [],
-     .acquire 0 0, .kernel 0 (.transfer 0 4)] (eB, reg2) :=
+theorem traceB : EncapsulatedTrace K0 L0 (e0, [], [])
+    [.kernel 0 (.derive 1 [3] .modify), .kernel 0 (.store 4 1), .newMutex 0 4,
+     .acquire 0 0, .kernel 0 (.transfer 0 4)] (eB, reg2, []) :=
   .cons (fun e he => by cases he) (.kernel step_derive) <|
   .cons trivial (.kernel step_store) <|
   .cons trivial (.newMutex step_newMutex.1) <|
@@ -152,8 +152,8 @@ theorem traceB : EncapsulatedTrace K0 L0 (e0, [])
   .cons encap_verdicts.2.1 (.kernel stepB_transfer) .nil
 
 /-- The trace up to `newMutex` (WC4 C13) as an `EncapsulatedTrace`. -/
-theorem traceMutex : EncapsulatedTrace K0 L0 (e0, [])
-    [.kernel 0 (.derive 1 [3] .modify), .kernel 0 (.store 4 1), .newMutex 0 4 []] (e2, reg1) :=
+theorem traceMutex : EncapsulatedTrace K0 L0 (e0, [], [])
+    [.kernel 0 (.derive 1 [3] .modify), .kernel 0 (.store 4 1), .newMutex 0 4] (e2, reg1, []) :=
   .cons (fun e he => by cases he) (.kernel step_derive) <|
   .cons trivial (.kernel step_store) <|
   .cons trivial (.newMutex step_newMutex.1) .nil
@@ -161,7 +161,7 @@ theorem traceMutex : EncapsulatedTrace K0 L0 (e0, [])
 /-- `KInvCA` and `SyncState` after `newMutex` (`trace_inv`). -/
 theorem inv2 : KInvCA e2 ∧ SyncState L0 e2 reg1 := by
   obtain ⟨hk, hs⟩ := init_inv (k := K0) ddK0 est_ok L0
-  exact trace_inv ddK0 traceMutex hk hs
+  exact ⟨(trace_inv ddK0 traceMutex hk hs).1, (trace_inv ddK0 traceMutex hk hs).2.1⟩
 
 /-- Verdict (c), variant A, positive twin of `transfer_into_live_mutex_rejected` (WC4 C22.3,
 S16 and S18 positive halves): after `transfer(M, M′)` onto a destination with no entry, `KInvC`
@@ -169,7 +169,7 @@ S16 and S18 positive halves): after `transfer(M, M′)` onto a destination with 
 entry is live. -/
 theorem invA : KInvCA eA ∧ SyncState L0 eA reg1 ∧ (⟨4, none⟩ : SyncEntry).Live eA := by
   obtain ⟨hk, hs⟩ := init_inv (k := K0) ddK0 est_ok L0
-  exact ⟨(trace_inv ddK0 traceA hk hs).1, (trace_inv ddK0 traceA hk hs).2, by decide⟩
+  exact ⟨(trace_inv ddK0 traceA hk hs).1, (trace_inv ddK0 traceA hk hs).2.1, by decide⟩
 
 /-- Verdict (c), variant B (from `trace_inv`): after `transfer(M, M′)`, `KInvC` (with the
 auxiliaries of Spec 1) and `SyncState` hold; the entry is live and the grant 5 is still active
@@ -177,7 +177,7 @@ and held by frame 0. -/
 theorem invB : KInvCA eB ∧ SyncState L0 eB reg2 ∧ (⟨4, some 5⟩ : SyncEntry).Live eB ∧
     eB.A[5]? = some ⟨.modify, some 4, [3], .frame 0, true⟩ := by
   obtain ⟨hk, hs⟩ := init_inv (k := K0) ddK0 est_ok L0
-  exact ⟨(trace_inv ddK0 traceB hk hs).1, (trace_inv ddK0 traceB hk hs).2, by decide, by decide⟩
+  exact ⟨(trace_inv ddK0 traceB hk hs).1, (trace_inv ddK0 traceB hk hs).2.1, by decide, by decide⟩
 
 /-- Verdict (d), WC4 S16 positive half: after `transfer(M, M′)`, in both variants, `guarded` is
 held by `slot′` (place 5) and `ControlOf` designates `lock′` (place 6) (WC4 C12, positional). -/
@@ -206,9 +206,9 @@ theorem slot_transfer_breaks_control :
     parentOf eC.P 7 = none ∧ ControlOf L0 eC ⟨4, none⟩ = none ∧ ¬ SyncInv L0 eC reg1 := by
   obtain ⟨hk, hs⟩ := inv2
   refine ⟨hk, hs, stepC_transfer, encap_verdicts.2.2.1,
-    lstep_kInvCA ddK0 (L := L0) (lbl := .kernel 0 (.transfer 1 7)) (st := (e2, reg1))
-      (st' := (eC, reg1)) (.kernel stepC_transfer) hk, by decide, by decide, by decide, by decide,
-    fun h => ?_⟩
+    lstep_kInvCA ddK0 (L := L0) (lbl := .kernel 0 (.transfer 1 7)) (st := (e2, reg1, []))
+      (st' := (eC, reg1, [])) (.kernel stepC_transfer) hk, by decide, by decide, by decide,
+    by decide, fun h => ?_⟩
   have := h.control ⟨4, none⟩ (List.mem_singleton_self _) (by decide)
   revert this; decide
 
@@ -225,8 +225,8 @@ theorem ctl_transfer_breaks_ctlInit :
     eD.I 2 = .moved ∧ ¬ SyncInv L0 eD reg1 := by
   have hst : opStepC K0 (.transfer 2 7) 0 e2 (.ok eD) := ⟨by decide, .ok (by decide)⟩
   refine ⟨hst, encap_verdicts.2.2.2,
-    lstep_kInvCA ddK0 (L := L0) (lbl := .kernel 0 (.transfer 2 7)) (st := (e2, reg1))
-      (st' := (eD, reg1)) (.kernel hst) inv2.1, by decide, by decide, by decide, fun h => ?_⟩
+    lstep_kInvCA ddK0 (L := L0) (lbl := .kernel 0 (.transfer 2 7)) (st := (e2, reg1, []))
+      (st' := (eD, reg1, [])) (.kernel hst) inv2.1, by decide, by decide, by decide, fun h => ?_⟩
   have := h.ctlInit ⟨4, none⟩ (List.mem_singleton_self _) (by decide)
   revert this; decide
 
@@ -241,16 +241,16 @@ step `KInvCA` holds, the entry is live, its controller `lock` (place 2) is `Unin
 effect: "The leaves of value `place` become `Uninit`"), and `SyncInv` fails (`ctlInit`, WC4
 C21.7). -/
 theorem endUse_ctl_excluded :
-    EncapsulatedTrace K0 L0 (e0, [])
-      [.kernel 0 (.derive 1 [3] .modify), .kernel 0 (.store 4 1), .newMutex 0 4 []] (e2, reg1) ∧
+    EncapsulatedTrace K0 L0 (e0, [], [])
+      [.kernel 0 (.derive 1 [3] .modify), .kernel 0 (.store 4 1), .newMutex 0 4] (e2, reg1, []) ∧
     opStepC K0 (.endUse 2) 0 e2 (.ok eU) ∧ ¬ Encap L0 (e2, reg1) (.kernel 0 (.endUse 2)) ∧
     KInvCA eU ∧ (⟨4, none⟩ : SyncEntry).Live eU ∧ ControlOf L0 eU ⟨4, none⟩ = some 2 ∧
     eU.I 2 = .uninit ∧ ¬ SyncInv L0 eU reg1 := by
   have hst : opStepC K0 (.endUse 2) 0 e2 (.ok eU) := ⟨by decide, _, .ok (by decide), rfl⟩
   refine ⟨traceMutex, hst,
     fun h => (h ⟨4, none⟩ (List.mem_singleton_self _) (by decide)).1 (by decide),
-    lstep_kInvCA ddK0 (L := L0) (lbl := .kernel 0 (.endUse 2)) (st := (e2, reg1))
-      (st' := (eU, reg1)) (.kernel hst) inv2.1, by decide, by decide, by decide, fun h => ?_⟩
+    lstep_kInvCA ddK0 (L := L0) (lbl := .kernel 0 (.endUse 2)) (st := (e2, reg1, []))
+      (st' := (eU, reg1, [])) (.kernel hst) inv2.1, by decide, by decide, by decide, fun h => ?_⟩
   have := h.ctlInit ⟨4, none⟩ (List.mem_singleton_self _) (by decide)
   revert this; decide
 
@@ -263,23 +263,23 @@ not after it (`guarded`, held by `slot`, a place of `M`, becomes inactive), and 
 trace ending with it reaches a state where `KInvCA` and `SyncState` (`SyncInv`, `GrantDiscipline`)
 hold (`trace_inv`). -/
 theorem endUse_mutex_kills_entry :
-    EncapsulatedTrace K0 L0 (e0, [])
-      [.kernel 0 (.derive 1 [3] .modify), .kernel 0 (.store 4 1), .newMutex 0 4 [],
-       .kernel 0 (.endUse 0)] (eM, reg1) ∧
+    EncapsulatedTrace K0 L0 (e0, [], [])
+      [.kernel 0 (.derive 1 [3] .modify), .kernel 0 (.store 4 1), .newMutex 0 4,
+       .kernel 0 (.endUse 0)] (eM, reg1, []) ∧
     (⟨4, none⟩ : SyncEntry).Live e2 ∧ ¬ (⟨4, none⟩ : SyncEntry).Live eM ∧
     KInvCA eM ∧ SyncState L0 eM reg1 := by
   have hst : opStepC K0 (.endUse 0) 0 e2 (.ok eM) := ⟨by decide, _, .ok (by decide), rfl⟩
   have he : Encap L0 (e2, reg1) (.kernel 0 (.endUse 0)) :=
     (by decide : ∀ e ∈ reg1, e.Live e2 → ControlOf L0 e2 e ≠ some 0 ∧
       OptP (slotOf e2 e.guarded) (fun q => partOf e2.P 0 q → 0 = q) True)
-  have ht : EncapsulatedTrace K0 L0 (e0, [])
-      [.kernel 0 (.derive 1 [3] .modify), .kernel 0 (.store 4 1), .newMutex 0 4 [],
-       .kernel 0 (.endUse 0)] (eM, reg1) :=
+  have ht : EncapsulatedTrace K0 L0 (e0, [], [])
+      [.kernel 0 (.derive 1 [3] .modify), .kernel 0 (.store 4 1), .newMutex 0 4,
+       .kernel 0 (.endUse 0)] (eM, reg1, []) :=
     .cons (fun e he => by cases he) (.kernel step_derive) <|
     .cons trivial (.kernel step_store) <| .cons trivial (.newMutex step_newMutex.1) <|
     .cons he (.kernel hst) .nil
   obtain ⟨hk, hs⟩ := init_inv (k := K0) ddK0 est_ok L0
-  exact ⟨ht, by decide, by decide, trace_inv ddK0 ht hk hs⟩
+  exact ⟨ht, by decide, by decide, (trace_inv ddK0 ht hk hs).1, (trace_inv ddK0 ht hk hs).2.1⟩
 
 /-- Statics (Spec 1 §47): `0` the mutex value `M` with fields `1` (`slot`, a structure with the
 leaves `2` and `3`) and `4` (`lock`), all leaves `Init`; `5` the root `T`, owned by `slot`. Root
@@ -305,16 +305,16 @@ def z1 : SC := z0.set (endUseEff (z0.view 0) 2)
 re-indexed and `Encap` excludes it. Without the exclusion, after the step `KInvCA` holds, the
 entry is live, leaf 2 of `slot` is `Uninit`, and `SyncInv` fails (`slotInit`, WC4 C21.7). -/
 theorem endUse_slotPart_excluded :
-    EncapsulatedTrace K0 L0 (z0, []) [.newMutex 0 1 []] (z0, [⟨1, none⟩]) ∧
+    EncapsulatedTrace K0 L0 (z0, [], []) [.newMutex 0 1] (z0, [⟨1, none⟩], []) ∧
     opStepC K0 (.endUse 2) 0 z0 (.ok z1) ∧ ¬ Encap L0 (z0, [⟨1, none⟩]) (.kernel 0 (.endUse 2)) ∧
     KInvCA z1 ∧ (⟨1, none⟩ : SyncEntry).Live z1 ∧ slotOf z1 1 = some 1 ∧ z1.I 2 = .uninit ∧
     ¬ SyncInv L0 z1 [⟨1, none⟩] := by
   have hst : opStepC K0 (.endUse 2) 0 z0 (.ok z1) := ⟨by decide, _, .ok (by decide), rfl⟩
   have hk0 := (init_inv (k := K0) ddK0 sst_ok L0).1
-  have hk : KInvCA z0 := lstep_kInvCA ddK0 (L := L0) (st := (z0, [])) (.newMutex z_newMutex) hk0
+  have hk : KInvCA z0 := lstep_kInvCA ddK0 (L := L0) (st := (z0, [], [])) (.newMutex z_newMutex) hk0
   refine ⟨.cons trivial (.newMutex z_newMutex) .nil, hst, fun h => ?_,
     lstep_kInvCA ddK0 (L := L0) (lbl := .kernel 0 (.endUse 2))
-      (st := (z0, [⟨1, none⟩])) (st' := (z1, [⟨1, none⟩])) (.kernel hst) hk,
+      (st := (z0, [⟨1, none⟩], [])) (st' := (z1, [⟨1, none⟩], [])) (.kernel hst) hk,
     by decide, by decide, by decide, fun h => ?_⟩
   · have := (h ⟨1, none⟩ (List.mem_singleton_self _) (by decide)).2
     revert this; decide
@@ -330,19 +330,19 @@ re-indexed admitted by `Encap`; the entry is live before the step and not after 
 held by `slot`, becomes inactive), and the encapsulated trace ending with it reaches a state where
 `KInvCA` and `SyncState` hold (`trace_inv`). -/
 theorem endUse_slot_kills_entry :
-    EncapsulatedTrace K0 L0 (z0, []) [.newMutex 0 1 [], .kernel 0 (.endUse 1)]
-      (z2, [⟨1, none⟩]) ∧
+    EncapsulatedTrace K0 L0 (z0, [], []) [.newMutex 0 1, .kernel 0 (.endUse 1)]
+      (z2, [⟨1, none⟩], []) ∧
     (⟨1, none⟩ : SyncEntry).Live z0 ∧ ¬ (⟨1, none⟩ : SyncEntry).Live z2 ∧
     KInvCA z2 ∧ SyncState L0 z2 [⟨1, none⟩] := by
   have hst : opStepC K0 (.endUse 1) 0 z0 (.ok z2) := ⟨by decide, _, .ok (by decide), rfl⟩
   have he : Encap L0 (z0, [⟨1, none⟩]) (.kernel 0 (.endUse 1)) :=
     (by decide : ∀ e ∈ ([⟨1, none⟩] : SyncReg), e.Live z0 → ControlOf L0 z0 e ≠ some 1 ∧
       OptP (slotOf z0 e.guarded) (fun q => partOf z0.P 1 q → 1 = q) True)
-  have ht : EncapsulatedTrace K0 L0 (z0, []) [.newMutex 0 1 [], .kernel 0 (.endUse 1)]
-      (z2, [⟨1, none⟩]) :=
+  have ht : EncapsulatedTrace K0 L0 (z0, [], []) [.newMutex 0 1, .kernel 0 (.endUse 1)]
+      (z2, [⟨1, none⟩], []) :=
     .cons trivial (.newMutex z_newMutex) <| .cons he (.kernel hst) .nil
   obtain ⟨hk, hs⟩ := init_inv (k := K0) ddK0 sst_ok L0
-  exact ⟨ht, by decide, by decide, trace_inv ddK0 ht hk hs⟩
+  exact ⟨ht, by decide, by decide, (trace_inv ddK0 ht hk hs).1, (trace_inv ddK0 ht hk hs).2.1⟩
 
 /-! ## Controller uniqueness after `endUse` (WC4 C21.4, C21.7, C22.3, C22.5) -/
 
@@ -379,9 +379,9 @@ then `transfer(M₁, M₂)` reaches a state where `KInvCA` holds, both entries a
 controller `lock₂` (place 9), and `SyncInv` fails. Its first `endUse` step is excluded by `Encap`
 (WC4 C22.5 (b)), so the run is not an `EncapsulatedTrace` (`endUse_then_transfer_merges_false`). -/
 theorem endUse_then_transfer_merges :
-    LRun K0 L0 (u0, [])
-      [.newMutex 0 2 [], .newMutex 0 3 [], .kernel 0 (.endUse 7), .kernel 0 (.endUse 8),
-       .kernel 0 (.endUse 9), .kernel 0 (.transfer 0 5)] (u4, regU) ∧
+    LRun K0 L0 (u0, [], [])
+      [.newMutex 0 2, .newMutex 0 3, .kernel 0 (.endUse 7), .kernel 0 (.endUse 8),
+       .kernel 0 (.endUse 9), .kernel 0 (.transfer 0 5)] (u4, regU, []) ∧
     ¬ Encap L0 (u0, regU) (.kernel 0 (.endUse 7)) ∧ KInvCA u4 ∧
     (⟨2, none⟩ : SyncEntry).Live u4 ∧ (⟨3, none⟩ : SyncEntry).Live u4 ∧
     ControlOf L0 u4 ⟨2, none⟩ = some 9 ∧ ControlOf L0 u4 ⟨3, none⟩ = some 9 ∧
@@ -392,19 +392,19 @@ theorem endUse_then_transfer_merges :
   have h4 : opStepC K0 (.endUse 8) 0 u1 (.ok u2) := ⟨by decide, _, .ok (by decide), rfl⟩
   have h5 : opStepC K0 (.endUse 9) 0 u2 (.ok u3) := ⟨by decide, _, .ok (by decide), rfl⟩
   have h6 : opStepC K0 (.transfer 0 5) 0 u3 (.ok u4) := ⟨by decide, .ok (by decide)⟩
-  have hr : LRun K0 L0 (u0, [])
-      [.newMutex 0 2 [], .newMutex 0 3 [], .kernel 0 (.endUse 7), .kernel 0 (.endUse 8),
-       .kernel 0 (.endUse 9), .kernel 0 (.transfer 0 5)] (u4, regU) :=
+  have hr : LRun K0 L0 (u0, [], [])
+      [.newMutex 0 2, .newMutex 0 3, .kernel 0 (.endUse 7), .kernel 0 (.endUse 8),
+       .kernel 0 (.endUse 9), .kernel 0 (.transfer 0 5)] (u4, regU, []) :=
     .cons (.newMutex h1) <| .cons (.newMutex h2) <| .cons (.kernel h3) <| .cons (.kernel h4) <|
     .cons (.kernel h5) <| .cons (.kernel h6) .nil
   have hk0 := (init_inv (k := K0) ddK0 ust_ok L0).1
   have hk : KInvCA u4 := by
-    have := lstep_kInvCA ddK0 (L := L0) (st := (u0, [])) (.newMutex h1) hk0
-    have := lstep_kInvCA ddK0 (L := L0) (st := (u0, [⟨2, none⟩])) (.newMutex h2) this
-    have := lstep_kInvCA ddK0 (L := L0) (st := (u0, regU)) (.kernel h3) this
-    have := lstep_kInvCA ddK0 (L := L0) (st := (u1, regU)) (.kernel h4) this
-    have := lstep_kInvCA ddK0 (L := L0) (st := (u2, regU)) (.kernel h5) this
-    exact lstep_kInvCA ddK0 (L := L0) (st := (u3, regU)) (.kernel h6) this
+    have := lstep_kInvCA ddK0 (L := L0) (st := (u0, [], [])) (.newMutex h1) hk0
+    have := lstep_kInvCA ddK0 (L := L0) (st := (u0, [⟨2, none⟩], [])) (.newMutex h2) this
+    have := lstep_kInvCA ddK0 (L := L0) (st := (u0, regU, [])) (.kernel h3) this
+    have := lstep_kInvCA ddK0 (L := L0) (st := (u1, regU, [])) (.kernel h4) this
+    have := lstep_kInvCA ddK0 (L := L0) (st := (u2, regU, [])) (.kernel h5) this
+    exact lstep_kInvCA ddK0 (L := L0) (st := (u3, regU, [])) (.kernel h6) this
   refine ⟨hr, fun h => ?_, hk, by decide, by decide, by decide, by decide, fun h => ?_⟩
   · have := (h ⟨3, none⟩ (by decide) (by decide)).2
     revert this; decide
@@ -414,9 +414,9 @@ theorem endUse_then_transfer_merges :
 
 /-- The run of `endUse_then_transfer_merges` is not an `EncapsulatedTrace` (WC4 C22.5 (b)): after
 the two `newMutex` steps, whose results are determined, `Encap` excludes `endUse(a₂)`. -/
-theorem endUse_then_transfer_merges_false (st : SC × SyncReg) :
-    ¬ EncapsulatedTrace K0 L0 (u0, [])
-      [.newMutex 0 2 [], .newMutex 0 3 [], .kernel 0 (.endUse 7), .kernel 0 (.endUse 8),
+theorem endUse_then_transfer_merges_false (st : SC × SyncReg × ArenaReg) :
+    ¬ EncapsulatedTrace K0 L0 (u0, [], [])
+      [.newMutex 0 2, .newMutex 0 3, .kernel 0 (.endUse 7), .kernel 0 (.endUse 8),
        .kernel 0 (.endUse 9), .kernel 0 (.transfer 0 5)] st := by
   intro h
   cases h with
@@ -453,8 +453,8 @@ theorem newMutex_uninit_rejected : NewMutexOk K0 L0 [] m0 [] 0 1 (m0, [⟨1, non
 
 /-- The labels `newMutex(1)`, `newMutex(3)`, `transfer(M, M′)` from `m0` form no run: the second
 step, `newMutex(3)`, has no `ok` outcome (`newMutex_uninit_rejected`). -/
-theorem transfer_merges_controllers_false (st : SC × SyncReg) :
-    ¬ LRun K0 L0 (m0, []) [.newMutex 0 1 [], .newMutex 0 3 [], .kernel 0 (.transfer 0 4)] st := by
+theorem transfer_merges_controllers_false (st : SC × SyncReg × ArenaReg) :
+    ¬ LRun K0 L0 (m0, [], []) [.newMutex 0 1, .newMutex 0 3, .kernel 0 (.transfer 0 4)] st := by
   intro h
   cases h with
   | cons h1 h2 =>
