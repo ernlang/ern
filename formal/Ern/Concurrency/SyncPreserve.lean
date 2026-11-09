@@ -2,46 +2,37 @@ import Ern.Concurrency.Conservativity
 import Ern.Concurrency.SyncLib
 
 /-!
-# Preservation of the synchronization invariants (WC2 C21–C23)
+# Preservation of the synchronization invariants (WC3 C21–C23)
 
-Theorem 4 of the brief, preservation half: `SyncInv` (WC2 C21, items 1, 2, 3, 5) and
-`GrantDiscipline` (WC2 C22) are preserved by every labelled step `LStep` taken under the
-encapsulation hypothesis `Encap` (WC2 C22, C23), together with two auxiliary invariants that are
-not WC2 clauses (`GrantSubtree`, `RegBound`). The kernel facts about the states before and after
-a step (`KInvC` before, `ConcurrentWF` after) are hypotheses supplied by theorem 2 (preservation of
-the re-indexed kernel invariant).
+Theorem 4 of the exploratory pass, preservation half, for `SyncInv` (WC3 C21.1–C21.6) and
+`GrantDiscipline` (WC3 C22) under the encapsulation hypothesis `Encap` (WC3 C22.1–C22.3):
 
-`newMutex_nonleaf_rejected` shows the role of the leaf clause of `NewMutexPreBase.control` (WC2
-C12, C13.3): a positional controller that is not a leaf would break `SyncInv.control`.
+* every clause other than controller uniqueness (WC3 C21.4, first sentence) is preserved by every
+  labelled step (`lstep_preserves`, on `SyncCore`);
+* controller uniqueness is preserved by every labelled step other than a kernel `transfer`
+  (`lstep_ctlUnique`); `Ern.Concurrency.EncapTraces.transfer_merges_controllers` is an
+  encapsulated `transfer(M, M′)` after which it fails.
+
+The kernel facts about the states before and after a step (`WF3`) are hypotheses supplied by
+theorem 2 (preservation of the re-indexed kernel invariant).
+
+`newMutex_nonleaf_rejected` shows the role of the leaf clause of `NewMutexPre.control` (WC3 C12,
+C13.3): a positional controller that is not a leaf would break `SyncInv.control`.
 -/
 
 namespace Ern.Concurrency
 
 open Ern.MemoryModel.Access
 
-/-! ## Auxiliary invariants (not WC2 clauses) -/
-
-/-- Auxiliary invariant, not a WC2 clause (needed by `unlock`, WC2 C17): while the recorded grant
-of a live entry is active, every active descendant of `guarded` covering a protected leaf is the
-grant or one of its descendants. -/
-def GrantSubtree (s : SC) (reg : SyncReg) : Prop :=
-  ∀ e ∈ reg, e.Live s → ∀ g, e.grant = some g → s.flat.Active g →
-    ∀ j, CoveringDesc s e.guarded j → j = g ∨ g ∈ s.flat.ancs j
-
-/-- Auxiliary invariant, not a WC2 clause: every registered `guarded` identity exists (an entry
-cannot become live by the creation of a fresh authority). -/
-def RegBound (s : SC) (reg : SyncReg) : Prop := ∀ e ∈ reg, e.guarded < s.A.length
-
-/-- The preserved conjunction: `SyncInv` (WC2 C21) and `GrantDiscipline` (WC2 C22) with the
-auxiliary invariants `GrantSubtree` and `RegBound`. -/
+/-- The invariant of theorem 4: `SyncInv` (WC3 C21) and `GrantDiscipline` (WC3 C22). -/
 def SyncState (L : MutexLayout) (s : SC) (reg : SyncReg) : Prop :=
-  SyncInv L s reg ∧ GrantDiscipline s reg ∧ GrantSubtree s reg ∧ RegBound s reg
+  SyncInv L s reg ∧ GrantDiscipline s reg
 
 namespace SyncPreserveAux
 
 /-! ## Per-entry decomposition -/
 
-/-- The clauses of `SyncState` about one entry (WC2 C21.1–C21.3, C22, auxiliaries). -/
+/-- The clauses of `SyncState` about one entry (WC3 C21.1–C21.3, C21.5, C21.6, C22). -/
 structure EntryOK (L : MutexLayout) (s : SC) (e : SyncEntry) : Prop where
   guarded : e.Live s → OptP (s.A[e.guarded]?) (fun y => y.mode = .modify ∧
     PlaceUsable s.flat y.holder) False
@@ -54,22 +45,34 @@ structure EntryOK (L : MutexLayout) (s : SC) (e : SyncEntry) : Prop where
     ∀ j, CoveringDesc s e.guarded j → j = g ∨ g ∈ s.flat.ancs j
   bound : e.guarded < s.A.length
 
-/-- The global clause of `SyncState` (WC2 C21.5). -/
+/-- The guarded-identity uniqueness of `SyncState` (WC3 C21.4, second sentence). -/
 def Uniq (s : SC) (reg : SyncReg) : Prop :=
   ∀ (i j : Nat) (e e' : SyncEntry), reg[i]? = some e → reg[j]? = some e' → e.Live s →
     e'.Live s → e.guarded = e'.guarded → i = j
 
-/-- `SyncState` is the per-entry clauses and uniqueness (WC2 C21, C22). -/
+end SyncPreserveAux
+
+open SyncPreserveAux
+
+/-- The clauses of `SyncState` other than controller uniqueness (WC3 C21.4, first sentence): the
+per-entry clauses (WC3 C21.1–C21.3, C21.5, C21.6, C22) and guarded-identity uniqueness (WC3
+C21.4, second sentence). -/
+def SyncCore (L : MutexLayout) (s : SC) (reg : SyncReg) : Prop :=
+  (∀ e ∈ reg, EntryOK L s e) ∧ Uniq s reg
+
+/-- `SyncState` is `SyncCore` with controller uniqueness (WC3 C21, C22). -/
 theorem syncState_iff {L : MutexLayout} {s : SC} {reg : SyncReg} :
-    SyncState L s reg ↔ (∀ e ∈ reg, EntryOK L s e) ∧ Uniq s reg := by
+    SyncState L s reg ↔ SyncCore L s reg ∧ CtlUnique L s reg := by
   constructor
-  · rintro ⟨hi, hg, ht, hb⟩
-    exact ⟨fun e he => ⟨hi.guarded e he, hi.grant e he, hi.control e he, hg e he, ht e he,
-      hb e he⟩, hi.unique⟩
-  · rintro ⟨h, hu⟩
+  · rintro ⟨hi, hg⟩
+    exact ⟨⟨fun e he => ⟨hi.guarded e he, hi.grant e he, hi.control e he, hg e he,
+      hi.grantSubtree e he, hi.regBound e he⟩, hi.unique⟩, hi.ctlUnique⟩
+  · rintro ⟨⟨h, hu⟩, hc⟩
     exact ⟨⟨fun e he => (h e he).guarded, fun e he => (h e he).grant,
-      fun e he => (h e he).control, hu⟩, fun e he => (h e he).disc, fun e he => (h e he).sub,
-      fun e he => (h e he).bound⟩
+      fun e he => (h e he).control, hc, hu, fun e he => (h e he).sub,
+      fun e he => (h e he).bound⟩, fun e he => (h e he).disc⟩
+
+namespace SyncPreserveAux
 
 /-! ## Controller -/
 
@@ -269,23 +272,24 @@ theorem entry_step {L : MutexLayout} {s s' : SC} {e : SyncEntry} (hsk : Skel s s
         · exact .inr (List.mem_cons_of_mem _ h)
 
 /-- Uniqueness across a step with an unchanged registry (WC2 C21.5): liveness only decreases. -/
-theorem uniq_step {s s' : SC} {reg : SyncReg} (hsk : Skel s s') (hb : RegBound s reg)
+theorem uniq_step {s s' : SC} {reg : SyncReg} (hsk : Skel s s')
+    (hb : ∀ e ∈ reg, e.guarded < s.A.length)
     (hu : Uniq s reg) : Uniq s' reg := fun i j e e' hi hj hl hl' hg =>
   hu i j e e' hi hj (hsk.active (hb e (List.mem_of_getElem? hi)) hl)
     (hsk.active (hb e' (List.mem_of_getElem? hj)) hl') hg
 
-/-- A step with an unchanged registry preserves `SyncState`, given the per-entry hypotheses of
+/-- A step with an unchanged registry preserves `SyncCore`, given the per-entry hypotheses of
 `entry_step`. -/
 theorem kernel_step {L : MutexLayout} {s s' : SC} {reg : SyncReg} (hsk : Skel s s')
-    (hw' : WF3 s'.flat) (hst : SyncState L s reg)
+    (hw' : WF3 s'.flat) (hst : SyncCore L s reg)
     (hsrc : ∀ e ∈ reg, e.Live s → ∀ j y' o, s'.A[j]? = some y' → s.A.length ≤ j →
       y'.origin = some o → o ≠ e.guarded)
     (hhold : ∀ e ∈ reg, e.Live s' → ∀ y y', s.A[e.guarded]? = some y →
       s'.A[e.guarded]? = some y' → PlaceUsable s.flat y.holder → ∃ q, y'.holder = .place q)
     (hctl : ∀ e ∈ reg, e.Live s' → ∀ ctl, ControlOf L s e = some ctl → isLeaf s.P ctl →
-      ∃ ctl', ControlOf L s' e = some ctl' ∧ isLeaf s'.P ctl') : SyncState L s' reg := by
-  obtain ⟨he, hu⟩ := syncState_iff.1 hst
-  exact syncState_iff.2 ⟨fun e hm => entry_step hsk hw' (he e hm) (hsrc e hm) (hhold e hm)
+      ∃ ctl', ControlOf L s' e = some ctl' ∧ isLeaf s'.P ctl') : SyncCore L s' reg := by
+  obtain ⟨he, hu⟩ := hst
+  exact ⟨fun e hm => entry_step hsk hw' (he e hm) (hsrc e hm) (hhold e hm)
     (hctl e hm), uniq_step hsk (fun e hm => (he e hm).bound) hu⟩
 
 /-! ## Holders and places -/
@@ -385,16 +389,16 @@ theorem ctl_same {L : MutexLayout} {s s' : SC} {e : SyncEntry} (hw : WF3 s.flat)
 /-- `kernel_step` for steps keeping holders of places and parents. -/
 theorem kernel_step_same {L : MutexLayout} {s s' : SC} {reg : SyncReg} (hsk : Skel s s')
     (hh : HoldSame s s') (hP : PSkel s.P s'.P) (hw : WF3 s.flat) (hw' : WF3 s'.flat)
-    (hst : SyncState L s reg)
+    (hst : SyncCore L s reg)
     (hsrc : ∀ e ∈ reg, e.Live s → ∀ j y' o, s'.A[j]? = some y' → s.A.length ≤ j →
-      y'.origin = some o → o ≠ e.guarded) : SyncState L s' reg :=
+      y'.origin = some o → o ≠ e.guarded) : SyncCore L s' reg :=
   kernel_step hsk hw' hst hsrc
     (fun e _ _ y y' hy hy' hu => by
       cases hq : y.holder with
       | frame f => rw [hq] at hu; exact hu.elim
       | place q => exact ⟨q, by rw [hh _ y y' q hy hy' hq, hq]⟩)
     (fun e hm _ ctl hc hl => ctl_same hw hP
-      (Nat.lt_of_lt_of_le (hst.2.2.2 e hm) hsk.len) hh hc hl)
+      (Nat.lt_of_lt_of_le (hst.1 e hm).bound hsk.len) hh hc hl)
 
 /-! ## Builders of `Skel` -/
 
@@ -869,11 +873,11 @@ theorem ctl_transfer {L : MutexLayout} {s : SC} {c src dst : Nat} {e : SyncEntry
     rw [controlOf_of (y := y) (hp := hp) (m := m) (by rw [hA']; simp only [hin, ↓reduceIte]) hph
       (by rw [hpar]; exact hm) (by rw [hkids]; exact hk), hkids, hkc]
 
-/-- `transfer` preserves `SyncState` under `Encap` (Spec 1 §63 re-indexed). -/
+/-- `transfer` preserves `SyncCore` under `Encap` (Spec 1 §63 re-indexed). -/
 theorem transfer_preserves {k : K} {L : MutexLayout} {reg : SyncReg} {c src dst : Nat}
     {s s' : SC} (h : opStepC k (.transfer src dst) c s (.ok s'))
     (he : Encap (s, reg) (.kernel c (.transfer src dst))) (hw : WF3 s.flat) (hw' : WF3 s'.flat)
-    (hs : SyncState L s reg) : SyncState L s' reg := by
+    (hs : SyncCore L s reg) : SyncCore L s' reg := by
   obtain ⟨-, h⟩ := h; obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
   have hget : ∀ j : Nat, (transferEffC s c src dst).A[j]? = (s.A[j]?).map fun (y : Authority) =>
       if heldIn s.P src y.holder then { y with holder := mvTo s.P src dst y.holder } else y :=
@@ -898,7 +902,7 @@ theorem transfer_preserves {k : K} {L : MutexLayout} {reg : SyncReg} {c src dst 
     split <;> exact ho
   refine kernel_step hsk hw' hs (src_none hlen) (fun e _ _ y y' hy hy' hu => ?_)
     (fun e hm hl ctl hc hleaf => ctl_transfer hw hpre.sameShape
-      (he e hm (hsk.active (hs.2.2.2 e hm) hl)) hc hleaf)
+      (he e hm (hsk.active (hs.1 e hm).bound hl)) hc hleaf)
   rw [hget, hy] at hy'
   simp only [Option.map_some, Option.some.injEq] at hy'
   subst hy'
@@ -1027,12 +1031,12 @@ theorem uniq_append {s : SC} {reg : SyncReg} {e' : SyncEntry} (hu : Uniq s reg)
 
 /-! ### `newMutex`, `acquire`, `unlock`, `resetLock` -/
 
-/-- `newMutex` (WC2 C13) preserves `SyncState`. -/
-theorem newMutex_preserves {L : MutexLayout} {adm : List Nat} {s : SC} {reg : SyncReg}
-    {c g : Nat} {st' : SC × SyncReg} (h : NewMutexOk L adm s reg c g st') (hw : WF3 s.flat)
-    (hs : SyncState L s reg) : SyncState L st'.1 st'.2 := by
+/-- `newMutex` (WC2 C13) preserves `SyncCore`. -/
+theorem newMutex_preserves {k : K} {L : MutexLayout} {adm : List Nat} {s : SC} {reg : SyncReg}
+    {c g : Nat} {st' : SC × SyncReg} (h : NewMutexOk k L adm s reg c g st')
+    (hs : SyncCore L s reg) : SyncCore L st'.1 st'.2 := by
   obtain ⟨-, hpre, rfl⟩ := h
-  obtain ⟨hes, hu⟩ := syncState_iff.1 hs
+  obtain ⟨hes, hu⟩ := hs
   have hg := hpre.guarded
   unfold OptP at hg; split at hg
   · rename_i y hy
@@ -1043,19 +1047,19 @@ theorem newMutex_preserves {L : MutexLayout} {adm : List Nat} {s : SC} {reg : Sy
       have hctl := hpre.control
       cases hc : ControlOf L s ⟨g, none⟩ with
       | none => rw [hc] at hctl; exact hctl.elim
-      | some ctl => rw [hc] at hctl; exact ⟨control_usable hw hl hc, hctl⟩
-    refine syncState_iff.2 ⟨fun x hx => ?_, uniq_append hu fun x hx hl => hpre.unique x hx hl⟩
+      | some ctl => rw [hc] at hctl; exact hctl
+    refine ⟨fun x hx => ?_, uniq_append hu fun x hx hl => hpre.unique x hx hl⟩
     rcases List.mem_append.1 hx with hx | hx
     · exact hes x hx
     · rw [List.mem_singleton.1 hx]; exact hnew
   · exact hg.elim
 
-/-- `acquire` (WC2 C16) preserves `SyncState`. -/
+/-- `acquire` (WC2 C16) preserves `SyncCore`. -/
 theorem acquire_preserves {k : K} {L : MutexLayout} {s : SC} {reg : SyncReg} {c i : Nat}
     {st' : SC × SyncReg} (h : AcquireOk k L s reg c i st') (hw : WF3 s.flat)
-    (hw' : WF3 st'.1.flat) (hs : SyncState L s reg) : SyncState L st'.1 st'.2 := by
+    (hw' : WF3 st'.1.flat) (hs : SyncCore L s reg) : SyncCore L st'.1 st'.2 := by
   obtain ⟨-, e, hi, ⟨hl, hn, -⟩, hpre, rfl⟩ := h
-  obtain ⟨hes, hu⟩ := syncState_iff.1 hs
+  obtain ⟨hes, hu⟩ := hs
   have heo := hes e (List.mem_of_getElem? hi)
   have hA : (deriveSyncEff s c e.guarded).A = s.A ++ [⟨.modify, some e.guarded,
       (s.view c).afp e.guarded, .frame (s.view c).top, true⟩] := rfl
@@ -1063,7 +1067,7 @@ theorem acquire_preserves {k : K} {L : MutexLayout} {s : SC} {reg : SyncReg} {c 
     rw [List.mem_singleton] at hz; subst hz
     exact .inr ⟨e.guarded, rfl, active_lt hpre.active, hpre.active, fun l hl => hl⟩
   have hP : PSkel s.P (deriveSyncEff s c e.guarded).P := pskel_refl _
-  refine syncState_iff.2 ⟨fun x hx => ?_,
+  refine ⟨fun x hx => ?_,
     uniq_set hi rfl (uniq_step hsk (fun x hx => (hes x hx).bound) hu)⟩
   rcases mem_set_cases hx with rfl | ⟨j, hj, hji⟩
   · obtain ⟨hg1, hc1⟩ := entry_static hsk hh hP hw hw' heo (some s.A.length)
@@ -1095,12 +1099,12 @@ theorem acquire_preserves {k : K} {L : MutexLayout} {s : SC} {reg : SyncReg} {c 
     subst this
     exact fun hg => hji (hu j i x e hj hi hxl hl hg.symm)
 
-/-- `unlock` (WC2 C17) preserves `SyncState`. -/
+/-- `unlock` (WC2 C17) preserves `SyncCore`. -/
 theorem unlock_preserves {L : MutexLayout} {s : SC} {reg : SyncReg} {c i : Nat}
     {st' : SC × SyncReg} (h : UnlockOk L s reg c i st') (hw : WF3 s.flat)
-    (hw' : WF3 st'.1.flat) (hs : SyncState L s reg) : SyncState L st'.1 st'.2 := by
+    (hw' : WF3 st'.1.flat) (hs : SyncCore L s reg) : SyncCore L st'.1 st'.2 := by
   obtain ⟨-, e, g₀, hi, hl, hg₀, hpre, -, rfl⟩ := h
-  obtain ⟨hes, hu⟩ := syncState_iff.1 hs
+  obtain ⟨hes, hu⟩ := hs
   have heo := hes e (List.mem_of_getElem? hi)
   obtain ⟨x, hx, xa⟩ := hpre.active
   have hx' : s.A[g₀]? = some x := hx
@@ -1111,7 +1115,7 @@ theorem unlock_preserves {L : MutexLayout} {s : SC} {reg : SyncReg} {c i : Nat}
   obtain ⟨hsk, hh⟩ := skel_set hx' hA (same_deact x)
   have hlen : (s.set (releaseEff (s.view c) g₀)).A.length = s.A.length := by
     rw [hA, List.length_set]
-  refine syncState_iff.2 ⟨fun y hy => ?_,
+  refine ⟨fun y hy => ?_,
     uniq_set hi rfl (uniq_step hsk (fun x hx => (hes x hx).bound) hu)⟩
   rcases mem_set_cases hy with rfl | ⟨j, hj, -⟩
   · obtain ⟨hg1, hc1⟩ := entry_static hsk hh hP hw hw' heo none
@@ -1129,14 +1133,14 @@ theorem unlock_preserves {L : MutexLayout} {s : SC} {reg : SyncReg} {c i : Nat}
     exact entry_step hsk hw' hxo (src_none hlen y (List.mem_of_getElem? hj)) (hold_of_same hh y)
       fun _ ctl hc hleaf => ctl_same hw hP (Nat.lt_of_lt_of_le hxo.bound hsk.len) hh hc hleaf
 
-/-- `resetLock` (WC2 C18) preserves `SyncState`. -/
+/-- `resetLock` (WC2 C18) preserves `SyncCore`. -/
 theorem resetLock_preserves {L : MutexLayout} {s : SC} {reg : SyncReg} {c i : Nat}
-    {st' : SC × SyncReg} (h : ResetLockOk s reg c i st') (hs : SyncState L s reg) :
-    SyncState L st'.1 st'.2 := by
-  obtain ⟨-, e, hi, -, hnc, rfl⟩ := h
-  obtain ⟨hes, hu⟩ := syncState_iff.1 hs
+    {st' : SC × SyncReg} (h : ResetLockOk L s reg c i st') (hs : SyncCore L s reg) :
+    SyncCore L st'.1 st'.2 := by
+  obtain ⟨-, e, hi, -, hnc, -, rfl⟩ := h
+  obtain ⟨hes, hu⟩ := hs
   have heo := hes e (List.mem_of_getElem? hi)
-  refine syncState_iff.2 ⟨fun y hy => ?_, uniq_set hi rfl hu⟩
+  refine ⟨fun y hy => ?_, uniq_set hi rfl hu⟩
   rcases mem_set_cases hy with rfl | ⟨j, hj, -⟩
   · exact ⟨heo.guarded, (fun _ _ h => by cases h), heo.control, fun _ _ => hnc,
       (fun _ _ h => by cases h), heo.bound⟩
@@ -1145,11 +1149,133 @@ theorem resetLock_preserves {L : MutexLayout} {s : SC} {reg : SyncReg} {c i : Na
 /-- A raw `deriveSync` under the library instantiation targets the `guarded` of a live entry,
 which `Encap` excludes (WC2 C14, C15; only `acquire` derives from `guarded`). -/
 theorem deriveSync_excluded {k : K} {L : MutexLayout} {reg : SyncReg} {s s' : SC} {c g : Nat}
-    (h : DeriveSyncStep (libKC k L reg) s c g (.ok s')) (he : Encap (s, reg) (.deriveSync c g)) :
+    (h : DeriveSyncStep (libKC k L) reg s c g (.ok s')) (he : Encap (s, reg) (.deriveSync c g)) :
     False := by
   obtain ⟨-, h⟩ := h; obtain ⟨hpre, -⟩ := Guarded.ok_iff.1 h
   obtain ⟨e, hm, hg, hl, -⟩ := hpre.authorized
   exact he e hm hl hg.symm
+
+/-! ## Controller uniqueness (WC3 C21.4) -/
+
+/-- With the same holder for `guarded` and kept parents, the controller is unchanged (WC3 C12). -/
+theorem ctl_same_eq {L : MutexLayout} {s s' : SC} {e : SyncEntry} (hw : WF3 s.flat)
+    (hP : PSkel s.P s'.P) (hb : e.guarded < s'.A.length) (hh : HoldSame s s') {ctl : Nat}
+    (hc : ControlOf L s e = some ctl) : ControlOf L s' e = some ctl := by
+  obtain ⟨y, hp, m, hy, hph, hm, hk, hkc⟩ := controlOf_spec hc
+  obtain ⟨y', hy'⟩ := getElem?_of_lt hb
+  have hhp : y'.holder = .place hp := by rw [hh _ y y' hp hy hy' hph, hph]
+  have hpP : hp < s.P.length := by
+    simp only [parentOf] at hm
+    cases hq : s.P[hp]? with
+    | none => rw [hq] at hm; cases hm
+    | some _ => exact lt_of_getElem? hq
+  have hmP : m < s.P.length := (WF3.parent_lt (s := s.flat) hw hm).2
+  have hm' : parentOf s'.P hp = some m := by rw [hP.2.1 hp hpP, hm]
+  have hk' : (kids s'.P m)[L.guardedField]? = some hp := by rw [hP.kids hmP]; exact hk
+  rw [controlOf_of hy' hhp hm' hk', hP.kids hmP, hkc]
+
+/-- Controller uniqueness across a step with an unchanged registry that carries the controllers of
+the live entries forward (WC3 C21.4); liveness only decreases. -/
+theorem ctlUnique_step {L : MutexLayout} {s s' : SC} {reg : SyncReg} (hsk : Skel s s')
+    (hc : SyncCore L s reg)
+    (hfwd : ∀ e ∈ reg, ∀ ctl, ControlOf L s e = some ctl → ControlOf L s' e = some ctl)
+    (hu : CtlUnique L s reg) : CtlUnique L s' reg := by
+  intro i j e e' ctl hi hj hl hl' h1 h2
+  have back : ∀ x ∈ reg, x.Live s' → ControlOf L s' x = some ctl →
+      x.Live s ∧ ControlOf L s x = some ctl := by
+    intro x hx hxl' hx'
+    have hxo := hc.1 x hx
+    have hxl := hsk.active hxo.bound hxl'
+    have h3 := hxo.control hxl
+    unfold OptP at h3; split at h3
+    · rename_i c₀ hc₀
+      rw [hfwd x hx c₀ hc₀] at hx'
+      exact ⟨hxl, by rw [hc₀, hx']⟩
+    · exact h3.elim
+  obtain ⟨hl₀, h1₀⟩ := back e (List.mem_of_getElem? hi) hl h1
+  obtain ⟨hl₀', h2₀⟩ := back e' (List.mem_of_getElem? hj) hl' h2
+  exact hu i j e e' ctl hi hj hl₀ hl₀' h1₀ h2₀
+
+/-- `ControlOf` and liveness read an entry only through its `guarded` identity (WC3 C12). -/
+theorem controlOf_guarded {L : MutexLayout} {s : SC} {x y : SyncEntry}
+    (h : x.guarded = y.guarded) : ControlOf L s x = ControlOf L s y ∧ (x.Live s ↔ y.Live s) := by
+  unfold ControlOf SyncEntry.Live; rw [h]; exact ⟨rfl, Iff.rfl⟩
+
+/-- Controller uniqueness after a record update keeping `guarded` (WC3 C21.4). -/
+theorem ctlUnique_set {L : MutexLayout} {s : SC} {reg : SyncReg} {i : Nat} {e e' : SyncEntry}
+    (hi : reg[i]? = some e) (hg : e'.guarded = e.guarded) (hu : CtlUnique L s reg) :
+    CtlUnique L s (reg.set i e') := by
+  intro j₁ j₂ x₁ x₂ ctl h₁ h₂ hl₁ hl₂ hc₁ hc₂
+  obtain ⟨y₁, hy₁, hg₁⟩ := set_old hi hg h₁
+  obtain ⟨y₂, hy₂, hg₂⟩ := set_old hi hg h₂
+  obtain ⟨hC₁, hL₁⟩ := controlOf_guarded (L := L) (s := s) hg₁
+  obtain ⟨hC₂, hL₂⟩ := controlOf_guarded (L := L) (s := s) hg₂
+  exact hu j₁ j₂ y₁ y₂ ctl hy₁ hy₂ (hL₁.2 hl₁) (hL₂.2 hl₂) (hC₁ ▸ hc₁) (hC₂ ▸ hc₂)
+
+/-- Controller uniqueness after registering an entry whose controller is not that of a live entry
+(WC3 C13.8, C21.4). -/
+theorem ctlUnique_append {L : MutexLayout} {s : SC} {reg : SyncReg} {e' : SyncEntry}
+    (hu : CtlUnique L s reg)
+    (hfresh : ∀ ctl, ControlOf L s e' = some ctl → ∀ x ∈ reg, x.Live s → ControlOf L s x ≠ some ctl) :
+    CtlUnique L s (reg ++ [e']) := by
+  intro j₁ j₂ x₁ x₂ ctl h₁ h₂ hl₁ hl₂ hc₁ hc₂
+  rcases append_cases h₁ with h₁' | ⟨rfl, rfl⟩ <;> rcases append_cases h₂ with h₂' | ⟨rfl, rfl⟩
+  · exact hu _ _ _ _ ctl h₁' h₂' hl₁ hl₂ hc₁ hc₂
+  · exact absurd hc₁ (hfresh ctl hc₂ x₁ (List.mem_of_getElem? h₁') hl₁)
+  · exact absurd hc₂ (hfresh ctl hc₁ x₂ (List.mem_of_getElem? h₂') hl₂)
+  · rfl
+
+/-- `newMutex` (WC3 C13.8) preserves controller uniqueness. -/
+theorem newMutex_ctlUnique {k : K} {L : MutexLayout} {adm : List Nat} {s : SC} {reg : SyncReg}
+    {c g : Nat} {st' : SC × SyncReg} (h : NewMutexOk k L adm s reg c g st')
+    (hu : CtlUnique L s reg) : CtlUnique L st'.1 st'.2 := by
+  obtain ⟨-, hpre, rfl⟩ := h
+  refine ctlUnique_append hu fun ctl hc => ?_
+  have h8 := hpre.ctlUnique
+  rw [show ControlOf L s ⟨g, none⟩ = some ctl from hc] at h8
+  exact h8
+
+/-- `acquire` (WC3 C16) preserves controller uniqueness. -/
+theorem acquire_ctlUnique {k : K} {L : MutexLayout} {s : SC} {reg : SyncReg} {c i : Nat}
+    {st' : SC × SyncReg} (h : AcquireOk k L s reg c i st') (hw : WF3 s.flat)
+    (hs : SyncCore L s reg) (hu : CtlUnique L s reg) : CtlUnique L st'.1 st'.2 := by
+  obtain ⟨-, e, hi, -, hpre, rfl⟩ := h
+  have hA : (deriveSyncEff s c e.guarded).A = s.A ++ [⟨.modify, some e.guarded,
+      (s.view c).afp e.guarded, .frame (s.view c).top, true⟩] := rfl
+  obtain ⟨hsk, hh⟩ := skel_append hA rfl (fun j y' hy' => ⟨y', hy', Same.refl _⟩) fun z hz => by
+    rw [List.mem_singleton] at hz; subst hz
+    exact .inr ⟨e.guarded, rfl, active_lt hpre.active, hpre.active, fun l hl => hl⟩
+  exact ctlUnique_set hi rfl (ctlUnique_step hsk hs (fun x hx _ hc =>
+    ctl_same_eq (s' := deriveSyncEff s c e.guarded) hw (pskel_refl _)
+      (Nat.lt_of_lt_of_le (hs.1 x hx).bound hsk.len) hh hc) hu)
+
+/-- `unlock` (WC3 C17) preserves controller uniqueness. -/
+theorem unlock_ctlUnique {L : MutexLayout} {s : SC} {reg : SyncReg} {c i : Nat}
+    {st' : SC × SyncReg} (h : UnlockOk L s reg c i st') (hw : WF3 s.flat)
+    (hs : SyncCore L s reg) (hu : CtlUnique L s reg) : CtlUnique L st'.1 st'.2 := by
+  obtain ⟨-, e, g₀, hi, -, -, hpre, -, rfl⟩ := h
+  obtain ⟨x, hx, -⟩ := hpre.active
+  have hx' : s.A[g₀]? = some x := hx
+  have hA : (s.set (releaseEff (s.view c) g₀)).A = s.A.set g₀ { x with active := false } := by
+    show (releaseEff (s.view c) g₀).A = _; rw [releaseEff_eq hx]; rfl
+  have hP : PSkel s.P (s.set (releaseEff (s.view c) g₀)).P := by
+    show PSkel s.P (releaseEff (s.view c) g₀).P; rw [releaseEff_eq hx]; exact pskel_refl _
+  obtain ⟨hsk, hh⟩ := skel_set hx' hA (same_deact x)
+  exact ctlUnique_set hi rfl (ctlUnique_step hsk hs (fun y hy _ hc =>
+    ctl_same_eq hw hP (Nat.lt_of_lt_of_le (hs.1 y hy).bound hsk.len) hh hc) hu)
+
+/-- `resetLock` (WC3 C18) preserves controller uniqueness. -/
+theorem resetLock_ctlUnique {L : MutexLayout} {s : SC} {reg : SyncReg} {c i : Nat}
+    {st' : SC × SyncReg} (h : ResetLockOk L s reg c i st') (hu : CtlUnique L s reg) :
+    CtlUnique L st'.1 st'.2 := by
+  obtain ⟨-, e, hi, -, -, -, rfl⟩ := h
+  exact ctlUnique_set hi rfl hu
+
+/-- Controller uniqueness across a step described by `StepFacts` (WC3 C21.4). -/
+theorem facts_ctlUnique {L : MutexLayout} {reg : SyncReg} {s s' : SC} (hf : StepFacts reg s s')
+    (hw : WF3 s.flat) (hs : SyncCore L s reg) (hu : CtlUnique L s reg) : CtlUnique L s' reg :=
+  ctlUnique_step hf.skel hs (fun e hm _ hc =>
+    ctl_same_eq hw hf.pskel (Nat.lt_of_lt_of_le (hs.1 e hm).bound hf.skel.len) hf.hold hc) hu
 
 end SyncPreserveAux
 
@@ -1157,15 +1283,15 @@ open SyncPreserveAux
 
 /-! ## Theorem 4, preservation half -/
 
-/-- Theorem 4 (WC2 C21–C23), preservation: every labelled step taken under `Encap` preserves
-`SyncInv` (WC2 C21, items 1, 2, 3, 5),
-`GrantDiscipline` (WC2 C22) and the auxiliary invariants `GrantSubtree` and `RegBound`. The kernel
-facts `WF3` before and after the step are parts of `KInvC` and `ConcurrentWF` supplied by theorem
-2. Fragment: the concurrent kernel with the reference synchronization library. -/
+/-- Theorem 4 (WC3 C21–C23), every clause other than controller uniqueness: every labelled step
+taken under `Encap` preserves `SyncCore`, the clauses of `SyncInv` (WC3 C21.1–C21.3, C21.4 second
+sentence, C21.5, C21.6) and `GrantDiscipline` (WC3 C22). The kernel facts `WF3` before and after
+the step are parts of `KInvC` and `ConcurrentWF` supplied by theorem 2. Fragment: the concurrent
+kernel with the reference synchronization library. -/
 theorem lstep_preserves {k : K} {L : MutexLayout} {lbl : Label} {st st' : SC × SyncReg}
     (h : LStep k L lbl st st') (he : Encap st lbl)
-    (hw : WF3 st.1.flat) (hw' : WF3 st'.1.flat) (hs : SyncState L st.1 st.2) :
-    SyncState L st'.1 st'.2 := by
+    (hw : WF3 st.1.flat) (hw' : WF3 st'.1.flat) (hs : SyncCore L st.1 st.2) :
+    SyncCore L st'.1 st'.2 := by
   cases h with
   | @kernel s s' reg c op h =>
     cases op
@@ -1183,24 +1309,76 @@ theorem lstep_preserves {k : K} {L : MutexLayout} {lbl : Label} {st st' : SC × 
     have hf := join_facts (reg := reg) h
     exact kernel_step_same hf.skel hf.hold hf.pskel hw hw' hs hf.src
   | deriveSync h => exact (deriveSync_excluded h he).elim
-  | newMutex h => exact newMutex_preserves h hw hs
+  | newMutex h => exact newMutex_preserves h hs
   | acquire h => exact acquire_preserves h hw hw' hs
   | unlock h => exact unlock_preserves h hw hw' hs
   | resetLock h => exact resetLock_preserves h hs
 
-/-- Theorem 4 (WC2 C22, C23), trace form: along an encapsulated trace (`EncapsulatedTrace`),
-`SyncInv`, `GrantDiscipline` and the auxiliaries are preserved, given a state invariant `Q` that
-implies `WF3` and is preserved by every labelled step (theorem 2 provides it: `KInvC` with its
-auxiliaries). -/
+/-- A label other than a kernel `transfer` (Spec 1 §63). -/
+def Label.NotTransfer : Label → Prop
+  | .kernel _ (.transfer _ _) => False
+  | _ => True
+
+/-- Theorem 4 (WC3 C21.4, C23), controller uniqueness: every labelled step taken under `Encap`
+whose label is not a kernel `transfer` preserves `CtlUnique`. A kernel `transfer` admitted by
+`Encap` may break it: `Ern.Concurrency.EncapTraces.transfer_merges_controllers`. -/
+theorem lstep_ctlUnique {k : K} {L : MutexLayout} {lbl : Label} {st st' : SC × SyncReg}
+    (h : LStep k L lbl st st') (he : Encap st lbl) (hnt : lbl.NotTransfer)
+    (hw : WF3 st.1.flat) (hs : SyncCore L st.1 st.2) (hu : CtlUnique L st.1 st.2) :
+    CtlUnique L st'.1 st'.2 := by
+  cases h with
+  | @kernel s s' reg c op h =>
+    cases op
+    case transfer src dst => exact hnt.elim
+    all_goals
+      exact facts_ctlUnique (opStep_facts (reg := reg) h he (fun _ _ h => by cases h) hw) hw hs hu
+  | @spawn s s' reg c ps ls h => exact facts_ctlUnique (spawn_facts (reg := reg) h) hw hs hu
+  | @terminate s s' reg c h => exact facts_ctlUnique (term_facts (reg := reg) hw h) hw hs hu
+  | @join s s' reg c d h => exact facts_ctlUnique (join_facts (reg := reg) h) hw hs hu
+  | deriveSync h => exact (deriveSync_excluded h he).elim
+  | newMutex h => exact newMutex_ctlUnique h hu
+  | acquire h => exact acquire_ctlUnique h hw hs hu
+  | unlock h => exact unlock_ctlUnique h hw hs hu
+  | resetLock h => exact resetLock_ctlUnique h hu
+
+/-- Theorem 4 (WC3 C21–C23) on the steps that are not kernel transfers: `SyncState` (`SyncInv`
+and `GrantDiscipline`) is preserved by every labelled step taken under `Encap` whose label is not
+a kernel `transfer`. -/
+theorem lstep_syncState {k : K} {L : MutexLayout} {lbl : Label} {st st' : SC × SyncReg}
+    (h : LStep k L lbl st st') (he : Encap st lbl) (hnt : lbl.NotTransfer)
+    (hw : WF3 st.1.flat) (hw' : WF3 st'.1.flat) (hs : SyncState L st.1 st.2) :
+    SyncState L st'.1 st'.2 := by
+  obtain ⟨hc, hu⟩ := syncState_iff.1 hs
+  exact syncState_iff.2 ⟨lstep_preserves h he hw hw' hc, lstep_ctlUnique h he hnt hw hc hu⟩
+
+/-- Theorem 4 (WC3 C22, C23), trace form, every clause other than controller uniqueness: along an
+encapsulated trace (`EncapsulatedTrace`), `SyncCore` is preserved, given a state invariant `Q`
+that implies `WF3` and is preserved by every labelled step (theorem 2 provides it: `KInvC` with
+its auxiliaries). -/
 theorem trace_preserves {k : K} {L : MutexLayout} {st st' : SC × SyncReg} {lbls : List Label}
     (h : EncapsulatedTrace k L st lbls st') (Q : SC → Prop) (hQw : ∀ s, Q s → WF3 s.flat)
     (hQ : ∀ lbl st₀ st₁, LStep k L lbl st₀ st₁ → Q st₀.1 → Q st₁.1) (hQ0 : Q st.1)
-    (hs : SyncState L st.1 st.2) : SyncState L st'.1 st'.2 := by
+    (hs : SyncCore L st.1 st.2) : SyncCore L st'.1 st'.2 := by
   induction h with
   | nil => exact hs
   | cons he hst _ ih =>
     exact ih (hQ _ _ _ hst hQ0)
       (lstep_preserves hst he (hQw _ hQ0) (hQw _ (hQ _ _ _ hst hQ0)) hs)
+
+/-- Theorem 4 (WC3 C21–C23), trace form on traces without kernel transfer: along an encapsulated
+trace none of whose labels is a kernel `transfer`, `SyncState` is preserved, given `Q` as in
+`trace_preserves`. -/
+theorem trace_syncState {k : K} {L : MutexLayout} {st st' : SC × SyncReg} {lbls : List Label}
+    (h : EncapsulatedTrace k L st lbls st') (hnt : ∀ lbl ∈ lbls, lbl.NotTransfer)
+    (Q : SC → Prop) (hQw : ∀ s, Q s → WF3 s.flat)
+    (hQ : ∀ lbl st₀ st₁, LStep k L lbl st₀ st₁ → Q st₀.1 → Q st₁.1) (hQ0 : Q st.1)
+    (hs : SyncState L st.1 st.2) : SyncState L st'.1 st'.2 := by
+  induction h with
+  | nil => exact hs
+  | cons he hst _ ih =>
+    exact ih (fun l hl => hnt l (List.mem_cons_of_mem _ hl)) (hQ _ _ _ hst hQ0)
+      (lstep_syncState hst he (hnt _ (List.mem_cons_self ..)) (hQw _ hQ0)
+        (hQw _ (hQ _ _ _ hst hQ0)) hs)
 
 /-! ## Role of the leaf clause of `newMutex` -/
 
@@ -1246,12 +1424,12 @@ theorem nm0_kInvC : KInvC nm0 :=
 end SyncPreserveWitness
 
 open SyncPreserveWitness Ern.MemoryModel.Access.Examples in
-/-- Role of the leaf clause of `NewMutexPreBase.control` (WC2 C12, C13.3): in `nm0` the positional
+/-- Role of the leaf clause of `NewMutexPre.control` (WC3 C12, C13.3): in `nm0` the positional
 controller of `guarded = 1` is place 2, which is not a leaf; `newMutex(1)` is rejected by that
 clause, and registering the entry would break `SyncInv.control`. -/
 theorem newMutex_nonleaf_rejected :
     KInvC nm0 ∧ ControlOf nmL nm0 ⟨1, none⟩ = some 2 ∧ ¬ isLeaf nm0.P 2 ∧
-    ¬ NewMutexPreBase nmL [] nm0 [] 0 1 ∧ ¬ SyncInv nmL nm0 [⟨1, none⟩] := by
+    ¬ NewMutexPre K0 nmL [] nm0 [] 0 1 ∧ ¬ SyncInv nmL nm0 [⟨1, none⟩] := by
   refine ⟨nm0_kInvC, by decide, by decide, by decide, fun h => ?_⟩
   have := h.control ⟨1, none⟩ (List.mem_singleton_self _) (by decide); revert this; decide
 

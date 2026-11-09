@@ -914,20 +914,17 @@ theorem store_preserves {s : SC} {c a p : Nat} (hk : KInvCA s) (hpre : StorePreC
 
 /-! ## `deriveSync` (WC2 C15) -/
 
-/-- `deriveSync` preserves the re-indexed invariant (Spec 1 §57, §60; WC2 C15, C20) when
-`guarded` has own mode `Modify` (WC2 C12, C21.1: the `guarded` of a live entry; WC2 C15 "mode
-restrictions"). Without it the statement is false: `deriveSync_breaks_i2`. -/
-theorem deriveSync_preserves {kc : KC} {s : SC} {c g : Nat} (hk : KInvCA s)
-    (hpre : DeriveSyncPre kc s c g)
-    (hmode : OptP (s.A[g]?) (fun y => y.mode = .modify) False) :
-    KInvCA (deriveSyncEff s c g) := by
+/-- `deriveSync` preserves the re-indexed invariant (Spec 1 §57, §60; WC3 C15, C20); the own mode
+of `guarded` is the clause C15.1 of `DeriveSyncPre`. -/
+theorem deriveSync_preserves {R : Type} {kc : KC R} {r : R} {s : SC} {c g : Nat} (hk : KInvCA s)
+    (hpre : DeriveSyncPre kc r s c g) : KInvCA (deriveSyncEff s c g) := by
   obtain ⟨hw, hb, hd, hc, hh⟩ := view_facts hk c
   obtain ⟨x, hx, xa⟩ := hpre.active
-  have hxm : x.mode = .modify := by
-    have hx' : s.A[g]? = some x := hx
-    simp only [OptP, hx'] at hmode; exact hmode
+  have hxm : Mode.modify.le x.mode := by
+    have hm := hpre.mode
+    rw [hx] at hm; exact hm
   have hafp : (s.view c).afp g = x.footprint := by simp [S3.afp, hx]
-  have hbase := addAuth_preserves hw hb hx xa (by rw [hxm]; exact Mode.le_refl _)
+  have hbase := addAuth_preserves hw hb hx xa hxm
     (fun p hp => by rw [← hafp]; exact hp) hpre.modeOK
     (hd := .frame (s.view c).top) hpre.frameLive
   have hd' : NoDangling (deriveEff (s.view c) g ((s.view c).afp g) .modify) := by
@@ -1855,59 +1852,42 @@ theorem join_preservesC {s s' : SC} {c d : Nat} (hk : KInvCA s) (h : JoinStep s 
     KInvCA s' := by
   cases h; exact hk
 
-/-- Theorem 2 (WC2 C15, C20, C23) for `deriveSync`, when `guarded` has own mode `Modify` (WC2
-C12, C21.1; WC2 C15 "mode restrictions"). The unrestricted statement is false:
-`deriveSync_breaks_i2`. -/
-theorem deriveSync_preservesC {kc : KC} {s s' : SC} {c g : Nat} (hk : KInvCA s)
-    (hmode : OptP (s.A[g]?) (fun y => y.mode = .modify) False)
-    (h : DeriveSyncStep kc s c g (.ok s')) : KInvCA s' := by
+/-- Theorem 2 (WC3 C15, C20, C23) for `deriveSync`, for every contract `K_C` and registry: the
+own mode of `guarded` is the clause C15.1 of `DeriveSyncPre`. -/
+theorem deriveSync_preservesC {R : Type} {kc : KC R} {r : R} {s s' : SC} {c g : Nat}
+    (hk : KInvCA s) (h : DeriveSyncStep kc r s c g (.ok s')) : KInvCA s' := by
   obtain ⟨-, h⟩ := h; obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
-  exact deriveSync_preserves hk hpre hmode
+  exact deriveSync_preserves hk hpre
 
-/-- WC2 C15 replaces the conjunct `ExercisableAt(source, Modify)` of Spec 1 §60.1, which bounds
-the requested mode by the own mode of the source, by `SyncAuthorized`; §60.2 bounds it only leaf
-by leaf. With an opaque `SyncAuthorized` that holds, `deriveSync` from an active `Observe`
-authority with an empty footprint (authority 3, derived by frame 0 from the root of static 0)
-creates a `Modify` derivative and breaks `I2` (Spec 1 §51: "does not elevate its mode"), from a
-state satisfying the invariant. -/
-theorem deriveSync_breaks_i2 :
-    ∃ (kc : KC) (s s' : SC), KInvCA s ∧ DeriveSyncStep kc s 0 3 (.ok s') ∧ ¬ I2 s'.flat := by
-  let t := deriveEff Examples.s0 0 [] .observe
-  let s := SC.ofS3 t
-  let kc : KC := { Examples.K0 with SyncAuthorized := fun _ _ _ => True }
-  have hreach : Reachable Examples.K0 Examples.st t :=
-    .step .init (KStep.derive (src := 0) (region := []) (m := .observe) (.ok (by decide)))
-  obtain ⟨hkt, hat, hht⟩ := reachable_inv (fun _ _ h => (h : False).elim) (by decide) hreach
-  have hs : s.Single := ⟨_, rfl⟩
-  have hts : s.toS3 = t := rfl
-  have hfr : FramesC s :=
-    { initial := by simp [s, SC.ofS3, OptP]
-      nonempty := by
-        intro c hc
-        unfold SC.Live at hc
-        cases c with
-        | zero => simp [s, SC.stk, SC.ofS3, t, deriveEff, S3.addAuth, Examples.s0, S3.init]
-        | succ c => simp [s, SC.ofS3, OptP] at hc
-      nodup := by decide
-      bound := by decide
-      rooted := by
-        intro c hc hl
-        unfold SC.Live at hl
-        cases c with
-        | zero => exact absurd rfl hc
-        | succ c => simp [s, SC.ofS3, OptP] at hl
-      parent := by decide }
-  have hflat : s.flat = t := by rw [single_flat hs, hts]
-  refine ⟨kc, s, deriveSyncEff s 0 3, ⟨(single_kInvC hs).2 ⟨hfr, hts ▸ hkt⟩,
-    by rw [hflat]; exact hat, by rw [hflat]; exact hht⟩,
-    ⟨by decide, .ok ⟨by decide, trivial, by decide, by decide, by decide, by decide, by decide,
-      by decide⟩⟩, fun h2 => ?_⟩
-  have e4 : (deriveSyncEff s 0 3).flat.A[4]? =
-      some ⟨.modify, some 3, [], .frame 0, true⟩ := by decide
-  have e3 : (deriveSyncEff s 0 3).flat.A[3]? =
-      some ⟨.observe, some 0, [], .frame 0, true⟩ := by decide
-  obtain ⟨x, hx, hm, -⟩ := h2 4 _ 3 e4 rfl
-  rw [e3] at hx; cases hx
-  simp [Mode.le] at hm
+namespace DeriveSyncWitness
+
+/-- A contract `K_C` whose `SyncAuthorized` always holds, on a trivial registry (test contract,
+Spec 1 `Examples.K0` for `K`). -/
+def kcTrue : KC Unit := { Examples.K0 with SyncAuthorized := fun _ _ _ _ => True }
+
+/-- Decidability of `kcTrue.SyncAuthorized`. -/
+instance (r : Unit) (s : SC) (g f : Nat) : Decidable (kcTrue.SyncAuthorized r s g f) :=
+  inferInstanceAs (Decidable True)
+
+/-- The single-context state after `derive(0, [], Observe)` from the statics of Spec 1
+`Examples.st`: authority 3 is an active `Observe` derivative of root 0 with an empty footprint,
+held by frame 0. -/
+def wd : SC := SC.ofS3 (deriveEff Examples.s0 0 [] .observe)
+
+end DeriveSyncWitness
+
+open DeriveSyncWitness in
+/-- WC3 C15.1: `deriveSync` from the active `Observe` authority 3 with an empty footprint is
+rejected, even with a `SyncAuthorized` that always holds (the milestone-1 counterexample
+`deriveSync_breaks_i2`, whose `ok` step created a `Modify` derivative of an `Observe` authority). -/
+theorem deriveSync_observe_rejected :
+    ¬ DeriveSyncPre kcTrue () wd 0 3 ∧ DeriveSyncStep kcTrue () wd 0 3 .reject :=
+  ⟨by decide, by decide, .reject (by decide)⟩
+
+open DeriveSyncWitness in
+/-- Positive twin of `deriveSync_observe_rejected` (WC3 C15): in the same state, `deriveSync` from
+the root `Modify` authority 0 is `ok`. -/
+theorem deriveSync_modify_ok :
+    DeriveSyncStep kcTrue () wd 0 0 (.ok (deriveSyncEff wd 0 0)) := ⟨by decide, .ok (by decide)⟩
 
 end Ern.Concurrency

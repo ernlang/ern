@@ -1,148 +1,192 @@
 import Ern.Concurrency.Frames
 
 /-!
-# Provisional by-value transmission at `spawn` (WC2 C5)
+# Provisional by-value transmission at `spawn` (WC3 C5)
 
-The composite of WC2 C5: `spawn` (WC2 C4) creating, among the locals of the new frame, a fresh
-root `destination`, and the transfer of an owned `source` of the creator into it, with the
-preconditions of O4 (Spec 1 §63) except the destination side of §63.1, replaced by WC2 C5.2–C5.3.
+The composite of WC3 C5, a single transition with four ordered phases:
 
-WC2 C5.4 evaluates the resulting-state conditions of O4 on the final state but does not say in
-which state the other conditions are evaluated. Two of them depend on it: the source side of
-§63.1 (exercisable `Modify` of the creating frame over the source, WC2 C5.1) and §63.4 (the
-exemption of the grounding authority), since the spawn part moves the transmitted parameters to
-the new frame. Both readings are defined (`SrcRightBefore`, `SrcRightAfterSpawn`) and
-`readings_differ` exhibits a state where every other clause holds and the two readings disagree.
-The composite relation itself is not defined: its definition requires that choice (see the
-report).
+1. create (WC3 C5.1): the new context, its initial frame, its locals and their root authorities,
+   without yielding the parameters (`spawnCreate`);
+2. transfer (WC3 C5.2): each by-value argument `(source, destination)` in its declared order, by
+   the effect of O4 (Spec 1 §63) executed by the creating context on the state produced by the
+   earlier transfers (`transfersEff`); the clauses of O4 that are not resulting-state conditions
+   are evaluated at the start of the corresponding transfer (`ValTransferPre`);
+3. yield (WC3 C5.3): the parameters change holder to the new frame (`yieldEff`);
+4. final checks (WC3 C5.4) on the final state.
 -/
 
 namespace Ern.Concurrency
 
 open Ern.MemoryModel.Access
 
-/-- Effect of the composite (WC2 C5 effect): the effect of `spawn` (WC2 C4), then the effect of
-O4 (Spec 1 §63) from `src` to `dst` on the resulting state. -/
-def spawnValEff (s : SC) (c : Nat) (ps : List Nat) (ls : LocalShape) (src dst : Nat) : SC :=
-  (spawnEff s c ps ls).set (transferEff (spawnEff s c ps ls).flat src dst)
+/-! ## Effects (WC3 C5 effects) -/
 
-/-- WC2 C5.2: `dst` is a fresh root local of the initial frame of the new context (its leaves are
-`Uninit`, it holds no derived authority and its root authority is held by that frame by
-construction of `spawnEff`). -/
+/-- Phase 1 of WC3 C5 (create): the effect of `spawn` (WC3 C4) with no parameter yielded. -/
+def spawnCreate (s : SC) (c : Nat) (ls : LocalShape) : SC := spawnEff s c [] ls
+
+/-- Phase 2 of WC3 C5 (transfer): the effects of O4 (Spec 1 §63) executed by `c`, in the declared
+order, each on the state produced by the earlier ones. -/
+def transfersEff (c : Nat) : SC → List (Nat × Nat) → SC
+  | t, [] => t
+  | t, v :: vs => transfersEff c (transferEffC t c v.1 v.2) vs
+
+/-- Phase 3 of WC3 C5 (yield): the parameters `ps` change holder to the frame `f` (WC3 C4 effect,
+Spec 1 §72 effect); no right is created. -/
+def yieldEff (t : SC) (ps : List Nat) (f : Nat) : SC :=
+  { t with A := mapI (fun j y => if j ∈ ps then { y with holder := .frame f } else y) 0 t.A }
+
+/-- Effect of the composite (WC3 C5.1–C5.3): create, the transfers of `vs`, then the yield of `ps`
+to the new frame `nF`. -/
+def spawnValEff (s : SC) (c : Nat) (ps : List Nat) (ls : LocalShape) (vs : List (Nat × Nat)) :
+    SC :=
+  yieldEff (transfersEff c (spawnCreate s c ls) vs) ps s.nF
+
+/-! ## Preconditions (WC3 C4, C5) -/
+
+/-- WC3 C5 item 2: `dst` is a fresh root local of the initial frame of the new context (its leaves
+are `Uninit`, it holds no derived authority and its root authority is held by that frame by
+construction of `spawnCreate`). -/
 def FreshRootLocal (s : SC) (ls : LocalShape) (dst : Nat) : Prop :=
   ∃ i ∈ rootIdx ls.toShape, dst = s.P.length + i
 
-/-- Decidability of `FreshRootLocal` (WC2 C5.2). -/
+/-- Decidability of `FreshRootLocal` (WC3 C5 item 2). -/
 instance (s : SC) (ls : LocalShape) (dst : Nat) : Decidable (FreshRootLocal s ls dst) := by
   unfold FreshRootLocal; infer_instance
 
-/-- Clauses of the composite whose state of evaluation is fixed by WC2 C4 and C5: C4.1, C4.3,
-C4.5 (Spec 1 §72.2); C5.2; the source side of §63.1 without the right (usability); §63.2, §63.3,
-§63.5, §63.6 (first half) and §63.8 on the state where the destination exists, after the spawn
-part; the resulting-state conditions §63.6 (second half), §63.7 and §63.9 on the final state
-(WC2 C5.4). Not included: the source right of §63.1 and §63.4 (two readings below), the
-resulting-state conditions of WC2 C4.5–C4.6 (state of evaluation not fixed by WC2: after the
-spawn part or after the composite) and WC2 C4.6, C5.8 ("invariants hold", see the report). -/
-structure SpawnValPreBase (k : K) (s : SC) (c : Nat) (ps : List Nat) (ls : LocalShape)
-    (src dst : Nat) : Prop where
-  /-- WC2 C4.1: the creating context and its current frame are live. -/
-  creatorLive : s.stk c ≠ []
-  /-- WC2 C4.3: every transmitted parameter is an active derived authority held by the creating
-  frame. -/
-  params : ∀ a ∈ ps, OptP ((s.view c).A[a]?) (fun y => y.active = true ∧
-    y.holder = .frame (s.view c).top ∧ y.origin ≠ none) False
-  /-- WC2 C4.5 (Spec 1 §72.2): the locals form a well-formed shape. -/
-  localsOK : ShapeOK s.P.length ls.toShape
-  /-- WC2 C5.2: the destination is a fresh root local of the new frame. -/
-  freshDst : FreshRootLocal s ls dst
-  /-- WC2 C5.1 (Spec 1 §63.1): the source is usable. -/
-  srcUsable : (s.view c).Usable src
-  /-- WC2 C5.5 (Spec 1 §63.2): same shape of ordered subtrees. -/
-  sameShape : SameShape (spawnEff s c ps ls).P src dst
-  /-- Spec 1 §63.3: all source leaves are `Init`. -/
-  srcInit : ∀ l ∈ footprint (spawnEff s c ps ls).P src, (spawnEff s c ps ls).I l = .init
-  /-- Spec 1 §63.3, WC2 C5.2: no destination leaf is `Init`. -/
-  dstNotInit : ∀ l ∈ footprint (spawnEff s c ps ls).P dst, (spawnEff s c ps ls).I l ≠ .init
-  /-- WC2 C5.5 (Spec 1 §63.3): disjoint footprints. -/
-  disjoint : ¬ overlap (spawnEff s c ps ls).P src dst
-  /-- Spec 1 §63.5: no in-place source leaf is pinned. -/
-  notPinned : ∀ l ∈ footprint (spawnEff s c ps ls).P src, ¬ k.Pinned l ∧
-    (spawnEff s c ps ls).flat.pin l = false
-  /-- Spec 1 §63.6: dependencies of the usable places following the value are valid. -/
-  depsValid : ∀ x ∈ movedDeps (spawnEff s c ps ls).flat src, (spawnEff s c ps ls).flat.Active x
-  /-- Spec 1 §63.6 re-indexed, WC2 C5.4: `AnchorOrder` (on `ancestorC`) in the final state. -/
-  anchorOrder : AnchorOrderC (spawnValEff s c ps ls src dst)
-  /-- Spec 1 §63.7 re-indexed, WC2 C5.4: moved held authorities satisfy `AnchorOrderHeld` (on
-  `ancestorC`) in the final state. -/
-  anchorOrderHeld : ∀ x ∈ List.range (spawnEff s c ps ls).A.length,
-    AnchorMoves (spawnEff s c ps ls).flat src x → ∀ q ∈ List.range (spawnEff s c ps ls).P.length,
-      (spawnValEff s c ps ls src dst).flat.Usable q →
-      OptP ((spawnValEff s c ps ls src dst).A[x]?) (fun y => y.active = true →
-        y.holder = .place q → EffAnchorOKC (spawnValEff s c ps ls src dst) x
-          ((spawnValEff s c ps ls src dst).flat.pframe q)) True
-  /-- Spec 1 §63.8: local self-blocking prevention. -/
-  noSelfLock : NoLocalSelfLock (spawnEff s c ps ls).flat src dst
-  /-- Spec 1 §63.9: the destination is usable in the final state. -/
-  dstUsableAfter : (spawnValEff s c ps ls src dst).flat.Usable dst
-
-/-- Decidability of `SpawnValPreBase` (WC2 C5). -/
-instance (k : K) [DecidablePred k.Pinned] (s : SC) (c : Nat) (ps : List Nat) (ls : LocalShape)
-    (src dst : Nat) : Decidable (SpawnValPreBase k s c ps ls src dst) :=
-  decidable_of_iff (s.stk c ≠ [] ∧ (∀ a ∈ ps, OptP ((s.view c).A[a]?) (fun y =>
-      y.active = true ∧ y.holder = .frame (s.view c).top ∧ y.origin ≠ none) False) ∧
-    ShapeOK s.P.length ls.toShape ∧ FreshRootLocal s ls dst ∧ (s.view c).Usable src ∧
-    SameShape (spawnEff s c ps ls).P src dst ∧
-    (∀ l ∈ footprint (spawnEff s c ps ls).P src, (spawnEff s c ps ls).I l = .init) ∧
-    (∀ l ∈ footprint (spawnEff s c ps ls).P dst, (spawnEff s c ps ls).I l ≠ .init) ∧
-    ¬ overlap (spawnEff s c ps ls).P src dst ∧
-    (∀ l ∈ footprint (spawnEff s c ps ls).P src, ¬ k.Pinned l ∧
-      (spawnEff s c ps ls).flat.pin l = false) ∧
-    (∀ x ∈ movedDeps (spawnEff s c ps ls).flat src, (spawnEff s c ps ls).flat.Active x) ∧
-    AnchorOrderC (spawnValEff s c ps ls src dst) ∧
-    (∀ x ∈ List.range (spawnEff s c ps ls).A.length,
-      AnchorMoves (spawnEff s c ps ls).flat src x → ∀ q ∈ List.range (spawnEff s c ps ls).P.length,
-        (spawnValEff s c ps ls src dst).flat.Usable q →
-        OptP ((spawnValEff s c ps ls src dst).A[x]?) (fun y => y.active = true →
-          y.holder = .place q → EffAnchorOKC (spawnValEff s c ps ls src dst) x
-            ((spawnValEff s c ps ls src dst).flat.pframe q)) True) ∧
-    NoLocalSelfLock (spawnEff s c ps ls).flat src dst ∧
-    (spawnValEff s c ps ls src dst).flat.Usable dst)
-    ⟨fun ⟨a, b, c, d, e, f, g, h, i, j, l, m, n, o, p⟩ =>
-      ⟨a, b, c, d, e, f, g, h, i, j, l, m, n, o, p⟩,
-     fun ⟨a, b, c, d, e, f, g, h, i, j, l, m, n, o, p⟩ =>
-      ⟨a, b, c, d, e, f, g, h, i, j, l, m, n, o, p⟩⟩
-
-/-- Source side of Spec 1 §63.1 and §63.4 for the creating context `c` in state `t` (WC2 C5.1,
-C5.4): exercisable `Modify` over the source, and no active derived authority covering a source
-leaf from outside the source except some grounding authority and its origin chain. -/
-def SrcRight (t : SC) (c src : Nat) : Prop :=
-  HasRight (t.view c) .modify src ∧
-  ∃ g ∈ List.range (t.view c).A.length, Grounds (t.view c) .modify src g ∧
+/-- The clauses of O4 (Spec 1 §63) for the by-value argument `(src, dst)`, executed by the creating
+context `c`, at the start of its transfer phase in state `t` (WC3 C5.2, C5 items 1, 3, 4): those
+of `TransferPreC` other than the exercisable `Modify` over the destination (replaced by C5 item 2,
+WC3 C5 item 3) and the resulting-state clauses; §63.8 is evaluated on the final state `fin` (WC3
+C5.4). -/
+structure ValTransferPre (k : K) (fin : S3) (t : SC) (c src dst : Nat) : Prop where
+  /-- WC3 C5 item 1, Spec 1 §63.1: `source` is usable. -/
+  srcUsable : (t.view c).Usable src
+  /-- Spec 1 §63.1: `destination` is usable. -/
+  dstUsable : (t.view c).Usable dst
+  /-- WC3 C5.2, C5 item 1, Spec 1 §63.1: exercisable `Modify` of the creating frame over the
+  source. -/
+  srcRight : HasRight (t.view c) .modify src
+  /-- WC3 C5.2, Spec 1 §63.2: same shape of ordered subtrees. -/
+  sameShape : SameShape (t.view c).P src dst
+  /-- WC3 C5 item 1, Spec 1 §63.3: all source leaves are `Init`. -/
+  srcInit : ∀ l ∈ footprint (t.view c).P src, (t.view c).I l = .init
+  /-- WC3 C5 item 2, Spec 1 §63.3: no destination leaf is `Init`. -/
+  dstNotInit : ∀ l ∈ footprint (t.view c).P dst, (t.view c).I l ≠ .init
+  /-- WC3 C5.2, Spec 1 §63.3: disjoint footprints. -/
+  disjoint : ¬ overlap (t.view c).P src dst
+  /-- WC3 C5.2, C5 item 4, Spec 1 §63.4: no active derived authority covers a source leaf from
+  outside the source, except some authority grounding the `Modify` right over the source and its
+  origin chain. -/
+  noOutsideDerived : ∃ g ∈ List.range (t.view c).A.length, Grounds (t.view c) .modify src g ∧
     ∀ j ∈ List.range (t.view c).A.length, ActiveDerivedOutside (t.view c) src j →
       RightChain (t.view c) g j
+  /-- WC3 C5 item 4, Spec 1 §63.5: no in-place source leaf is pinned. -/
+  notPinned : ∀ l ∈ footprint (t.view c).P src, ¬ k.Pinned l ∧ (t.view c).pin l = false
+  /-- WC3 C5 item 4, Spec 1 §63.6, first half: dependencies of the usable places following the
+  value are valid. -/
+  depsValid : ∀ x ∈ movedDeps (t.view c) src, (t.view c).Active x
+  /-- WC3 C5 item 4, C5.4, Spec 1 §63.8: no authority held before the transfer by a part of the
+  source covers, in the final state, a leaf of its holder. -/
+  noSelfLock : ∀ j ∈ List.range (t.view c).A.length,
+    OptP ((t.view c).A[j]?) (fun y => heldIn (t.view c).P src y.holder) False → ¬ SelfLock fin j
 
-/-- Decidability of `SrcRight` (Spec 1 §63.1, §63.4). -/
-instance (t : SC) (c src : Nat) : Decidable (SrcRight t c src) := by
-  unfold SrcRight; infer_instance
+/-- Decidability of `ValTransferPre` (WC3 C5). -/
+instance (k : K) [DecidablePred k.Pinned] (fin : S3) (t : SC) (c src dst : Nat) :
+    Decidable (ValTransferPre k fin t c src dst) :=
+  decidable_of_iff ((t.view c).Usable src ∧ (t.view c).Usable dst ∧
+    HasRight (t.view c) .modify src ∧ SameShape (t.view c).P src dst ∧
+    (∀ l ∈ footprint (t.view c).P src, (t.view c).I l = .init) ∧
+    (∀ l ∈ footprint (t.view c).P dst, (t.view c).I l ≠ .init) ∧ ¬ overlap (t.view c).P src dst ∧
+    (∃ g ∈ List.range (t.view c).A.length, Grounds (t.view c) .modify src g ∧
+      ∀ j ∈ List.range (t.view c).A.length, ActiveDerivedOutside (t.view c) src j →
+        RightChain (t.view c) g j) ∧
+    (∀ l ∈ footprint (t.view c).P src, ¬ k.Pinned l ∧ (t.view c).pin l = false) ∧
+    (∀ x ∈ movedDeps (t.view c) src, (t.view c).Active x) ∧
+    (∀ j ∈ List.range (t.view c).A.length,
+      OptP ((t.view c).A[j]?) (fun y => heldIn (t.view c).P src y.holder) False →
+        ¬ SelfLock fin j))
+    ⟨fun ⟨a, b, c, d, e, f, g, h, i, j, l⟩ => ⟨a, b, c, d, e, f, g, h, i, j, l⟩,
+     fun ⟨a, b, c, d, e, f, g, h, i, j, l⟩ => ⟨a, b, c, d, e, f, g, h, i, j, l⟩⟩
 
-/-- Reading (a) of WC2 C5.1, C5.4: the source clauses are evaluated in the state before the
-composite. -/
-def SrcRightBefore (s : SC) (c src : Nat) : Prop := SrcRight s c src
+/-- WC3 C5.2: every by-value argument satisfies `ValTransferPre` at the start of its transfer
+phase, in the declared order, on the state produced by the earlier transfers. -/
+def ValTransfersPre (k : K) (fin : S3) (c : Nat) : SC → List (Nat × Nat) → Prop
+  | _, [] => True
+  | t, v :: vs => ValTransferPre k fin t c v.1 v.2 ∧
+      ValTransfersPre k fin c (transferEffC t c v.1 v.2) vs
 
-/-- Reading (b) of WC2 C5.1, C5.4: the source clauses are evaluated after the spawn part, when
-the transmitted parameters are held by the new frame. -/
-def SrcRightAfterSpawn (s : SC) (c : Nat) (ps : List Nat) (ls : LocalShape) (src : Nat) :
-    Prop :=
-  SrcRight (spawnEff s c ps ls) c src
+/-- Decidability of `ValTransfersPre` (WC3 C5.2). -/
+instance instDecidableValTransfersPre (k : K) [DecidablePred k.Pinned] (fin : S3) (c : Nat) :
+    (t : SC) → (vs : List (Nat × Nat)) → Decidable (ValTransfersPre k fin c t vs)
+  | _, [] => isTrue trivial
+  | t, v :: vs =>
+    haveI := instDecidableValTransfersPre k fin c (transferEffC t c v.1 v.2) vs
+    inferInstanceAs (Decidable (ValTransferPre k fin t c v.1 v.2 ∧ _))
 
-/-- Decidability of reading (a) (WC2 C5.4). -/
-instance (s : SC) (c src : Nat) : Decidable (SrcRightBefore s c src) := by
-  unfold SrcRightBefore; infer_instance
+/-- Preconditions of the by-value composite executed by `c` (WC3 C4.1, C4.3, C4.5, C4.6, C5.1–C5.4
+and C5 items 1–5). C4.2 (fresh identities), C4.4 and C5 item 6 (no duplication) hold by
+construction of `spawnValEff`; the preservation obligations of WC3 C4 and C5 are theorems, not
+preconditions. -/
+structure SpawnValPre (k : K) (s : SC) (c : Nat) (ps : List Nat) (ls : LocalShape)
+    (vs : List (Nat × Nat)) : Prop where
+  /-- WC3 C4.1: the creating context and its current frame are live. -/
+  creatorLive : s.stk c ≠ []
+  /-- WC3 C4.3, C5.3 (Spec 1 §72.1): every parameter is an active derived authority held by the
+  creating frame before the composite. -/
+  params : ∀ a ∈ ps, OptP ((s.view c).A[a]?) (fun y => y.active = true ∧
+    y.holder = .frame (s.view c).top ∧ y.origin ≠ none) False
+  /-- WC3 C4.5 (Spec 1 §72.2): the locals form a well-formed shape. -/
+  localsOK : ShapeOK s.P.length ls.toShape
+  /-- WC3 C5 item 2: every destination is a fresh root local of the new frame. -/
+  freshDst : ∀ v ∈ vs, FreshRootLocal s ls v.2
+  /-- WC3 C5.2, C5 items 1, 3, 4: the transfer phases. -/
+  transfers : ValTransfersPre k (spawnValEff s c ps ls vs).flat c (spawnCreate s c ls) vs
+  /-- WC3 C5 item 5: no parameter covers a leaf of a by-value source, on the declared source
+  footprints before consumption. -/
+  paramsApart : ∀ a ∈ ps, ∀ v ∈ vs, ∀ l ∈ (s.view c).afp a, l ∉ footprint s.P v.1
+  /-- WC3 C5.3 (Spec 1 §72.1): the transmission of every parameter remains legal at the yield
+  phase. -/
+  paramsAtYield : ∀ a ∈ ps,
+    OptP (((transfersEff c (spawnCreate s c ls) vs).view c).A[a]?) (fun y => y.active = true ∧
+      y.holder = .frame ((transfersEff c (spawnCreate s c ls) vs).view c).top ∧
+      y.origin ≠ none) False
+  /-- WC3 C5.4, Spec 1 §63.6, second half: `AnchorOrder` (on `ancestorC`) in the final state. -/
+  anchorOrder : AnchorOrderC (spawnValEff s c ps ls vs)
+  /-- WC3 C5.4, Spec 1 §63.9: every destination is usable in the final state. -/
+  dstUsableAfter : ∀ v ∈ vs, (spawnValEff s c ps ls vs).flat.Usable v.2
+  /-- WC3 C4.5, C5.4, Spec 1 §72.3: origin protection in the final state, from the current frame of
+  the new context. -/
+  originHidden : ∀ p ∈ ps, ParamOriginHidden ((spawnValEff s c ps ls vs).view s.C.length) p
+  /-- WC3 C4.5, C5.4, Spec 1 §72.4 (`AnchorOrderHeld` on `ancestorC`) in the final state, which
+  includes Spec 1 §63.7 for the moved held authorities. -/
+  anchorOrderHeld : AnchorOrderHeldC (spawnValEff s c ps ls vs)
 
-/-- Decidability of reading (b) (WC2 C5.4). -/
-instance (s : SC) (c : Nat) (ps : List Nat) (ls : LocalShape) (src : Nat) :
-    Decidable (SrcRightAfterSpawn s c ps ls src) := by
-  unfold SrcRightAfterSpawn; infer_instance
+/-- Decidability of `SpawnValPre` (WC3 C4, C5). -/
+instance (k : K) [DecidablePred k.Pinned] (s : SC) (c : Nat) (ps : List Nat) (ls : LocalShape)
+    (vs : List (Nat × Nat)) : Decidable (SpawnValPre k s c ps ls vs) :=
+  decidable_of_iff (s.stk c ≠ [] ∧ (∀ a ∈ ps, OptP ((s.view c).A[a]?) (fun y =>
+      y.active = true ∧ y.holder = .frame (s.view c).top ∧ y.origin ≠ none) False) ∧
+    ShapeOK s.P.length ls.toShape ∧ (∀ v ∈ vs, FreshRootLocal s ls v.2) ∧
+    ValTransfersPre k (spawnValEff s c ps ls vs).flat c (spawnCreate s c ls) vs ∧
+    (∀ a ∈ ps, ∀ v ∈ vs, ∀ l ∈ (s.view c).afp a, l ∉ footprint s.P v.1) ∧
+    (∀ a ∈ ps,
+      OptP (((transfersEff c (spawnCreate s c ls) vs).view c).A[a]?) (fun y => y.active = true ∧
+        y.holder = .frame ((transfersEff c (spawnCreate s c ls) vs).view c).top ∧
+        y.origin ≠ none) False) ∧
+    AnchorOrderC (spawnValEff s c ps ls vs) ∧
+    (∀ v ∈ vs, (spawnValEff s c ps ls vs).flat.Usable v.2) ∧
+    (∀ p ∈ ps, ParamOriginHidden ((spawnValEff s c ps ls vs).view s.C.length) p) ∧
+    AnchorOrderHeldC (spawnValEff s c ps ls vs))
+    ⟨fun ⟨a, b, c, d, e, f, g, h, i, j, l⟩ => ⟨a, b, c, d, e, f, g, h, i, j, l⟩,
+     fun ⟨a, b, c, d, e, f, g, h, i, j, l⟩ => ⟨a, b, c, d, e, f, g, h, i, j, l⟩⟩
+
+/-- The by-value composite executed by `c` (WC3 C5): `ok` or `reject`; no outcome if `c` is not
+live. -/
+def SpawnValStep (k : K) (s : SC) (c : Nat) (ps : List Nat) (ls : LocalShape)
+    (vs : List (Nat × Nat)) (o : Outcome3 SC) : Prop :=
+  s.Live c ∧ Guarded (SpawnValPre k s c ps ls vs) (spawnValEff s c ps ls vs) o
+
+/-! ## Verdict of the milestone-1 case D2 (WC3 C5 item 5) -/
 
 namespace TransferWitness
 
@@ -155,24 +199,22 @@ def w0 : SC := SC.ofS3 (deriveEff s0 0 [0] .modify)
 end TransferWitness
 
 open TransferWitness Ern.MemoryModel.Access.Examples in
-/-- The two readings of WC2 C5.1/C5.4 differ (report, problem of WC2 C5): in `w0`, context 0
-spawns a context transmitting authority 3 (a `Modify` derivative over leaf 0, held by frame 0) and
-moves the value of place 0 into a fresh one-leaf local (place 3) of the new frame. Every clause of
-`SpawnValPreBase` holds; the source right holds before the composite (through authority 3) and
-fails after the spawn part (authority 3 is held by the new frame and blocks the root of place
-0). -/
-theorem readings_differ : SpawnValPreBase K0 w0 0 [3] [(none, 0)] 0 3 ∧
-    SrcRightBefore w0 0 0 ∧ ¬ SrcRightAfterSpawn w0 0 [3] [(none, 0)] 0 := by
-  decide
+/-- WC3 C5 item 5: in `w0`, context 0 spawns a context transmitting authority 3 (a `Modify`
+derivative over leaf 0, held by frame 0) and moving the value of place 0 into a fresh one-leaf local
+(place 3) of the new frame. Authority 3 covers leaf 0 of the source: the composite is rejected. -/
+theorem spawnVal_covering_rejected :
+    ¬ SpawnValPre K0 w0 0 [3] [(none, 0)] [(0, 3)] ∧
+    SpawnValStep K0 w0 0 [3] [(none, 0)] [(0, 3)] .reject :=
+  ⟨by decide, by decide, .reject (by decide)⟩
 
-open TransferWitness in
-/-- In the final state of the composite of `readings_differ` (accepted under reading (a)), the new
-frame 1 holds the active `Modify` authority 3 over leaf 0 of the creator, now `Moved`, and the
-destination leaf 3 is `Init` (WC2 C5 effect, Spec 1 §63 effect). -/
-theorem readingA_final :
-    (spawnValEff w0 0 [3] [(none, 0)] 0 3).A[3]? = some ⟨.modify, some 0, [0], .frame 1, true⟩ ∧
-    (spawnValEff w0 0 [3] [(none, 0)] 0 3).I 0 = .moved ∧
-    (spawnValEff w0 0 [3] [(none, 0)] 0 3).I 3 = .init := by
-  decide
+open TransferWitness Ern.MemoryModel.Access.Examples in
+/-- Positive twin of `spawnVal_covering_rejected` (WC3 C5): the same composite without the
+parameter covering the source is `ok`; in its final state the source leaf 0 is `Moved` and the
+destination leaf 3 is `Init` (WC3 C5 effect, Spec 1 §63 effect). -/
+theorem spawnVal_apart_ok :
+    SpawnValStep K0 w0 0 [] [(none, 0)] [(0, 3)] (.ok (spawnValEff w0 0 [] [(none, 0)] [(0, 3)])) ∧
+    (spawnValEff w0 0 [] [(none, 0)] [(0, 3)]).I 0 = .moved ∧
+    (spawnValEff w0 0 [] [(none, 0)] [(0, 3)]).I 3 = .init :=
+  ⟨⟨by decide, .ok (by decide)⟩, by decide, by decide⟩
 
 end Ern.Concurrency
