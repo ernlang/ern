@@ -376,14 +376,18 @@ def EncapVals (L : MutexLayout) (reg : SyncReg) (c : Nat) : SC → List (Nat × 
   | _, [] => True
   | t, v :: vs => TransferExcl L (t, reg) v.1 ∧ EncapVals L reg c (transferEffC t c v.1 v.2) vs
 
-/-- Encapsulation of one step in state `st` (hypothesis on traces, WC3 C22, C23): for each live
-entry, WC3 C22.1 (`derive`, `split`), WC3 C22.2 (raw `deriveSync`), WC3.1 C22.3 (`transfer`, and
-the transfer phases of the by-value composite). WC3 C22.4 (controller-write protocol) has no
-content in `S_C`, which has no values (Spec 1 §41), and is not represented. -/
+/-- Encapsulation of one step in state `st` (hypothesis on traces, WC4 C22, C23): for each live
+entry, WC4 C22.1 (`derive`, `split`), C22.2 (raw `deriveSync`), C22.3 (`transfer`, and the
+transfer phases of the by-value composite) and C22.5 (`endUse` whose place is the controller leaf
+`ctl` or a strict structural subplace of `slot`). WC4 C22.4 (controller-write protocol) is a
+realization/interface obligation (WC4 C22) with no content in `S_C`, which has no values (Spec 1
+§41), and is not represented. -/
 def Encap (L : MutexLayout) (st : SC × SyncReg) : Label → Prop
   | .kernel _ (.derive src _ _) => ∀ e ∈ st.2, e.Live st.1 → src ≠ e.guarded
   | .kernel _ (.split src _) => ∀ e ∈ st.2, e.Live st.1 → src ≠ e.guarded
   | .kernel _ (.transfer src _) => TransferExcl L st src
+  | .kernel _ (.endUse p) => ∀ e ∈ st.2, e.Live st.1 → ControlOf L st.1 e ≠ some p ∧
+      OptP (slotOf st.1 e.guarded) (fun q => partOf st.1.P p q → p = q) True
   | .spawnVal c _ ls vs => EncapVals L st.2 c (spawnCreate st.1 c ls) vs
   | .deriveSync _ g => ∀ e ∈ st.2, e.Live st.1 → g ≠ e.guarded
   | _ => True

@@ -14,15 +14,6 @@ namespace Ern.Concurrency
 
 open Ern.MemoryModel.Access
 
-/-- The clause of WC3 C22 proposed by the report for `endUse` (Spec 1 §69), kept outside `Encap`
-(WC3.1, "Formalization coverage": no additional encapsulation restriction may be introduced
-silently): for each live entry, the place of `endUse` is neither the controller leaf nor a strict
-structural subplace of `slot`. -/
-def EndUseExcl (L : MutexLayout) (st : SC × SyncReg) : Label → Prop
-  | .kernel _ (.endUse p) => ∀ e ∈ st.2, e.Live st.1 → ControlOf L st.1 e ≠ some p ∧
-      OptP (slotOf st.1 e.guarded) (fun q => partOf st.1.P p q → p = q) True
-  | _ => True
-
 namespace SyncInitAux
 
 open SyncPreserveAux
@@ -382,12 +373,12 @@ theorem endUse_active {v : S3} {p j : Nat} {y' : Authority}
     · simp [hL] at ha
     · simp [hL] at ha
 
-/-- `endUse` (Spec 1 §69) preserves `SyncState` under `Encap` and the clause `EndUseExcl`
-proposed by the report. -/
+/-- `endUse` (Spec 1 §69) preserves `SyncState` under `Encap` (WC4 C22.5). -/
 theorem endUse_syncState {k : K} {L : MutexLayout} {reg : SyncReg} {c p : Nat} {s s' : SC}
     (h : opStepC k (.endUse p) c s (.ok s')) (he : Encap L (s, reg) (.kernel c (.endUse p)))
-    (hx : EndUseExcl L (s, reg) (.kernel c (.endUse p))) (hw : WF3 s.flat) (hw' : WF3 s'.flat)
-    (hs : SyncState L s reg) : SyncState L s' reg := by
+    (hw : WF3 s.flat) (hw' : WF3 s'.flat) (hs : SyncState L s reg) : SyncState L s' reg := by
+  have hx : ∀ e ∈ reg, e.Live s → ControlOf L s e ≠ some p ∧
+      OptP (slotOf s e.guarded) (fun q => partOf s.P p q → p = q) True := he
   have hf := opStep_facts (reg := reg) h he (fun _ _ h => by cases h) hw
   obtain ⟨hc, hu, hsi, hci⟩ := syncState_iff.1 hs
   obtain ⟨t, hR, rfl⟩ := viewStep_ok h
@@ -925,15 +916,13 @@ open SyncPreserveAux SyncInitAux
 
 /-! ## Theorem 4, preservation half -/
 
-/-- Theorem 4 (WC3 C21–C23, WC3.1 C21, C22.3, "Formalization coverage") on one labelled step:
-every labelled step taken under `Encap`, `transfer` and the by-value composite included, and
-satisfying the clause `EndUseExcl` proposed by the report, preserves `SyncState` (`SyncInv` and
-`GrantDiscipline`). `KInvCA` before the step and `WF3` after it are supplied by theorem 2. Without
-`EndUseExcl` the statement is false (`Ern.Concurrency.EncapTraces.endUse_ctl_breaks_ctlInit`,
-`Ern.Concurrency.EncapTraces.endUse_slotPart_breaks_slotInit`). -/
+/-- Theorem 4 (WC4 C21, C22, C23) on one labelled step: every labelled step taken under `Encap`
+(WC4 C22.1–C22.3, C22.5), `transfer` and the by-value composite included, preserves `SyncState`
+(`SyncInv`, WC4 C21.1–C21.7, and `GrantDiscipline`, WC4 C22). `KInvCA` before the step and `WF3`
+after it are supplied by theorem 2. -/
 theorem lstep_preserves {k : K} {L : MutexLayout} {lbl : Label} {st st' : SC × SyncReg}
-    (h : LStep k L lbl st st') (he : Encap L st lbl) (hx : EndUseExcl L st lbl)
-    (hk : KInvCA st.1) (hw' : WF3 st'.1.flat) (hs : SyncState L st.1 st.2) :
+    (h : LStep k L lbl st st') (he : Encap L st lbl) (hk : KInvCA st.1) (hw' : WF3 st'.1.flat)
+    (hs : SyncState L st.1 st.2) :
     SyncState L st'.1 st'.2 := by
   have hw : WF3 st.1.flat := hk.1.1.2
   cases h with
@@ -942,7 +931,7 @@ theorem lstep_preserves {k : K} {L : MutexLayout} {lbl : Label} {st st' : SC × 
     case transfer src dst =>
       obtain ⟨-, h'⟩ := h; obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h'
       exact transfer_syncState hpre.sameShape hpre.dstNotInit hpre.dstUsable.lt he hw hw' hs
-    case endUse p => exact endUse_syncState h he hx hw hw' hs
+    case endUse p => exact endUse_syncState h he hw hw' hs
     all_goals
       exact facts_syncState (opStep_facts (reg := reg) h he (fun _ _ h => by cases h) hw)
         (opStep_init h (fun _ _ h => by cases h) (fun _ h => by cases h)) hw hw' hs
@@ -964,39 +953,6 @@ theorem lstep_preserves {k : K} {L : MutexLayout} {lbl : Label} {st st' : SC × 
   | unlock h => exact unlock_syncState h hw hw' hs
   | resetLock h => exact resetLock_syncState h hs
   | spawnVal h => exact spawnVal_syncState hk h he hs
-
-/-- Runs every step of which satisfies `Encap` and the clause `EndUseExcl` proposed by the report
-(WC3.1, "Formalization coverage": the clause is a hypothesis, not part of `Encap`). -/
-inductive ProposedTrace (k : K) (L : MutexLayout) :
-    SC × SyncReg → List Label → SC × SyncReg → Prop where
-  | nil {st : SC × SyncReg} : ProposedTrace k L st [] st
-  | cons {st st₁ st₂ : SC × SyncReg} {lbl : Label} {lbls : List Label} :
-      Encap L st lbl → EndUseExcl L st lbl → LStep k L lbl st st₁ →
-      ProposedTrace k L st₁ lbls st₂ → ProposedTrace k L st (lbl :: lbls) st₂
-
-/-- A `ProposedTrace` is an `EncapsulatedTrace`. -/
-theorem ProposedTrace.encap {k : K} {L : MutexLayout} {st st' : SC × SyncReg}
-    {lbls : List Label} (h : ProposedTrace k L st lbls st') : EncapsulatedTrace k L st lbls st' := by
-  induction h with
-  | nil => exact .nil
-  | cons he _ hs _ ih => exact .cons he hs ih
-
-/-- An `EncapsulatedTrace` without `endUse` label is a `ProposedTrace`. -/
-theorem ProposedTrace.of_encap {k : K} {L : MutexLayout} {st st' : SC × SyncReg}
-    {lbls : List Label} (h : EncapsulatedTrace k L st lbls st')
-    (hn : ∀ lbl ∈ lbls, ∀ c p, lbl ≠ .kernel c (.endUse p)) : ProposedTrace k L st lbls st' := by
-  induction h with
-  | nil => exact .nil
-  | @cons st st₁ st₂ lbl lbls he hs _ ih =>
-    refine .cons he ?_ hs (ih fun l hl => hn l (List.mem_cons_of_mem _ hl))
-    have hl := hn lbl (List.mem_cons_self ..)
-    cases lbl with
-    | kernel c op =>
-      cases op with
-      | endUse p => exact absurd rfl (hl c p)
-      | _ => trivial
-    | _ => trivial
-
 
 /-! ## A transfer onto a live mutex value is rejected (WC3.1 C21, Spec 1 §63.3) -/
 

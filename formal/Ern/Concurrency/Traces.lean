@@ -247,6 +247,13 @@ theorem distinct_controllers_ok : NewMutexOk K0 L0 [] d1 [] 0 2 (d1, [⟨2, none
     ControlOf L0 d1 ⟨2, none⟩ = some 2 ∧ ControlOf L0 d1 ⟨3, none⟩ = some 5 :=
   ⟨⟨by decide, by decide, rfl⟩, ⟨by decide, by decide, rfl⟩, by decide, by decide⟩
 
+/-- The two constructions of `distinct_controllers_ok` as an `EncapsulatedTrace` from `d1` with an
+empty registry (WC4 C22, C23). -/
+theorem distinct_controllers_trace : EncapsulatedTrace K0 L0 (d1, [])
+    [.newMutex 0 2 [], .newMutex 0 3 []] (d1, [⟨2, none⟩, ⟨3, none⟩]) :=
+  .cons trivial (.newMutex distinct_controllers_ok.1) <|
+  .cons trivial (.newMutex distinct_controllers_ok.2.1) .nil
+
 /-! ## S4: a detached child survives its creator (WC3 S4, C5, C6) -/
 
 /-- Statics: one `Init` static place (place 0), owned by frame 0. -/
@@ -277,6 +284,16 @@ theorem s4_steps : opStepC K0 (.enter [] [(none, 0), (none, 0)]) 0 q0 (.ok q1) �
   ⟨⟨by decide, .ok (by decide)⟩, ⟨by decide, _, .ok (by decide), rfl⟩,
     ⟨by decide, _, .ok (by decide), rfl⟩, ⟨by decide, _, .ok (by decide) trivial, rfl⟩,
     ⟨by decide, .ok (by decide)⟩, ⟨by decide, .ok (by decide)⟩⟩
+
+/-- The steps of S4 as an `EncapsulatedTrace` from `q0` with an empty registry (WC4 C22, C23). -/
+theorem s4_trace : EncapsulatedTrace K0 L0 (q0, [])
+    [.kernel 0 (.enter [] [(none, 0), (none, 0)]), .kernel 0 (.write 1 [1]),
+     .kernel 0 (.write 2 [2]), .kernel 0 (.alloc 2 1 [(none, 0)]),
+     .spawnVal 0 [] [(none, 0)] [(1, 4)], .kernel 0 .exit] (q6, []) :=
+  .cons trivial (.kernel s4_steps.1) <| .cons trivial (.kernel s4_steps.2.1) <|
+  .cons trivial (.kernel s4_steps.2.2.1) <| .cons trivial (.kernel s4_steps.2.2.2.1) <|
+  .cons ⟨fun _ h => (by cases h), trivial⟩ (.spawnVal s4_steps.2.2.2.2.1) <|
+  .cons trivial (.kernel s4_steps.2.2.2.2.2) .nil
 
 /-- WC3 S4, positive: after the exit of the creating frame 1, the child context 1 is live, its
 initial frame is reparented to frame 0, `d` (place 4) and the storage `T` it now owns (place 3)

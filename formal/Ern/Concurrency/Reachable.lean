@@ -3,23 +3,22 @@ import Ern.Concurrency.Reparent
 import Ern.Concurrency.SyncInit
 
 /-!
-# Theorems 2 and 4 on labelled steps and traces (WC3 C20–C23, WC3.1)
+# Theorems 2 and 4 on labelled steps and traces (WC4 C20–C23)
 
 Assembly of `Ern.Concurrency.Preservation`, `Ern.Concurrency.TransferPreserve`,
 `Ern.Concurrency.Reparent` and `Ern.Concurrency.SyncInit`:
 
 * theorem 2 for every labelled step of the kernel with the synchronization library, the by-value
   composite included (`lstep_kInvCA`);
-* theorems 2 and 4 together along a `ProposedTrace` (an encapsulated trace whose steps also
-  satisfy the clause `EndUseExcl` proposed by the report): `KInvCA` and `SyncState` (`trace_inv`,
-  `trace_preserves`, `encapsulated_inv`).
+* theorems 2 and 4 together along an `EncapsulatedTrace` (WC4 C22, C23): `KInvCA` and
+  `SyncState` (`trace_inv`, `trace_preserves`, `encapsulated_inv`).
 -/
 
 namespace Ern.Concurrency
 
 open Ern.MemoryModel.Access
 
-/-- Theorem 2 (WC3 C20, C23) on every labelled step (inherited operations O1–O16 executed by a
+/-- Theorem 2 (WC4 C20, C23) on every labelled step (inherited operations O1–O16 executed by a
 context, `spawn`, the by-value composite, `terminate`, `join`, `deriveSync` under the library
 instantiation, `newMutex`, `acquire`, `unlock`, `resetLock`): the re-indexed kernel invariant with
 the auxiliaries of Spec 1 (`KInvCA`) is preserved, under `DDSound` (Spec 1 §80, for `split`). -/
@@ -45,25 +44,25 @@ theorem lstep_kInvCA {k : K} {L : MutexLayout} {lbl : Label} {st st' : SC × Syn
       ⟨hc, _, .ok hrel, rfl⟩
   | resetLock h => obtain ⟨-, -, -, -, -, -, rfl⟩ := h; exact hk
 
-/-- Theorems 2 and 4 (WC3 C20–C23, WC3.1) along a `ProposedTrace`: from a state satisfying
+/-- Theorems 2 and 4 (WC4 C20–C23) along an `EncapsulatedTrace`: from a state satisfying
 `KInvCA` and `SyncState`, every reached state satisfies both, under `DDSound` (Spec 1 §80). -/
 theorem trace_inv {k : K} {L : MutexLayout} {st st' : SC × SyncReg} {lbls : List Label}
-    (hdd : DDSound k) (h : ProposedTrace k L st lbls st') (hk : KInvCA st.1)
+    (hdd : DDSound k) (h : EncapsulatedTrace k L st lbls st') (hk : KInvCA st.1)
     (hs : SyncState L st.1 st.2) : KInvCA st'.1 ∧ SyncState L st'.1 st'.2 := by
   induction h with
   | nil => exact ⟨hk, hs⟩
-  | cons he hx hst _ ih =>
+  | cons he hst _ ih =>
     have hk' := lstep_kInvCA hdd hst hk
-    exact ih hk' (lstep_preserves hst he hx hk hk'.1.1.2 hs)
+    exact ih hk' (lstep_preserves hst he hk hk'.1.1.2 hs)
 
-/-- Theorem 4 (WC3 C22, C23, WC3.1), trace form: along a `ProposedTrace` from a state satisfying
+/-- Theorem 4 (WC4 C21–C23), trace form: along an `EncapsulatedTrace` from a state satisfying
 `KInvCA`, `SyncState` is preserved, under `DDSound` (Spec 1 §80). -/
 theorem trace_preserves {k : K} {L : MutexLayout} {st st' : SC × SyncReg} {lbls : List Label}
-    (hdd : DDSound k) (h : ProposedTrace k L st lbls st') (hk : KInvCA st.1)
+    (hdd : DDSound k) (h : EncapsulatedTrace k L st lbls st') (hk : KInvCA st.1)
     (hs : SyncState L st.1 st.2) : SyncState L st'.1 st'.2 :=
   (trace_inv hdd h hk hs).2
 
-/-- The initial state of Spec 1 §47 as a single-context state, with an empty registry (WC3 C3,
+/-- The initial state of Spec 1 §47 as a single-context state, with an empty registry (WC4 C3,
 C12), satisfies `KInvCA` and `SyncState`. -/
 theorem init_inv {k : K} {statics : Statics} (hdd : DDSound k) (hst : StaticsOK statics)
     (L : MutexLayout) :
@@ -85,15 +84,13 @@ theorem init_inv {k : K} {statics : Statics} (hdd : DDSound k) (hst : StaticsOK 
   · intro e he; cases he
   · intro e he; cases he
 
-/-- Theorems 2 and 4 (WC3 C20–C23, WC3.1) from the initial state: every state reached from the
-initial state of Spec 1 §47 (one context, empty registry) by a `ProposedTrace` satisfies the
-re-indexed kernel invariant `KInvC`, `SyncInv` and `GrantDiscipline`, under `DDSound` (Spec 1
-§80) and well-formed statics (Spec 1 §47). The clause `EndUseExcl` of `ProposedTrace` is not part
-of `Encap`; without it the statement is false
-(`Ern.Concurrency.EncapTraces.endUse_ctl_breaks_ctlInit`). -/
+/-- Theorems 2 and 4 (WC4 C20–C23) from the initial state: every state reached from the initial
+state of Spec 1 §47 (one context, empty registry) by an `EncapsulatedTrace` satisfies the
+re-indexed kernel invariant `KInvC`, `SyncInv` and `GrantDiscipline`, under `DDSound` (Spec 1 §80)
+and well-formed statics (Spec 1 §47). -/
 theorem encapsulated_inv {k : K} {L : MutexLayout} {statics : Statics} {lbls : List Label}
     {st' : SC × SyncReg} (hdd : DDSound k) (hst : StaticsOK statics)
-    (h : ProposedTrace k L (SC.ofS3 (S3.init statics), []) lbls st') :
+    (h : EncapsulatedTrace k L (SC.ofS3 (S3.init statics), []) lbls st') :
     KInvC st'.1 ∧ SyncInv L st'.1 st'.2 ∧ GrantDiscipline st'.1 st'.2 := by
   obtain ⟨hk, hs⟩ := init_inv (k := k) hdd hst L
   obtain ⟨hk', hs'⟩ := trace_inv hdd h hk hs
