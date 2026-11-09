@@ -12,6 +12,7 @@ import Ern.Concurrency.SyncLib
 import Ern.Concurrency.SyncPreserve
 import Ern.Concurrency.Traces
 import Ern.Concurrency.Transfer
+import Ern.Concurrency.TransferPreserve
 import Ern.Corpus.DataStack
 import Ern.Corpus.Lib
 import Ern.Corpus.LibRunner
