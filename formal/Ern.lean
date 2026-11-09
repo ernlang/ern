@@ -6,6 +6,7 @@ import Ern.Concurrency.EncapTraces
 import Ern.Concurrency.Frames
 import Ern.Concurrency.Preservation
 import Ern.Concurrency.Reachable
+import Ern.Concurrency.Realize
 import Ern.Concurrency.Reparent
 import Ern.Concurrency.Repr
 import Ern.Concurrency.Sync
