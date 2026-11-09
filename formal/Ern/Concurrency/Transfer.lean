@@ -144,8 +144,8 @@ structure SpawnValPre (k : K) (s : SC) (c : Nat) (ps : List Nat) (ls : LocalShap
   /-- WC3 C5 item 5: no parameter covers a leaf of a by-value source, on the declared source
   footprints before consumption. -/
   paramsApart : ∀ a ∈ ps, ∀ v ∈ vs, ∀ l ∈ (s.view c).afp a, l ∉ footprint s.P v.1
-  /-- WC3 C5.3 (Spec 1 §72.1): the transmission of every parameter remains legal at the yield
-  phase. -/
+  /-- WC3.1 C5.3 (Spec 1 §72.1): at the beginning of the yield phase, every parameter is active,
+  derived and held by the creating frame, in the state produced by the transfers. -/
   paramsAtYield : ∀ a ∈ ps,
     OptP (((transfersEff c (spawnCreate s c ls) vs).view c).A[a]?) (fun y => y.active = true ∧
       y.holder = .frame ((transfersEff c (spawnCreate s c ls) vs).view c).top ∧

@@ -31,14 +31,14 @@ def deriveSyncEff (s : SC) (c g : Nat) : SC :=
 
 /-- Preconditions of `deriveSync(guarded)` executed by `c` with the registry `r` (WC3 C15.1–C15.6):
 those of O1 (Spec 1 §60) for `source = guarded`, `region = footprint(guarded)`, `mode = Modify`,
-on the view of `c`, with `K_C.SyncAuthorized(state, r, guarded, current frame)` (WC3 C15.3) in
-place of the authorization by the holder in `ExercisableAt(source, Modify)` of §60.1. -/
+on the view of `c`, with `K_C.SyncAuthorized(state, r, guarded, current frame)` in place of
+`ExercisableAt(source, Modify)` of §60.1 as the only authorization (WC3.1 C15.3). -/
 structure DeriveSyncPre {R : Type} (kc : KC R) (r : R) (s : SC) (c g : Nat) : Prop where
   /-- WC3 C15.1, Spec 1 §60.1: `source` is active. -/
   active : (s.view c).Active g
   /-- WC3 C15.1 (Spec 1 §43, §60.1): the own mode of `guarded` permits `Modify`. -/
   mode : OptP ((s.view c).A[g]?) (fun y => Mode.modify.le y.mode) False
-  /-- WC3 C15.3. -/
+  /-- WC3.1 C15.3: `deriveSync` is authorized exclusively through `K_C.SyncAuthorized`. -/
   authorized : kc.SyncAuthorized r s g (s.view c).top
   /-- WC3 C15.2, Spec 1 §60.1: every authority of the origin chain of `source` is active. -/
   chainActive : ∀ x ∈ (s.view c).ancs g, (s.view c).Active x

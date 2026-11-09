@@ -1,4 +1,5 @@
 import Ern.Concurrency.Sync
+import Ern.Concurrency.Transfer
 
 /-!
 # Reference synchronization library
@@ -8,13 +9,15 @@ Library state separate from `S_C` (WC3 C2, C12), on the pattern of `Ern.MemoryMo
 
 * the registry of `SyncEntry { guarded, grant }` (WC3 C12), liveness of an entry, the positional
   `ControlOf` relationship (WC3 C12) for declared field positions `MutexLayout`;
-* `SyncInv` (WC3 C21.1–C21.6) and `GrantDiscipline` (WC3 C22);
+* `SyncInv` (WC3 C21.1–C21.6 and the initialization invariant of WC3.1 C21) and
+  `GrantDiscipline` (WC3 C22);
 * the library instantiation of `K_C.SyncAuthorized` on the registry (WC3 C14.1–C14.3), and the
   contract obligation `SyncSound` of WC3 C14 ("cannot be used outside the corresponding valid
   synchronization contract");
 * derived operations `newMutex` (C13), `acquire` (C16), `unlock` (C17), `resetLock` (C18);
-* labelled library steps, runs, and the encapsulation hypothesis `EncapsulatedTrace` (WC3 C22.1–
-  C22.3, C23), a predicate on runs, never a precondition of a kernel operation.
+* labelled library steps, the by-value composite included (WC3.1 "Formalization coverage"), runs,
+  and the encapsulation hypothesis `EncapsulatedTrace` (WC3 C22.1, C22.2, WC3.1 C22.3; WC3 C23), a
+  predicate on runs, never a precondition of a kernel operation.
 -/
 
 namespace Ern.Concurrency
@@ -137,7 +140,13 @@ def StoredOK (P : List Place) (y : Authority) : Prop :=
 instance (P : List Place) (y : Authority) : Decidable (StoredOK P y) := by
   unfold StoredOK; split <;> infer_instance
 
-/-! ## Invariants (WC3 C21, C22) -/
+/-- The place `slot` holding `guarded` (WC3 C12). -/
+def slotOf (s : SC) (g : Nat) : Option Nat :=
+  match (s.A[g]?).map (·.holder) with
+  | some (Holder.place h) => some h
+  | _ => none
+
+/-! ## Invariants (WC3 C21, WC3.1 C21, WC3 C22) -/
 
 /-- Active descendant of `guarded` covering a protected leaf, a leaf of `footprint(guarded)`
 (WC3 C13.9, C18.2, C21.5, C22). -/
@@ -165,7 +174,19 @@ def CtlUnique (L : MutexLayout) (s : SC) (reg : SyncReg) : Prop :=
   ∀ (i j : Nat) (e e' : SyncEntry) (ctl : Nat), reg[i]? = some e → reg[j]? = some e' →
     e.Live s → e'.Live s → ControlOf L s e = some ctl → ControlOf L s e' = some ctl → i = j
 
-/-- `SyncInv` (WC3 C21.1–C21.6), items 1–5 over live entries, item 6 over every entry. -/
+/-- WC3.1 C21, initialization invariant for `slot`: for every live entry, every structural leaf of
+the place holding `guarded` is `Init`. -/
+def SlotInit (s : SC) (reg : SyncReg) : Prop :=
+  ∀ e ∈ reg, e.Live s →
+    OptP (slotOf s e.guarded) (fun q => ∀ l ∈ footprint s.P q, s.I l = .init) False
+
+/-- WC3.1 C21, initialization invariant for `ctl`: for every live entry, the controller leaf
+`ControlOf(entry)` is `Init`. -/
+def CtlInit (L : MutexLayout) (s : SC) (reg : SyncReg) : Prop :=
+  ∀ e ∈ reg, e.Live s → OptP (ControlOf L s e) (fun ctl => s.I ctl = .init) False
+
+/-- `SyncInv` (WC3 C21.1–C21.6, WC3.1 C21), items 1–5 and the initialization invariant over live
+entries, item 6 over every entry. -/
 structure SyncInv (L : MutexLayout) (s : SC) (reg : SyncReg) : Prop where
   /-- WC3 C21.1: `guarded` is active (liveness), has own mode `Modify`, and is held by a usable
   place. -/
@@ -192,6 +213,10 @@ structure SyncInv (L : MutexLayout) (s : SC) (reg : SyncReg) : Prop where
   /-- WC3 C21.6, `RegBound`, over every entry: the registered `guarded` identity exists (Spec 1
   §38: identities are indices). -/
   regBound : ∀ e ∈ reg, e.guarded < s.A.length
+  /-- WC3.1 C21: the structural leaves of `slot` are `Init`. -/
+  slotInit : SlotInit s reg
+  /-- WC3.1 C21: the controller leaf is `Init`. -/
+  ctlInit : CtlInit L s reg
 
 /-! ## Derived operations (WC3 C13, C16–C18) -/
 
@@ -202,8 +227,8 @@ def mutexOf (s : SC) (g : Nat) : Option Nat :=
   | some (Holder.place h) => parentOf s.P h
   | _ => none
 
-/-- Preconditions of `newMutex(guarded)` executed by `c` (WC3 C13.1–C13.9), with `adm` the
-identities used by the other live administrations (Spec 1 §56). Not represented, having no content
+/-- Preconditions of `newMutex(guarded)` executed by `c` (WC3 C13.1–C13.9, WC3.1 C13), with `adm`
+the identities used by the other live administrations (Spec 1 §56). Not represented, having no content
 in `S_C`: the second sentence of C13.3, the second half of C13.6 (applicability of the controller's
 synchronization protocol), C13.10 (controller and registry states) (see the report). -/
 structure NewMutexPre (k : K) (L : MutexLayout) (adm : List Nat) (s : SC) (reg : SyncReg)
@@ -218,6 +243,8 @@ structure NewMutexPre (k : K) (L : MutexLayout) (adm : List Nat) (s : SC) (reg :
   control : OptP (ControlOf L s ⟨g, none⟩) (fun ctl => s.flat.Usable ctl ∧ isLeaf s.P ctl) False
   /-- WC3 C13.4: `footprint(guarded) ∩ footprint(M) = ∅`. -/
   disjointM : OptP (mutexOf s g) (fun m => ∀ l ∈ s.flat.afp g, l ∉ footprint s.P m) False
+  /-- WC3.1 C13: every structural leaf of `footprint(M)` is `Init`. -/
+  initM : OptP (mutexOf s g) (fun m => ∀ l ∈ footprint s.P m, s.I l = .init) False
   /-- WC3 C13.5: when `guarded` is stored (derived), Spec 1 §65.3 holds: it covers neither a leaf
   of its holder nor a leaf of storage transitively owned by it. -/
   stored : OptP (s.A[g]?) (fun y => y.origin ≠ none → StoredOK s.P y) False
@@ -241,14 +268,15 @@ instance (k : K) [DecidablePred k.SharedMutable] (L : MutexLayout) (adm : List N
     (s.view c).ExercisableAt g .modify ∧
     OptP (ControlOf L s ⟨g, none⟩) (fun ctl => s.flat.Usable ctl ∧ isLeaf s.P ctl) False ∧
     OptP (mutexOf s g) (fun m => ∀ l ∈ s.flat.afp g, l ∉ footprint s.P m) False ∧
+    OptP (mutexOf s g) (fun m => ∀ l ∈ footprint s.P m, s.I l = .init) False ∧
     OptP (s.A[g]?) (fun y => y.origin ≠ none → StoredOK s.P y) False ∧
     OptP (ControlOf L s ⟨g, none⟩) k.SharedMutable False ∧
     (∀ e ∈ reg, e.Live s → e.guarded ≠ g) ∧ g ∉ adm ∧
     OptP (ControlOf L s ⟨g, none⟩) (fun ctl => ∀ e ∈ reg, e.Live s →
       ControlOf L s e ≠ some ctl) False ∧
     NoCoveringDesc s g)
-    ⟨fun ⟨a, b, c, d, e, f, h, i, j, l⟩ => ⟨a, b, c, d, e, f, h, i, j, l⟩,
-     fun ⟨a, b, c, d, e, f, h, i, j, l⟩ => ⟨a, b, c, d, e, f, h, i, j, l⟩⟩
+    ⟨fun ⟨a, b, c, d, e, f, h, i, j, l, m⟩ => ⟨a, b, c, d, e, f, h, i, j, l, m⟩,
+     fun ⟨a, b, c, d, e, f, h, i, j, l, m⟩ => ⟨a, b, c, d, e, f, h, i, j, l, m⟩⟩
 
 /-- `newMutex(guarded)` executed by `c` (WC3 C13): registers the entry `⟨guarded, none⟩`; the
 kernel state is unchanged and no authority is created (WC3 C13 effect). WC3 C13 states no outcome
@@ -277,10 +305,9 @@ def UnlockOk (L : MutexLayout) (s : SC) (reg : SyncReg) (c i : Nat) (st' : SC ×
     CtrlRight L s e (s.view c).top ∧
     st' = (s.set (releaseEff (s.view c) g), reg.set i { e with grant := none })
 
-/-- `resetLock` of entry `i` executed by `c` (WC3 C18.1–C18.3): the entry becomes available; the
-kernel state is unchanged (WC3 C18 effect). C18.3 "the controller association is valid" is read as
-the controller validity of WC3 C21.3; its second half holds by construction, the kernel state being
-unchanged (see the report). Only `ok` is defined. -/
+/-- `resetLock` of entry `i` executed by `c` (WC3 C18.1, C18.2, WC3.1 C18.3): the entry becomes
+available; the kernel state is unchanged (WC3 C18 effect). WC3.1 C18.3: `ControlOf(entry)`
+resolves to an existing usable controller leaf (WC3 C21.3). Only `ok` is defined. -/
 def ResetLockOk (L : MutexLayout) (s : SC) (reg : SyncReg) (c i : Nat) (st' : SC × SyncReg) :
     Prop :=
   s.Live c ∧ ∃ e, reg[i]? = some e ∧ (s.view c).ExercisableAt e.guarded .modify ∧
@@ -301,9 +328,11 @@ inductive Label where
   | acquire (c i : Nat)
   | unlock (c i : Nat)
   | resetLock (c i : Nat)
+  | spawnVal (c : Nat) (ps : List Nat) (ls : LocalShape) (vs : List (Nat × Nat))
 
 /-- Labelled `ok` step of the concurrent kernel with the synchronization library (WC3 C2, C4,
-C6–C8, C13, C15–C18): kernel and frame steps keep the registry; raw `deriveSync` runs under the
+C5, C6–C8, C13, C15–C18; WC3.1 "Formalization coverage" for the by-value composite): kernel and
+frame steps keep the registry; raw `deriveSync` runs under the
 library instantiation of `SyncAuthorized` on the current registry (WC3 C14). -/
 inductive LStep (k : K) (L : MutexLayout) : Label → SC × SyncReg → SC × SyncReg → Prop where
   | kernel {s s' : SC} {reg : SyncReg} {c : Nat} {op : KernelOp} :
@@ -324,16 +353,38 @@ inductive LStep (k : K) (L : MutexLayout) : Label → SC × SyncReg → SC × Sy
       UnlockOk L s reg c i st' → LStep k L (.unlock c i) (s, reg) st'
   | resetLock {s : SC} {reg : SyncReg} {c i : Nat} {st' : SC × SyncReg} :
       ResetLockOk L s reg c i st' → LStep k L (.resetLock c i) (s, reg) st'
+  | spawnVal {s s' : SC} {reg : SyncReg} {c : Nat} {ps : List Nat} {ls : LocalShape}
+      {vs : List (Nat × Nat)} :
+      SpawnValStep k s c ps ls vs (.ok s') → LStep k L (.spawnVal c ps ls vs) (s, reg) (s', reg)
+
+/-- WC3.1 C22.3 for the source `src` of a transfer in state `st`: for each live entry, `src` is
+neither the place `slot` holding `guarded`, nor a strict structural subplace of `slot`, nor the
+controller leaf `ctl`. -/
+def TransferExcl (L : MutexLayout) (st : SC × SyncReg) (src : Nat) : Prop :=
+  ∀ e ∈ st.2, e.Live st.1 →
+    OptP (slotOf st.1 e.guarded) (fun q => ¬ partOf st.1.P src q) True ∧
+      ControlOf L st.1 e ≠ some src
+
+/-- Decidability of `TransferExcl` (WC3.1 C22.3). -/
+instance (L : MutexLayout) (st : SC × SyncReg) (src : Nat) : Decidable (TransferExcl L st src) := by
+  unfold TransferExcl; infer_instance
+
+/-- WC3.1 C22.3 for the transfers of the by-value composite (WC3.1 "Formalization coverage"):
+the source of every transfer phase satisfies `TransferExcl` in the state where that phase starts
+(WC3 C5.2), the registry being `reg`. -/
+def EncapVals (L : MutexLayout) (reg : SyncReg) (c : Nat) : SC → List (Nat × Nat) → Prop
+  | _, [] => True
+  | t, v :: vs => TransferExcl L (t, reg) v.1 ∧ EncapVals L reg c (transferEffC t c v.1 v.2) vs
 
 /-- Encapsulation of one step in state `st` (hypothesis on traces, WC3 C22, C23): for each live
-entry, WC3 C22.1 (`derive`, `split`), C22.2 (raw `deriveSync`) and C22.3 (`transfer` whose source
-is the place holding `guarded`, compared by equality). WC3 C22.4 (controller-write protocol) has no
+entry, WC3 C22.1 (`derive`, `split`), WC3 C22.2 (raw `deriveSync`), WC3.1 C22.3 (`transfer`, and
+the transfer phases of the by-value composite). WC3 C22.4 (controller-write protocol) has no
 content in `S_C`, which has no values (Spec 1 §41), and is not represented. -/
-def Encap (st : SC × SyncReg) : Label → Prop
+def Encap (L : MutexLayout) (st : SC × SyncReg) : Label → Prop
   | .kernel _ (.derive src _ _) => ∀ e ∈ st.2, e.Live st.1 → src ≠ e.guarded
   | .kernel _ (.split src _) => ∀ e ∈ st.2, e.Live st.1 → src ≠ e.guarded
-  | .kernel _ (.transfer src _) => ∀ e ∈ st.2, e.Live st.1 →
-      (st.1.A[e.guarded]?).map (·.holder) ≠ some (.place src)
+  | .kernel _ (.transfer src _) => TransferExcl L st src
+  | .spawnVal c _ ls vs => EncapVals L st.2 c (spawnCreate st.1 c ls) vs
   | .deriveSync _ g => ∀ e ∈ st.2, e.Live st.1 → g ≠ e.guarded
   | _ => True
 
@@ -350,7 +401,7 @@ inductive EncapsulatedTrace (k : K) (L : MutexLayout) :
     SC × SyncReg → List Label → SC × SyncReg → Prop where
   | nil {st : SC × SyncReg} : EncapsulatedTrace k L st [] st
   | cons {st st₁ st₂ : SC × SyncReg} {lbl : Label} {lbls : List Label} :
-      Encap st lbl → LStep k L lbl st st₁ → EncapsulatedTrace k L st₁ lbls st₂ →
+      Encap L st lbl → LStep k L lbl st st₁ → EncapsulatedTrace k L st₁ lbls st₂ →
       EncapsulatedTrace k L st (lbl :: lbls) st₂
 
 /-- An encapsulated trace is a run. -/

@@ -67,7 +67,7 @@ def c1 : SC := c0.set (deriveEff (c0.view 0) 1 [3] .observe)
 /-- The derivation is an enabled kernel step (Spec 1 §60) and it is not encapsulated (WC3
 C22.1). -/
 theorem derive_step : opStepC K0 (.derive 1 [3] .observe) 0 c0 (.ok c1) ∧
-    ¬ Encap (c0, reg1) (.kernel 0 (.derive 1 [3] .observe)) :=
+    ¬ Encap L0 (c0, reg1) (.kernel 0 (.derive 1 [3] .observe)) :=
   ⟨⟨by decide, _, .ok (by decide), rfl⟩, fun h => h ⟨1, none⟩ (by decide) (by decide) rfl⟩
 
 /-- Theorem 4, second half (WC3 C22): after the non-encapsulated `derive`, the entry is live with
@@ -124,7 +124,7 @@ theorem realizability_needs_i1 : SyncInv L0 bad reg1 ∧ GrantDiscipline bad reg
     cases i with
     | zero => simp [reg1] at h; exact ⟨rfl, h.symm⟩
     | succ i => simp [reg1] at h
-  refine ⟨⟨?_, ?_, ?_, ?_, ?_, ?_, ?_⟩, ?_, by decide, fun h => ?_, by decide⟩
+  refine ⟨⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩, ?_, by decide, fun h => ?_, by decide⟩
   · intro e he _; simp only [reg1, List.mem_singleton] at he; subst he; decide
   · intro e he _ g hg; simp only [reg1, List.mem_singleton] at he; subst he; cases hg
   · intro e he _; simp only [reg1, List.mem_singleton] at he; subst he; decide
@@ -132,6 +132,8 @@ theorem realizability_needs_i1 : SyncInv L0 bad reg1 ∧ GrantDiscipline bad reg
   · intro i j e e' hi hj _ _ _; rw [(hl hi).1, (hl hj).1]
   · intro e he _ g hg; simp only [reg1, List.mem_singleton] at he; subst he; cases hg
   · intro e he; simp only [reg1, List.mem_singleton] at he; subst he; decide
+  · intro e he _; simp only [reg1, List.mem_singleton] at he; subst he; decide
+  · intro e he _; simp only [reg1, List.mem_singleton] at he; subst he; decide
   · intro e he _ _; simp only [reg1, List.mem_singleton] at he; subst he; decide
   · have := h 1 2 ⟨.modify, none, [3], .place 1, true⟩ ⟨.modify, none, [3], .frame 0, true⟩ 3
       (by decide) (by decide) (by decide) rfl rfl (by decide) (by decide) (by decide) (by decide)

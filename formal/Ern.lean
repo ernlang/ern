@@ -9,6 +9,7 @@ import Ern.Concurrency.Reachable
 import Ern.Concurrency.Reparent
 import Ern.Concurrency.Sync
 import Ern.Concurrency.SyncLib
+import Ern.Concurrency.SyncInit
 import Ern.Concurrency.SyncPreserve
 import Ern.Concurrency.Traces
 import Ern.Concurrency.Transfer
