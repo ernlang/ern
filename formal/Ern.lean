@@ -7,6 +7,7 @@ import Ern.Concurrency.Frames
 import Ern.Concurrency.Preservation
 import Ern.Concurrency.Reachable
 import Ern.Concurrency.Reparent
+import Ern.Concurrency.Repr
 import Ern.Concurrency.Sync
 import Ern.Concurrency.SyncLib
 import Ern.Concurrency.SyncInit
