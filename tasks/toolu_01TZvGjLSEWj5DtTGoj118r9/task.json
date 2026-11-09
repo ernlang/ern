@@ -1,0 +1,15 @@
+{
+  "tool_use_id": "toolu_01TZvGjLSEWj5DtTGoj118r9",
+  "agent_id": "ad89a915f53176669",
+  "subagent_type": "general-purpose",
+  "task_description": "Fact-check the milestone report",
+  "token_usage": {
+    "input_tokens": 138,
+    "cache_creation_tokens": 275075,
+    "cache_read_tokens": 12734660,
+    "output_tokens": 52149,
+    "api_call_count": 68
+  },
+  "started_at": "2026-11-09T21:01:24.397035+01:00",
+  "completed_at": "2026-11-09T21:12:36.293912+01:00"
+}

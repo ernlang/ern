@@ -1,0 +1,15 @@
+{
+  "tool_use_id": "toolu_01AsxNjKbhjJhmsGENo3Mg19",
+  "agent_id": "a68b54b1c6300d80e",
+  "subagent_type": "general-purpose",
+  "task_description": "Review corpus encoding",
+  "token_usage": {
+    "input_tokens": 68,
+    "cache_creation_tokens": 229168,
+    "cache_read_tokens": 5660620,
+    "output_tokens": 52650,
+    "api_call_count": 34
+  },
+  "started_at": "2026-11-09T21:01:24.389086+01:00",
+  "completed_at": "2026-11-09T21:10:16.773492+01:00"
+}

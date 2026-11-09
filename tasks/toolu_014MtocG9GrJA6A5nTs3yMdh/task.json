@@ -1,0 +1,15 @@
+{
+  "tool_use_id": "toolu_014MtocG9GrJA6A5nTs3yMdh",
+  "agent_id": "a33002935c0256b19",
+  "subagent_type": "general-purpose",
+  "task_description": "Review step A definitions",
+  "token_usage": {
+    "input_tokens": 78,
+    "cache_creation_tokens": 267815,
+    "cache_read_tokens": 6674200,
+    "output_tokens": 56076,
+    "api_call_count": 39
+  },
+  "started_at": "2026-11-09T21:01:24.353021+01:00",
+  "completed_at": "2026-11-09T21:10:53.50421+01:00"
+}
