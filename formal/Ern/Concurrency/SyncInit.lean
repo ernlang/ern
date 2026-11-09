@@ -3,11 +3,11 @@ import Ern.Concurrency.TransferPreserve
 import Ern.MemoryModel.Arena
 
 /-!
-# Theorem 4 with controller uniqueness and initialization (WC3 C21.4, WC3.1 C21, C22.3)
+# Theorem 4 with controller uniqueness and initialization (WC4 C21.4, C21.7, C22, C23)
 
-Preservation of `SyncState` (`SyncInv`, WC3 C21.1–C21.6 and WC3.1 C21, with `GrantDiscipline`,
-WC3 C22) by the labelled steps admitted by `Encap` (WC3 C22.1, C22.2, WC3.1 C22.3), `transfer` and
-the by-value composite included.
+Preservation of `SyncState` (`SyncInv`, WC4 C21.1–C21.7, with `GrantDiscipline`, WC4 C22) by the
+labelled steps admitted by `Encap` (WC4 C22.1–C22.3, C22.5), `transfer` and the by-value composite
+included.
 -/
 
 namespace Ern.Concurrency
@@ -289,7 +289,7 @@ theorem opStep_init {k : K} {c : Nat} {op : KernelOp} {s s' : SC}
       simp only [hn, ↓reduceIte]; exact hl
 
 /-- `spawn` and the creation phase of the by-value composite keep the footprints of existing
-places and their `Init` leaves (WC3 C4 effect, Spec 1 §72 effect). -/
+places and their `Init` leaves (WC4 C4 effect, Spec 1 §72 effect). -/
 theorem spawn_init {s : SC} {c : Nat} {ps : List Nat} {ls : LocalShape}
     (hsh : ShapeOK s.P.length ls.toShape) : InitFacts s (spawnEff s c ps ls) := by
   refine ⟨fun q hq l => Ern.MemoryModel.Arena.footprint_shapeP hsh hq l, fun l hl hi => ?_⟩
@@ -297,7 +297,7 @@ theorem spawn_init {s : SC} {c : Nat} {ps : List Nat} {ls : LocalShape}
   have hn : ¬ (s.view c).P.length ≤ l := Nat.not_le.2 hl
   simp only [hn, ↓reduceIte]; exact hi
 
-/-- The initialization invariant (WC3.1 C21) across a step with an unchanged registry that keeps
+/-- The initialization invariant (WC4 C21.7) across a step with an unchanged registry that keeps
 holders of places, parents, footprints and `Init` leaves. -/
 theorem init_step {L : MutexLayout} {reg : SyncReg} {s s' : SC} (hsk : Skel s s')
     (hh₀ : HoldSame s s') (hP : PSkel s.P s'.P)
@@ -349,7 +349,7 @@ theorem facts_syncState {L : MutexLayout} {reg : SyncReg} {s s' : SC} (hf : Step
   exact syncState_iff.2 ⟨kernel_step_same hf.skel hf.hold hf.pskel hw hw' hc hf.src,
     facts_ctlUnique hf hw hc hu, hsi', hci'⟩
 
-/-! ## `endUse` under the proposed clause (Spec 1 §69) -/
+/-! ## `endUse` (Spec 1 §69; WC4 C22.5) -/
 
 /-- An authority active after `endUse p` was not held within `p` (Spec 1 §69 effect). -/
 theorem endUse_active {v : S3} {p j : Nat} {y' : Authority}
@@ -454,11 +454,11 @@ theorem endUse_syncState {k : K} {L : MutexLayout} {reg : SyncReg} {c p : Nat} {
       simp only [hnot, ↓reduceIte]
       exact h4
 
-/-! ## `transfer` (Spec 1 §63; WC3.1 C22.3) -/
+/-! ## `transfer` (Spec 1 §63; WC4 C22.3) -/
 
 /-- The controller after a `transfer` whose source is not the place holding `guarded`: the
 corresponding part of the controller when the mutex value moves, the controller itself otherwise
-(Spec 1 §63.2 `corr`, WC3 C12 positional `ControlOf`; the proof of `ctl_transfer`). -/
+(Spec 1 §63.2 `corr`, WC4 C12 positional `ControlOf`; the proof of `ctl_transfer`). -/
 theorem ctl_transfer_eq {L : MutexLayout} {s : SC} {c src dst : Nat} {e : SyncEntry}
     (hw : WF3 s.flat) (hss : SameShape s.P src dst)
     (henc : (s.A[e.guarded]?).map (·.holder) ≠ some (.place src)) {ctl : Nat}
@@ -538,7 +538,7 @@ theorem transfer_live {s : SC} {c src dst : Nat} {e : SyncEntry} :
       rw [hget, hy']; rfl
     · split <;> exact ya
 
-/-- The controller of a live entry across a transfer admitted by WC3.1 C22.3 whose destination
+/-- The controller of a live entry across a transfer admitted by WC4 C22.3 whose destination
 has no `Init` leaf (Spec 1 §63.3): either it moves to the corresponding leaf of the destination,
 or it stays and lies outside the source and the destination. -/
 theorem transfer_ctl_cases {L : MutexLayout} {reg : SyncReg} {c src dst : Nat} {s : SC}
@@ -578,7 +578,7 @@ theorem transfer_ctl_cases {L : MutexLayout} {reg : SyncReg} {c src dst : Nat} {
       exact hnp (partOf_trans (t := s.flat) hw hpm hms)
 
 /-- `transfer` executed by `c` (Spec 1 §63 effect) preserves `SyncState` when it is admitted by
-WC3.1 C22.3, the shapes match (§63.2) and no destination leaf is `Init` (§63.3). -/
+WC4 C22.3, the shapes match (§63.2) and no destination leaf is `Init` (§63.3). -/
 theorem transfer_syncState {L : MutexLayout} {reg : SyncReg} {c src dst : Nat} {s : SC}
     (hss : SameShape s.P src dst) (hdni : ∀ l ∈ footprint s.P dst, s.I l ≠ .init)
     (hd : dst < s.P.length) (hx : TransferExcl L (s, reg) src) (hw : WF3 s.flat)
@@ -600,7 +600,7 @@ theorem transfer_syncState {L : MutexLayout} {reg : SyncReg} {c src dst : Nat} {
     · exact ⟨ctl, hc', by rw [hI]; simp [hns, hnd, h4]⟩
   refine syncState_iff.2 ⟨hcore, fun i j e f c₀ hi hj hl hl' h1 h2 => ?_, fun e he hl => ?_,
     fun e he hl => ?_⟩
-  · -- controller uniqueness (WC3 C21.4)
+  · -- controller uniqueness (WC4 C21.4)
     have hl₀ := transfer_live.1 hl
     have hl₀' := transfer_live.1 hl'
     have he := List.mem_of_getElem? hi
@@ -628,7 +628,7 @@ theorem transfer_syncState {L : MutexLayout} {reg : SyncReg} {c src dst : Nat} {
           exact (hcend hcfd).elim
         · rw [hce''] at h1; rw [hcf''] at h2; cases h1; cases h2
           exact hu i j e f _ hi hj hl₀ hl₀' hce hcf
-  · -- `slot` stays `Init` (WC3.1 C21)
+  · -- `slot` stays `Init` (WC4 C21.7)
     have hl₀ := transfer_live.1 hl
     have heo := hc.1 e he
     have h1 := heo.guarded hl₀
@@ -683,7 +683,7 @@ theorem transfer_syncState {L : MutexLayout} {reg : SyncReg} {c src dst : Nat} {
                 rw [hsl] at this
                 exact this h₁
             simp [hld, hls, h2 l hl']
-  · -- the controller stays `Init` (WC3.1 C21)
+  · -- the controller stays `Init` (WC4 C21.7)
     have hl₀ := transfer_live.1 hl
     have h3 := (hc.1 e he).control hl₀
     cases hco : ControlOf L s e with
@@ -692,9 +692,9 @@ theorem transfer_syncState {L : MutexLayout} {reg : SyncReg} {c src dst : Nat} {
       obtain ⟨c', hc', hi'⟩ := hctlI e he hl₀ ctl hco
       rw [hc']; exact hi'
 
-/-! ## Library operations (WC3 C13, C16–C18) -/
+/-! ## Library operations (WC4 C13, C16–C18) -/
 
-/-- The initialization invariant after a record update keeping `guarded` (WC3.1 C21). -/
+/-- The initialization invariant after a record update keeping `guarded` (WC4 C21.7). -/
 theorem init_set {L : MutexLayout} {s : SC} {reg : SyncReg} {i : Nat} {e e' : SyncEntry}
     (hi : reg[i]? = some e) (hg : e'.guarded = e.guarded) (hsi : SlotInit s reg)
     (hci : CtlInit L s reg) : SlotInit s (reg.set i e') ∧ CtlInit L s (reg.set i e') := by
@@ -708,7 +708,7 @@ theorem init_set {L : MutexLayout} {s : SC} {reg : SyncReg} {i : Nat} {e e' : Sy
     · rw [hC]; exact hci e he (hL.1 hl)
     · exact hci x (List.mem_of_getElem? hj) hl
 
-/-- `newMutex` (WC3 C13, WC3.1 C13: `initM`) preserves `SyncState`. -/
+/-- `newMutex` (WC4 C13; C13.10: `initM`) preserves `SyncState`. -/
 theorem newMutex_syncState {k : K} {L : MutexLayout} {adm : List Nat} {s : SC} {reg : SyncReg}
     {c g : Nat} {st' : SC × SyncReg} (h : NewMutexOk k L adm s reg c g st') (hw : WF3 s.flat)
     (hs : SyncState L s reg) : SyncState L st'.1 st'.2 := by
@@ -749,7 +749,7 @@ theorem newMutex_syncState {k : K} {L : MutexLayout} {adm : List Nat} {s : SC} {
       · rw [List.mem_singleton.1 hx, hco]
         exact hinit ctl (leaf_mem_footprint (t := s.flat) h1.2 hcmp)
 
-/-- `acquire` (WC3 C16) preserves `SyncState`. -/
+/-- `acquire` (WC4 C16) preserves `SyncState`. -/
 theorem acquire_syncState {k : K} {L : MutexLayout} {s : SC} {reg : SyncReg} {c i : Nat}
     {st' : SC × SyncReg} (h : AcquireOk k L s reg c i st') (hw : WF3 s.flat)
     (hw' : WF3 st'.1.flat) (hs : SyncState L s reg) : SyncState L st'.1 st'.2 := by
@@ -767,7 +767,7 @@ theorem acquire_syncState {k : K} {L : MutexLayout} {s : SC} {reg : SyncReg} {c 
   obtain ⟨hsi'', hci''⟩ := init_set (e' := { e with grant := some s.A.length }) hi rfl hsi' hci'
   exact syncState_iff.2 ⟨hcore, hcu, hsi'', hci''⟩
 
-/-- `unlock` (WC3 C17) preserves `SyncState`. -/
+/-- `unlock` (WC4 C17) preserves `SyncState`. -/
 theorem unlock_syncState {L : MutexLayout} {s : SC} {reg : SyncReg} {c i : Nat}
     {st' : SC × SyncReg} (h : UnlockOk L s reg c i st') (hw : WF3 s.flat)
     (hw' : WF3 st'.1.flat) (hs : SyncState L s reg) : SyncState L st'.1 st'.2 := by
@@ -789,7 +789,7 @@ theorem unlock_syncState {L : MutexLayout} {s : SC} {reg : SyncReg} {c i : Nat}
   obtain ⟨hsi'', hci''⟩ := init_set (e' := { e with grant := none }) hi rfl hsi' hci'
   exact syncState_iff.2 ⟨hcore, hcu, hsi'', hci''⟩
 
-/-- `resetLock` (WC3 C18, WC3.1 C18.3) preserves `SyncState`. -/
+/-- `resetLock` (WC4 C18; C18.3) preserves `SyncState`. -/
 theorem resetLock_syncState {L : MutexLayout} {s : SC} {reg : SyncReg} {c i : Nat}
     {st' : SC × SyncReg} (h : ResetLockOk L s reg c i st') (hs : SyncState L s reg) :
     SyncState L st'.1 st'.2 := by
@@ -800,11 +800,11 @@ theorem resetLock_syncState {L : MutexLayout} {s : SC} {reg : SyncReg} {c i : Na
   obtain ⟨hsi', hci'⟩ := init_set (e' := { e with grant := none }) hi rfl hsi hci
   exact syncState_iff.2 ⟨hcore, hcu, hsi', hci'⟩
 
-/-! ## The by-value composite (WC3 C5; WC3.1 "Formalization coverage") -/
+/-! ## The by-value composite (WC4 C5, C23) -/
 
 open TransferPreserveAux PreservationAux
 
-/-- Facts of the effect of `spawn` (WC3 C4 effect, Spec 1 §72 effect), from its parameter and
+/-- Facts of the effect of `spawn` (WC4 C4 effect, Spec 1 §72 effect), from its parameter and
 shape clauses. -/
 theorem spawnEff_facts {reg : SyncReg} {s : SC} {c : Nat} {ps : List Nat} {ls : LocalShape}
     (hpar : ∀ a ∈ ps, OptP ((s.view c).A[a]?) (fun y => y.active = true ∧
@@ -813,13 +813,13 @@ theorem spawnEff_facts {reg : SyncReg} {s : SC} {c : Nat} {ps : List Nat} {ls : 
   .of (skel_enter rfl hpar) (pskel_shapeP hsh)
     (src_roots rfl (length_mapI _ _ _) fun z hz => by obtain ⟨i, -, rfl⟩ := List.mem_map.1 hz; rfl)
 
-/-- Authorities after the yield (WC3 C5.3). -/
+/-- Authorities after the yield (WC4 C5.3). -/
 theorem yield_get {t : SC} {ps : List Nat} {f j : Nat} :
     (yieldEff t ps f).A[j]? = (t.A[j]?).map (yieldF ps f j) := by
   show (mapI (yieldF ps f) 0 t.A)[j]? = _
   rw [getElem?_mapI, Nat.zero_add]
 
-/-- WC3.1 C22.3 carries from the state before the yield to the state after it, when
+/-- WC4 C22.3 carries from the state before the yield to the state after it, when
 `SyncState` holds after it: the `guarded` of a live entry is held by a place, so it is not a
 parameter. -/
 theorem yield_excl {L : MutexLayout} {reg : SyncReg} {t : SC} {ps : List Nat} {f src : Nat}
@@ -849,7 +849,7 @@ theorem yield_excl {L : MutexLayout} {reg : SyncReg} {t : SC} {ps : List Nat} {f
       unfold ControlOf; rw [hA]; rfl
     exact ⟨by rw [hsl]; exact h₁, by rw [hco]; exact h₂⟩
 
-/-- `SyncState` along the transfer phases of the by-value composite (WC3 C5.2), on the states where
+/-- `SyncState` along the transfer phases of the by-value composite (WC4 C5.2), on the states where
 the parameters are already yielded. -/
 theorem transfers_sync {k : K} {L : MutexLayout} {reg : SyncReg} {fin : S3} {c f : Nat}
     {ps : List Nat} :
@@ -877,7 +877,7 @@ theorem transfers_sync {k : K} {L : MutexLayout} {reg : SyncReg} {fin : S3} {c f
       obtain ⟨g, hg⟩ := hp a ha y₀ hy₀
       exact ⟨g, by rw [e ⟨g, hg⟩, hg]⟩
 
-/-- The by-value composite (WC3 C5) admitted by WC3.1 C22.3 preserves `SyncState`, from a state
+/-- The by-value composite (WC4 C5) admitted by WC4 C22.3 preserves `SyncState`, from a state
 satisfying `KInvCA`. -/
 theorem spawnVal_syncState {k : K} {L : MutexLayout} {reg : SyncReg} {s s' : SC} {c : Nat}
     {ps : List Nat} {ls : LocalShape} {vs : List (Nat × Nat)} (hk : KInvCA s)
@@ -954,10 +954,11 @@ theorem lstep_preserves {k : K} {L : MutexLayout} {lbl : Label} {st st' : SC × 
   | resetLock h => exact resetLock_syncState h hs
   | spawnVal h => exact spawnVal_syncState hk h he hs
 
-/-! ## A transfer onto a live mutex value is rejected (WC3.1 C21, Spec 1 §63.3) -/
+/-! ## A transfer onto a live mutex value is rejected (WC4 S18, C21.7; Spec 1 §63.3) -/
 
-/-- WC3.1 C21 with Spec 1 §63.3: under `SyncState`, a `transfer` whose destination contains the
-mutex value of a live entry is rejected, its controller leaf being `Init`. -/
+/-- WC4 S18 (C21.7 with Spec 1 §63.3): under `SyncState`, a `transfer` whose destination contains
+the mutex value of a live entry is rejected, its controller leaf being `Init`. Positive twins:
+`Ern.Concurrency.EncapTraces.invA`, `Ern.Concurrency.EncapTraces.invB`. -/
 theorem transfer_into_live_mutex_rejected {k : K} {L : MutexLayout} {reg : SyncReg}
     {c src dst m : Nat} {s : SC} {e : SyncEntry} (hw : WF3 s.flat) (hs : SyncState L s reg)
     (he : e ∈ reg) (hl : e.Live s) (hm : mutexOf s e.guarded = some m)

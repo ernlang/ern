@@ -2,14 +2,14 @@ import Ern.Concurrency.Preservation
 import Ern.Concurrency.Transfer
 
 /-!
-# Theorem 2 for the by-value composite (WC3 C5)
+# Theorem 2 for the by-value composite (WC4 C5)
 
-`spawnVal_preservesC`: the composite of WC3 C5, with the preconditions `SpawnValPre`, preserves the
+`spawnVal_preservesC`: the composite of WC4 C5, with the preconditions `SpawnValPre`, preserves the
 re-indexed kernel invariant with the auxiliaries of Spec 1 (`KInvCA`).
 
 The yield of the parameters commutes with the transfers (`yield_transfers`): the parameters are
 held by frames, which O4 does not move (Spec 1 §63 effect). The composite is therefore `spawn`
-(WC3 C4) followed by the transfers. The anchor orders come from the final checks of WC3 C5.4; the
+(WC4 C4) followed by the transfers. The anchor orders come from the final checks of WC4 C5.4; the
 other invariants are carried phase by phase from the Spec 1 lemmas used by `transfer_preserves`.
 -/
 
@@ -37,7 +37,7 @@ theorem mapI_map_comm {F : Nat → Authority → Authority} {G : Authority → A
       rwa [show i + (k + 1) = i + 1 + k by omega] at this
     simp only [mapI, List.map_cons, h0, ih]
 
-/-- The yield function of `yieldEff` (WC3 C5.3). -/
+/-- The yield function of `yieldEff` (WC4 C5.3). -/
 def yieldF (ps : List Nat) (f : Nat) (j : Nat) (y : Authority) : Authority :=
   if j ∈ ps then { y with holder := .frame f } else y
 
@@ -67,7 +67,7 @@ theorem sc_ext {a b : SC} (hC : a.C = b.C) (hn : a.nF = b.nF) (hP : a.P = b.P) (
   simp only at hC hn hP hI hA hD hd hp
   subst hC hn hP hI hA hD hd hp; rfl
 
-/-- WC3 C5.2–C5.3: when the parameters are held by frames, yielding them before or after one
+/-- WC4 C5.2–C5.3: when the parameters are held by frames, yielding them before or after one
 transfer gives the same state. -/
 theorem yield_transfer {t : SC} {ps : List Nat} {f c src dst : Nat}
     (hp : ∀ a ∈ ps, ∀ y, t.A[a]? = some y → ∃ g, y.holder = .frame g) :
@@ -87,7 +87,7 @@ theorem transfer_frame_held {t : SC} {c src dst a : Nat} {y : Authority}
   refine ⟨y₀, hy₀, fun ⟨g, hg⟩ => ?_⟩
   simp [hg, heldIn]
 
-/-- WC3 C5.2–C5.3: yielding before the transfers gives the state of the composite. -/
+/-- WC4 C5.2–C5.3: yielding before the transfers gives the state of the composite. -/
 theorem yield_transfers {ps : List Nat} {f c : Nat} :
     ∀ (t : SC) (vs : List (Nat × Nat)),
       (∀ a ∈ ps, ∀ y, t.A[a]? = some y → ∃ g, y.holder = .frame g) →
@@ -119,8 +119,8 @@ theorem mapI_append {F : Nat → Authority → Authority} :
     simp only [List.cons_append, mapI, mapI_append (i + 1) l m, List.length_cons]
     rw [show i + 1 + l.length = i + (l.length + 1) by omega]
 
-/-- WC3 C5.1, C5.3: creating without parameters then yielding them is `spawn` with the
-parameters (WC3 C4 effect), when the parameters are existing authorities. -/
+/-- WC4 C5.1, C5.3: creating without parameters then yielding them is `spawn` with the
+parameters (WC4 C4 effect), when the parameters are existing authorities. -/
 theorem create_yield {s : SC} {c : Nat} {ps : List Nat} {ls : LocalShape}
     (hp : ∀ a ∈ ps, a < s.A.length) :
     yieldEff (spawnCreate s c ls) ps s.nF = spawnEff s c ps ls := by
@@ -141,12 +141,12 @@ theorem create_yield {s : SC} {c : Nat} {ps : List Nat} {ls : LocalShape}
 
 /-! ## The kernel invariant without the anchor orders -/
 
-/-- The clauses of `KInvCA` other than the anchor orders (Spec 1 §57 re-indexed, WC3 C20). -/
+/-- The clauses of `KInvCA` other than the anchor orders (Spec 1 §57 re-indexed, WC4 C20). -/
 def KBase (s : SC) : Prop :=
   FramesC s ∧ (WF3 s.flat ∧ I1 s.flat ∧ I2 s.flat ∧ I3 s.flat ∧ NoDangling s.flat ∧
     KAux s.flat ∧ HeldAnchored s.flat)
 
-/-- The kernel facts of Spec 1 on the view of a context, from `KBase` (WC3 C2). -/
+/-- The kernel facts of Spec 1 on the view of a context, from `KBase` (WC4 C2). -/
 theorem view_facts_base {s : SC} (hk : KBase s) (c : Nat) :
     WF3 (s.view c) ∧ Inv3base (s.view c) ∧ NoDangling (s.view c) ∧ RootHeldConv (s.view c) ∧
       HeldAnchored (s.view c) := by
@@ -155,8 +155,8 @@ theorem view_facts_base {s : SC} (hk : KBase s) (c : Nat) :
   exact ⟨SC.wf3_view hfr hw, ⟨h1, h2, i3_mem_congr h3 hF, i4_always _⟩,
     noDangling_mem_congr hnd hF, hc, heldAnchored_mem_congr hh hF⟩
 
-/-- `spawn` (WC3 C4 effect) establishes `KBase` from `KInvCA`, without the resulting-state
-condition §72.4 (WC3 C4.5), which the composite checks on its final state. -/
+/-- `spawn` (WC4 C4 effect) establishes `KBase` from `KInvCA`, without the resulting-state
+condition §72.4 (WC4 C4.5), which the composite checks on its final state. -/
 theorem spawn_base {s : SC} {c : Nat} {ps : List Nat} {ls : LocalShape} (hk : KInvCA s)
     (hc : s.stk c ≠ []) (hpar : ParamsOK (s.view c) ps) (hsh : ShapeOK s.P.length ls.toShape) :
     KBase (spawnEff s c ps ls) := by
@@ -240,7 +240,7 @@ parameters are already yielded: they read neither holders nor exercise. -/
 theorem yield_view {t : SC} {ps : List Nat} {f c : Nat} :
     (yieldEff t ps f).view c = { t.view c with A := mapI (yieldF ps f) 0 t.A } := rfl
 
-/-- `Active` is unchanged by the yield (WC3 C5.3). -/
+/-- `Active` is unchanged by the yield (WC4 C5.3). -/
 theorem yield_active {v : S3} {ps : List Nat} {f x : Nat} :
     ({ v with A := mapI (yieldF ps f) 0 v.A } : S3).Active x ↔ v.Active x := by
   constructor
@@ -256,7 +256,7 @@ theorem yield_active {v : S3} {ps : List Nat} {f x : Nat} :
       rw [getElem?_mapI, hy]; rfl
     · unfold yieldF; split <;> exact ya
 
-/-- Theorem 2 along the transfer phases (WC3 C5.2): from a state where the parameters are
+/-- Theorem 2 along the transfer phases (WC4 C5.2): from a state where the parameters are
 yielded and `KBase` holds, the transfers keep `KBase`, given the destination of each transfer
 owned by a frame. -/
 theorem transfers_base {k : K} {fin : S3} {c f : Nat} {ps : List Nat} :
@@ -293,8 +293,8 @@ end TransferPreserveAux
 
 open PreservationAux TransferPreserveAux
 
-/-- Theorem 2 (WC3 C4, C5, C20, C23) for the by-value composite: `SpawnValPre` and `KInvCA` before
-the composite give `KInvCA` after it. The anchor orders are the final checks of WC3 C5.4
+/-- Theorem 2 (WC4 C4, C5, C20, C23) for the by-value composite: `SpawnValPre` and `KInvCA` before
+the composite give `KInvCA` after it. The anchor orders are the final checks of WC4 C5.4
 (`SpawnValPre.anchorOrder`, `SpawnValPre.anchorOrderHeld`). -/
 theorem spawnVal_preservesC {k : K} {s s' : SC} {c : Nat} {ps : List Nat} {ls : LocalShape}
     {vs : List (Nat × Nat)} (hk : KInvCA s) (h : SpawnValStep k s c ps ls vs (.ok s')) :

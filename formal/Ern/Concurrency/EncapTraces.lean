@@ -4,8 +4,8 @@ import Ern.Concurrency.Traces
 /-!
 # Mutex transfer, `endUse` and `Encap` (test module)
 
-Concrete runs checking `Encap` (WC3.1 C22.3) and the initialization invariant (WC3.1 C21) against
-WC3 C12, S7 and S16:
+Concrete runs checking `Encap` (WC4 C22.3, C22.5) and the initialization invariant (WC4 C21.7)
+against WC4 C12, S7, S16, S17 and S18:
 
 * a mutex value `M = {slot, lock}` owning the protected root `T`; `guarded` is a `Modify`
   derivative of the root authority of `T`, stored in `slot` (Spec 1 §60, §65); `M′ = {slot′, lock′}`
@@ -15,11 +15,14 @@ WC3 C12, S7 and S16:
   `lock′` (S16, positive half);
 * `transfer(slot, Y)` and `transfer(lock, Y)`: `ok` kernel steps excluded by `Encap`, after which
   `SyncInv` fails (S16 and its extension);
-* `endUse(lock)`, and `endUse` of a strict part of `slot`: `ok` kernel steps admitted by `Encap`
-  after which `SyncInv` fails (`ctlInit`, `slotInit`); after such steps, `transfer(M₁, M₂)` gives
-  two live entries the same controller (`endUse_then_transfer_merges`);
-* the WC3 configuration of `transfer_merges_controllers` is rejected by WC3.1 C13
-  (`newMutex_uninit_rejected`, `transfer_merges_controllers_false`).
+* `endUse(lock)`, and `endUse` of a strict part of `slot` (S17a, S17b): `ok` kernel steps excluded
+  by `Encap` (WC4 C22.5), after which `SyncInv` fails (`ctlInit`, `slotInit`); `endUse(M)` and
+  `endUse(slot)`: `ok` steps admitted by `Encap` that end the entry, after which `SyncInv` holds;
+* a run whose `endUse` steps break WC4 C21.7, followed by `transfer(M₁, M₂)`, gives two live
+  entries the same controller (`endUse_then_transfer_merges`); it is not an `EncapsulatedTrace`
+  (`endUse_then_transfer_merges_false`);
+* `newMutex` on a mutex value whose fields are `Uninit` is rejected by WC4 C13.10
+  (`newMutex_uninit_rejected`), so the run of `transfer_merges_controllers_false` is not a run.
 -/
 
 namespace Ern.Concurrency.EncapTraces
@@ -53,16 +56,16 @@ def e1 : SC := e0.set (deriveEff (e0.view 0) 1 [3] .modify)
 /-- `store(4, slot = 1)` by context 0 (Spec 1 §65): `guarded` is held by `slot`. -/
 def e2 : SC := storeEffC e1 0 4 1
 
-/-- Registry after `newMutex(4)` (WC3 C13, WC3.1 C13). -/
+/-- Registry after `newMutex(4)` (WC4 C13). -/
 def reg1 : SyncReg := [⟨4, none⟩]
 
 /-- Variant A: `transfer(M = 0, M′ = 4)` by context 0 with `grant = none` (Spec 1 §63). -/
 def eA : SC := transferEffC e2 0 0 4
 
-/-- Variant B, first step: `acquire` on entry 0 (WC3 C16): grant authority 5, held by frame 0. -/
+/-- Variant B, first step: `acquire` on entry 0 (WC4 C16): grant authority 5, held by frame 0. -/
 def e3 : SC := deriveSyncEff e2 0 4
 
-/-- Registry after `acquire` (WC3 C16). -/
+/-- Registry after `acquire` (WC4 C16). -/
 def reg2 : SyncReg := [⟨4, some 5⟩]
 
 /-- Variant B: `transfer(M = 0, M′ = 4)` by context 0 with the grant active (Spec 1 §63). -/
@@ -80,12 +83,12 @@ theorem step_derive : opStepC K0 (.derive 1 [3] .modify) 0 e0 (.ok e1) :=
 /-- The store of `guarded` in `slot` is an `ok` step (Spec 1 §65 re-indexed). -/
 theorem step_store : opStepC K0 (.store 4 1) 0 e1 (.ok e2) := ⟨by decide, .ok (by decide)⟩
 
-/-- `newMutex(4)` is enabled (WC3 C13); its controller is `lock` (place 2). -/
+/-- `newMutex(4)` is enabled (WC4 C13); its controller is `lock` (place 2). -/
 theorem step_newMutex : NewMutexOk K0 L0 [] e2 [] 0 4 (e2, reg1) ∧
     ControlOf L0 e2 ⟨4, none⟩ = some 2 :=
   ⟨⟨by decide, by decide, rfl⟩, by decide⟩
 
-/-- `acquire` is enabled (WC3 C16); the grant 5 is an active `Modify` derivative of `guarded` over
+/-- `acquire` is enabled (WC4 C16); the grant 5 is an active `Modify` derivative of `guarded` over
 `footprint(T)`, held by frame 0, the current frame. -/
 theorem step_acquire : AcquireOk K0 L0 e2 reg1 0 0 (e3, reg2) ∧
     e3.A[5]? = some ⟨.modify, some 4, [3], .frame 0, true⟩ ∧ (e3.view 0).top = 0 :=
@@ -105,7 +108,7 @@ theorem stepC_transfer : opStepC K0 (.transfer 1 7) 0 e2 (.ok eC) :=
 
 /-! ## The transfer clause of `Encap` -/
 
-/-- The transfer clause of `Encap` is WC3.1 C22.3 (`TransferExcl`): the source is compared with
+/-- The transfer clause of `Encap` is WC4 C22.3 (`TransferExcl`): the source is compared with
 the place holding `guarded`, its structural subplaces, and the controller leaf, for every live
 entry. -/
 theorem encap_transfer_iff (st : SC × SyncReg) (c src dst : Nat) :
@@ -117,7 +120,7 @@ theorem guarded_in_slot : (e2.A[4]?).map (·.holder) = some (.place 1) ∧
     parentOf e2.P 1 = some 0 := by decide
 
 /-- Verdict (b): `Encap` admits `transfer(M, M′)` in both variants and excludes
-`transfer(slot, Y)` (WC3.1 C22.3, item 1) and `transfer(lock, Y)` (item 3). -/
+`transfer(slot, Y)` (WC4 C22.3 (a)) and `transfer(lock, Y)` (C22.3 (c)). -/
 theorem encap_verdicts : Encap L0 (e2, reg1) (.kernel 0 (.transfer 0 4)) ∧
     Encap L0 (e3, reg2) (.kernel 0 (.transfer 0 4)) ∧
     ¬ Encap L0 (e2, reg1) (.kernel 0 (.transfer 1 7)) ∧
@@ -160,10 +163,10 @@ theorem inv2 : KInvCA e2 ∧ SyncState L0 e2 reg1 := by
   obtain ⟨hk, hs⟩ := init_inv (k := K0) ddK0 est_ok L0
   exact trace_inv ddK0 traceMutex hk hs
 
-/-- Verdict (c), variant A, positive twin of `transfer_into_live_mutex_rejected` (WC3.1 C22.3,
-S16 positive half): after `transfer(M, M′)` onto a destination with no entry, `KInvC` (with the
-auxiliaries of Spec 1) and `SyncState` (`SyncInv`, `GrantDiscipline`) hold, and the entry is
-live. -/
+/-- Verdict (c), variant A, positive twin of `transfer_into_live_mutex_rejected` (WC4 C22.3,
+S16 and S18 positive halves): after `transfer(M, M′)` onto a destination with no entry, `KInvC`
+(with the auxiliaries of Spec 1) and `SyncState` (`SyncInv`, `GrantDiscipline`) hold, and the
+entry is live. -/
 theorem invA : KInvCA eA ∧ SyncState L0 eA reg1 ∧ (⟨4, none⟩ : SyncEntry).Live eA := by
   obtain ⟨hk, hs⟩ := init_inv (k := K0) ddK0 est_ok L0
   exact ⟨(trace_inv ddK0 traceA hk hs).1, (trace_inv ddK0 traceA hk hs).2, by decide⟩
@@ -176,8 +179,8 @@ theorem invB : KInvCA eB ∧ SyncState L0 eB reg2 ∧ (⟨4, some 5⟩ : SyncEnt
   obtain ⟨hk, hs⟩ := init_inv (k := K0) ddK0 est_ok L0
   exact ⟨(trace_inv ddK0 traceB hk hs).1, (trace_inv ddK0 traceB hk hs).2, by decide, by decide⟩
 
-/-- Verdict (d), WC3 S16 positive half: after `transfer(M, M′)`, in both variants, `guarded` is
-held by `slot′` (place 5) and `ControlOf` designates `lock′` (place 6) (WC3 C12, positional). -/
+/-- Verdict (d), WC4 S16 positive half: after `transfer(M, M′)`, in both variants, `guarded` is
+held by `slot′` (place 5) and `ControlOf` designates `lock′` (place 6) (WC4 C12, positional). -/
 theorem controlAB : (eA.A[4]?).map (·.holder) = some (.place 5) ∧
     ControlOf L0 eA ⟨4, none⟩ = some 6 ∧
     (eB.A[4]?).map (·.holder) = some (.place 5) ∧ ControlOf L0 eB ⟨4, some 5⟩ = some 6 := by
@@ -189,12 +192,12 @@ authority 1 is held by `M′`. -/
 theorem ownerA : (eA.P[3]?).map (·.owner) = some (.place 4) ∧
     (eA.A[1]?).map (·.holder) = some (.place 4) := by decide
 
-/-! ## Transfers excluded by WC3.1 C22.3 (S16) -/
+/-! ## Transfers excluded by WC4 C22.3 (S16) -/
 
-/-- WC3 S16, WC3.1 C22.3 item 1: from `e2` (`KInvCA` and `SyncState` hold), `transfer(slot, Y)`
+/-- WC4 S16, C22.3 (a): from `e2` (`KInvCA` and `SyncState` hold), `transfer(slot, Y)`
 is an `ok` step of Spec 1 §63 re-indexed; `Encap` excludes it; after it, the kernel invariant
 `KInvCA` holds, the entry is live, `guarded` is held by `Y`, which has no structural parent,
-`ControlOf` is undefined, and `SyncInv` (WC3 C21.3 with the positional `ControlOf` of WC3 C12)
+`ControlOf` is undefined, and `SyncInv` (WC4 C21.3 with the positional `ControlOf` of WC4 C12)
 fails. -/
 theorem slot_transfer_breaks_control :
     KInvCA e2 ∧ SyncState L0 e2 reg1 ∧ opStepC K0 (.transfer 1 7) 0 e2 (.ok eC) ∧
@@ -212,10 +215,10 @@ theorem slot_transfer_breaks_control :
 /-- `transfer(lock = 2, Y = 7)` by context 0 after `newMutex` (Spec 1 §63). -/
 def eD : SC := transferEffC e2 0 2 7
 
-/-- WC3 S16 extended, WC3.1 C22.3 item 3: from `e2`, `transfer(lock, Y)` is an `ok` step of
+/-- WC4 S16 extended, C22.3 (c): from `e2`, `transfer(lock, Y)` is an `ok` step of
 Spec 1 §63 re-indexed; `Encap` excludes it; after it, `KInvCA` holds, the entry is live, its
-controller is still `lock` (place 2), which is `Moved`, and `SyncInv` fails (`ctlInit`, WC3.1
-C21). -/
+controller is still `lock` (place 2), which is `Moved`, and `SyncInv` fails (`ctlInit`, WC4
+C21.7). -/
 theorem ctl_transfer_breaks_ctlInit :
     opStepC K0 (.transfer 2 7) 0 e2 (.ok eD) ∧ ¬ Encap L0 (e2, reg1) (.kernel 0 (.transfer 2 7)) ∧
     KInvCA eD ∧ (⟨4, none⟩ : SyncEntry).Live eD ∧ ControlOf L0 eD ⟨4, none⟩ = some 2 ∧
@@ -429,7 +432,7 @@ theorem endUse_then_transfer_merges_false (st : SC × SyncReg) :
           cases h4 with
           | cons he _ _ => exact endUse_then_transfer_merges.2.1 he
 
-/-! ## The configuration of `transfer_merges_controllers` (WC3) is rejected (WC3.1 C13) -/
+/-! ## `newMutex` on `Uninit` fields is rejected (WC4 C13.10) -/
 
 /-- Statics (Spec 1 §47): `0` the mutex value `M` with fields `1` (`slot`) and `2` (`lock`), both
 `Init`; `3` the root `T`, owned by `slot`; `4` the mutex value `M′` with fields `5` (`slot′`) and
@@ -442,15 +445,14 @@ def mst : Statics :=
 /-- Initial single-context state of `mst`. -/
 def m0 : SC := SC.ofS3 (S3.init mst)
 
-/-- WC3.1 C13 (`initM`): in the configuration of the WC3 counterexample
-`transfer_merges_controllers`, `newMutex(1)` is accepted and `newMutex(3)` is rejected, the
+/-- WC4 C13.10 (`initM`): in `m0`, `newMutex(1)` is accepted and `newMutex(3)` is rejected, the
 fields of `M′` being `Uninit`. -/
 theorem newMutex_uninit_rejected : NewMutexOk K0 L0 [] m0 [] 0 1 (m0, [⟨1, none⟩]) ∧
     ¬ NewMutexPre K0 L0 [] m0 [⟨1, none⟩] 0 3 :=
   ⟨⟨by decide, by decide, rfl⟩, by decide⟩
 
-/-- The trace of the WC3 counterexample `transfer_merges_controllers` is no longer a run: its
-second step, `newMutex(3)`, has no `ok` outcome (`newMutex_uninit_rejected`). -/
+/-- The labels `newMutex(1)`, `newMutex(3)`, `transfer(M, M′)` from `m0` form no run: the second
+step, `newMutex(3)`, has no `ok` outcome (`newMutex_uninit_rejected`). -/
 theorem transfer_merges_controllers_false (st : SC × SyncReg) :
     ¬ LRun K0 L0 (m0, []) [.newMutex 0 1 [], .newMutex 0 3 [], .kernel 0 (.transfer 0 4)] st := by
   intro h
