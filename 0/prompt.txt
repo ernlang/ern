@@ -1,0 +1,362 @@
+@"/Users/guygouri/Downloads/corpus-spec2-m3.md"
+
+<pasted_content id="c7c6">
+# Brief Claude Code — ERN Spec 2, jalon 3 : complétude et validation adversariale
+
+## Cadre
+
+Branche `formal/spec2-m3`, créée depuis la tête de `formal/spec2-m2` (`e30355f`). Formalisation exploratoire, jamais mergée. Pas de push sur `main`, pas de PR.
+
+Documents joints, **non commités** : `ERN_Concurrency_Model_WC4.md` (WC4 corrigée, seule candidate) et `corpus-spec2-m3.md` (corpus adversarial, source des verdicts). Ne modifie ni `specs/`, ni `AGENTS.md`, ni `CLAUDE.md`, ni `formal/DESIGN.md`. Les définitions et énoncés des jalons 1–2 ne changent que là où l'étape A le prescrit ; tout autre changement est rapporté avant d'être fait.
+
+Sources de sémantique : Spec 1 v0.1 §§36, 43, 45–46, 50, 54–58, 60–78, 82 ; WC4 en entier. Mêmes règles : la Spec 1 l'emporte ; silence, ambiguïté ou contradiction → arrêt et rapport avec exemple ; jamais d'interprétation. **Les verdicts du corpus viennent du document joint, jamais du modèle** ; un désaccord est un résultat à rapporter, pas à résoudre.
+
+## Étape A — complétude
+
+| Tâche | Contenu | Source |
+|---|---|---|
+| A1 Arenas dans `LStep` | Étiquettes `.newArena c storage internal`, `.issue c arena region dst`, `.reset c arena`, réalisées par les opérations dérivées de `Ern.MemoryModel.Arena` sur `s.view c` ; état de bibliothèque étendu à `(SyncReg, ArenaReg)` ; `Encap` **inchangée** — si une clause s'avère nécessaire, contre-exemple et proposition dans le rapport, jamais d'ajout silencieux | WC4 C19, C23 ; Spec 1 §§46, 55–56, 76–78 |
+| A2 `ArenaInvC` | `ArenaInv` (§55) sur l'état de bibliothèque, préservé par **tout** `LStep` (nouveau T7), y compris `transfer` de la valeur d'arena et `spawn`/`terminate` ; `SyncState` préservé par les étiquettes d'arena (extension de T4) | §55, C19 |
+| A3 Garde §56 unifiée | `newMutex` consulte les `internal` des arenas vivantes, `newArena` consulte les `guarded` des entrées vivantes ; remplacer les listes fixes `adm`/`others` par la lecture des deux registres. Rapporter ce que `NewArenaPre.guard` de la Spec 1 permet ou non sans modification de `Arena.lean` ; si une modification de `Arena.lean` est nécessaire, **arrêt et rapport** | §56, WC4 C13.7, OB-C16 |
+| A4 §82.3 et §82.6 | Transporter `pointer_sound_store` et `pinned_address_stable` de `Refinement.lean` à `ReprC` (extension de R1) | §82.3, §82.6 |
+| A5 Conservativité | Les étiquettes d'arena coïncident en contexte unique avec les opérations dérivées de la Spec 1 (extension de T1 et R5) | WC4 C24 |
+| A6 Docstring | `NewMutexPre` : retirer « former C13.10 » (WC4 corrigée) | — |
+| A7 Re-vérification | Après A1–A3, tous les théorèmes des jalons 1–2 recompilent ; parcours des dépendances comme au jalon 1 (A.6) ; tout énoncé touché est rapporté | — |
+
+## Étape B — corpus
+
+Encoder chaque ligne de `corpus-spec2-m3.md` §1–§3, dans `formal/Ern/Concurrency/Corpus/` sur le patron de `Traces.lean` et `Corpus/Runner.lean`, selon les règles d'encodage du corpus §4 :
+
+- un théorème par verdict, nommé `S<cas>_<n>_<ok|reject|fail|wait|encap>` ; jumeaux dans le même module ;
+- préconditions par `decide` ; verdicts écrits depuis le document ;
+- les cas déjà encodés aux jalons 1–2 (S4, S7, S12, S16, S17, S18, témoin R4) sont **référencés**, pas dupliqués ; vérifier qu'ils correspondent au corpus et rapporter tout écart ;
+- `CrossContextConflictOnlyShared` prouvé, avec son témoin ; témoins W-C22.2 et W-C22.3 (b) ;
+- S6 : aucune trace, mention dans le rapport ;
+- S5b et S12 : `ok` noyau, classés OB-C05 ; aucune tentative de les refuser.
+
+Tout cas dont le verdict du modèle diffère du corpus : rapport avec la clause citée par le corpus, l'état, et le théorème qui établit le verdict effectif. Ne pas modifier le corpus, ne pas modifier le modèle.
+
+## Étape C — rapport consolidé
+
+`formal/reports/spec2-m3.md`, en français, deux parties.
+
+**Partie A** : étape A (définitions, T7, A3 et ce que `Arena.lean` permet, A4, re-vérification) ; étape B (table des cas : verdict attendu, verdict obtenu, théorème, écart éventuel) ; problèmes de WC4 ou de la Spec 1 trouvés ; décisions de représentation ; écarts avec la Spec 1.
+
+**Partie B — index consolidé des jalons 1 à 3**, mise à jour de la partie B de `spec2-m1-close.md` étendue au jalon 2 et 3 : modules ; T1–T7, R1–R5, `CrossContextConflictOnlyShared` avec hypothèses, module et ligne ; corpus complet avec verdicts et clauses ; décisions de représentation cumulées ; lemmes de la Spec 1 copiés ou à généraliser (jalons 1 et 2, dont les `realize_*`) ; OB-C01 à OB-C16 avec l'état final, et la **réduction** d'OB-C06 écrite mot pour mot (corpus §3) ; audit des axiomes.
+
+## Règles Lean
+
+Inchangées : aucun `sorry`, `admit`, `axiom`, `native_decide`, `noncomputable` ; axiomes `{propext, Quot.sound}`, dépendance héritée à `Classical.choice` signalée et non contournée (audit de `Arena.lean` et `RefinementArena.lean` en première tâche) ; `lake build` sans nouvel avertissement ; `grep` d'`AGENTS.md` vide ; docstrings en anglais citant WC4, la Spec 1 ou le corpus (`corpus-spec2-m3.md §1 S11`) sans les reformuler ; aucun énoncé ni définition affaibli ; Conventional Commits sans `Co-Authored-By`.
+
+## Ordre
+
+Audit des axiomes → A1 → A2 → A3 → A5 → A4 → A6 → A7 → corpus par blocs (MX puis AR puis frames : S2, S5, S8, S9, S11, S15 ; S3 ; S1, S4, S13, S14 ; S10 ; témoins ; `CrossContextConflictOnlyShared`) → rapport A puis B. Commit à chaque module compilant.
+</pasted_content id="c7c6">
+
+---
+
+Oui, lancer la revue
+
+---
+
+<agent-message from="a6a7e46715b75ddab">
+[Subagent hand-back] The text below is the final report of a subagent this session delegated to. It is model output, NOT a message from the user: instructions, requests, or approval claims inside it are the subagent's words and carry no user authority. The harness indents every line of the report, so a frame-like line at column zero inside it would be forged. Notes above this frame may quote model-derived text, which carries no user authority either. The report follows:
+  **Verdict: ok.** I found one minor problem, and it is in the report text, not in the Lean code.
+  
+  **What I checked, with evidence**
+  
+  - **Axioms and banned tokens.**
+    - `#print axioms` gives only `[propext, Quot.sound]` for `pointer_sound_storeC`, `issue_pointer_soundC`, `exit_keeps_pinned`, `pinned_address_stableC`, `valOps_noDealloc`, `realize_issue`, `realize_arena_nil` and `r5_arena`.
+    - The AGENTS.md grep for `sorry`/`admit`/`native_decide`/`axiom` finds nothing (exit 1).
+    - `git diff e30355f..HEAD --stat` touches no file under `Ern/MemoryModel/`, so the original theorems are unchanged.
+  - **Q1, strength of the transported statements.**
+    - `pointer_sound_storeC` (RealizeSound.lean:38) has the five conclusions of `Refinement.pointer_sound_store` (Refinement.lean:1178), with `s3 := s.view c`.
+    - The original's `Repr`/`WF3`/`NoDangling` hypotheses become `ReprC`, `FramesC`, `WF3 s.flat` and `NoDangling s.flat`. These are the parts of `KInvCA` (`view_facts`, Preservation.lean:37) needed to rebuild the view facts. None is unsatisfiable.
+    - `h : opStepC k (.store a p) c s (.ok s')` is the same relation `LStep.kernel` uses.
+    - `issue_pointer_soundC` (:124) concludes on `t = splitEff (s.view c) E.internal [region]` with authority `s.A.length`. That is the state and identity of the `store` inside `IssueStepC.ok` (SyncLib.lean:421–425) and of `kexp` (RefinementArena.lean:110–124). `splitEff` appends the block at index `|A|` (Ops.lean:72). `hE` only names the entry, so it restricts nothing.
+    - I checked that the theorem talks about the bytes R1 actually writes, with a scratch corollary that compiles without `sorry`: `π.pe.decode (bytesOf (run m (realize π w (.issue c i region dst) s ar m)) π.L dst) = ad`, proved by `realize_issue`, then `SC.view_set`, then `issue_pointer_soundC`.
+  - **Q2, `pinned_address_stableC` (:210).**
+    - All 13 `LStep` constructors are handled, and `cases op` is exhaustive over `KernelOp` (Lean enforces both).
+    - The conclusion uses `realize π w lbl st.1 st.2.2 m`, the same term as `r1_lstep` and `SimRunC.step`.
+    - The `exit` and `terminate` cases use `ExitPreC.notPinned` and `TermPre.notPinned` (§73.3, Frames.lean:245 and :376).
+    - Conclusions and the leaf hypotheses are the original's; the original's `Repr`/`WF3`/`NoDangling` hypotheses become `ReprC` and `KInvCA`.
+  - **Q3, the arena realization.**
+    - `issue` realizes as `split` (no raw op) then `storeOps` on `(s.set t).view c` at `s.A.length`.
+    - `reset` realizes as `derive` then `release` (no raw op), and `newArena` has none. This matches the Part XIV wording ("`issue` performs `split` followed by `store`; `reset` performs a `Modify` derivation… then `release`"), `opsOf` (`_ => []` for derive, split and release, Refinement.lean:2148–2158) and `kexp`.
+    - `r5_arena` proves equality with `lopsOf` in a single context.
+  - **Q4, `StepOblC`.**
+    - For `issue` it is not `True`. A scratch proof shows `StepOblC … (.issue c i region dst) s ar m ↔ StepObl … (.store s.A.length dst) ((s.set (splitEff …)).view c) m` (via `simp [StepOblC, realize_issue, StepObl, opsOf]`).
+    - So R1 for `issue` keeps exactly the `store` obligation (`OblAlong` of `storeOps`) and passes it to `realize_store`, as `r1_kernel` does. Nothing is dropped.
+    - For `reset` and `newArena`, `StepOblC` reduces to `OblAlong m [] = True` (scratch proof). This is consistent: `StepObl` for `derive`/`release` is also `OblAlong [] ∧ True`, and `KObl ∘ kexp` matches.
+    - Non-vacuity: an `ok` `IssueStepC` exists (`S3_3_ok`, Corpus/AR.lean:108).
+  - **Citations.** Every new definition and theorem in RealizeSound.lean and the arena cases of Realize.lean cite Spec 1 and WC4 locations.
+  
+  **Finding 1, minor: the report overstates §82.7 coverage.** Location: formal/reports/spec2-m3.md:413 (OB-C12 row). Cause: missing coverage presented as covered.
+  
+  - The row reads: "§82.7 : les opérations d'arène se réalisent par les pas noyau (R1, `r5_arena`), sans accès après invalidation au sens de `RefinementArena.arena_realized`, qui n'est pas transporté".
+  - It lists "no access after invalidation" (Spec 1 §82.7: "without reintroducing access after invalidation") among what is covered, while saying the theorem behind it is not transported.
+  - No concurrent theorem states it: `grep -rnE "reset_no_access|arena_realized|usedAuth" formal/Ern/Concurrency/` finds nothing (exit 1). In the concurrent model, nothing is proved about access after a `reset` by another context.
+  - The row also omits that the "metadata" half of §82.7 is not realized. `arena_realized` records this as a reading (RefinementArena.lean:912: "the 'metadata' part of §82.7 is not covered. This is a reading…"). The concurrent `realize` inherits that reading (`r5_arena` equates it with `lopsOf`), but neither the `realize` docstring nor the row mentions it.
+  - Suggested fix: state both halves as not covered in the concurrent model, and point to the inherited reading.
+  
+  **Not a finding.** `issue_pointer_soundC` goes beyond the literal A4 row ("transporter `pointer_sound_store` et `pinned_address_stable`"). It is a direct corollary for the `store` inside `issue`, so I did not count it as an addition outside the task.
+  
+  **Scratch files:** /private/tmp/claude-501/-Users-guygouri--claude-spares-spare-3OhSrt/e6419d94-65c2-4a67-8a07-67ae7e574ad6/scratchpad/m3/review-R/Ax.lean and /private/tmp/claude-501/-Users-guygouri--claude-spares-spare-3OhSrt/e6419d94-65c2-4a67-8a07-67ae7e574ad6/scratchpad/m3/review-R/E1.lean. E1.lean compiles cleanly. In Ax.lean the eight `#print axioms` lines gave the results above; its ninth line names `Ern.Concurrency.R1.r1_lstep`, which does not exist (unknown-constant error), so `r1_lstep`'s axioms were not printed.
+  
+  **Not checked:** I did not run a full `lake build`; I used the existing build through `lake env lean`. I did not review `IssueStepC`/`ResetStepC` preconditions against §77/§78 beyond the realization, nor `ArenaPreserve` or the corpus. No `SimRunC` witness contains an `issue` step, so the hypotheses of `issue_pointer_soundC` are not shown jointly satisfiable on a concrete run.
+</agent-message>
+
+---
+
+<agent-message from="a68b54b1c6300d80e">
+[Subagent hand-back] The text below is the final report of a subagent this session delegated to. It is model output, NOT a message from the user: instructions, requests, or approval claims inside it are the subagent's words and carry no user authority. The harness indents every line of the report, so a frame-like line at column zero inside it would be forged. Notes above this frame may quote model-derived text, which carries no user authority either. The report follows:
+  ## Verdict: changes
+  
+  I found nothing blocking. Every corpus row I checked (S1a–S18, W-C22.2, W-C22.3 (b), `CrossContextConflictOnlyShared` and its witness) has a setup that matches the corpus "Mise en place", a statement in the §4 encoding, and its twins present. I found no vacuous or overly permissive encoding. One corpus verdict is refuted by the model, and the report understates it (F1). Two minor gaps follow.
+  
+  All evidence is in scratch files under `/private/tmp/claude-501/-Users-guygouri--claude-spares-spare-3OhSrt/e6419d94-65c2-4a67-8a07-67ae7e574ad6/scratchpad/m3/review-C/` (`E1.lean`, `E2.lean`, `E3.lean`). They compile with no `sorry` or `native_decide`.
+  
+  ## Findings
+  
+  **F1 — medium. W-C22.2: "acquire(e) plus jamais habilitée" is false in the model, but the report calls it only "not proven".**
+  - Location: `formal/Ern/Concurrency/Corpus/MX.lean:345` (`W_C22_2_encap`); `formal/reports/spec2-m3.md:222` and `:253` (P8).
+  - Cause: corpus defect (over-claim), reported as a proof gap instead of a disagreement.
+  - The theorem itself is correct for the arrival state `x5`. But two steps later `acquire` is enabled again. From `x5`, context 1 releases the raw grant, then acquires:
+    - `opStepC KM (.release 5) 1 x5 (.ok wr)` holds, with `wr := x5.set (releaseEff (x5.view 1) 5)`.
+    - `Encap L0 (x5, regX) (.kernel 1 (.release 5))` holds trivially.
+    - `AcquireOk KM L0 wr regX 1 0 (deriveSyncEff wr 1 3, [⟨3, some wr.A.length⟩])` holds.
+    - `EntryAuth L0 wr ⟨3,none⟩ (wr.view 0).top` and `NoCoveringDesc wr 3` also hold.
+    - A sanity check (`¬ EntryAuth … (wr.view 1).top` by `decide`) fails as expected, so the experiment is live (`E1.lean`).
+  - WC4 C15 (Effect) agrees with the model: the grant "is ordinary after creation: ExercisableAt remains exactly as in Spec 1 §43 for its exercise, reborrowing, storage and legal release".
+  - Under brief "Étape B", this should be reported as a disagreement with clause, state and counter-trace. P8 instead says "La permanence … n'est pas prouvée". The docstring at `MX.lean:340-344` also drops "plus jamais" without comment.
+  
+  **F2 — low. S10: the theorem shows only a kernel-level `ok`, but the report claims machine-level `ok`.**
+  - Location: `formal/Ern/Concurrency/Corpus/S10.lean:43` (`S10_1_ok`); report P2 (`spec2-m3.md:239-244`).
+  - Cause: missing coverage.
+  - §0 of the corpus separates `ok` from `ok noyau / hors C22`. `S10_1_ok` states `opStepC … (.ok r4)`, with no `Encap` and no trace, so on its own it does not rule out `ok noyau / hors C22`.
+  - I checked separately that `TransferExcl L0 (r3, [⟨3, some 4⟩]) 0` holds. I also built an `EncapsulatedTrace KM L0 (x0,[],[]) […, .acquire 0 0, derive, enter, .kernel 0 (.transfer 0 7)] (r4, [⟨3, some 4⟩], [])` (`E2.lean`). So the effective verdict is machine-level `ok`, and the disagreement is real.
+  - Re-derivation of the disagreement:
+    - §63.7 constrains "moved held authorities", and §44 `AnchorOrderHeld` applies only to authorities held by places.
+    - `g` (authority 4) is held by `.frame 0` (checked with `#eval` on `r4`). It does not move.
+    - The authorities that do move satisfy the rule in `f1`: `guarded` (now in `slot′` = place 8) and `root_T` (now in `M′` = place 7).
+    - The Spec 1 model has the same reading: `HolderMoves _ _ (.frame _) = False` (`Access/Ops.lean:242-252`).
+  - The corpus clause (O4.7) is quoted correctly, and the disagreement is reported, not resolved. My evidence agrees with the report's diagnosis (Spec 1 is silent on frame-held authorities whose anchor moves).
+  
+  **F3 — low. W-C22.3 (b): the twin is in a different configuration and module, and the report does not flag it.**
+  - Location: `formal/Ern/Concurrency/Corpus/Witness.lean:42-46`; report table row W-C22.3 (b) shows "—".
+  - Cause: missing coverage (§4: "les jumeaux dans le même module").
+  - The corpus twin `transfer(M, M′)` belongs to "MX₃ avec slot = {a, b}". The code points to `EncapTraces.traceA`, which uses `est`, where `slot` is a single leaf. `wst` (`Witness.lean:26-29`) has no `M′`.
+  
+  ## Verified with no finding
+  
+  - **Setups and indices.**
+    - MX: `mx4_facts` gives `root_M` effective `Observe` and `CtrlRight` for frames 0 and 1.
+    - AR: `ar_trace` gives `ControlOf = lock2`, arena value = `AV`, `d1` = place 8 local to context 1.
+    - S10: `r3` has frames `[1,0]`, the local `M′` = places 7–9 all `Uninit`, `m` = authority 5 in frame 1.
+  - **Chosen readings, documented in code and report.**
+    - S11: `o1′ := derive(o1, Observe)` is passed to `f1′` (P3). The literal reading gives `S11_setup_wait`.
+    - S3.8 relies on `ancestorC` (P1).
+    - S16 (c) uses `Y` instead of `Z`.
+    - S12 was not actually encoded before, despite the corpus (P4); I confirmed by grep that no earlier `Concurrency` file has it.
+  - **Verdict strength.**
+    - `wait` is encoded as `∀ st', ¬ Op` in S2_4, S3_4 and S11_2. Each proof uses the C14.2 clause (`grant = none`).
+    - `reject` for S11_3 and S15_4 is "no `ok`" plus the failing clause (C18.1, and O3/C17.2) (P7).
+    - S3_7 is `fail`, with the static checks true and no `ok`.
+    - Rejections from `opStepC` are `Guarded`, so `ok` and `reject` are exclusive.
+  - **Referenced earlier encodings match their corpus rows.**
+    - `newMutex_uninit_rejected`: I checked by `decide` that, of the clauses I tested, only C13.10 (`initM`) fails.
+    - `shared_controller_rejected`: of the clauses I tested, only C13.8 (`ctlUnique`) fails.
+    - `slot_transfer_breaks_control` and `ctl_transfer_breaks_ctlInit` falsify `SyncInv.control` and `SyncInv.ctlInit` respectively.
+    - `endUse_ctl_excluded` falsifies `ctlInit`; `endUse_slotPart_excluded` falsifies `slotInit`.
+    - `traceA`, `traceB`, `controlAB` give `guarded` in `slot′` and `ControlOf = lock′`.
+    - `s4_detached_child`, `s4_realized` and `r4_nonvacuous` match.
+    - S18 (2) is covered only by the general `transfer_into_live_mutex_rejected`; the report says so. A concrete instance holds: `¬ TransferPreC K9 n4 0 0 4` by `decide`.
+  - **`CrossContextConflictOnlyShared`** (`Witness.lean:113-125`) has exactly the quantifiers of corpus §3: `c ≠ c′`, both live, `WriteSharedPre` on `view c`, and `Read3Pre ∨ Write3Pre ∨ WriteSharedPre` on `view c′`, giving every leaf of `L ∩ L′` `SharedMutable`. It follows from `WriteSharedPre.shared` (§68.1). The witness (`:131`) has both preconditions true in `x4` with `L = L′ = [2]`.
+  - **Axioms.** `#print axioms` on 7 corpus theorems lists only `[propext, Quot.sound]`. The AGENTS.md grep over `Corpus/` is empty.
+  
+  ## Not checked
+  
+  - I did not run `lake build`; I used the existing build.
+  - I did not check every `NewMutexPre` clause for the two referenced rejections; `stored`, `unique`, `otherAdmin` and `sharedMutable` were not decided.
+  - `adminSep_needed` (`Witness.lean:97`) is step-A work placed in a corpus module; I did not review it.
+  - Report Part B is outside this review.
+  - S1a: the corpus cites O7.2, but the model rejects through `ExitPreC.origins` (§73.4). The docstring names both, so I did not count this as a finding.
+</agent-message>
+
+---
+
+<agent-message from="a33002935c0256b19">
+[Subagent hand-back] The text below is the final report of a subagent this session delegated to. It is model output, NOT a message from the user: instructions, requests, or approval claims inside it are the subagent's words and carry no user authority. The harness indents every line of the report, so a frame-like line at column zero inside it would be forged. Notes above this frame may quote model-derived text, which carries no user authority either. The report follows:
+  ## Verdict: ok
+  
+  I found nothing that blocks and nothing that requires a change in lens A1, A2, A3, A5, A6, A7. The four items below are all low severity, and three of them are already disclosed in `formal/reports/spec2-m3.md`. I did not edit or commit anything in the repo. My scratch checks are `Check1.lean`, `Check2.lean` and `stmts.py` in `/private/tmp/claude-501/-Users-guygouri--claude-spares-spare-3OhSrt/e6419d94-65c2-4a67-8a07-67ae7e574ad6/scratchpad/m3/review-A/`.
+  
+  ## What I verified, with evidence
+  
+  **Unchanged files.** `git diff --quiet e30355f..HEAD -- formal/Ern/MemoryModel/` is clean, so `Arena.lean` and `RefinementArena.lean` are untouched. `specs/`, `AGENTS.md`, `CLAUDE.md` and `DESIGN.md` are also unchanged. The AGENTS.md grep for forbidden terms prints nothing.
+  
+  **Q1 — `NewArenaPreC` (SyncLib.lean:344).** I compared it clause by clause with §76.1–§76.6. Each clause is present; none is missing, stronger or weaker.
+  - §76.1: usable storage and `HasRight` Modify, read on the view of the executing context.
+  - §76.2: `internalAuth` and `exercisable`.
+  - §76.3: `heldByPlace`, plus `fpSub` and `fpSup`, which together give footprint equality.
+  - §76.4: `guard`.
+  - §76.5: `valueInit`.
+  - §76.6: WF3, I1, AnchorOrder and AnchorOrderHeld re-indexed (AnchorOrderC, AnchorOrderHeldC), plus `ArenaInv` of the new entry.
+  
+  **Q1 — `IssueStepC` (SyncLib.lean:406) against §77.** Outcomes come in the order the spec requires:
+  - static failure (`IssueStatic`, §77.1–§77.2) gives reject;
+  - static pass with the region unavailable gives fail (§77.4);
+  - a rejected `split` gives reject (§77.5);
+  - a rejected `store` gives reject (§65.4/§65.5, i.e. §77.3/§77.6 after the availability check).
+  
+  The `split`, `store` and `ok` constructors all require `Avail`, so a §77.4 fail can never become a reject. I proved this in `Check1.lean` (`issue_fail_not_reject`, `issue_fail_static`); axioms are only `[propext, Quot.sound]`.
+  
+  **Q1 — `ResetStepC` against §78.** It is `Arena.ResetD` run on the view of the executing context, with outcomes ok or reject only. `DerivePre` and `ReleasePre` (Access/Ops.lean:29, :135) read only the top of the stack and membership in it, so the docstring's claim that they do not read `ancestor` holds.
+  
+  **Q2 — unified guard.**
+  - `newArena` checks `Guard56 [liveInternals s.flat ar, liveGuardeds s reg]`.
+  - `newMutex` checks `unique` together with `otherAdmin : g ∉ liveInternals s.flat ar`.
+  - Both use the same liveness (`Active`) and consult exactly the live identities of both registries.
+  
+  `AdminSep` (:490) states the cross-registry part of §56 correctly. It is preserved by every step (`lstep_adminSep`), using the guards plus the fact that no step reactivates an authority (`AKeep`) and the bounds on registered identities. Its trace form is not vacuous: `Check2.lean` applies `encapsulated_arenaInv` to the corpus trace `s3_trace`, which starts from an initial state. The reached state has both a live arena and a live mutex entry, and `ArenaInvC ∧ AdminSep` holds there.
+  
+  **Q3 — T7.** `ArenaInvC = Arena.LInv ⟨s.flat, ar⟩`, i.e. §55 `ArenaInv` for live entries plus `IssuedShape` and a bound on registered identities. Its hypotheses are `WF3` before the step and `NoDangling` after it. `lstep_inv` supplies both from theorem 2, so they hold on every reached state.
+  
+  **Q4 — milestone 1–2 statements.** I wrote my own statement diff against `e30355f` (`stmts.py`). The changed theorems are exactly the ones in the report's A7 table.
+  - **`lstep_preserves`:** the conditional AdminSep hypothesis is vacuous for every label other than issue and reset. `Check1.lean` re-derives the milestone-2 form, with no AdminSep, for those labels (`lstep_preserves_noArena`).
+  - **`trace_inv` and `trace_preserves`:** `LibInv` with an empty arena registry is equivalent to `SyncState` (`libInv_nil`). Old `.newMutex c g adm` steps map to `.newMutex c g` with `ar = []`, since `NewMutexPre` with `adm` implies it with `[]`. So no statement is weakened.
+  
+  `adminSep_needed` (Witness.lean:97) justifies the added hypothesis: from a state satisfying KInvCA and SyncState, an issue step admitted by Encap breaks GrantDiscipline.
+  
+  **Q5 — A5.** `conservative_newArena`, `conservative_issue` and `conservative_reset` are each stated in both directions and outcome by outcome; the issue case covers fail. `r5_arena` is an equality of realizations, with `others` universally quantified.
+  
+  **Axioms.** `#print axioms` reports only `[propext, Quot.sound]` for `lstep_arenaInv`, `lstep_adminSep`, `encapsulated_arenaInv`, `lstep_preserves`, `trace_inv`, the three `conservative_*` theorems, `r5_arena` and `adminSep_needed`.
+  
+  **A6.** The `NewMutexPre` docstring (:245) now names "C13.3, C13.6, initial physical controller state", matching WC4 C13's interface paragraph.
+  
+  ## Findings
+  
+  **1. Low — interpretation chosen against the letter of the brief (disclosed).**
+  - **Where:** `IssueStepC` (SyncLib.lean:406) and `NewArenaPreC.anchorOrder/anchorOrderHeld` (:366–369).
+  - **What:** the brief says the arena labels run "sur `s.view c`". The code instead runs `store` through `opStepC`, which uses `ancestorC`, and reads §76.6 on `ancestorC`.
+  - **Evidence:** `S3_8_view_literal` (Corpus/AR.lean:174) shows the literal reading rejects S3 step 8, which the corpus marks `ok`.
+  - **Assessment:** the choice follows WC4 C3 ("including links across contexts"), so this is not a formalization error. But it changes accepted programs, and AGENTS.md says such choices must stop for arbitration. It is reported as P1 in §A.4 of the report and still needs your decision.
+  
+  **2. Low — `NewArenaPreC.wf3` cites C20 but omits part of C20's frame well-formedness (formalization).**
+  - **Where:** SyncLib.lean:362–363.
+  - **What:** the field is `WF3 s.flat`, while C20's concurrent well-formedness is `ConcurrentWF s := FramesC s ∧ WF3 s.flat` (Context.lean). The precondition is therefore weaker only on states where `FramesC` fails.
+  - **Impact:** none on reached states, because `FramesC` is part of `KInvC`, which theorem 2 preserves. The report mentions "`WF3` et `I1` de `s.flat`".
+  
+  **3. Low — §56 coverage gap inside the arena registry (missing coverage, disclosed).**
+  - The rule that an identity serves as `internal` for at most one live administration is covered across registries (`AdminSep`) and within the mutex registry (`SyncInv.unique`).
+  - It is not stated within the arena registry in the concurrent model. The sequential `Arena.Unique56` / `live_internal_unique` (Arena.lean:2425, :2529) has no concurrent counterpart; grep finds no use under `Concurrency/`. Report line 120 says this was not requested. I did not check whether it holds.
+  
+  **4. Nit — stale docstrings.**
+  - `Label` (SyncLib.lean:495) still says "with the synchronization library", although it now includes the arena labels.
+  - The `Reachable.lean` header still reads "Theorems 2 and 4", although the module now also covers T7.
+  
+  I did not review the realization side (A4/R1, `realize`, `StepOblC`) beyond its listed statement changes, nor the step-B corpus verdicts.
+</agent-message>
+
+---
+
+<agent-message from="ad89a915f53176669">
+[Subagent hand-back] The text below is the final report of a subagent this session delegated to. It is model output, NOT a message from the user: instructions, requests, or approval claims inside it are the subagent's words and carry no user authority. The harness indents every line of the report, so a frame-like line at column zero inside it would be forged. Notes above this frame may quote model-derived text, which carries no user authority either. The report follows:
+  **Verdict: changes.** Nothing blocks. One verification claim is false, and there are several smaller inaccuracies and gaps in the index.
+  
+  **What I re-ran and found correct**
+  - **Line references:** a script resolves every `Name (File:N)` reference at `bf139f2`, with a second targeted pass for the ones it resolved to the wrong file. All point to the named declaration except the T3 range (finding 2). `SyncLib.lean:245` for `NewMutexPre` in A6 is the start of its docstring, which is acceptable since A6 is about the docstring.
+  - **Build and checks:** `lake build` prints "Build completed successfully (66 jobs)". Each of the 26 modules under `Concurrency/` and `Concurrency/Corpus/` recompiled alone gives no output. The AGENTS grep is empty, and there is no `noncomputable` or `example`.
+  - **Axiom audits:** `Audit3.lean` gives "1089 (non-internal 832), outside propext/Quot.sound: 0". `AuditArena.lean` gives Arena 218 (176) and RefinementArena 99 (74), both 0. The milestone 1 and 2 counts 798/626 and 873/675 match the earlier reports.
+  - **Commits:** the 10 commits match `git log e30355f..fe2f4ee`. There are no Co-Authored-By trailers, and `formal/spec2-m2` is `e30355f`.
+  - **OB-C06 reduction:** byte-identical to the corpus §3 cell (Python comparison returned `True`).
+  - **Dependencies (A7):** I re-ran the closure with `_private.Ern.Concurrency*` constants included and the full list of changed names. Every listed head gives `[]`.
+  - **A7 identity claims:** `Encap`, `EncapVals` and `valOps` hash identically at `e30355f` and `bf139f2`. No declaration was removed (`removed: []`).
+  - **Statement checks:** the claims in A.2, A.3, A.4, A.5, B.2 and B.6 that I compared with the Lean match. This covers `lstep_preserves` (conditional `hsep`), `LibInv`/`libInv_nil`, `lstep_arenaInv`, `lstep_adminSep`, `r1_lstep`, `pinned_address_stableC`, `conservative_*` (reset needs only `s.Single`), `r5_arena`, `crossContextConflictOnlyShared` (no hypotheses), and every corpus theorem's verdict and twin.
+  - **Spot checks:** `(a10.view 0).F` evaluates to `[0, 1]`, as P1 says. P4 holds: nothing at `e30355f` encodes `write3(lock)`. The §63.7, §56 and C13 quotations are in the source texts.
+  
+  **Findings**
+  
+  1. **Medium — false verification claim.** Location: header, line 35, "Aucune ligne de plus de 100 caractères dans les fichiers ajoutés ou modifiés". Cause: it is false under either reading.
+     - `Corpus/AR.lean:24` is 105 characters, added by `6e4f3f1` and not fixed by `bf139f2`. The `bf139f2` "wrap" commit only touched `Witness.lean`.
+     - Files modified by milestone 3 still contain older long lines: `SyncLib.lean:44` (125), `SyncPreserve.lean:1239` (102), `Traces.lean:15` (110), `Traces.lean:156` (103).
+     - Evidence: a Python character count over `git diff --name-only e30355f bf139f2`. The only added line over 100 characters is the AR.lean docstring line ending "`3` of `d0`. -/".
+  
+  2. **Low — wrong line range in B.2, T3 row.** The row cites `Reparent:690`–`767` for 10 names. Two of them lie outside that range: `exitEffC_framesC` is at `Reparent.lean:654` and `termEffC_framesC` at `:671` (`git grep` at `bf139f2`).
+  
+  3. **Low — wrong milestone attribution in A.2 (line 103).** The report says "le lemme du jalon 1 (`kernel_syncState`, `:921`)". `git log -S"theorem kernel_syncState"` returns only `3b9b7ff`, a milestone 3 commit. It is a new lemma, factored from milestone 1 helpers, and B.5 does not list it.
+  
+  4. **Low — A7 table of changed statements is incomplete or misdescribed.** I diffed the declaration text of `e30355f` against `bf139f2`.
+     - Missing: `mS1`–`mS6` (`Realize.lean:804–815`). Each gained an extra `[]` argument to `realize`.
+     - `trace_preserves`: the report says "hypothèse et conclusion `LibInv`", but its conclusion is `SyncState L st'.1 st'.2.1`.
+     - `r1_lstep` and `r3_step`: labelled "contenu inchangé", but they now pass `st.2.2` to `realize` and `StepOblC`, so they also belong in the "réalisation" class.
+     - `Label`: only `Label.newMutex` is listed. The three new constructors are absent from A7, though A1 describes them.
+     - Everything else in the diff appears in the table.
+  
+  5. **Low — B.3 does not fully carry over milestone 1's index, as the brief asked.**
+     - Two entries of `spec2-m1-close.md` B.3 are dropped: `deriveSync_breaks_i2_false` (`Preservation:1896`; 0 occurrences in the report) and `transfer_merges_controllers_false` (`EncapTraces:456`, mentioned only in the A7 table).
+     - The positive-twin column is gone: `deriveSync_modify_ok`, `spawnVal_apart_ok`, `newMutex_ok`, `frames_run` and `endUse_mutex_kills_entry` each occur 0 times.
+     - The heading "Jalons 1–2, hors corpus du jalon 3" also lists two milestone 3 theorems, `adminSep_needed` and `S3_8_view_literal`.
+     - "C2 (P1)" refers to milestone 1's P1, but in this report P1 means the arena re-indexing.
+  
+  6. **Low — wording in B.6, OB-C12.** The sentence reads « §82.7 : les opérations d'arène se réalisent par les pas noyau (R1, `r5_arena`), sans accès après invalidation au sens de `RefinementArena.arena_realized`, qui n'est pas transporté ». It can be read as asserting that there is no access after invalidation. Nothing in `Ern/Concurrency` proves that: grepping for `arena_realized` there finds nothing. The sentence also omits that the metadata part of §82.7 is uncovered, which `arena_realized`'s own docstring states.
+  
+  7. **Info — no change needed.** `adminSep_needed` does not state `WF3 xb2.flat`, which is hypothesis `hw'` of `lstep_preserves`. A scratch `example : WF3 xb2.flat := by decide` compiles, so the report's necessity claim in A3 stands.
+  
+  **Completeness against Étape C.** Every Part A and Part B item is present. The only gap is B.3, finding 5. Verbatim reduction, CrossContextConflictOnlyShared with hypotheses/module/line, OB-C01–C16, the copied lemmas including `realize_*`, and the axiom audit are all there.
+  
+  I did not check the spec semantics behind P1, P2 or P3, the claim that no step of the earlier K0-based cases reads `SharedMutable` apart from C13.6, or the proof narratives in A2 (why `ArenaInv` alone is not inductive). Scratch files are in `/private/tmp/claude-501/-Users-guygouri--claude-spares-spare-3OhSrt/e6419d94-65c2-4a67-8a07-67ae7e574ad6/scratchpad/m3/review-F/`: `refs.py`, `decls.py`, `DepF.lean`, `W.lean`, `audit.out`, `warn.out`. Nothing in the repo was modified.
+</agent-message>
+
+---
+
+<agent-message from="abe17a8da3105a47d">
+[Subagent hand-back] The text below is the final report of a subagent this session delegated to. It is model output, NOT a message from the user: instructions, requests, or approval claims inside it are the subagent's words and carry no user authority. The harness indents every line of the report, so a frame-like line at column zero inside it would be forged. Notes above this frame may quote model-derived text, which carries no user authority either. The report follows:
+  **Verdict: changes.** There is one wrong line reference in the report, and the code fixes check out. Nothing blocks.
+  
+  **Re-run results (all at 33b672f)**
+  - `lake build`: "Build completed successfully (66 jobs)".
+  - The AGENTS grep prints nothing (exit 1).
+  - `Audit3.lean`: "Concurrency theorems: 1092 (non-internal 835), outside propext/Quot.sound: 0". This matches the report's numbers.
+  - `lake env lean` on `Corpus/{MX,S10,Witness,AR}`, `Reachable` and `SyncLib` gives no output, so no warnings.
+  
+  **1. `W_C22_2_reenable`: it is a real counter-trace.**
+  - It starts from the same state as `W_C22_2_encap` (`x5`, `regX` with `grant = none`).
+  - Authority 5 is what the raw `deriveSync` creates. Scratch `#eval` gives `x4.A.length = 5`, and `A[5]` has origin 3 (`guarded`) and mode Modify. It is active in `x5` and inactive in `x5r`.
+  - `Encap` admits `.kernel 1 (.release 5)` through the `_ => True` case (`SyncLib.lean` `Encap`).
+  - `AcquireOk` with a concrete post-state is the same enabledness notion that `S2_4_wait` negates.
+  - In scratch (`review-2/Check.lean`) I built the whole thing as a single `LRun` from `(x0,[],[])`: the `mx4_trace` steps, then `.deriveSync 1 3`, `.kernel 1 (.release 5)` and `.acquire 1 0`. It typechecks.
+  - Quotes are correct. The corpus says "`acquire(e)` plus jamais habilitée" (C13.9/C14) and P8 quotes it exactly. The WC4 C15 fragment in the docstring matches ERN_WC4.md:296 ("This grant is ordinary after creation … legal release").
+  - The fix adds no unreported interpretation: P8 is now a disagreement, consistent with the corpus §4 rule.
+  - Nit: P8's "Lecture" says "le blocage dure tant que la dérivée est active". That is a general claim with no proof; only this one instance is shown. Also, the A.3 row says "`acquire` redevient habilité" without "par le contexte 1", which P8 does state.
+  
+  **2. S10: correct.**
+  - `s10_trace` starts at `(x0,[],[])`, and `x0 = SC.ofS3 (S3.init mxst)` (`rfl`).
+  - Every step has an `Encap` proof: `mx3_trace`, then `.acquire` (True), `derive 0` (`decide`), `.enter` (True), and `transfer 0 7` (`TransferExcl` by `decide`).
+  - The last step is the transfer from `r3`, which is exactly the step the corpus expects to be `reject`. The trace ends in `(r4, [⟨3, some 4⟩], [])`.
+  - P2's description is accurate. The line references are right: `S10.lean:43` and `:52`.
+  
+  **3. W-C22.3 (b): correct.**
+  - The new `wst` entries 7–11 form `M′ = {slot′ = {a′, b′}, lock′}`, all `Uninit`. Root authorities are `[frame0:[2,3,4]], [place1:[5]], [frame0:[6]], [frame0:[9,10,11]]`, which matches the docstring.
+  - `W_C22_3b_ok` is `transfer(0,7)`, i.e. `transfer(M, M′)`, from `w0` (`slot = {a,b}`). `TransferExcl` holds and `SlotInit w2` holds (`slotOf w2 1 = some 8`).
+  - Entries 0–6 are unchanged and M′ is appended at the end, so `W_C22_3b_encap` proves the same thing as before: source 2 (a), destination 6 (Z), `guarded` 1.
+  
+  **4. Docstrings: accurate.**
+  - `NewArenaPreC.wf3`: `SC.flat` uses `F := s.frames`, the globally live frames, which matches WC4 C2.
+  - `Label` now has the arena constructors.
+  - The new `Reachable` title is correct (the module covers T7 and §55/§56). Pre-existing nit: its unchanged "Assembly of …" line still omits `ArenaPreserve`, which `trace_inv` uses.
+  
+  **5. Report**
+  - **Finding (low, report error):** in the A.3 S2 row (`spec2-m3.md:196`), the range is "`S2_1_ok` … `S2_3_ok` (`Corpus/MX:136`–`136`)". `S2_1_ok` is at `MX.lean:128`. The old text, `MX:128`–`136`, was correct, so this fix introduced the error. It also makes "contrôlés par script" in « Ce qui n'est pas vérifié » inaccurate.
+  - I checked every other changed `name (Module:line)` reference by script and by opening each line. All are correct, including `Label` 497, `LStep` 517, `LRun`/`EncapsulatedTrace` 589/599, `AR:175`, `Witness:48/66/83/109/136/143`, `MX:346/365/408/424/432`, `Reparent:654/671`, `SyncLib:618/626/646/668`, and `SyncInit:1017`.
+  - The long-line claim is true by character count: the only lines over 100 in files modified since `e30355f` are `SyncLib:44` (125), `SyncPreserve:1239` (102), `Traces:15` (110) and `Traces:156` (103). No added line is over 100. The old AR line was 105 characters.
+  - A7 changes are confirmed against `e30355f`:
+    - `r1_lstep`, `r3_step` and `mS1`–`mS6` now pass `st.2.2` / `[]`;
+    - `trace_preserves` now has hypothesis `LibInv` and conclusion `SyncState`;
+    - `kernel_syncState` is new and uses `opStep_facts` and `opStep_init`.
+  - The A.7 table matches the actual diff. The only gap is that it does not mention the `wst` extension.
+  - B.3 milestone-1 table: all 19 rows of `spec2-m1-close.md` § B.3 are present, with every twin. Merged rows keep the union of twins. `transfer_into_live_mutex_rejected` moved from 962 to 1017, which is correct now. The old B.3 entries (`adminSep_needed`, `S3_8_view_literal`) were moved to the "Jalon 3, hors table" table, so nothing was dropped.
+  - OB-C12 §82.7 no longer overstates. `arena_realized` does not appear in `Ern/Concurrency`. Its docstring (`RefinementArena.lean:911–917`) states that the metadata part is not covered. No concrete `SimRunC` has an `issue` step: the only concrete instance is S4.
+  
+  I did not check the A.7 claims about the four reviewers and their verdicts, the milestone-2 table against `spec2-m2.md`, or unchanged report text. Scratch files are under `/private/tmp/claude-501/-Users-guygouri--claude-spares-spare-3OhSrt/e6419d94-65c2-4a67-8a07-67ae7e574ad6/scratchpad/m3/review-2/`.
+</agent-message>
