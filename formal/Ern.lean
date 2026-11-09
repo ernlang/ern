@@ -4,6 +4,7 @@ import Ern.Concurrency.Conservativity
 import Ern.Concurrency.Context
 import Ern.Concurrency.EncapTraces
 import Ern.Concurrency.Frames
+import Ern.Concurrency.NonConflict
 import Ern.Concurrency.Preservation
 import Ern.Concurrency.Reachable
 import Ern.Concurrency.Realize
