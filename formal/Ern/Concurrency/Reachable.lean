@@ -7,7 +7,7 @@ import Ern.Concurrency.ArenaPreserve
 # Theorems 2, 4 and 7 on labelled steps and traces (WC4 C20–C23; Spec 1 §55, §56)
 
 Assembly of `Ern.Concurrency.Preservation`, `Ern.Concurrency.TransferPreserve`,
-`Ern.Concurrency.Reparent` and `Ern.Concurrency.SyncInit`:
+`Ern.Concurrency.Reparent`, `Ern.Concurrency.SyncInit` and `Ern.Concurrency.ArenaPreserve`:
 
 * theorem 2 for every labelled step of the kernel with the synchronization and arena libraries,
   the by-value composite included (`lstep_kInvCA`);

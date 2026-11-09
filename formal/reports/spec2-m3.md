@@ -193,7 +193,7 @@ Modules `Ern/Concurrency/Corpus/` : `MX.lean`, `AR.lean`, `Frames.lean`, `S10.le
 |---|---|---|---|---|
 | S1a | `reject` (O7.2, `NoDangling`) ; jumeau `ok` | `reject` ; jumeau `ok` | `S1a_1_reject` (`Corpus/Frames:47`), `S1a_2_ok` (`:60`) | — |
 | S1b | `ok` (O7.4, O7.5) ; puis `write3(Y)` `reject` (§43.3) | `ok` (`q` libérée, `a` réancrée sur `root_Y`, contexte 1 reparenté sur 0) ; `reject` | `S1b_1_ok` (`Corpus/Frames:86`), `S1b_2_reject` (`:97`) | — |
-| S2 | `ok`, `ok`, `ok` ; négatif `non habilité` (C14.2) | idem | `S2_1_ok` … `S2_3_ok` (`Corpus/MX:136`–`136`), `S2_4_wait` (`:142`) ; T6 `grants_exclusive` | — |
+| S2 | `ok`, `ok`, `ok` ; négatif `non habilité` (C14.2) | idem | `S2_1_ok` … `S2_3_ok` (`Corpus/MX:128`–`136`), `S2_4_wait` (`:142`) ; T6 `grants_exclusive` | — |
 | S3.1 | `reject` (§77.1) | `reject` (statique : `¬ MetaRight`) | `S3_1_reject` (`Corpus/AR:83`) | — |
 | S3.2, S3.3 | `ok`, `ok` (§43 cl. 2, §77.3, §77.6) | `ok`, `ok` | `S3_2_ok` (`Corpus/AR:93`), `S3_3_ok` (`:109`) | — |
 | S3.4 | `non habilité` (C14.2) | idem | `S3_4_wait` (`Corpus/AR:115`) | — |
@@ -221,7 +221,7 @@ Modules `Ern/Concurrency/Corpus/` : `MX.lean`, `AR.lean`, `Frames.lean`, `S10.le
 | S17a | `ok noyau / hors C22.5 (a)` ; jumeau : `endUse(slot)`, puis `endUse(lock)` admis | idem | référencé : `endUse_ctl_excluded` (`EncapTraces:243`) ; nouveau : `S17a_2_ok` (`Corpus/Witness:83`) | jumeau du corpus absent avant ce jalon (P5) |
 | S17b | `ok noyau / hors C22.5 (b)` ; jumeau `ok` | idem | référencés : `endUse_slotPart_excluded` (`EncapTraces:307`), `endUse_slot_kills_entry` (`:332`) | — |
 | S18 | (1) `reject` C13.10 ; (2) `reject` §63.3 | idem | référencés : `newMutex_uninit_rejected` (`EncapTraces:450`), `transfer_into_live_mutex_rejected` (`SyncInit:1017`) ; jumeaux `traceA`, `traceB` | (2) est un théorème général sous `SyncState`, sans instance concrète de la configuration (2) |
-| W-C22.2 | `ok noyau / hors C22.2` ; après le pas, `GrantDiscipline` faux, `acquire` plus jamais habilité | `ok` noyau, `¬ Encap`, `¬ GrantDiscipline`, `acquire` non habilité pour les contextes 0 et 1 dans l'état d'arrivée ; **mais** un `release` ordinaire de la dérivée, admis par `Encap`, rétablit `GrantDiscipline` et `acquire` redevient habilité | `W_C22_2_encap` (`Corpus/MX:346`), `W_C22_2_reenable` (`:365`) ; jumeau `S2_1_ok` | **désaccord** sur « plus jamais » (P8) |
+| W-C22.2 | `ok noyau / hors C22.2` ; après le pas, `GrantDiscipline` faux, `acquire` plus jamais habilité | `ok` noyau, `¬ Encap`, `¬ GrantDiscipline`, `acquire` non habilité pour les contextes 0 et 1 dans l'état d'arrivée ; **mais** un `release` ordinaire de la dérivée, admis par `Encap`, rétablit `GrantDiscipline` et `acquire` redevient habilité pour le contexte 1 | `W_C22_2_encap` (`Corpus/MX:346`), `W_C22_2_reenable` (`:365`) ; jumeau `S2_1_ok` | **désaccord** sur « plus jamais » (P8) |
 | W-C22.3 (b) | `ok noyau / hors C22.3 (b)`, `slotInit` faux ; jumeau `transfer(M, M′)` | idem ; jumeau `ok`, admis par `Encap`, `SlotInit` vrai | `W_C22_3b_encap` (`Corpus/Witness:48`), `W_C22_3b_ok` (`:66`) | — |
 | témoin R4 | — | référencé | `r4_nonvacuous` (`NonConflict:185`) | — |
 | `CrossContextConflictOnlyShared` | prouvé | prouvé | `crossContextConflictOnlyShared` (`Corpus/Witness:136`) | — |
@@ -256,7 +256,7 @@ Modules `Ern/Concurrency/Corpus/` : `MX.lean`, `AR.lean`, `Frames.lean`, `S10.le
   - **Clause citée par le corpus :** C13.9/C14 (« descendant bloquant »).
   - **État :** `x5`, après le `deriveSync` brut du contexte 1 depuis `MX₄` ; le registre garde `grant = none`.
   - **Verdict effectif :** dans `x5`, `acquire` n'est habilité pour aucun contexte (`W_C22_2_encap`). Mais le contexte 1 peut libérer la dérivée par un `release` ordinaire (O3), pas `ok` admis par `Encap` ; `GrantDiscipline` est alors rétablie et `acquire(e)` par le contexte 1 est habilité (`W_C22_2_reenable`, `MX.lean:365`). WC4 C15 (effet) le permet : la dérivée « is ordinary after creation … for its … legal release ».
-  - **Lecture :** « plus jamais » est trop fort ; le blocage dure tant que la dérivée est active. Ni le corpus ni le modèle ne sont corrigés.
+  - **Lecture :** « plus jamais » est trop fort : dans ce cas, le blocage cesse au `release` de la dérivée. Aucun énoncé général sur la durée du blocage n'est prouvé. Ni le corpus ni le modèle ne sont corrigés.
 - **P9 — nom du document WC4.** Voir l'en-tête.
 
 ## A.5 Décisions de représentation du jalon 3
@@ -283,7 +283,7 @@ Quatre relecteurs indépendants, en lecture seule, ont revu le jalon : étape A 
 |---|---|---|
 | W-C22.2 : « plus jamais habilitée » réfuté par un `release` ordinaire | confirmé par `decide` | `W_C22_2_reenable`, P8 réécrit en désaccord |
 | S10 : `S10_1_ok` ne montrait qu'un `ok` noyau | `TransferExcl` vrai | `Encap` ajouté à `S10_1_ok`, `s10_trace` |
-| W-C22.3 (b) : jumeau dans une autre configuration (`slot` à une feuille) | confirmé | `W_C22_3b_ok` dans la configuration `slot = {a, b}` |
+| W-C22.3 (b) : jumeau dans une autre configuration (`slot` à une feuille) | confirmé | `W_C22_3b_ok` dans la configuration `slot = {a, b}`, les statiques `wst` étant étendues de `M′` (places 7–11, ajoutées à la fin : `W_C22_3b_encap` est inchangé) |
 | OB-C12 : §82.7 présenté comme couvert | confirmé : rien dans `Ern/Concurrency` ne transporte `arena_realized` | ligne réécrite |
 | ligne de 105 caractères dans `AR.lean`, et affirmation fausse sur les lignes longues | confirmé | ligne coupée, affirmation corrigée |
 | plage de lignes T3, attribution de `kernel_syncState`, table A7 incomplète, B.3 incomplète | confirmés | corrigés |
