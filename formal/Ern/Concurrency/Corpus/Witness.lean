@@ -15,7 +15,7 @@ W-C22.2 is `Ern.Concurrency.Corpus.W_C22_2_encap` (block MX).
 
 namespace Ern.Concurrency.Corpus
 
-open Ern.MemoryModel.Access Ern.MemoryModel.Access.Examples Ern.Concurrency
+open Ern.MemoryModel Ern.MemoryModel.Access Ern.MemoryModel.Access.Examples Ern.Concurrency
 open Ern.Concurrency.Traces (L0)
 
 /-! ## W-C22.3 (b) (`corpus-spec2-m3.md` §2) -/
@@ -78,6 +78,32 @@ theorem S17a_2_ok : opStepC K0 (.endUse 1) 0 EncapTraces.e2 (.ok eS) ∧
       ControlOf L0 EncapTraces.e2 e ≠ some 1 ∧
       OptP (slotOf EncapTraces.e2 e.guarded) (fun q => partOf EncapTraces.e2.P 1 q → 1 = q) True)
   · exact absurd hl (by rw [List.mem_singleton.1 he]; decide)
+
+/-! ## The separation of the registries is needed by theorem 4 (Spec 1 §56; WC4 C13.7) -/
+
+/-- An arena registry whose entry administers `T` with `internal = guarded` of the live entry of
+`MX₃`: excluded on reached states by the unified guard (`NewArenaPreC.guard`, `lstep_adminSep`). -/
+def arBad : ArenaReg := [⟨3, 3, [3], []⟩]
+/-- `split(guarded, [T])` by context 0 (O2). -/
+def xb1 : SC := x2.set (splitEff (x2.view 0) 3 [[3]])
+/-- `store` of the block into `slot′` (place 5) by context 0 (O8). -/
+def xb2 : SC := storeEffC xb1 0 x2.A.length 5
+
+/-- Necessity of `AdminSep` for theorem 4 on the arena labels (Spec 1 §56: without the guard,
+"simultaneous administration of the same `internal`"): in `MX₃`, which satisfies `KInvCA` and
+`SyncState`, with an arena entry whose `internal` is the `guarded` of the live entry, `AdminSep`
+fails, `issue` of `T` into `slot′` by context 0 is an `ok` step admitted by `Encap` (which has no
+arena clause), and after it `GrantDiscipline` (WC4 C22) fails. -/
+theorem adminSep_needed : KInvCA x2 ∧ SyncState L0 x2 regX ∧ ¬ AdminSep x2 regX arBad ∧
+    IssueStepC KM x2 arBad 0 0 [3] 5
+      (.ok (xb2, arBad.set 0 (Arena.issueMeta x2.flat ⟨3, 3, [3], []⟩ [3]))) ∧
+    Encap L0 (x2, regX) (.issue 0 0 [3] 5) ∧ ¬ GrantDiscipline xb2 regX := by
+  obtain ⟨hk, hs⟩ := init_inv (k := KM) (ddKC [2]) mxst_ok L0
+  obtain ⟨hk', hs', -⟩ := trace_inv (ddKC [2]) mx3_trace hk hs
+  refine ⟨hk', hs', fun h => h ⟨3, none⟩ (by decide) ⟨3, 3, [3], []⟩ (by decide) (by decide)
+    (by decide) rfl, .ok (E := ⟨3, 3, [3], []⟩) rfl (by decide) (by decide)
+    ⟨by decide, _, .ok (by decide), rfl⟩ ⟨by decide, .ok (by decide)⟩, trivial, fun h => ?_⟩
+  exact (by decide : ¬ NoCoveringDesc xb2 3) (h ⟨3, none⟩ (by decide) (by decide) rfl)
 
 /-! ## `CrossContextConflictOnlyShared` (`corpus-spec2-m3.md` §3) -/
 

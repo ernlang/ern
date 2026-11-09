@@ -940,10 +940,14 @@ theorem wf3_after_view {k : K} {op : KernelOp} {c : Nat} {s s' : SC} (hfr : Fram
 (`SyncInv`, WC4 C21.1–C21.7, and `GrantDiscipline`, WC4 C22). `KInvCA` before the step and `WF3`
 after it are supplied by theorem 2. For `issue` and `reset`, whose kernel steps derive from the
 `internal` of an arena (Spec 1 Part XIV), the separation of the registries `AdminSep` (Spec 1 §56,
-WC4 C13.7) excludes that `internal` be the `guarded` of a live entry. -/
+WC4 C13.7) excludes that `internal` be the `guarded` of a live entry; it is assumed for these two
+labels only. -/
 theorem lstep_preserves {k : K} {L : MutexLayout} {lbl : Label} {st st' : SC × SyncReg × ArenaReg}
     (h : LStep k L lbl st st') (he : Encap L (st.1, st.2.1) lbl) (hk : KInvCA st.1)
-    (hw' : WF3 st'.1.flat) (hsep : AdminSep st.1 st.2.1 st.2.2) (hs : SyncState L st.1 st.2.1) :
+    (hw' : WF3 st'.1.flat)
+    (hsep : ((∃ c i r d, lbl = .issue c i r d) ∨ ∃ c i, lbl = .reset c i) →
+      AdminSep st.1 st.2.1 st.2.2)
+    (hs : SyncState L st.1 st.2.1) :
     SyncState L st'.1 st'.2.1 := by
   have hw : WF3 st.1.flat := hk.1.1.2
   cases h with
@@ -977,6 +981,7 @@ theorem lstep_preserves {k : K} {L : MutexLayout} {lbl : Label} {st st' : SC × 
   | newArena h => obtain ⟨-, -, rfl⟩ := newArenaStepC_ok h; exact hs
   | @issue s reg ar c i region dst st' h =>
     obtain ⟨E, s₁, hE, -, -, hsp, hsto, -⟩ := issueStepC_ok h
+    have hsep := hsep (.inl ⟨c, i, region, dst, rfl⟩)
     have hsep' : ∀ e ∈ reg, e.Live s → E.internal ≠ e.guarded := fun e hm hl heq =>
       hsep e hm E (List.mem_of_getElem? hE) hl
         (by show s.flat.Active E.internal; rw [heq]; exact hl) heq.symm
@@ -990,6 +995,7 @@ theorem lstep_preserves {k : K} {L : MutexLayout} {lbl : Label} {st st' : SC × 
       (kernel_syncState hsp hsep' (fun _ _ e => by cases e) (fun _ e => by cases e) hw hw₁ hs)
   | @reset s reg ar c i st' h =>
     obtain ⟨E, s₁, hE, hd, hrl, -, -⟩ := resetStepC_ok (k := k) h
+    have hsep := hsep (.inr ⟨c, i, rfl⟩)
     have hsep' : ∀ e ∈ reg, e.Live s → E.internal ≠ e.guarded := fun e hm hl heq =>
       hsep e hm E (List.mem_of_getElem? hE) hl
         (by show s.flat.Active E.internal; rw [heq]; exact hl) heq.symm

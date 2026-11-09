@@ -62,6 +62,14 @@ separation of the registries `AdminSep` (Spec 1 §56; WC4 C13.7, OB-C16) and `Ar
 def LibInv (L : MutexLayout) (st : SC × SyncReg × ArenaReg) : Prop :=
   SyncState L st.1 st.2.1 ∧ AdminSep st.1 st.2.1 st.2.2 ∧ ArenaInvC st.1 st.2.2
 
+/-- With an empty arena registry, `LibInv` is `SyncState` (`AdminSep` and `ArenaInvC` range over
+the entries of the arena registry). -/
+theorem libInv_nil {L : MutexLayout} {s : SC} {reg : SyncReg} :
+    LibInv L (s, reg, []) ↔ SyncState L s reg := by
+  refine ⟨fun h => h.1, fun h => ⟨h, ?_, ?_⟩⟩
+  · intro e _ E hE; cases hE
+  · intro E hE; cases hE
+
 /-- Theorems 2, 4 and 7 on one labelled step taken under `Encap`: `KInvCA` and `LibInv` are
 preserved, under `DDSound` (Spec 1 §80). -/
 theorem lstep_inv {k : K} {L : MutexLayout} {lbl : Label} {st st' : SC × SyncReg × ArenaReg}
@@ -69,7 +77,7 @@ theorem lstep_inv {k : K} {L : MutexLayout} {lbl : Label} {st st' : SC × SyncRe
     (hk : KInvCA st.1) (hl : LibInv L st) : KInvCA st'.1 ∧ LibInv L st' := by
   obtain ⟨hs, hsep, ha⟩ := hl
   have hk' := lstep_kInvCA hdd h hk
-  exact ⟨hk', lstep_preserves h he hk hk'.1.1.2 hsep hs,
+  exact ⟨hk', lstep_preserves h he hk hk'.1.1.2 (fun _ => hsep) hs,
     lstep_adminSep h hsep hs.1.regBound fun E hE => (ha E hE).1,
     lstep_arenaInv h hk.1.1.2 hk'.1.2.1.2.2 ha⟩
 
