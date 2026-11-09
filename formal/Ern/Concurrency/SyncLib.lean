@@ -359,7 +359,7 @@ structure NewArenaPreC (s : SC) (reg : SyncReg) (ar : ArenaReg) (c storage inter
   fpSup : ∀ l ∈ footprint s.P storage, l ∈ s.flat.afp internal
   /-- Spec 1 §76.5: all leaves of the arena value are already `Init`. -/
   valueInit : OptP (s.A[internal]?) (fun y => Arena.LeavesInit s.flat y.holder) True
-  /-- Spec 1 §76.6: `WF3` (§49) over the whole kernel state (WC4 C2, C20). -/
+  /-- Spec 1 §76.6: `WF3` (§49) over the whole kernel state, the globally live frames (WC4 C2). -/
   wf3 : WF3 s.flat
   /-- Spec 1 §76.6: `I1` (§50) over the whole kernel state (WC4 C2). -/
   i1 : I1 s.flat
@@ -492,7 +492,8 @@ def AdminSep (s : SC) (reg : SyncReg) (ar : ArenaReg) : Prop :=
 
 /-! ## Labelled steps, runs, encapsulation (WC4 C22, C23) -/
 
-/-- Label of a step of the kernel with the synchronization library. -/
+/-- Label of a step of the kernel with the synchronization and arena libraries (WC4 C2, C19,
+C23; Spec 1 §76–§78). -/
 inductive Label where
   | kernel (c : Nat) (op : KernelOp)
   | spawn (c : Nat) (ps : List Nat) (ls : LocalShape)

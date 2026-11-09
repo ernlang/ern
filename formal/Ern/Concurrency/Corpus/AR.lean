@@ -21,7 +21,8 @@ open Ern.Concurrency.Traces (L0)
 /-- Statics (Spec 1 §47): `0` the mutex value `M2` with fields `1` (`slot2`, `Uninit`) and `2`
 (`lock2`, `Init`); `3` the arena value `AV`, a root leaf owned by `M2`, `Init`; `4` the storage
 `ST`, a root owned by frame 0 with the leaves `5` (`R1`) and `6` (`R2`); `7` the leaf `d0`, a root
-owned by frame 0. Root authorities: `0` of `M2`, `1` of `AV` (held by `M2`), `2` of `ST`, `3` of `d0`. -/
+owned by frame 0. Root authorities: `0` of `M2`, `1` of `AV` (held by `M2`), `2` of `ST`, `3` of
+`d0`. -/
 def arst : Statics :=
   [((none, none, 0), false), ((some 0, none, 0), false), ((some 0, none, 0), true),
    ((none, some 0, 0), true), ((none, none, 0), false), ((some 4, none, 0), false),

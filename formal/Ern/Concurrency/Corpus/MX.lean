@@ -341,7 +341,8 @@ theorem S12_2_ok : AcquireOk KM L0 x2 regX 0 0 (x2a, [⟨3, some 4⟩]) ∧
 `acquire` takes the raw `deriveSync(guarded)` step under the library instantiation (the facts
 C14.1–C14.3 hold); `Encap` excludes it (WC4 C22.2). After the step the registry still records
 `grant = none` while an active descendant covers `T`: `GrantDiscipline` fails, and `acquire(e)` is
-enabled for neither context (WC4 C13.9, C14: blocking descendant). Positive twin: `S2_1_ok`. -/
+enabled for neither context in that state (WC4 C13.9, C14: blocking descendant). The corpus adds
+"`acquire(e)` plus jamais habilitée"; `W_C22_2_reenable` refutes it. Positive twin: `S2_1_ok`. -/
 theorem W_C22_2_encap : DeriveSyncStep (libKC KM L0) regX x4 1 3 (.ok x5) ∧
     ¬ Encap L0 (x4, regX) (.deriveSync 1 3) ∧ ¬ GrantDiscipline x5 regX ∧
     ∀ st', ¬ AcquireOk KM L0 x5 regX 0 0 st' ∧ ¬ AcquireOk KM L0 x5 regX 1 0 st' := by
@@ -352,6 +353,21 @@ theorem W_C22_2_encap : DeriveSyncStep (libKC KM L0) regX x4 1 3 (.ok x5) ∧
     cases he; exact (by decide : ¬ DeriveSyncPre (libKC KM L0) regX x5 0 3) hpre
   · rintro ⟨-, e, he, -, hpre, -⟩
     cases he; exact (by decide : ¬ DeriveSyncPre (libKC KM L0) regX x5 1 3) hpre
+
+/-- `c1 : release(g)` of the raw grant of W-C22.2 (O3). -/
+def x5r : SC := x5.set (releaseEff (x5.view 1) 5)
+
+/-- `corpus-spec2-m3.md` §2 W-C22.2, disagreement with "`acquire(e)` plus jamais habilitée": after
+the raw `deriveSync` of `W_C22_2_encap`, context 1 releases the derivative by an ordinary `release`
+(O3), an `ok` step that `Encap` admits (WC4 C15 effect: the derivative "is ordinary after
+creation … for its … legal release"); `GrantDiscipline` holds again and `acquire(e)` by context 1
+is enabled. -/
+theorem W_C22_2_reenable : opStepC KM (.release 5) 1 x5 (.ok x5r) ∧
+    Encap L0 (x5, regX) (.kernel 1 (.release 5)) ∧ GrantDiscipline x5r regX ∧
+    AcquireOk KM L0 x5r regX 1 0 (deriveSyncEff x5r 1 3, [⟨3, some 6⟩]) :=
+  ⟨⟨by decide, _, .ok (by decide), rfl⟩, trivial,
+    fun e he _ _ => by rw [List.mem_singleton.1 he]; decide,
+    ⟨by decide, ⟨3, none⟩, rfl, by decide, by decide, rfl⟩⟩
 
 /-! ## S9 (`corpus-spec2-m3.md` §1 S9) -/
 

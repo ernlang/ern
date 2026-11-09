@@ -21,12 +21,14 @@ open Ern.Concurrency.Traces (L0)
 /-! ## W-C22.3 (b) (`corpus-spec2-m3.md` §2) -/
 
 /-- Statics (Spec 1 §47): those of `EncapTraces.sst` (`M = {slot = {a, b}, lock}`, `T` owned by
-`slot`, `guarded = root_T`) and `6` the one-leaf place `Z`, `Uninit`. Root authorities: `0` of
-`M`, `1` of `T` (held by `slot`), `2` of `Z`. -/
+`slot`, `guarded = root_T`), `6` the one-leaf place `Z`, `Uninit`, and `7` the value
+`M′ = {slot′ = {a′, b′}, lock′}` (places 7–11) of the shape of `M`, `Uninit`. Root authorities: `0`
+of `M`, `1` of `T` (held by `slot`), `2` of `Z`, `3` of `M′`. -/
 def wst : Statics :=
   [((none, none, 0), false), ((some 0, none, 0), false), ((some 1, none, 0), true),
    ((some 1, none, 0), true), ((some 0, none, 0), true), ((none, some 1, 0), true),
-   ((none, none, 0), false)]
+   ((none, none, 0), false), ((none, none, 0), false), ((some 7, none, 0), false),
+   ((some 8, none, 0), false), ((some 8, none, 0), false), ((some 7, none, 0), false)]
 
 /-- The statics are well formed (Spec 1 §47). -/
 theorem wst_ok : StaticsOK wst := by decide
@@ -42,8 +44,7 @@ def w1 : SC := transferEffC w0 0 2 6
 /-- `corpus-spec2-m3.md` §2 W-C22.3 (b), `ok noyau / hors C22.3 (b)`: after the encapsulated step
 `newMutex(guarded)`, `transfer(a, Z)` by context 0, `a` a strict structural subplace of `slot`, is
 an `ok` step of Spec 1 §63 re-indexed and `Encap` excludes it; without the exclusion `SlotInit`
-(WC4 C21.7) fails after the step. Positive twin: `Ern.Concurrency.EncapTraces.traceA`
-(`transfer(M, M′)`). -/
+(WC4 C21.7) fails after the step. Positive twin: `W_C22_3b_ok`. -/
 theorem W_C22_3b_encap :
     EncapsulatedTrace KW L0 (w0, [], []) [.newMutex 0 1] (w0, [⟨1, none⟩], []) ∧
     opStepC KW (.transfer 2 6) 0 w0 (.ok w1) ∧
@@ -55,6 +56,17 @@ theorem W_C22_3b_encap :
     revert this; decide
   · have := h ⟨1, none⟩ (List.mem_singleton_self _) (by decide)
     revert this; decide
+
+/-- `c0 : transfer(M, M′)` (O4). -/
+def w2 : SC := transferEffC w0 0 0 7
+
+/-- `corpus-spec2-m3.md` §2 W-C22.3 (b), twin, `ok`: in the same configuration (`slot = {a, b}`),
+`transfer(M, M′)` by context 0 is an `ok` step of Spec 1 §63 re-indexed that `Encap` admits; after
+it `SlotInit` holds. -/
+theorem W_C22_3b_ok : opStepC KW (.transfer 0 7) 0 w0 (.ok w2) ∧
+    Encap L0 (w0, [⟨1, none⟩]) (.kernel 0 (.transfer 0 7)) ∧ SlotInit w2 [⟨1, none⟩] :=
+  ⟨⟨by decide, .ok (by decide)⟩, (by decide : TransferExcl L0 (w0, [⟨1, none⟩]) 0),
+    fun e he _ => by rw [List.mem_singleton.1 he]; decide⟩
 
 /-! ## S17a, positive twin of the corpus (`corpus-spec2-m3.md` §1 S17a) -/
 
