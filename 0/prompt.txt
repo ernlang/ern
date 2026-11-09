@@ -1,0 +1,54 @@
+@"/Users/guygouri/Downloads/corpus-spec2-m3.md"
+
+<pasted_content id="c7c6">
+# Brief Claude Code — ERN Spec 2, jalon 3 : complétude et validation adversariale
+
+## Cadre
+
+Branche `formal/spec2-m3`, créée depuis la tête de `formal/spec2-m2` (`e30355f`). Formalisation exploratoire, jamais mergée. Pas de push sur `main`, pas de PR.
+
+Documents joints, **non commités** : `ERN_Concurrency_Model_WC4.md` (WC4 corrigée, seule candidate) et `corpus-spec2-m3.md` (corpus adversarial, source des verdicts). Ne modifie ni `specs/`, ni `AGENTS.md`, ni `CLAUDE.md`, ni `formal/DESIGN.md`. Les définitions et énoncés des jalons 1–2 ne changent que là où l'étape A le prescrit ; tout autre changement est rapporté avant d'être fait.
+
+Sources de sémantique : Spec 1 v0.1 §§36, 43, 45–46, 50, 54–58, 60–78, 82 ; WC4 en entier. Mêmes règles : la Spec 1 l'emporte ; silence, ambiguïté ou contradiction → arrêt et rapport avec exemple ; jamais d'interprétation. **Les verdicts du corpus viennent du document joint, jamais du modèle** ; un désaccord est un résultat à rapporter, pas à résoudre.
+
+## Étape A — complétude
+
+| Tâche | Contenu | Source |
+|---|---|---|
+| A1 Arenas dans `LStep` | Étiquettes `.newArena c storage internal`, `.issue c arena region dst`, `.reset c arena`, réalisées par les opérations dérivées de `Ern.MemoryModel.Arena` sur `s.view c` ; état de bibliothèque étendu à `(SyncReg, ArenaReg)` ; `Encap` **inchangée** — si une clause s'avère nécessaire, contre-exemple et proposition dans le rapport, jamais d'ajout silencieux | WC4 C19, C23 ; Spec 1 §§46, 55–56, 76–78 |
+| A2 `ArenaInvC` | `ArenaInv` (§55) sur l'état de bibliothèque, préservé par **tout** `LStep` (nouveau T7), y compris `transfer` de la valeur d'arena et `spawn`/`terminate` ; `SyncState` préservé par les étiquettes d'arena (extension de T4) | §55, C19 |
+| A3 Garde §56 unifiée | `newMutex` consulte les `internal` des arenas vivantes, `newArena` consulte les `guarded` des entrées vivantes ; remplacer les listes fixes `adm`/`others` par la lecture des deux registres. Rapporter ce que `NewArenaPre.guard` de la Spec 1 permet ou non sans modification de `Arena.lean` ; si une modification de `Arena.lean` est nécessaire, **arrêt et rapport** | §56, WC4 C13.7, OB-C16 |
+| A4 §82.3 et §82.6 | Transporter `pointer_sound_store` et `pinned_address_stable` de `Refinement.lean` à `ReprC` (extension de R1) | §82.3, §82.6 |
+| A5 Conservativité | Les étiquettes d'arena coïncident en contexte unique avec les opérations dérivées de la Spec 1 (extension de T1 et R5) | WC4 C24 |
+| A6 Docstring | `NewMutexPre` : retirer « former C13.10 » (WC4 corrigée) | — |
+| A7 Re-vérification | Après A1–A3, tous les théorèmes des jalons 1–2 recompilent ; parcours des dépendances comme au jalon 1 (A.6) ; tout énoncé touché est rapporté | — |
+
+## Étape B — corpus
+
+Encoder chaque ligne de `corpus-spec2-m3.md` §1–§3, dans `formal/Ern/Concurrency/Corpus/` sur le patron de `Traces.lean` et `Corpus/Runner.lean`, selon les règles d'encodage du corpus §4 :
+
+- un théorème par verdict, nommé `S<cas>_<n>_<ok|reject|fail|wait|encap>` ; jumeaux dans le même module ;
+- préconditions par `decide` ; verdicts écrits depuis le document ;
+- les cas déjà encodés aux jalons 1–2 (S4, S7, S12, S16, S17, S18, témoin R4) sont **référencés**, pas dupliqués ; vérifier qu'ils correspondent au corpus et rapporter tout écart ;
+- `CrossContextConflictOnlyShared` prouvé, avec son témoin ; témoins W-C22.2 et W-C22.3 (b) ;
+- S6 : aucune trace, mention dans le rapport ;
+- S5b et S12 : `ok` noyau, classés OB-C05 ; aucune tentative de les refuser.
+
+Tout cas dont le verdict du modèle diffère du corpus : rapport avec la clause citée par le corpus, l'état, et le théorème qui établit le verdict effectif. Ne pas modifier le corpus, ne pas modifier le modèle.
+
+## Étape C — rapport consolidé
+
+`formal/reports/spec2-m3.md`, en français, deux parties.
+
+**Partie A** : étape A (définitions, T7, A3 et ce que `Arena.lean` permet, A4, re-vérification) ; étape B (table des cas : verdict attendu, verdict obtenu, théorème, écart éventuel) ; problèmes de WC4 ou de la Spec 1 trouvés ; décisions de représentation ; écarts avec la Spec 1.
+
+**Partie B — index consolidé des jalons 1 à 3**, mise à jour de la partie B de `spec2-m1-close.md` étendue au jalon 2 et 3 : modules ; T1–T7, R1–R5, `CrossContextConflictOnlyShared` avec hypothèses, module et ligne ; corpus complet avec verdicts et clauses ; décisions de représentation cumulées ; lemmes de la Spec 1 copiés ou à généraliser (jalons 1 et 2, dont les `realize_*`) ; OB-C01 à OB-C16 avec l'état final, et la **réduction** d'OB-C06 écrite mot pour mot (corpus §3) ; audit des axiomes.
+
+## Règles Lean
+
+Inchangées : aucun `sorry`, `admit`, `axiom`, `native_decide`, `noncomputable` ; axiomes `{propext, Quot.sound}`, dépendance héritée à `Classical.choice` signalée et non contournée (audit de `Arena.lean` et `RefinementArena.lean` en première tâche) ; `lake build` sans nouvel avertissement ; `grep` d'`AGENTS.md` vide ; docstrings en anglais citant WC4, la Spec 1 ou le corpus (`corpus-spec2-m3.md §1 S11`) sans les reformuler ; aucun énoncé ni définition affaibli ; Conventional Commits sans `Co-Authored-By`.
+
+## Ordre
+
+Audit des axiomes → A1 → A2 → A3 → A5 → A4 → A6 → A7 → corpus par blocs (MX puis AR puis frames : S2, S5, S8, S9, S11, S15 ; S3 ; S1, S4, S13, S14 ; S10 ; témoins ; `CrossContextConflictOnlyShared`) → rapport A puis B. Commit à chaque module compilant.
+</pasted_content id="c7c6">
