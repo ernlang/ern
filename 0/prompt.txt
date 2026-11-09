@@ -1,0 +1,52 @@
+@"/Users/guygouri/Downloads/ERN_WC4.md"
+
+<pasted_content id="c7c6">
+# Brief Claude Code — ERN Spec 2, jalon 2 : raffinement du modèle concurrent abstrait
+
+## Cadre
+
+Branche `formal/spec2-m2`, créée depuis la tête de `formal/spec2-m1` (`d77f7a6`). Formalisation exploratoire, jamais mergée. Pas de push sur `main`, pas de PR.
+
+Document joint, **non commité** : `ERN_Concurrency_Model_WC4.md` (WC4 corrigée). Ne modifie ni `specs/`, ni `AGENTS.md`, ni `CLAUDE.md`, ni `formal/DESIGN.md`. Ne modifie aucune définition ni aucun énoncé du jalon 1 ; si le raffinement en exige un, arrête-toi et rapporte.
+
+Sources de sémantique : Spec 1 v0.1, Parties II–III (§§8–20) et XVII (§82) en entier, plus §§39–45, 50, 57 ; WC4 C2, C24, C25, OB-C05, OB-C12. Mêmes règles qu'au jalon 1 : la Spec 1 l'emporte ; silence, ambiguïté ou contradiction → arrêt et rapport avec exemple ; jamais d'interprétation.
+
+À lire avant de coder : `formal/Ern/MemoryModel/Machine.lean`, `Refinement.lean`, `RefinementArena.lean` en entier ; `formal/DESIGN.md` (Architecture, Théorèmes principaux, Ordre de construction).
+
+## Ce que ce jalon prouve, et ce qu'il ne prouve pas
+
+Les contextes s'entrelacent **au grain des pas abstraits** : la réalisation d'un pas d'un contexte est une séquence de pas bruts de la machine mémoire, exécutée sans interférence des autres contextes. Ce choix est dit tel quel dans chaque énoncé et dans le rapport.
+
+Hors périmètre, par construction : accès concurrents aux octets, atomicité physique, ordres mémoire, `happens-before`, absence générale de data races (OB-C01 à OB-C06), réalisation du mot de verrou (OB-C05). Aucune région unsafe n'est modélisée : la décision de `DESIGN.md` sur la forme des contrats unsafe sous concurrence n'est pas requise ici, à dire dans le rapport.
+
+## Définitions
+
+| Module | Contenu | Source |
+|---|---|---|
+| `Concurrency/Repr.lean` | `ReprC s mem := Repr s.flat mem`, `Repr` étant celle de `Refinement.lean`. Lemme préalable `repr_frames_congr` : `Repr` ne dépend ni de l'ordre des frames de `flat` ni du contexte exécutant (§39 : les frames n'ont pas de représentation ; §9 : allocations plates). Si `Repr` dépend de `F` autrement que par appartenance, arrête-toi et rapporte | WC4 C2, C25 ; Spec 1 §§9, 39, 82.1 |
+| `Concurrency/Realize.lean` | Réalisation de chaque étiquette de `LStep` : O1–O16 exécutées par `c` → la réalisation de la Spec 1 appliquée à `s.view c`, transportée sur `s.flat` ; `spawn` → réalisation de la création des locaux d'O6 ; `exitFrameC`, `terminate` → réalisation d'O7 (le reparentage n'a pas d'effet mémoire) ; `join`, `deriveSync`, cession → réalisation vide ; composite par valeur → concaténation : création, réalisations d'O4 par transfert dans l'ordre déclaré, cession vide ; `newMutex`, `acquire`, `unlock`, `resetLock` → **réalisation vide** (registre seulement), docstring citant OB-C05 | WC4 C4–C8, C13–C18 ; Spec 1 §82.2–82.5 |
+| `Concurrency/NonConflict.lean` | `OrdinaryCrossContextNonConflict` (voir théorème R4) | Spec 1 §§43, 50, 54, 82.8 |
+
+## Théorèmes
+
+1. **R1 — réalisation pas à pas.** Pour tout `LStep k L lbl (s, reg) (s′, reg′)` et tout `mem` avec `ReprC s mem`, la réalisation de `lbl` est une séquence de pas bruts `ok` de `mem` à un `mem′` tel que `ReprC s′ mem′`, sous `LayoutWF`, `KInvCA s`, `DDSound k`, et les obligations paramétriques de la Spec 1 (§§15–16, §20.3) **explicites** en hypothèses, jamais remplacées par `True`.
+2. **R2 — simulation.** Toute `EncapsulatedTrace` depuis l'état initial se réalise par une exécution brute `ok` de la machine mémoire préservant `ReprC`, paramètres fixés une fois par exécution comme dans `Refinement.lean`.
+3. **R3 — sûreté concrète.** Corollaire de R2 sur le fragment couvert : aucun pas brut de la réalisation n'est `ub`. Énoncé qui nomme le fragment : entrelacement au grain des pas abstraits.
+4. **R4 — `OrdinaryCrossContextNonConflict`.** Pour tout état atteignable (`KInvC`), tous contextes vivants `c ≠ c′`, toutes autorités `a`, `b`, tous ensembles de feuilles `L`, `L′` : si `write3` est habilitée dans `s.view c` par `a` sur `L` et `read3` ou `write3` habilitée dans `s.view c′` par `b` sur `L′`, alors toute feuille de `L ∩ L′` est `K.SharedMutable`. Les feuilles `SharedMutable` sont **exclues** de la conclusion, non de l'hypothèse : O9 admet une lecture ordinaire sur une feuille `SharedMutable` pendant un `writeShared` d'un autre contexte, et c'est voulu (OB-C03, OB-C05). La preuve doit traiter `a = b` par la clause récursive de `ExercisableAt` (§43) : une autorité tenue par une place n'est exerçable par deux contextes que si leurs frames ont `Modify` sur les feuilles de cette place, ce qui ramène à la même question un cran plus bas ; la chaîne est finie par `NoOrphan` (§54) et se termine par une frame, qui n'appartient qu'à un contexte. Pour `a ≠ b` : I1 (§50) et le calcul des modes effectifs (§43.3–4). Si une hypothèse manque, rapporter l'état du but et le contre-exemple ; ne pas renforcer l'énoncé en silence.
+5. **R4′ — corollaire d'octets.** Sous `LayoutWF` et `ReprC`, les octets réalisant `L \ SharedMutable` et `L′ \ SharedMutable` sont disjoints (§82.8, §23).
+6. **R5 — conservativité des réalisations.** Sur un état à un contexte, la réalisation d'une opération héritée est celle de `Refinement.lean` pour la même opération sur `s.toS3`.
+
+Dans le rapport, après R4, écrire la frontière : R4 est l'absence de conflit au sens de l'adjacence dans un entrelacement de pas abstraits ; ce qui reste pour OB-C06 est que chaque ordre imposé par la machine d'autorités entre deux accès conflictuels (libération d'un grant avant sa ré-acquisition, `terminate` avant `join`) soit réalisé par une relation d'ordre mémoire : `LockOrder` (OB-C04) et l'ordre de complétion (OB-C11). Ne pas appeler R4 une preuve d'absence de data races.
+
+## Règles Lean
+
+Inchangées : aucun `sorry`, `admit`, `axiom`, `native_decide`, `noncomputable` ; axiomes `{propext, Quot.sound}` — si un théorème de `Refinement.lean` réutilisé dépend de `Classical.choice`, arrête-toi après l'audit et rapporte ; `lake build` sans nouvel avertissement ; `grep` d'`AGENTS.md` vide ; docstrings en anglais citant WC4 ou la Spec 1 sans les reformuler ; aucun énoncé ni définition affaibli ; Conventional Commits sans `Co-Authored-By`.
+
+## Rapport
+
+`formal/reports/spec2-m2.md`, en français : audit des axiomes des théorèmes de `Refinement.lean` réutilisés ; définitions ; R1–R5 prouvés, réfutés ou ouverts avec état du but ; le paragraphe de frontière après R4 ; obligations paramétriques laissées en hypothèses ; problèmes de WC4 ou de la Spec 1 trouvés (passage, exemple) ; décisions de représentation ; écarts avec la Spec 1 ; ce que le jalon 2 dit de OB-C05 et OB-C12.
+
+## Ordre
+
+Lecture → audit des axiomes de `Refinement.lean` → `Repr.lean` (`repr_frames_congr`) → `Realize.lean`, R1 par étiquette, opérations héritées d'abord, puis `spawn`, `exitFrameC`, `terminate`, puis composite, puis étiquettes à réalisation vide → R5 → R2, R3 → `NonConflict.lean`, R4, R4′ → rapport. Commit à chaque module compilant.
+</pasted_content id="c7c6">
