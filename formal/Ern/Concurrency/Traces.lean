@@ -1,6 +1,7 @@
 import Ern.Concurrency.SyncLib
 import Ern.MemoryModel.Arena
 import Ern.Concurrency.Conservativity
+import Ern.Concurrency.Transfer
 
 /-!
 # Minimal traces (test module)
@@ -243,5 +244,51 @@ theorem distinct_controllers_ok : NewMutexOk K0 L0 [] d1 [] 0 2 (d1, [⟨2, none
     NewMutexOk K0 L0 [] d1 [⟨2, none⟩] 0 3 (d1, [⟨2, none⟩, ⟨3, none⟩]) ∧
     ControlOf L0 d1 ⟨2, none⟩ = some 2 ∧ ControlOf L0 d1 ⟨3, none⟩ = some 5 :=
   ⟨⟨by decide, by decide, rfl⟩, ⟨by decide, by decide, rfl⟩, by decide, by decide⟩
+
+/-! ## S4: a detached child survives its creator (WC3 S4, C5, C6) -/
+
+/-- Statics: one `Init` static place (place 0), owned by frame 0. -/
+def s4st : Statics := [((none, none, 0), true)]
+
+/-- Initial single-context state of `s4st` (Spec 1 §47). -/
+def q0 : SC := SC.ofS3 (S3.init s4st)
+/-- Context 0 enters frame 1 with two locals, `v` (place 1) and `p` (place 2) (Spec 1 §72). -/
+def q1 : SC := enterEffC q0 0 [] [(none, 0), (none, 0)]
+/-- `write` of `v` through its root authority 1 (Spec 1 §67). -/
+def q2 : SC := q1.set (write3Eff (q1.view 0) [1])
+/-- `write` of `p` through its root authority 2 (Spec 1 §67). -/
+def q3 : SC := q2.set (write3Eff (q2.view 0) [2])
+/-- `alloc(provider p, owner v, one leaf)` (Spec 1 §71): the root `T` (place 3) owned by `v`, its
+root authority 3 held by `v`. -/
+def q4 : SC := q3.set (allocEff (q3.view 0) 1 [(none, 0)])
+/-- From frame 1, the by-value composite (WC3 C5) creates context 1 (frame 2) with one local `d`
+(place 4) and moves `v` into `d`. -/
+def q5 : SC := spawnValEff q4 0 [] [(none, 0)] [(1, 4)]
+/-- Frame 1 exits (WC3 C6); context 1 is reparented to frame 0. -/
+def q6 : SC := exitEffC q5 0
+
+/-- The steps of S4 are `ok` (Spec 1 §72, §67, §71; WC3 C5, C6). -/
+theorem s4_steps : opStepC K0 (.enter [] [(none, 0), (none, 0)]) 0 q0 (.ok q1) ∧
+    opStepC K0 (.write 1 [1]) 0 q1 (.ok q2) ∧ opStepC K0 (.write 2 [2]) 0 q2 (.ok q3) ∧
+    opStepC K0 (.alloc 2 1 [(none, 0)]) 0 q3 (.ok q4) ∧
+    SpawnValStep K0 q4 0 [] [(none, 0)] [(1, 4)] (.ok q5) ∧ opStepC K0 .exit 0 q5 (.ok q6) :=
+  ⟨⟨by decide, .ok (by decide)⟩, ⟨by decide, _, .ok (by decide), rfl⟩,
+    ⟨by decide, _, .ok (by decide), rfl⟩, ⟨by decide, _, .ok (by decide) trivial, rfl⟩,
+    ⟨by decide, .ok (by decide)⟩, ⟨by decide, .ok (by decide)⟩⟩
+
+/-- WC3 S4, positive: after the exit of the creating frame 1, the child context 1 is live, its
+initial frame is reparented to frame 0, `d` (place 4) and the storage `T` it now owns (place 3)
+are usable, the root authority of `T` is held by `d`, and the re-indexed kernel invariant `KInvC`
+(hence `ConcurrentWF`) holds. -/
+theorem s4_detached_child : q6.Live 1 ∧ q6.ctxParent 1 = some 0 ∧ q6.flat.Usable 4 ∧
+    q6.flat.Usable 3 ∧ (q6.A[3]?).map (·.holder) = some (.place 4) ∧ KInvC q6 ∧
+    ConcurrentWF q6 := by
+  have hk := (Ern.MemoryModel.Arena.KInvB.sound (s := q6.flat) (by decide)).1
+  obtain ⟨hw, ⟨⟨i1, i2, i3, -⟩, -, hnd⟩, -, hno⟩ := hk
+  have hfr : FramesC q6 :=
+    framesC_of (by decide) (by decide) (by decide) (by decide) (by decide) (by decide)
+  have hkc : KInvC q6 :=
+    ⟨⟨hfr, hw⟩, ⟨⟨i1, i2, i3, fun _ => i4_always _⟩, by decide, hnd⟩, by decide, hno⟩
+  exact ⟨by decide, by decide, by decide, by decide, by decide, hkc, hkc.1⟩
 
 end Ern.Concurrency.Traces
