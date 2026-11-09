@@ -33,8 +33,8 @@ theorem repr_congr {L : Layout} {rtok : Nat → Nat} {t t' : S3} {m : Machine.St
       (S3.Usable.mono (s := t) (s' := t') hP (fun f hf => (hF f).1 hf) (fun q h => hd ▸ h) hu))
     fun _ _ _ h => .inl (hI ▸ h)
 
-/-- `Repr` depends on the stack only through membership (Spec 1 §39, §9): it holds for the same kernel components with any stack
-listing the same frames, in any order. -/
+/-- `Repr` depends on the stack only through membership (Spec 1 §39, §9): it holds for the same
+kernel components with any stack listing the same frames, in any order. -/
 theorem repr_frames_congr {L : Layout} {rtok : Nat → Nat} {t : S3} {F' : Frames}
     {m : Machine.State} (hF : ∀ f, f ∈ F' ↔ f ∈ t.F) :
     Repr L rtok { t with F := F' } m ↔ Repr L rtok t m :=

@@ -8,9 +8,10 @@ import Ern.Concurrency.Traces
 
 Contexts interleave at the grain of abstract steps: the realization of one labelled step of a
 context is a sequence of raw steps of the memory machine of Spec 1 Parts II–III, run without
-interference from the other contexts. Every statement below is about this fragment only. Concurrent
-byte accesses, physical atomicity, memory orders and `happens-before` (WC4 OB-C01–OB-C06) are outside
-it, and so is the realization of the controller word (WC4 OB-C05). No unsafe region is modelled.
+interference from the other contexts. Every statement below is about this fragment only.
+Concurrent byte accesses, physical atomicity, memory orders and `happens-before` (WC4
+OB-C01–OB-C06) are outside it, and so is the realization of the controller word (WC4 OB-C05). No
+unsafe region is modelled.
 
 * `realize`: the raw operations of each label of `LStep`. An inherited operation O1–O16 executed by
   `c` is realized as in `Ern.MemoryModel.Refinement` (`opsOf`) on the view of `c` (WC4 C2), the
@@ -716,7 +717,8 @@ def mS0 : Machine.State :=
   run Machine.State.empty (initOps πS.pl πS.geom πS.rtok πS.L πS.ty πS.ival s4st)
 
 /-- After `enterFrame` of context 0 (Spec 1 §72). -/
-def mS1 : Machine.State := run mS0 (realize πS wv (.kernel 0 (.enter [] [(none, 0), (none, 0)])) q0 mS0)
+def mS1 : Machine.State :=
+  run mS0 (realize πS wv (.kernel 0 (.enter [] [(none, 0), (none, 0)])) q0 mS0)
 /-- After `write` of `v` (Spec 1 §67). -/
 def mS2 : Machine.State := run mS1 (realize πS wv (.kernel 0 (.write 1 [1])) q1 mS1)
 /-- After `write` of `p` (Spec 1 §67). -/
