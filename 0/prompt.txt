@@ -1,0 +1,457 @@
+@"/Users/guygouri/Downloads/ERN_Concurrency_Model_WC2.md"
+
+<pasted_content id="c7c6">
+# Brief Claude Code — ERN Spec 2, jalon 1 : modèle abstrait concurrent
+
+## Nature du travail
+
+Formalisation exploratoire. Branche `formal/spec2-m1`, créée depuis `main`. Jamais mergée. Pas de push sur `main`, pas de PR.
+
+Le document joint `ERN_Concurrency_Model_WC2.md` (Working Candidate 2 corrigée) est **non normatif** et **ne doit pas être commité**.
+
+Ne modifie ni `specs/`, ni `AGENTS.md`, ni `CLAUDE.md`, ni `formal/DESIGN.md`.
+
+## Sources de sémantique
+
+1. `specs/ERN_Memory_Model_Specification_v0.1.md` — normatif. Lire en entier §§38–57, 60–73, 76–78, 80, 82 avant de coder, et lister les passages dans le rapport.
+2. `ERN_Concurrency_Model_WC2.md` — candidate de conception, pour les ajouts C1–C25.
+
+Règles :
+
+- La Spec 1 l'emporte sur la candidate.
+- Là où la candidate est silencieuse, ambiguë ou en contradiction avec la Spec 1 : **arrête-toi et rapporte** le passage avec un exemple concret. Ne choisis jamais une interprétation.
+- Là où la candidate écrit « applicable » (C4.5, C5.4, C6.1, C7), la règle à appliquer est la clause de la Spec 1 nommée au même endroit (O6, O4, O7). Si une clause ne se transpose pas à plusieurs piles sans décision, rapporte-la.
+
+## Style de formalisation
+
+- `formal/DESIGN.md`, section Représentation : relations de pas ; interpréteurs à carburant prouvés cohérents avec les relations.
+- Aucun modèle d'événements mémoire au jalon 1. OB-C01 à OB-C06 sont hors périmètre par construction.
+- L'attente (`join` sur un contexte vivant, `acquire` sur un contrôleur pris) est une transition **non habilitée**. Aucune nouvelle issue d'`Outcome3`.
+- La décision de style du jalon 4 de `DESIGN.md` n'est pas prise par ce travail. Signale dans le rapport toute décision de conception que `DESIGN.md` ne règle pas, sans la prendre.
+
+## Première tâche : audit des axiomes hérités
+
+Avant tout nouveau code, exécute `#print axioms` sur les théorèmes de la Spec 1 que le jalon 1 réutilisera (au minimum `Access.Main.reachable_kinv` et les lemmes de préservation de `Access/Preserve/*`). Consigne dans le rapport l'ensemble exact des axiomes de chacun. Trois preuves de référence utilisent `Classical.byContradiction` (`Access/Statics.lean:194`, `Access/Rename/Basic.lean:146`, `Access/Rename/Places.lean:264`) ; détermine quels théorèmes en dépendent effectivement.
+
+## Modules à créer
+
+Sous `formal/Ern/Concurrency/`, chacun enregistré dans `Ern.lean`.
+
+| Module | Contenu | Source |
+|---|---|---|
+| `Context.lean` | `S_C = (C, F_C, P, I, A, D)` ; états de cycle de vie des contextes ; frame courante par contexte ; relation `ancestor_C` ; projection `toS3` sur les états à un contexte ; `ConcurrentWF` par ré-indexation de WF3.1–8 (« la pile » → frames vivantes globales ; « frame courante » → frame courante du contexte exécutant) | C1–C3, C20 ; Spec 1 §§38–45, 49 |
+| `Frames.lean` | `spawn` (sur O6) ; `exitFrameC` (O7 + reparentage des frames initiales d'enfants vers `parent(f)`) ; `terminate` (O7 sur la frame initiale d'un contexte) ; `join` | C4, C6–C8 ; §§72–73 |
+| `Transfer.lean` | Composite `spawn` par valeur : préconditions d'O4, avec O4.1 côté destination remplacé par la condition de construction C5.2–C5.3 ; O4.1 côté source conservé | C5 ; §63 |
+| `Sync.lean` | `K_C` : extension de `K` avec projection sur `K` ; `K_C.SyncAuthorized` **opaque** (prédicat de contrat, comme `K.SharedMutable`) ; transition noyau `deriveSync` : O1 avec le conjoint `ExercisableAt` d'O1.1 remplacé par `K_C.SyncAuthorized`, O1.1 (validité de chaîne et d'anchors) et O1.2–O1.4 conservés | C14–C15 ; §60 |
+| `SyncLib.lean` | État de bibliothèque séparé de `S_C`, sur le patron de `Arena.lean` : `SyncEntry`, `SyncInv`, `GrantDiscipline`, `ControlOf` positionnel ; opérations dérivées `newMutex`, `acquire`, `unlock`, `resetLock` ; **instanciation de `K_C.SyncAuthorized` par la bibliothèque, limitée à des faits de registre et de contrôleur** : entrée vivante ∧ `grant = none` ∧ la frame demandeuse a un mode effectif sur `ControlOf(e)` | C12–C13, C16–C18, C21–C22 ; §§46, 55–56, 76–78 |
+| `Conservativity.lean` | Théorèmes de C24 | C24 |
+| `Traces.lean` | Traces minimales nécessaires aux théorèmes ci-dessous (constructions positives, contre-exemples), sur le patron de `Corpus/Runner.lean`. **Le corpus S1a–S15 et ses jumeaux positifs est le jalon 3, pas celui-ci.** | §V (références seulement) |
+
+## Théorèmes cibles
+
+Chaque énoncé déclare le fragment couvert. Chacun est prouvé, réfuté par contre-exemple, ou rapporté ouvert avec l'état du but.
+
+1. **Conservativité** (C24). Pour tout état à un contexte sans entrée de synchronisation vivante, et pour chaque O1–O16 : habilitation équivalente et effet projeté égal à celui de `S₃` ; `ancestor_C` coïncide avec §39 ; `K_C.SyncAuthorized` faux sur ce domaine, donc `deriveSync` jamais habilitée.
+2. **Préservation** (C20, C23). `ConcurrentWF ∧ Inv3 ∧ AnchorOrderHeld ∧ NoOrphan` ré-indexés, sous O1–O16 ré-indexées et sous `spawn`, `exitFrameC`, `terminate`, `join`, `deriveSync`, `spawn` par valeur.
+3. **Reparentage** (OB-C13). `exitFrameC` préserve `AnchorOrder` et `AnchorOrderHeld` pour les frames reparentées et ne modifie ni `A` ni `D` au-delà des effets d'O7.
+4. **`SyncInv` et `GrantDiscipline`** (C21–C23). Préservation sous toutes les transitions, **sous une hypothèse d'encapsulation explicite** formulée comme prédicat sur les traces (`EncapsulatedTrace`), jamais glissée dans les préconditions d'une opération noyau. Et le contre-exemple **sans** cette hypothèse : `derive(guarded, Observe, footprint(T))` par le propriétaire exclusif rend `acquire` non habilitée alors que `grant = none`.
+5. **Réalisabilité** (C25). Sous `SyncInv ∧ GrantDiscipline`, l'instanciation de `K_C.SyncAuthorized` par la bibliothèque (faits de registre et de contrôleur seulement) entraîne les préconditions d'autorité de `deriveSync` : aucun descendant actif de `guarded` ne couvre une feuille, I1 respecté pour le grant de footprint complet, chaîne d'origines valide. **Interdit** : définir `SyncAuthorized` en y incluant ce que le théorème doit démontrer. Si le théorème échoue, rapporte le but et l'hypothèse manquante.
+6. **Exclusivité des grants**. Deux grants actifs issus du même `guarded`, de footprint non vide, sont impossibles (I1, §50).
+
+## Règles Lean
+
+- Aucun `sorry`, `admit`, `axiom`, `native_decide` ; aucun `noncomputable`.
+- Axiomes admis par `#print axioms` de chaque théorème : `{propext, Quot.sound}`. Cette règle est plus stricte que celle d'`AGENTS.md` et prévaut pour ce travail. Toute dépendance héritée à `Classical.choice` est **signalée dans le rapport** avec le théorème concerné et la chaîne de dépendance ; elle n'est ni contournée, ni corrigée dans la référence Spec 1. Si l'audit de la première tâche révèle une telle dépendance sur un théorème indispensable, arrête-toi après l'audit et rapporte.
+- `lake build` dans `formal/` sans nouvel avertissement ; `grep -rnE '\b(sorry|admit|native_decide)\b|^\s*axiom\b' --include='*.lean' --exclude-dir=.lake .` ne renvoie rien.
+- Chaque définition et théorème cite sa source en docstring (« Spec 1 §63.4 » ou « WC2 C5.2 ») sans la reformuler.
+- Aucune définition plus permissive que sa source, aucune hypothèse ajoutée, aucun énoncé ni dépendance modifié pour faire passer une preuve. Si bloqué : arrête-toi et rapporte l'état du but.
+
+## Rapport
+
+`formal/reports/spec2-m1.md`, en français :
+
+- passages implémentés, par localisation (Spec 1 et WC2) ;
+- audit des axiomes hérités ;
+- théorèmes prouvés, réfutés (avec le contre-exemple), ouverts (avec l'état du but) ;
+- problèmes de la candidate trouvés : passage, exemple concret ;
+- décisions de représentation prises ; décisions de conception proposées, non prises ;
+- écarts avec la Spec 1 détectés.
+
+Code, docstrings et messages de commit en anglais. Conventional Commits, sans `Co-Authored-By`.
+
+## Ordre
+
+Lecture et liste des passages → audit des axiomes → `Context` → `Frames` → `Conservativity` (théorème 1) → `Sync` + `SyncLib` → `Transfer` → préservation (théorèmes 2–3) → théorèmes 4–6 → traces minimales → rapport. Commit à chaque module compilant.
+</pasted_content id="c7c6">
+
+---
+
+Yes, remove them
+
+---
+
+<pasted_content id="c7c6">
+Brief Claude Code — ERN Spec 2, jalon 1 : vérification ciblée `Encap` / transfert de mutex
+Cadre
+Branche `formal/spec2-m1`, telle qu'elle est. Formalisation exploratoire, jamais mergée. Pas de push sur `main`, pas de PR.
+Ne modifie ni `specs/`, ni `AGENTS.md`, ni `CLAUDE.md`, ni `formal/DESIGN.md`. Ne modifie aucune définition ni aucun énoncé existant : cette tâche produit un rapport et, au plus, des traces et théorèmes de test nouveaux. Pas de contre-analyse générale ; pas d'hypothèse d'encapsulation ajoutée.
+Sources : `specs/ERN_Memory_Model_Specification_v0.1.md` (§§40, 43, 44, 46, 63, 65) ; `ERN_Concurrency_Model_WC2.md` joint, non commité (C12, C13, C21, C22, S7, S10) ; `formal/reports/spec2-m1.md`.
+Question
+L'encapsulation `Encap` utilisée pour le théorème 4 exclut « tout `transfer` dont la source est la place qui tient `guarded` ». WC2 C12 exige qu'un transfert légal de la valeur mutex préserve l'association de contrôleur, et S7 attend `ok`. Déterminer si `Encap` interdit un transfert que WC2 déclare légal, et pourquoi.
+Tâches
+
+1. Définitions, citées textuellement dans le rapport avec fichier et ligne : `Encap`, `EncapsulatedTrace`, `LStep`, `Label`, `ControlOf`, `MutexLayout`, `SyncInv`, `GrantDiscipline`, `GrantSubtree`, `RegBound`, `DeriveSyncPre`, `LibSyncAuthorized`, `CtrlRight`, `EntryAuth`, `SpawnPreBase`, `SpawnValPreBase`, et les énoncés exacts de `deriveSync_breaks_i2`, `acquire_blocked_by_derive`, `realizability_needs_i1`, `shared_controller`, `newMutex_nonleaf_rejected`.
+2. Portée de la clause `transfer` d'`Encap` : « source » désigne-t-elle la racine du transfert (O4 `source`) ou toute place dont une partie tient `guarded` ? Dire précisément quels transferts sont exclus quand `guarded` est tenue par `slot`, partie de `M` : `transfer(slot, ·)`, `transfer(M, ·)`, transfert d'une racine englobant `M`.
+3. Trace légale : construire, sur le patron de `Traces.lean`, un état avec `KInvC`, une entrée vivante (`guarded` tenue par `slot ⊂ M`, `T` racine possédée par `M`, `ControlOf = lock ∈ M`), et `transfer(M, M′)` vers une place `M′` de même forme dans la même frame, préconditions O4 vérifiées par `decide`. Deux variantes : `grant = none` ; grant actif détenu par la frame courante.
+4. Verdicts : pour chaque variante, (a) le pas O4 est-il `ok` ; (b) le pas est-il admis par `Encap` ; (c) `SyncInv`, `GrantDiscipline`, `GrantSubtree`, `RegBound` tiennent-ils dans l'état résultant ; (d) `ControlOf` désigne-t-il `lock′`.
+5. Si le transfert est exclu par `Encap` : identifier la clause exacte, et dire si elle est exigée par un passage de WC2 (le citer) ou si elle a été ajoutée pour faire passer une preuve. Dans le second cas, identifier le but qui échouait sans elle.
+6. Si un invariant échoue sans l'exclusion : produire le contre-exemple comme théorème, et le plus petit ensemble de clauses de WC2 concernées.
+
+Règles
+Celles d'`AGENTS.md` et du brief du jalon 1 : aucun `sorry`, `admit`, `axiom`, `native_decide`, `noncomputable` ; axiomes `{propext, Quot.sound}` ; `lake build` sans nouvel avertissement ; docstrings en anglais citant la source ; Conventional Commits sans `Co-Authored-By`.
+Rapport
+`formal/reports/spec2-m1-encap.md`, en français : réponses 1–6 avec noms de lemmes, états des buts, et pour chaque verdict la clause de la Spec 1 ou de WC2 qui le fonde. Aucune conclusion de conception : les faits seulement.
+</pasted_content id="c7c6">
+
+---
+
+@"/Users/guygouri/Downloads/ERN_Concurrency_Model_WC3_corrige.md"
+
+<pasted_content id="c7c6">
+# Brief Claude Code — ERN Spec 2, jalon 1 : passe corrective WC3
+
+## Cadre
+
+Branche `formal/spec2-m1`, telle qu'elle est (dernier commit : module `EncapTraces` et rapport `spec2-m1-encap.md`). Formalisation exploratoire, jamais mergée. Pas de push sur `main`, pas de PR.
+
+Le document joint `ERN_Concurrency_Model_WC3.md` (Working Candidate 3) **remplace WC2** comme candidate et **n'est pas commité**. Ne modifie ni `specs/`, ni `AGENTS.md`, ni `CLAUDE.md`, ni `formal/DESIGN.md`.
+
+Sources de sémantique, mêmes règles qu'au jalon 1 : la Spec 1 l'emporte ; silence, ambiguïté ou contradiction de WC3 → arrêt et rapport avec exemple concret, jamais d'interprétation ; « applicable » renvoie à la clause de la Spec 1 nommée au même endroit.
+
+## Objet
+
+Mettre les définitions en conformité avec WC3 là où elle corrige WC2, puis **re-vérifier les théorèmes dont les hypothèses ou dépendances changent**. Un théorème déjà prouvé n'est pas réputé préservé si une définition dont il dépend change : il est re-prouvé ou rapporté.
+
+## Modifications de définitions
+
+| Module | Changement | Source WC3 |
+|---|---|---|
+| `Sync.lean` | `DeriveSyncPre` : ajouter la clause de mode propre `mode(guarded) = Modify`, indépendante du footprint. Le reste inchangé | C15.1 |
+| `Sync.lean` | `K_C.SyncAuthorized` prend le registre en argument explicite. **Représentation** : `KC (R : Type)` avec `SyncAuthorized : R → SC → Nat → Nat → Prop`, le noyau restant paramétrique en `R` et la bibliothèque instanciant `R := SyncReg`. Le noyau n'importe pas `SyncLib` | C2, C14 |
+| `SyncLib.lean` | `SyncInv` : intégrer `GrantSubtree` (C21.5), `RegBound` (C21.6, sur toutes les entrées), et l'unicité des contrôleurs parmi les entrées vivantes (C21.4). Retirer les auxiliaires correspondants de `SyncPreserve.lean` | C21 |
+| `SyncLib.lean` | `NewMutexPreBase` → `NewMutexPre` (plus de suffixe `Base`) : ajouter `footprint(guarded) ∩ footprint(M) = ∅` (C13.4), `K.SharedMutable ctl` (C13.6), unicité du contrôleur parmi les entrées vivantes (C13.8), `NoCoveringDesc guarded` (C13.9, seconde moitié ; la première moitié est une obligation, pas une précondition) | C13 |
+| `SyncLib.lean` | `Encap` : définition inchangée ; docstring citant C22.1–3. C22.4 n'a pas de contenu dans `S_C` (pas de valeurs, Spec 1 §41) : le dire dans la docstring | C22 |
+| `SyncLib.lean` | `UnlockOk`, `ResetLockOk` : vérifier clause par clause contre C17.1–4 et C18.1–3 ; corriger si écart, le rapporter | C17, C18 |
+| `Frames.lean` | `JoinStep` : identifiant inconnu → `reject` ; contexte vivant → aucune issue ; terminé → `ok` sans effet | C8 |
+| `Frames.lean` | `SpawnPreBase` → `SpawnPre` : comparer clause par clause avec `EnterPre` de `Access/Ops.lean` ; toute clause d'O6 absente hormis le placement sur la pile est ajoutée ; différences rapportées | C4.5 |
+| `Transfer.lean` | Composite par valeur réécrit selon C5 : phases **création → transferts (dans l'ordre déclaré, chacun évalué sur l'état produit par les précédents) → cession → vérifications finales**. `SpawnValPre` complète : droit source d'O4.1 et restriction O4.4 évalués au début de la phase de transfert, après création des locaux et avant toute cession ; destination fraîche (C5 items 2–3) ; **aucun paramètre cédé ne couvre une feuille d'une source transférée**, test sur les footprints avant consommation (C5 item 5) ; toutes les autres clauses d'O4 ; conditions d'état résultant (§63.6–63.9, O6.3, O6.4) sur l'état final. `spawnValEff` réordonné en conséquence | C5 |
+| `Context.lean` | Confirmer que `K.Satisfiable` d'`alloc` exécuté par `c` est évalué sur `s.view c` ; citer C2 | C2 (P1) |
+| Tous | Références de docstrings : WC2 → WC3, numéros de clauses vérifiés un à un | — |
+
+## Théorèmes à re-vérifier ou à produire
+
+1. **T1** : `conservative_deriveSync`, `syncAuthorized_false` avec la nouvelle signature ; les autres énoncés de `Conservativity.lean` ne doivent pas changer — si une définition modifiée les touche, rapporter.
+2. **T2** : `deriveSync_preservesC` **sans** hypothèse externe de mode (la clause C15.1 la fournit) ; `lstep_kInvCA` ; `spawn_preservesC` sur `SpawnPre` ; **`spawnVal_preservesC` sur le composite réécrit**, prouvé ou rapporté avec l'état du but ; `join_preservesC` avec le nouveau `JoinStep`.
+3. **T4** : `lstep_preserves`, `trace_preserves`, `trace_inv`, `encapsulated_inv` avec `SyncInv` étendu et `NewMutexPre` complète.
+4. **T5** : `realizability` avec `SyncAuthorized` à registre explicite ; la définition de l'instanciation ne contient toujours que les trois faits de C14.
+5. **Contre-exemples devenus rejets, avec jumeau positif** :
+   - `deriveSync_breaks_i2` ne doit plus être prouvable ; le remplacer par `deriveSync_observe_rejected` : l'état du contre-exemple est maintenant `reject` par C15.1 ; positif : `deriveSync` sur un `guarded` `Modify` → `ok`.
+   - `shared_controller` → `shared_controller_rejected` : le second `newMutex` est rejeté par C13.8 ; positif : deux mutex à contrôleurs distincts acceptés (S9).
+   - `readings_differ` (D2) → verdict déterminé : `reject` par C5 item 5 ; positif : même composite sans paramètre couvrant la source → `ok`.
+6. **S4 positif** : trace où un enfant reçoit une valeur possédée par le composite, puis le créateur sort de sa frame (`exitFrameC`) pendant que l'enfant vit ; `KInvC` et `ConcurrentWF` après le pas.
+7. **S16** : `slot_transfer_breaks_control` conservé ; docstring citant C22.3 et S16.
+
+## Règles Lean
+
+Inchangées : aucun `sorry`, `admit`, `axiom`, `native_decide`, `noncomputable` ; axiomes `{propext, Quot.sound}`, toute dépendance héritée à `Classical.choice` signalée et non contournée ; `lake build` sans nouvel avertissement ; `grep` d'`AGENTS.md` vide ; docstrings en anglais citant la source sans la reformuler ; aucun énoncé ni définition affaibli pour faire passer une preuve ; Conventional Commits sans `Co-Authored-By`.
+
+## Rapport
+
+`formal/reports/spec2-m1-wc3.md`, en français : définitions modifiées (avant/après, clause WC3) ; différences `SpawnPre`/`EnterPre` ; théorèmes re-prouvés, modifiés, nouveaux, ouverts avec état du but ; contre-exemples devenus rejets ; problèmes de WC3 trouvés (passage, exemple) ; décisions de représentation prises (dont `KC (R : Type)`) ; écarts avec la Spec 1.
+
+## Ordre
+
+Lecture de WC3 en entier et des passages Spec 1 touchés (§§43, 46, 51, 56, 60, 63, 65, 68.2, 72–73, 78.2) → `Sync` → `SyncLib` → `Frames` → `Transfer` → `Context` → re-vérification 1–4 → 5–7 → rapport. Commit à chaque module compilant.
+</pasted_content id="c7c6">
+
+---
+
+<pasted_content id="c7c6">
+# Brief Claude Code — ERN Spec 2, jalon 1 : passe corrective WC3.1
+
+## Cadre
+
+Branche `formal/spec2-m1`, telle qu'elle est (dernier commit `11baa0d`). Formalisation exploratoire, jamais mergée. Pas de push sur `main`, pas de PR.
+
+Documents joints, **non commités** : `ERN_Concurrency_Model_WC3_corrige.md` (WC3) et `WC3.1 — Proposed Targeted Corrections` (amendements). WC3.1 l'emporte sur WC3 pour les clauses qu'elle modifie : C13, C21, C22.3, C15.3, C18.3, C5.3. Tout le reste de WC3 est inchangé.
+
+Ne modifie ni `specs/`, ni `AGENTS.md`, ni `CLAUDE.md`, ni `formal/DESIGN.md`. Mêmes règles de source qu'aux passes précédentes : la Spec 1 l'emporte ; silence, ambiguïté ou contradiction → arrêt et rapport avec exemple, jamais d'interprétation.
+
+## Objet
+
+Fermer T4 : préservation de `SyncInv` **complet** (unicité des contrôleurs et initialisation comprises) et de `GrantDiscipline` sur **toutes** les traces encapsulées, `transfer` et `spawn` par valeur inclus. Une preuve restreinte aux traces sans `transfer` ou sans `spawnVal` ne décharge pas l'obligation (WC3.1, « Formalization coverage »).
+
+## Modifications de définitions
+
+| Module | Changement | Source |
+|---|---|---|
+| `SyncLib.lean` | `NewMutexPre` : ajouter `initM : ∀ l ∈ footprint s.P (mutexOf s g), I l = .init` ; les feuilles structurelles de `M` seulement, pas le stockage possédé | WC3.1 C13 |
+| `SyncLib.lean` | `SyncInv` : ajouter `slotInit` (toutes les feuilles structurelles du holder de `guarded` sont `Init`) et `ctlInit` (`ControlOf(e)` est `Init`), sur les entrées vivantes | WC3.1 C21 |
+| `SyncLib.lean` | `Encap`, cas `.kernel _ (.transfer src _)` : exclure `src = slot`, `src` partie structurelle de `slot`, `src = ctl`, pour chaque entrée vivante | WC3.1 C22.3 |
+| `SyncLib.lean` | `Label` : ajouter `.spawnVal c ps ls vs` ; `LStep` : constructeur sur `SpawnValStep` ; `Encap` pour `.spawnVal` : même exclusion que `transfer` pour chaque source de `vs` | WC3.1 « Formalization coverage » ; C5 |
+| `SyncLib.lean` | `ResetLockOk` : vérifier contre C18.3 révisé ; docstring | WC3.1 C18.3 |
+| `Sync.lean` | `DeriveSyncPre` : inchangée ; docstring de `authorized` citant C15.3 révisé (« authorized exclusively through `K_C.SyncAuthorized` ») | WC3.1 C15.3 |
+| `Transfer.lean` | `paramsAtYield` : docstring citant C5.3 révisé | WC3.1 C5.3 |
+| `SyncPreserve.lean` | Retirer `SyncCore`, `Label.NotTransfer`, `lstep_ctlUnique`, `lstep_syncState`, `trace_syncState`, `trace_inv_noTransfer`, `encapsulated_inv_noTransfer` si les théorèmes complets ci-dessous les rendent inutiles ; sinon les garder comme lemmes et le dire | — |
+
+Aucune autre définition ne change. Si une modification ci-dessus force un changement d'énoncé ailleurs, le rapporter.
+
+## Théorèmes
+
+1. **T4 complet** : `lstep_preserves` conclut `SyncInv ∧ GrantDiscipline` pour **tout** pas sous `Encap`, `transfer` et `spawnVal` compris ; `trace_preserves`, `trace_inv`, `encapsulated_inv` avec `SyncInv` complet ; `init_inv` re-prouvé.
+2. **Inductivité de l'initialisation** : pour chaque opération noyau O1–O16 admise par `Encap`, et pour `spawn`, `spawnVal`, `terminate`, `join`, `deriveSync`, `acquire`, `unlock`, `resetLock`, prouver la préservation de `slotInit` et `ctlInit` sur les entrées vivantes. **Si une opération admise par `Encap` les casse** (par exemple `endUse` ou `write`-dérivée sur `ctl`, si le noyau admet l'opération sur une partie stricte), **ne pas ajouter de clause à `Encap`** : produire le contre-exemple comme théorème, nommer la règle de la Spec 1 qui habilite le pas, et proposer dans le rapport la clause minimale de C22 qui l'exclurait. Même règle pour l'unicité des contrôleurs.
+3. **T2** : `lstep_kInvCA` étendu au cas `spawnVal` (via `spawnVal_preservesC`).
+4. **T1, T5** : énoncés inchangés ; si une définition modifiée les touche, re-prouver et rapporter.
+5. **W1 → rejets, avec jumeaux** :
+   - `newMutex_uninit_rejected` : la configuration de `transfer_merges_controllers` échoue dès `newMutex(3)` par `initM` ;
+   - `transfer_into_live_mutex_rejected` : sous `SyncInv`, un `transfer(M, M′)` vers un `M′` portant une entrée vivante est rejeté par §63.3 (`slot′` `Init`) ;
+   - jumeau positif : `transfer(M, M′)` vers un `M′` sans entrée (`traceA`, `traceB` existantes) → `ok`, `SyncInv` complet préservé ;
+   - `transfer_merges_controllers` : supprimé ou conservé comme preuve de la négation de son ancien énoncé sous `SyncInv` étendu, au choix, dit dans le rapport.
+6. **S16 étendu** : `transfer(ctl, Z)` depuis un mutex vivant → `ok` noyau, exclu par C22.3 révisé, et sans l'exclusion `ctlInit` est faux.
+7. Traces existantes : adapter les états initiaux à `initM` (`mutex_trace`, `EncapTraces.est`, `distinct_controllers_ok`, `s4_*` si concernés) sans changer leurs verdicts ; tout verdict qui changerait est rapporté.
+
+## Règles Lean
+
+Inchangées : aucun `sorry`, `admit`, `axiom`, `native_decide`, `noncomputable` ; axiomes `{propext, Quot.sound}` ; `lake build` sans nouvel avertissement ; `grep` d'`AGENTS.md` vide ; docstrings en anglais citant la source (WC3.1 pour les clauses amendées) ; aucun énoncé ni définition affaibli pour faire passer une preuve ; Conventional Commits sans `Co-Authored-By`. Si les changements de signature imposent un commit groupé, le dire comme à la passe précédente.
+
+## Rapport
+
+`formal/reports/spec2-m1-wc3-1.md`, en français : définitions modifiées (avant/après, clause) ; état de T4 complet ; tableau d'inductivité de l'initialisation par opération, avec les brèches éventuelles et la clause C22 proposée ; rejets et jumeaux ; théorèmes inchangés, re-prouvés, ouverts avec état du but ; problèmes de WC3.1 ; décisions de représentation ; écarts avec la Spec 1.
+
+## Ordre
+
+Lecture de WC3.1 et des passages Spec 1 touchés (§§40, 49.2, 62, 63.3, 65.2, 69, 70, 76.5) → `SyncLib` (définitions, `Label`, `LStep`) → `Sync`, `Transfer` (docstrings) → théorème 2 (inductivité, opération par opération) → théorème 1 → 3–4 → 5–7 → rapport.
+</pasted_content id="c7c6">
+
+```
+
+<pasted_content id="c7c6">
+# ERN — Concurrency Model Specification v0
+## WC3.1 — Targeted Corrections
+
+**Status:** Non-normative design candidate — pending validation and exploratory formalization.
+
+**Basis:** Working Candidate 3 and formalization report `spec2-m1-wc3.md`.
+
+These corrections replace only the corresponding provisions of WC3. All unaffected provisions remain unchanged.
+
+### C13 — `newMutex` Construction
+
+Add a construction precondition:
+
+Every structural leaf in `footprint(M)` MUST be `Init` before `newMutex` succeeds. Construction does not implicitly initialize these leaves.
+
+Storage merely owned by `M`, but not structurally included in `footprint(M)`, is not subject to this requirement solely by virtue of ownership.
+
+### C21 — `SyncInv`
+
+Add an initialization invariant:
+
+For every live synchronization entry, all structural leaves of its `guarded`-holding field `slot`, and its associated controller leaf `ctl`, MUST remain `Init`.
+
+Preservation of this property by every permitted transition is a proof obligation, not a transition precondition that may be assumed without justification.
+
+### C22.3 — Encapsulation of Transfers
+
+Replace the transfer restriction with:
+
+While a synchronization entry is live, the safe mutex abstraction MUST prevent an independent `transfer` whose source is:
+
+1. The field `slot` holding `guarded`;
+2. Any strict structural subplace of `slot`;
+3. The associated controller leaf `ctl`.
+
+A transfer of the complete mutex value `M`, or of a structurally enclosing value, remains eligible for O4 under its own unchanged preconditions.
+
+Preservation of `SyncInv`, including controller uniqueness, controller association, and initialization, by such transfers is a proof obligation.
+
+This restriction belongs to the safe mutex abstraction. It does not modify the ordinary authorization rules or outcomes of O4.
+
+### C15.3 — Authorization of `deriveSync`
+
+Clarify:
+
+`deriveSync` is authorized exclusively through `K_C.SyncAuthorized`.
+
+Neither ordinary holder-based alternative of `ExercisableAt` independently authorizes `deriveSync`.
+
+Ordinary derivation through O1 remains available under its unchanged preconditions.
+
+The source activity, own-mode, origin-chain, effective-mode, and exclusivity requirements specified elsewhere in C15 remain unchanged.
+
+### C18.3 — `resetLock` Controller Validity
+
+Clarify:
+
+The associated `ControlOf(entry)` MUST resolve to an existing usable controller leaf satisfying the controller-validity requirements of C21.
+
+This condition does not replace the separate recovery-authority and active-descendant requirements.
+
+### C5.3 — Value Transmission and Parameter Yielding
+
+Clarify:
+
+At the beginning of the parameter-yield phase, every transmitted authority MUST satisfy the active, derived, and creator-frame-held requirements corresponding to Spec 1 §72.1, evaluated in the state produced by the preceding value transfers.
+
+All other conditions of the composite by-value `spawn` remain unchanged.
+
+### Interface and Realization Obligations
+
+The following provisions remain explicit interface or realization obligations, rather than properties claimed to be established by the abstract authority state `S_C` alone:
+
+- C13.3: Non-falsifiability through the safe abstraction interface.
+- C13.6: Enforcement of the controller synchronization protocol.
+- C13.10: Correspondence with the initial physical controller state.
+- C22.4: Exclusion of unauthorized ordinary writes to the physical controller.
+- C17 and C18: Concrete synchronization-state updates and their atomic realization.
+
+### Formalization Coverage
+
+The combined trace model MUST include the by-value `spawn` transition in `LStep`.
+
+The corrective verification must establish preservation of the complete `SyncInv` and `GrantDiscipline` for every transition admitted by the encapsulation contract, including `transfer` and by-value `spawn`.
+
+In particular, the initialization invariant must be checked against every applicable inherited kernel operation O1–O16 and every new candidate transition.
+
+If a permitted operation violates the invariant, the formalization MUST report a concrete counterexample, identify the enabling rule, and leave the corresponding corrective design decision open. No additional encapsulation restriction may be introduced silently.
+
+A proof restricted to traces without `transfer`, without by-value `spawn`, or to a weakened synchronization invariant does not discharge this obligation.
+
+---
+
+**End of WC3.1 — Targeted Corrections.**
+
+**No normative stabilization is proposed.**
+</pasted_content id="c7c6">
+
+```
+
+---
+
+@"/Users/guygouri/Downloads/ERN_Concurrency_Model_WC4.md"
+
+<pasted_content id="c7c6">
+# Brief Claude Code — ERN Spec 2, jalon 1 : clôture sur WC4
+
+## Cadre
+
+Branche `formal/spec2-m1`, telle qu'elle est (dernier commit `31044c5`). Formalisation exploratoire, jamais mergée. Pas de push sur `main`, pas de PR.
+
+Document joint, **non commité** : `ERN_Concurrency_Model_WC4.md`. Il remplace WC3 et WC3.1 ; c'est désormais la seule candidate à citer. Ne modifie ni `specs/`, ni `AGENTS.md`, ni `CLAUDE.md`, ni `formal/DESIGN.md`. Mêmes règles de source qu'aux passes précédentes.
+
+## Objet
+
+C22.5 est maintenant une clause de la candidate. Intégrer la restriction `endUse` au contrat d'encapsulation formel, supprimer l'hypothèse provisoire, re-vérifier T4 sur `EncapsulatedTrace` seule, et produire l'index consolidé du jalon 1.
+
+## Modifications
+
+| Module | Changement | Source |
+|---|---|---|
+| `SyncLib.lean` | `Encap`, nouveau cas `.kernel _ (.endUse p)` : pour toute entrée vivante `e`, `p ≠ ControlOf(e)` et `p` n'est pas une partie structurelle stricte de `slotOf(e)` | WC4 C22.5 |
+| `SyncInit.lean` | Supprimer `EndUseExcl` comme prédicat séparé et `ProposedTrace` ; une seule relation de traces, `EncapsulatedTrace` | WC4 C22, C23 |
+| `SyncInit.lean`, `Reachable.lean` | `lstep_preserves` sans l'hypothèse `hx` ; `trace_inv`, `trace_preserves`, `encapsulated_inv` sur `EncapsulatedTrace` | WC4 C23 |
+| Tous | Docstrings : références WC3/WC3.1 → WC4, numéros vérifiés un à un (notamment C13.10, C21.7, C22.3, C22.5, C15.3, C18.3, C5.3) | — |
+
+Aucune autre définition ne change. Si l'intégration force un changement d'énoncé ailleurs, le rapporter.
+
+## Théorèmes
+
+1. **T4** : `lstep_preserves`, `trace_inv`, `trace_preserves`, `encapsulated_inv`, `init_inv` re-prouvés sous `Encap` seule, `transfer` et `spawnVal` compris.
+2. **T1, T2, T5, T6** : énoncés inchangés ; re-compilés ; tout changement de dépendance rapporté.
+3. **Contre-exemples `endUse` → exclusions, avec jumeaux** :
+   - `endUse_ctl_breaks_ctlInit` → `endUse_ctl_excluded` (S17a) : le pas est `ok` au noyau et `Encap` le refuse ; conserver la preuve que sans l'exclusion `ctlInit` est faux ;
+   - `endUse_slotPart_breaks_slotInit` → `endUse_slotPart_excluded` (S17b), même forme ;
+   - `endUse_then_transfer_merges` → preuve que la trace n'est plus une `EncapsulatedTrace` ;
+   - jumeaux positifs : `endUse(M)` et `endUse(slot)` admis par `Encap`, l'entrée n'est plus vivante après le pas, `SyncInv` complet tient (`endUse_mutex_kills_entry`, `endUse_slot_kills_entry`).
+4. **S18** : `transfer_into_live_mutex_rejected` conservé, docstring citant S18.
+5. **Traces existantes** : `traceA`, `traceB`, `mutex_trace`, `s4_*`, `distinct_controllers_ok` redeviennent des `EncapsulatedTrace` sans changement de verdict ; tout verdict qui changerait est rapporté.
+
+## Règles Lean
+
+Inchangées : aucun `sorry`, `admit`, `axiom`, `native_decide`, `noncomputable` ; axiomes `{propext, Quot.sound}` ; `lake build` sans nouvel avertissement ; `grep` d'`AGENTS.md` vide ; docstrings en anglais citant WC4 ou la Spec 1 sans les reformuler ; aucun énoncé ni définition affaibli ; Conventional Commits sans `Co-Authored-By`.
+
+## Rapport
+
+`formal/reports/spec2-m1-close.md`, en français, en deux parties.
+
+**Partie A — passe de clôture** : définitions modifiées ; état de T4 ; exclusions et jumeaux ; théorèmes inchangés ; problèmes de WC4 trouvés ; écarts avec la Spec 1.
+
+**Partie B — index consolidé du jalon 1**, destiné à l'archivage hors dépôt et à la reconstruction de référence :
+
+1. modules de `formal/Ern/Concurrency/` avec, pour chacun, les définitions principales et la clause WC4 ou Spec 1 qu'elles encodent ;
+2. table des théorèmes T1–T6 : nom Lean, énoncé en une ligne, hypothèses (y compris `Encap` et `DDSound` quand elles y sont), module et ligne ;
+3. table des contre-exemples et exclusions avec leurs jumeaux positifs, et la clause qui fonde chaque verdict ;
+4. décisions de représentation prises au cours du jalon, cumulées (dont `KC (R : Type)`, `ControlOf` positionnel, `mutexOf`, `TransferExcl`, composite par phases, `lstep_preserves` sous `KInvCA`) ;
+5. lemmes de la Spec 1 copiés ou adaptés, avec leur origine, pour qu'ils puissent être généralisés à la reconstruction ;
+6. obligations ouvertes OB-C01 à OB-C16 avec, pour chacune, ce que le jalon 1 en dit ou ne dit pas ;
+7. audit final des axiomes.
+
+## Ordre
+
+`SyncLib` (`Encap`) → `SyncInit`, `Reachable` → re-vérification T4 → exclusions et jumeaux → traces → docstrings → rapport A puis B. Commit à chaque étape compilant.
+</pasted_content id="c7c6">
+
+---
+
+@"/Users/guygouri/Downloads/ERN_WC4.md"
+
+<pasted_content id="c7c6">
+# Brief Claude Code — ERN Spec 2, jalon 2 : raffinement du modèle concurrent abstrait
+
+## Cadre
+
+Branche `formal/spec2-m2`, créée depuis la tête de `formal/spec2-m1` (`d77f7a6`). Formalisation exploratoire, jamais mergée. Pas de push sur `main`, pas de PR.
+
+Document joint, **non commité** : `ERN_Concurrency_Model_WC4.md` (WC4 corrigée). Ne modifie ni `specs/`, ni `AGENTS.md`, ni `CLAUDE.md`, ni `formal/DESIGN.md`. Ne modifie aucune définition ni aucun énoncé du jalon 1 ; si le raffinement en exige un, arrête-toi et rapporte.
+
+Sources de sémantique : Spec 1 v0.1, Parties II–III (§§8–20) et XVII (§82) en entier, plus §§39–45, 50, 57 ; WC4 C2, C24, C25, OB-C05, OB-C12. Mêmes règles qu'au jalon 1 : la Spec 1 l'emporte ; silence, ambiguïté ou contradiction → arrêt et rapport avec exemple ; jamais d'interprétation.
+
+À lire avant de coder : `formal/Ern/MemoryModel/Machine.lean`, `Refinement.lean`, `RefinementArena.lean` en entier ; `formal/DESIGN.md` (Architecture, Théorèmes principaux, Ordre de construction).
+
+## Ce que ce jalon prouve, et ce qu'il ne prouve pas
+
+Les contextes s'entrelacent **au grain des pas abstraits** : la réalisation d'un pas d'un contexte est une séquence de pas bruts de la machine mémoire, exécutée sans interférence des autres contextes. Ce choix est dit tel quel dans chaque énoncé et dans le rapport.
+
+Hors périmètre, par construction : accès concurrents aux octets, atomicité physique, ordres mémoire, `happens-before`, absence générale de data races (OB-C01 à OB-C06), réalisation du mot de verrou (OB-C05). Aucune région unsafe n'est modélisée : la décision de `DESIGN.md` sur la forme des contrats unsafe sous concurrence n'est pas requise ici, à dire dans le rapport.
+
+## Définitions
+
+| Module | Contenu | Source |
+|---|---|---|
+| `Concurrency/Repr.lean` | `ReprC s mem := Repr s.flat mem`, `Repr` étant celle de `Refinement.lean`. Lemme préalable `repr_frames_congr` : `Repr` ne dépend ni de l'ordre des frames de `flat` ni du contexte exécutant (§39 : les frames n'ont pas de représentation ; §9 : allocations plates). Si `Repr` dépend de `F` autrement que par appartenance, arrête-toi et rapporte | WC4 C2, C25 ; Spec 1 §§9, 39, 82.1 |
+| `Concurrency/Realize.lean` | Réalisation de chaque étiquette de `LStep` : O1–O16 exécutées par `c` → la réalisation de la Spec 1 appliquée à `s.view c`, transportée sur `s.flat` ; `spawn` → réalisation de la création des locaux d'O6 ; `exitFrameC`, `terminate` → réalisation d'O7 (le reparentage n'a pas d'effet mémoire) ; `join`, `deriveSync`, cession → réalisation vide ; composite par valeur → concaténation : création, réalisations d'O4 par transfert dans l'ordre déclaré, cession vide ; `newMutex`, `acquire`, `unlock`, `resetLock` → **réalisation vide** (registre seulement), docstring citant OB-C05 | WC4 C4–C8, C13–C18 ; Spec 1 §82.2–82.5 |
+| `Concurrency/NonConflict.lean` | `OrdinaryCrossContextNonConflict` (voir théorème R4) | Spec 1 §§43, 50, 54, 82.8 |
+
+## Théorèmes
+
+1. **R1 — réalisation pas à pas.** Pour tout `LStep k L lbl (s, reg) (s′, reg′)` et tout `mem` avec `ReprC s mem`, la réalisation de `lbl` est une séquence de pas bruts `ok` de `mem` à un `mem′` tel que `ReprC s′ mem′`, sous `LayoutWF`, `KInvCA s`, `DDSound k`, et les obligations paramétriques de la Spec 1 (§§15–16, §20.3) **explicites** en hypothèses, jamais remplacées par `True`.
+2. **R2 — simulation.** Toute `EncapsulatedTrace` depuis l'état initial se réalise par une exécution brute `ok` de la machine mémoire préservant `ReprC`, paramètres fixés une fois par exécution comme dans `Refinement.lean`.
+3. **R3 — sûreté concrète.** Corollaire de R2 sur le fragment couvert : aucun pas brut de la réalisation n'est `ub`. Énoncé qui nomme le fragment : entrelacement au grain des pas abstraits.
+4. **R4 — `OrdinaryCrossContextNonConflict`.** Pour tout état atteignable (`KInvC`), tous contextes vivants `c ≠ c′`, toutes autorités `a`, `b`, tous ensembles de feuilles `L`, `L′` : si `write3` est habilitée dans `s.view c` par `a` sur `L` et `read3` ou `write3` habilitée dans `s.view c′` par `b` sur `L′`, alors toute feuille de `L ∩ L′` est `K.SharedMutable`. Les feuilles `SharedMutable` sont **exclues** de la conclusion, non de l'hypothèse : O9 admet une lecture ordinaire sur une feuille `SharedMutable` pendant un `writeShared` d'un autre contexte, et c'est voulu (OB-C03, OB-C05). La preuve doit traiter `a = b` par la clause récursive de `ExercisableAt` (§43) : une autorité tenue par une place n'est exerçable par deux contextes que si leurs frames ont `Modify` sur les feuilles de cette place, ce qui ramène à la même question un cran plus bas ; la chaîne est finie par `NoOrphan` (§54) et se termine par une frame, qui n'appartient qu'à un contexte. Pour `a ≠ b` : I1 (§50) et le calcul des modes effectifs (§43.3–4). Si une hypothèse manque, rapporter l'état du but et le contre-exemple ; ne pas renforcer l'énoncé en silence.
+5. **R4′ — corollaire d'octets.** Sous `LayoutWF` et `ReprC`, les octets réalisant `L \ SharedMutable` et `L′ \ SharedMutable` sont disjoints (§82.8, §23).
+6. **R5 — conservativité des réalisations.** Sur un état à un contexte, la réalisation d'une opération héritée est celle de `Refinement.lean` pour la même opération sur `s.toS3`.
+
+Dans le rapport, après R4, écrire la frontière : R4 est l'absence de conflit au sens de l'adjacence dans un entrelacement de pas abstraits ; ce qui reste pour OB-C06 est que chaque ordre imposé par la machine d'autorités entre deux accès conflictuels (libération d'un grant avant sa ré-acquisition, `terminate` avant `join`) soit réalisé par une relation d'ordre mémoire : `LockOrder` (OB-C04) et l'ordre de complétion (OB-C11). Ne pas appeler R4 une preuve d'absence de data races.
+
+## Règles Lean
+
+Inchangées : aucun `sorry`, `admit`, `axiom`, `native_decide`, `noncomputable` ; axiomes `{propext, Quot.sound}` — si un théorème de `Refinement.lean` réutilisé dépend de `Classical.choice`, arrête-toi après l'audit et rapporte ; `lake build` sans nouvel avertissement ; `grep` d'`AGENTS.md` vide ; docstrings en anglais citant WC4 ou la Spec 1 sans les reformuler ; aucun énoncé ni définition affaibli ; Conventional Commits sans `Co-Authored-By`.
+
+## Rapport
+
+`formal/reports/spec2-m2.md`, en français : audit des axiomes des théorèmes de `Refinement.lean` réutilisés ; définitions ; R1–R5 prouvés, réfutés ou ouverts avec état du but ; le paragraphe de frontière après R4 ; obligations paramétriques laissées en hypothèses ; problèmes de WC4 ou de la Spec 1 trouvés (passage, exemple) ; décisions de représentation ; écarts avec la Spec 1 ; ce que le jalon 2 dit de OB-C05 et OB-C12.
+
+## Ordre
+
+Lecture → audit des axiomes de `Refinement.lean` → `Repr.lean` (`repr_frames_congr`) → `Realize.lean`, R1 par étiquette, opérations héritées d'abord, puis `spawn`, `exitFrameC`, `terminate`, puis composite, puis étiquettes à réalisation vide → R5 → R2, R3 → `NonConflict.lean`, R4, R4′ → rapport. Commit à chaque module compilant.
+</pasted_content id="c7c6">
