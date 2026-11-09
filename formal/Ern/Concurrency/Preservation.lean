@@ -1890,4 +1890,13 @@ the root `Modify` authority 0 is `ok`. -/
 theorem deriveSync_modify_ok :
     DeriveSyncStep kcTrue () wd 0 0 (.ok (deriveSyncEff wd 0 0)) := ⟨by decide, .ok (by decide)⟩
 
+/-- WC3 C15.1: the statement of the milestone-1 counterexample `deriveSync_breaks_i2` is refuted,
+for every contract `K_C` and registry: an `ok` step of `deriveSync` from a state satisfying
+`KInvCA` keeps `I2` (Spec 1 §51). -/
+theorem deriveSync_breaks_i2_false {R : Type} (c g : Nat) :
+    ¬ ∃ (kc : KC R) (r : R) (s s' : SC), KInvCA s ∧ DeriveSyncStep kc r s c g (.ok s') ∧
+      ¬ I2 s'.flat := by
+  rintro ⟨kc, r, s, s', hk, h, hi⟩
+  exact hi (deriveSync_preservesC hk h).1.2.1.1.2.1
+
 end Ern.Concurrency
