@@ -119,8 +119,8 @@ def CrossContextConflictOnlyShared (k : K) (s : SC) : Prop :=
 /-- `CrossContextConflictOnlyShared` holds in every state (`corpus-spec2-m3.md` §3; Spec 1 §68.1,
 O11.1: every leaf of a `writeShared` region is `K.SharedMutable`). With R4
 (`Ern.Concurrency.r4_nonConflict`), the only cross-context conflict that the machine enables, at
-the grain of abstract steps, goes through `writeShared` on a `SharedMutable` leaf. This is not a proof of absence of data races (WC4
-OB-C01–OB-C06). -/
+the grain of abstract steps, goes through `writeShared` on a `SharedMutable` leaf. This is not a
+proof of absence of data races (WC4 OB-C01–OB-C06). -/
 theorem crossContextConflictOnlyShared (k : K) (s : SC) : CrossContextConflictOnlyShared k s :=
   fun _ _ _ _ _ _ _ _ _ hw _ l hl _ => hw.shared l hl
 
