@@ -1,0 +1,159 @@
+<pasted_content id="c7c6">
+# Brief Claude Code — ERN Spec 2, jalon 1 : passe corrective WC3.1
+
+## Cadre
+
+Branche `formal/spec2-m1`, telle qu'elle est (dernier commit `11baa0d`). Formalisation exploratoire, jamais mergée. Pas de push sur `main`, pas de PR.
+
+Documents joints, **non commités** : `ERN_Concurrency_Model_WC3_corrige.md` (WC3) et `WC3.1 — Proposed Targeted Corrections` (amendements). WC3.1 l'emporte sur WC3 pour les clauses qu'elle modifie : C13, C21, C22.3, C15.3, C18.3, C5.3. Tout le reste de WC3 est inchangé.
+
+Ne modifie ni `specs/`, ni `AGENTS.md`, ni `CLAUDE.md`, ni `formal/DESIGN.md`. Mêmes règles de source qu'aux passes précédentes : la Spec 1 l'emporte ; silence, ambiguïté ou contradiction → arrêt et rapport avec exemple, jamais d'interprétation.
+
+## Objet
+
+Fermer T4 : préservation de `SyncInv` **complet** (unicité des contrôleurs et initialisation comprises) et de `GrantDiscipline` sur **toutes** les traces encapsulées, `transfer` et `spawn` par valeur inclus. Une preuve restreinte aux traces sans `transfer` ou sans `spawnVal` ne décharge pas l'obligation (WC3.1, « Formalization coverage »).
+
+## Modifications de définitions
+
+| Module | Changement | Source |
+|---|---|---|
+| `SyncLib.lean` | `NewMutexPre` : ajouter `initM : ∀ l ∈ footprint s.P (mutexOf s g), I l = .init` ; les feuilles structurelles de `M` seulement, pas le stockage possédé | WC3.1 C13 |
+| `SyncLib.lean` | `SyncInv` : ajouter `slotInit` (toutes les feuilles structurelles du holder de `guarded` sont `Init`) et `ctlInit` (`ControlOf(e)` est `Init`), sur les entrées vivantes | WC3.1 C21 |
+| `SyncLib.lean` | `Encap`, cas `.kernel _ (.transfer src _)` : exclure `src = slot`, `src` partie structurelle de `slot`, `src = ctl`, pour chaque entrée vivante | WC3.1 C22.3 |
+| `SyncLib.lean` | `Label` : ajouter `.spawnVal c ps ls vs` ; `LStep` : constructeur sur `SpawnValStep` ; `Encap` pour `.spawnVal` : même exclusion que `transfer` pour chaque source de `vs` | WC3.1 « Formalization coverage » ; C5 |
+| `SyncLib.lean` | `ResetLockOk` : vérifier contre C18.3 révisé ; docstring | WC3.1 C18.3 |
+| `Sync.lean` | `DeriveSyncPre` : inchangée ; docstring de `authorized` citant C15.3 révisé (« authorized exclusively through `K_C.SyncAuthorized` ») | WC3.1 C15.3 |
+| `Transfer.lean` | `paramsAtYield` : docstring citant C5.3 révisé | WC3.1 C5.3 |
+| `SyncPreserve.lean` | Retirer `SyncCore`, `Label.NotTransfer`, `lstep_ctlUnique`, `lstep_syncState`, `trace_syncState`, `trace_inv_noTransfer`, `encapsulated_inv_noTransfer` si les théorèmes complets ci-dessous les rendent inutiles ; sinon les garder comme lemmes et le dire | — |
+
+Aucune autre définition ne change. Si une modification ci-dessus force un changement d'énoncé ailleurs, le rapporter.
+
+## Théorèmes
+
+1. **T4 complet** : `lstep_preserves` conclut `SyncInv ∧ GrantDiscipline` pour **tout** pas sous `Encap`, `transfer` et `spawnVal` compris ; `trace_preserves`, `trace_inv`, `encapsulated_inv` avec `SyncInv` complet ; `init_inv` re-prouvé.
+2. **Inductivité de l'initialisation** : pour chaque opération noyau O1–O16 admise par `Encap`, et pour `spawn`, `spawnVal`, `terminate`, `join`, `deriveSync`, `acquire`, `unlock`, `resetLock`, prouver la préservation de `slotInit` et `ctlInit` sur les entrées vivantes. **Si une opération admise par `Encap` les casse** (par exemple `endUse` ou `write`-dérivée sur `ctl`, si le noyau admet l'opération sur une partie stricte), **ne pas ajouter de clause à `Encap`** : produire le contre-exemple comme théorème, nommer la règle de la Spec 1 qui habilite le pas, et proposer dans le rapport la clause minimale de C22 qui l'exclurait. Même règle pour l'unicité des contrôleurs.
+3. **T2** : `lstep_kInvCA` étendu au cas `spawnVal` (via `spawnVal_preservesC`).
+4. **T1, T5** : énoncés inchangés ; si une définition modifiée les touche, re-prouver et rapporter.
+5. **W1 → rejets, avec jumeaux** :
+   - `newMutex_uninit_rejected` : la configuration de `transfer_merges_controllers` échoue dès `newMutex(3)` par `initM` ;
+   - `transfer_into_live_mutex_rejected` : sous `SyncInv`, un `transfer(M, M′)` vers un `M′` portant une entrée vivante est rejeté par §63.3 (`slot′` `Init`) ;
+   - jumeau positif : `transfer(M, M′)` vers un `M′` sans entrée (`traceA`, `traceB` existantes) → `ok`, `SyncInv` complet préservé ;
+   - `transfer_merges_controllers` : supprimé ou conservé comme preuve de la négation de son ancien énoncé sous `SyncInv` étendu, au choix, dit dans le rapport.
+6. **S16 étendu** : `transfer(ctl, Z)` depuis un mutex vivant → `ok` noyau, exclu par C22.3 révisé, et sans l'exclusion `ctlInit` est faux.
+7. Traces existantes : adapter les états initiaux à `initM` (`mutex_trace`, `EncapTraces.est`, `distinct_controllers_ok`, `s4_*` si concernés) sans changer leurs verdicts ; tout verdict qui changerait est rapporté.
+
+## Règles Lean
+
+Inchangées : aucun `sorry`, `admit`, `axiom`, `native_decide`, `noncomputable` ; axiomes `{propext, Quot.sound}` ; `lake build` sans nouvel avertissement ; `grep` d'`AGENTS.md` vide ; docstrings en anglais citant la source (WC3.1 pour les clauses amendées) ; aucun énoncé ni définition affaibli pour faire passer une preuve ; Conventional Commits sans `Co-Authored-By`. Si les changements de signature imposent un commit groupé, le dire comme à la passe précédente.
+
+## Rapport
+
+`formal/reports/spec2-m1-wc3-1.md`, en français : définitions modifiées (avant/après, clause) ; état de T4 complet ; tableau d'inductivité de l'initialisation par opération, avec les brèches éventuelles et la clause C22 proposée ; rejets et jumeaux ; théorèmes inchangés, re-prouvés, ouverts avec état du but ; problèmes de WC3.1 ; décisions de représentation ; écarts avec la Spec 1.
+
+## Ordre
+
+Lecture de WC3.1 et des passages Spec 1 touchés (§§40, 49.2, 62, 63.3, 65.2, 69, 70, 76.5) → `SyncLib` (définitions, `Label`, `LStep`) → `Sync`, `Transfer` (docstrings) → théorème 2 (inductivité, opération par opération) → théorème 1 → 3–4 → 5–7 → rapport.
+</pasted_content id="c7c6">
+
+```
+
+<pasted_content id="c7c6">
+# ERN — Concurrency Model Specification v0
+## WC3.1 — Targeted Corrections
+
+**Status:** Non-normative design candidate — pending validation and exploratory formalization.
+
+**Basis:** Working Candidate 3 and formalization report `spec2-m1-wc3.md`.
+
+These corrections replace only the corresponding provisions of WC3. All unaffected provisions remain unchanged.
+
+### C13 — `newMutex` Construction
+
+Add a construction precondition:
+
+Every structural leaf in `footprint(M)` MUST be `Init` before `newMutex` succeeds. Construction does not implicitly initialize these leaves.
+
+Storage merely owned by `M`, but not structurally included in `footprint(M)`, is not subject to this requirement solely by virtue of ownership.
+
+### C21 — `SyncInv`
+
+Add an initialization invariant:
+
+For every live synchronization entry, all structural leaves of its `guarded`-holding field `slot`, and its associated controller leaf `ctl`, MUST remain `Init`.
+
+Preservation of this property by every permitted transition is a proof obligation, not a transition precondition that may be assumed without justification.
+
+### C22.3 — Encapsulation of Transfers
+
+Replace the transfer restriction with:
+
+While a synchronization entry is live, the safe mutex abstraction MUST prevent an independent `transfer` whose source is:
+
+1. The field `slot` holding `guarded`;
+2. Any strict structural subplace of `slot`;
+3. The associated controller leaf `ctl`.
+
+A transfer of the complete mutex value `M`, or of a structurally enclosing value, remains eligible for O4 under its own unchanged preconditions.
+
+Preservation of `SyncInv`, including controller uniqueness, controller association, and initialization, by such transfers is a proof obligation.
+
+This restriction belongs to the safe mutex abstraction. It does not modify the ordinary authorization rules or outcomes of O4.
+
+### C15.3 — Authorization of `deriveSync`
+
+Clarify:
+
+`deriveSync` is authorized exclusively through `K_C.SyncAuthorized`.
+
+Neither ordinary holder-based alternative of `ExercisableAt` independently authorizes `deriveSync`.
+
+Ordinary derivation through O1 remains available under its unchanged preconditions.
+
+The source activity, own-mode, origin-chain, effective-mode, and exclusivity requirements specified elsewhere in C15 remain unchanged.
+
+### C18.3 — `resetLock` Controller Validity
+
+Clarify:
+
+The associated `ControlOf(entry)` MUST resolve to an existing usable controller leaf satisfying the controller-validity requirements of C21.
+
+This condition does not replace the separate recovery-authority and active-descendant requirements.
+
+### C5.3 — Value Transmission and Parameter Yielding
+
+Clarify:
+
+At the beginning of the parameter-yield phase, every transmitted authority MUST satisfy the active, derived, and creator-frame-held requirements corresponding to Spec 1 §72.1, evaluated in the state produced by the preceding value transfers.
+
+All other conditions of the composite by-value `spawn` remain unchanged.
+
+### Interface and Realization Obligations
+
+The following provisions remain explicit interface or realization obligations, rather than properties claimed to be established by the abstract authority state `S_C` alone:
+
+- C13.3: Non-falsifiability through the safe abstraction interface.
+- C13.6: Enforcement of the controller synchronization protocol.
+- C13.10: Correspondence with the initial physical controller state.
+- C22.4: Exclusion of unauthorized ordinary writes to the physical controller.
+- C17 and C18: Concrete synchronization-state updates and their atomic realization.
+
+### Formalization Coverage
+
+The combined trace model MUST include the by-value `spawn` transition in `LStep`.
+
+The corrective verification must establish preservation of the complete `SyncInv` and `GrantDiscipline` for every transition admitted by the encapsulation contract, including `transfer` and by-value `spawn`.
+
+In particular, the initialization invariant must be checked against every applicable inherited kernel operation O1–O16 and every new candidate transition.
+
+If a permitted operation violates the invariant, the formalization MUST report a concrete counterexample, identify the enabling rule, and leave the corresponding corrective design decision open. No additional encapsulation restriction may be introduced silently.
+
+A proof restricted to traces without `transfer`, without by-value `spawn`, or to a weakened synchronization invariant does not discharge this obligation.
+
+---
+
+**End of WC3.1 — Targeted Corrections.**
+
+**No normative stabilization is proposed.**
+</pasted_content id="c7c6">
+
+```
