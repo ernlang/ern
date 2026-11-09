@@ -1,7 +1,7 @@
 import Ern.Concurrency.Frames
 
 /-!
-# Sequential conservativity (WC2 C24)
+# Sequential conservativity (WC3 C24)
 
 On single-context states (`SC.Single`: one context, the initial one, live, without parent) whose
 frame structure satisfies `FramesC`:
@@ -24,7 +24,7 @@ open Ern.MemoryModel.Access
 
 /-! ## Lists -/
 
-/-- `parIn` of an element absent from the stack is `none` (WC2 C3). -/
+/-- `parIn` of an element absent from the stack is `none` (WC3 C3). -/
 theorem parIn_not_mem {par : Option Nat} {f : Nat} : ∀ {l : List Nat}, f ∉ l → parIn par f l = none
   | [], _ => rfl
   | a :: l, h => by
@@ -32,12 +32,12 @@ theorem parIn_not_mem {par : Option Nat} {f : Nat} : ∀ {l : List Nat}, f ∉ l
     simp only [parIn, ha, ↓reduceIte]
     exact parIn_not_mem fun hm => h (List.mem_cons_of_mem _ hm)
 
-/-- `parIn` ignores a head distinct from the frame (WC2 C3). -/
+/-- `parIn` ignores a head distinct from the frame (WC3 C3). -/
 theorem parIn_cons_ne {par : Option Nat} {f a : Nat} {l : List Nat} (h : a ≠ f) :
     parIn par f (a :: l) = parIn par f l := by simp [parIn, h]
 
 /-- In a strictly decreasing stack, the chain of `parIn` from a frame lists the frames below it
-(WC2 C3; Spec 1 §39). -/
+(WC3 C3; Spec 1 §39). -/
 theorem chain_parIn : ∀ {F : List Nat}, F.Pairwise (· > ·) → ∀ {f : Nat}, f ∈ F →
     chain (fun g => parIn none g F) f = (F.dropWhile (· != f)).tail
   | [], _, _, hf => absurd hf List.not_mem_nil
@@ -81,7 +81,7 @@ theorem dropWhile_ne_nil : ∀ {F : List Nat} {f : Nat}, f ∉ F → F.dropWhile
     simp only [List.dropWhile_cons, bne_iff_ne, ne_eq, e, not_false_eq_true, ↓reduceIte]
     exact dropWhile_ne_nil fun h => hf (List.mem_cons_of_mem _ h)
 
-/-- A filter rejecting every element is empty (WC2 C2). -/
+/-- A filter rejecting every element is empty (WC3 C2). -/
 theorem filter_nil_of {α : Type} {p : α → Bool} : ∀ {l : List α}, (∀ a ∈ l, p a = false) →
     l.filter p = []
   | [], _ => rfl
@@ -89,31 +89,31 @@ theorem filter_nil_of {α : Type} {p : α → Bool} : ∀ {l : List α}, (∀ a 
     rw [List.filter_cons, h a (List.mem_cons_self ..)]
     exact filter_nil_of fun b hb => h b (List.mem_cons_of_mem _ hb)
 
-/-! ## Single-context states (WC2 C24) -/
+/-! ## Single-context states (WC3 C24) -/
 
 section Single
 
 variable {s : SC}
 
-/-- The stack of the context of a single-context state (WC2 C24). -/
+/-- The stack of the context of a single-context state (WC3 C24). -/
 theorem single_C (hs : s.Single) : s.C = [⟨s.stk 0, .live, none⟩] := by
   obtain ⟨stk, hC⟩ := hs; rw [hC]; simp [SC.stk, hC]
 
-/-- The context of a single-context state is live (WC2 C24). -/
+/-- The context of a single-context state is live (WC3 C24). -/
 theorem single_live (hs : s.Single) : s.Live 0 := by
   rw [SC.Live, single_C hs]; simp [OptP]
 
-/-- The live frames of a single-context state are its stack (WC2 C24). -/
+/-- The live frames of a single-context state are its stack (WC3 C24). -/
 theorem single_frames (hs : s.Single) : s.frames = s.stk 0 := by
   have hC := single_C hs
   simp only [SC.frames, hC, List.length_singleton, List.range_one, List.flatMap_cons,
     List.flatMap_nil, List.append_nil]
 
-/-- The flat state of a single-context state is its projection (WC2 C24). -/
+/-- The flat state of a single-context state is its projection (WC3 C24). -/
 theorem single_flat (hs : s.Single) : s.flat = s.toS3 := by
   simp only [SC.flat, SC.toS3, single_frames hs]
 
-/-- The view of the context of a single-context state is its projection (WC2 C2, C24). -/
+/-- The view of the context of a single-context state is its projection (WC3 C2, C24). -/
 theorem single_view (hs : s.Single) : s.view 0 = s.toS3 := by
   simp only [SC.view, single_flat hs, single_frames hs, SC.toS3]
   congr 1
@@ -121,7 +121,7 @@ theorem single_view (hs : s.Single) : s.view 0 = s.toS3 := by
     filter_nil_of (fun f hf => by simpa using hf)
   rw [this, List.append_nil]
 
-/-- The parent relation of a single-context state follows its stack (WC2 C3, C24). -/
+/-- The parent relation of a single-context state follows its stack (WC3 C3, C24). -/
 theorem single_parC (hs : s.Single) (f : Nat) : s.parC f = parIn none f (s.stk 0) := by
   have hC := single_C hs
   have hp : s.ctxParent 0 = none := by simp [SC.ctxParent, hC]
@@ -135,7 +135,7 @@ theorem single_parC (hs : s.Single) (f : Nat) : s.parC f = parIn none f (s.stk 0
       simp [hf]
     simp [SC.parC, this, parIn_not_mem hf]
 
-/-- WC2 C24 ("sequential ancestry is recovered"), WC2 C3 ("on corresponding single-context
+/-- WC3 C24 ("sequential ancestry is recovered"), WC3 C3 ("on corresponding single-context
 states, it coincides exactly with Spec 1 §39"): on a single-context state with a strictly
 decreasing stack, `ancestorC` is `ancestor` of Spec 1 §39 on the stack. -/
 theorem single_ancestorC (hs : s.Single) (hd : (s.stk 0).Pairwise (· > ·)) (g f : Nat) :
@@ -156,7 +156,7 @@ theorem le_head_of_pairwise {h : Nat} {l : List Nat} (hd : (h :: l).Pairwise (·
   · exact Nat.le_refl _
   · exact Nat.le_of_lt ((List.pairwise_cons.1 hd).1 b hb)
 
-/-- A duplicate-free stack whose `parIn` links decrease is strictly decreasing (WC2 C3; Spec 1
+/-- A duplicate-free stack whose `parIn` links decrease is strictly decreasing (WC3 C3; Spec 1
 §49, last paragraph). -/
 theorem pairwise_of_parIn : ∀ {F : List Nat}, F.Nodup →
     (∀ f g, parIn none f F = some g → g < f) → F.Pairwise (· > ·)
@@ -176,7 +176,7 @@ theorem pairwise_of_parIn : ∀ {F : List Nat}, F.Nodup →
       intro b hb
       exact Nat.lt_of_le_of_lt (le_head_of_pairwise ih b hb) hb'
 
-/-- The frame structure of a single-context state makes its stack strictly decreasing (WC2 C3;
+/-- The frame structure of a single-context state makes its stack strictly decreasing (WC3 C3;
 Spec 1 §49, last paragraph). -/
 theorem single_decreasing (hs : s.Single) (hfr : FramesC s) : (s.stk 0).Pairwise (· > ·) := by
   refine pairwise_of_parIn (SC.stk_nodup hfr.nodup 0) fun f g hg => ?_
@@ -186,7 +186,7 @@ theorem single_decreasing (hs : s.Single) (hfr : FramesC s) : (s.stk 0).Pairwise
   · rw [parIn_not_mem hf] at hg; cases hg
 
 /-- `EffAnchorOKC` of a single-context state is `EffAnchorOK` of its projection (Spec 1 §44;
-WC2 C24). -/
+WC3 C24). -/
 theorem single_effAnchorOKC (hs : s.Single) (hd : (s.stk 0).Pairwise (· > ·)) (x : Nat)
     (fd : Option Nat) : EffAnchorOKC s x fd ↔ EffAnchorOK s.toS3 x fd := by
   unfold EffAnchorOKC EffAnchorOK
@@ -205,7 +205,7 @@ theorem single_effAnchorOKC (hs : s.Single) (hd : (s.stk 0).Pairwise (· > ·)) 
       | some f => exact single_ancestorC hs hd g f
 
 /-- `AnchorOrderC` of a single-context state is `AnchorOrder` of its projection (Spec 1 §44;
-WC2 C24). -/
+WC3 C24). -/
 theorem single_anchorOrderC (hs : s.Single) (hd : (s.stk 0).Pairwise (· > ·)) :
     AnchorOrderC s ↔ AnchorOrder s.toS3 := by
   unfold AnchorOrderC AnchorOrder
@@ -214,7 +214,7 @@ theorem single_anchorOrderC (hs : s.Single) (hd : (s.stk 0).Pairwise (· > ·)) 
     single_effAnchorOKC hs hd x _
 
 /-- `AnchorOrderHeldC` of a single-context state is `AnchorOrderHeld` of its projection (Spec 1
-§44; WC2 C24). -/
+§44; WC3 C24). -/
 theorem single_anchorOrderHeldC (hs : s.Single) (hd : (s.stk 0).Pairwise (· > ·)) :
     AnchorOrderHeldC s ↔ AnchorOrderHeld s.toS3 := by
   unfold AnchorOrderHeldC AnchorOrderHeld
@@ -223,7 +223,7 @@ theorem single_anchorOrderHeldC (hs : s.Single) (hd : (s.stk 0).Pairwise (· > �
     forall_congr' fun y => imp_congr_right fun _ => imp_congr_right fun _ =>
       imp_congr_right fun _ => single_effAnchorOKC hs hd x _
 
-/-- WC2 C24 ("the applicable sequential invariants"): on a single-context state, the re-indexed
+/-- WC3 C24 ("the applicable sequential invariants"): on a single-context state, the re-indexed
 kernel invariant is the frame structure together with the kernel invariant of Spec 1 §57 on the
 projection. -/
 theorem single_kInvC (hs : s.Single) : KInvC s ↔ FramesC s ∧ KInv s.toS3 := by
@@ -245,26 +245,26 @@ theorem single_kInvC (hs : s.Single) : KInvC s ↔ FramesC s ∧ KInv s.toS3 := 
 
 /-! ### Results of operations -/
 
-/-- Writing back kernel components keeps a single-context state (WC2 C2, C24). -/
+/-- Writing back kernel components keeps a single-context state (WC3 C2, C24). -/
 theorem single_set (hs : s.Single) (t : S3) : (s.set t).Single := hs
 
-/-- Projection of a write-back whose stack is the stack of the context (WC2 C24). -/
+/-- Projection of a write-back whose stack is the stack of the context (WC3 C24). -/
 theorem toS3_set {t : S3} (hF : t.F = s.stk 0) : (s.set t).toS3 = t := by
   cases t; subst hF; rfl
 
-/-- The stack of context 0 after a write-back is unchanged (WC2 C2). -/
+/-- The stack of context 0 after a write-back is unchanged (WC3 C2). -/
 theorem stk_set (t : S3) (c : Nat) : (s.set t).stk c = s.stk c := rfl
 
 end Single
 
-/-! ## Inherited operations on single-context states (WC2 C24) -/
+/-! ## Inherited operations on single-context states (WC3 C24) -/
 
 section Ops
 
 variable {k : K} {s : SC}
 
 /-- An operation run on the view of the single context has the outcomes of Spec 1 on the
-projection when its `ok` outcomes keep the stack (WC2 C2, C24). -/
+projection when its `ok` outcomes keep the stack (WC3 C2, C24). -/
 theorem viewStep_single {R : S3 → Outcome3 S3 → Prop} (hs : s.Single)
     (hF : ∀ t', R s.toS3 (.ok t') → t'.F = s.toS3.F) :
     (∀ o, ViewStep R 0 s o → R s.toS3 (omap SC.toS3 o)) ∧
@@ -281,7 +281,7 @@ theorem viewStep_single {R : S3 → Outcome3 S3 → Prop} (hs : s.Single)
   rw [hv] at hR; rw [ho, back o₃ hR]; exact hR
 
 /-- A guarded operation of the single context has the outcomes of Spec 1 on the projection when
-its precondition is equivalent and its effect projects to the Spec 1 effect (WC2 C24). -/
+its precondition is equivalent and its effect projects to the Spec 1 effect (WC3 C24). -/
 theorem guarded_single {Pre Pre₃ : Prop} {e : SC} {e₃ : S3} (hs : s.Single) (hp : Pre ↔ Pre₃)
     (he : e.toS3 = e₃) :
     (∀ o, s.Live 0 ∧ Guarded Pre e o → Guarded Pre₃ e₃ (omap SC.toS3 o)) ∧
@@ -319,7 +319,7 @@ theorem viewOp_F {t t' : S3} {op : KernelOp} (hop : op.Step k t (.ok t'))
   | free => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hop; rfl
   | alloc => cases hop; rfl
 
-/-- `transfer` of the single context: preconditions (Spec 1 §63; WC2 C24). -/
+/-- `transfer` of the single context: preconditions (Spec 1 §63; WC3 C24). -/
 theorem transferPreC_single (hs : s.Single) (hd : (s.stk 0).Pairwise (· > ·)) {src dst : Nat} :
     TransferPreC k s 0 src dst ↔ TransferPre k s.toS3 src dst := by
   have hv := single_view hs
@@ -338,7 +338,7 @@ theorem transferPreC_single (hs : s.Single) (hd : (s.stk 0).Pairwise (· > ·)) 
     refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, hao.2 m, ?_, ?_, ?_⟩ <;>
       simp only [hv] <;> assumption
 
-/-- `depend` of the single context: preconditions (Spec 1 §64; WC2 C24). -/
+/-- `depend` of the single context: preconditions (Spec 1 §64; WC3 C24). -/
 theorem dependPreC_single (hs : s.Single) (hd : (s.stk 0).Pairwise (· > ·)) {q x : Nat} :
     DependPreC s 0 q x ↔ DependPre s.toS3 q x := by
   have hv := single_view hs
@@ -354,7 +354,7 @@ theorem dependPreC_single (hs : s.Single) (hd : (s.stk 0).Pairwise (· > ·)) {q
     · exact c
     · exact (hef _ _).2 d
 
-/-- `store` of the single context: preconditions (Spec 1 §65; WC2 C24). -/
+/-- `store` of the single context: preconditions (Spec 1 §65; WC3 C24). -/
 theorem storePreC_single (hs : s.Single) (hd : (s.stk 0).Pairwise (· > ·)) {a p : Nat} :
     StorePreC s 0 a p ↔ StorePre s.toS3 a p := by
   have hv := single_view hs
@@ -380,7 +380,7 @@ theorem storePreC_single (hs : s.Single) (hd : (s.stk 0).Pairwise (· > ·)) {a 
     · exact h
 
 /-- `enterFrame` of the single context keeps a single-context state and pushes the new frame
-(Spec 1 §72; WC2 C24). -/
+(Spec 1 §72; WC3 C24). -/
 theorem single_enterEffC (hs : s.Single) (ps : List Nat) (ls : LocalShape) :
     (enterEffC s 0 ps ls).Single ∧ (enterEffC s 0 ps ls).stk 0 = s.nF :: s.stk 0 := by
   have hC := single_C hs
@@ -388,7 +388,7 @@ theorem single_enterEffC (hs : s.Single) (ps : List Nat) (ls : LocalShape) :
     simp only [enterEffC, hC]; rfl
   exact ⟨⟨_, this⟩, by simp [SC.stk, this]⟩
 
-/-- Projection of `enterFrame` of the single context (Spec 1 §72; WC2 C24). -/
+/-- Projection of `enterFrame` of the single context (Spec 1 §72; WC3 C24). -/
 theorem toS3_enterEffC (hs : s.Single) (ps : List Nat) (ls : LocalShape) :
     (enterEffC s 0 ps ls).toS3 = enterEff s.toS3 ps ls := by
   have hstk := (single_enterEffC hs ps ls).2
@@ -397,7 +397,7 @@ theorem toS3_enterEffC (hs : s.Single) (ps : List Nat) (ls : LocalShape) :
   simp only [enterEffC, SC.set, hv]
   rfl
 
-/-- `enterFrame` of the single context: preconditions (Spec 1 §72; WC2 C24). -/
+/-- `enterFrame` of the single context: preconditions (Spec 1 §72; WC3 C24). -/
 theorem enterPreC_single (hs : s.Single) (hfr : FramesC s) {ps : List Nat} {ls : LocalShape} :
     EnterPreC s 0 ps ls ↔ EnterPre s.toS3 ps ls := by
   have hd := single_decreasing hs hfr
@@ -419,7 +419,7 @@ theorem enterPreC_single (hs : s.Single) (hfr : FramesC s) {ps : List Nat} {ls :
     refine ⟨a, by simp only [hv]; exact b, c, by rw [hv']; exact d, haoh.2 e⟩
 
 /-- `exitFrameC` of the single context keeps a single-context state, pops the stack, and
-reparents nothing (Spec 1 §73; WC2 C6, C24). -/
+reparents nothing (Spec 1 §73; WC3 C6, C24). -/
 theorem single_exitEffC (hs : s.Single) :
     (exitEffC s 0).Single ∧ (exitEffC s 0).stk 0 = (s.stk 0).tail := by
   have hC := single_C hs
@@ -427,7 +427,7 @@ theorem single_exitEffC (hs : s.Single) :
     simp only [exitEffC, hC, reparent]; simp
   exact ⟨⟨_, this⟩, by simp [SC.stk, this]⟩
 
-/-- Projection of `exitFrameC` of the single context (Spec 1 §73; WC2 C24). -/
+/-- Projection of `exitFrameC` of the single context (Spec 1 §73; WC3 C24). -/
 theorem toS3_exitEffC (hs : s.Single) : (exitEffC s 0).toS3 = exitEff s.toS3 := by
   have hstk := (single_exitEffC hs).2
   have hv := single_view hs
@@ -435,7 +435,7 @@ theorem toS3_exitEffC (hs : s.Single) : (exitEffC s 0).toS3 = exitEff s.toS3 := 
   simp only [exitEffC, SC.set, hv]
   rfl
 
-/-- `exitFrameC` of the single context: preconditions (Spec 1 §73; WC2 C24). -/
+/-- `exitFrameC` of the single context: preconditions (Spec 1 §73; WC3 C24). -/
 theorem exitPreC_single (hs : s.Single) (hd : (s.stk 0).Pairwise (· > ·)) :
     ExitPreC k s 0 ↔ ExitPre k s.toS3 := by
   have hv := single_view hs
@@ -450,7 +450,7 @@ theorem exitPreC_single (hs : s.Single) (hd : (s.stk 0).Pairwise (· > ·)) :
   · rintro ⟨a, b, c, d, e⟩
     refine ⟨a, ?_, ?_, ?_, haoh.2 e⟩ <;> simp only [hv] <;> assumption
 
-/-- Theorem 1 (WC2 C24, "preconditions and outcomes coincide; projected effects coincide"): on a
+/-- Theorem 1 (WC3 C24, "preconditions and outcomes coincide; projected effects coincide"): on a
 single-context state with the frame structure `FramesC`, every inherited operation O1–O16
 executed by the context has exactly the outcomes of Spec 1 (§58, §60–§75) on the projection
 `SC.toS3`, outcome by outcome. Fragment: single-context states, operations O1–O16. -/
@@ -483,7 +483,7 @@ theorem conservative_op (hs : s.Single) (hfr : FramesC s) (op : KernelOp) :
   | free => exact viewStep_single hs fun t' h => viewOp_F h (by simp) (by simp) (by simp) (by simp) (by simp)
   | alloc => exact viewStep_single hs fun t' h => viewOp_F h (by simp) (by simp) (by simp) (by simp) (by simp)
 
-/-- WC2 C24: an `ok` outcome of an inherited operation O1–O16 executed by the context of a
+/-- WC3 C24: an `ok` outcome of an inherited operation O1–O16 executed by the context of a
 single-context state is a single-context state whose projection is the Spec 1 effect (§60–§75)
 on the projection. -/
 theorem conservative_ok (hs : s.Single) (hfr : FramesC s) {op : KernelOp} {s' : SC}
@@ -504,7 +504,7 @@ theorem conservative_ok (hs : s.Single) (hfr : FramesC s) {op : KernelOp} {s' : 
 
 end Ops
 
-/-! ## The reachable sequential domain (WC2 C24) -/
+/-! ## The reachable sequential domain (WC3 C24) -/
 
 /-- A kernel step of Spec 1 keeps the stack, pushes `nF` (§72) or pops the top (§73). -/
 theorem kstep_F {k : K} {t t' : S3} (h : KStep k t t') :
@@ -542,7 +542,7 @@ theorem reachable_decreasing {k : K} {statics : Statics} {t : S3} (hdd : DDSound
       exact List.pairwise_cons.2 ⟨fun f hf => hw.frames.2.2 f hf, ih⟩
     · exact ih.sublist (List.tail_sublist _)
 
-/-- `parIn` in a strictly decreasing list gives a smaller element of the list (WC2 C3). -/
+/-- `parIn` in a strictly decreasing list gives a smaller element of the list (WC3 C3). -/
 theorem parIn_lt : ∀ {F : List Nat}, F.Pairwise (· > ·) → ∀ {f g : Nat},
     parIn none f F = some g → g ∈ F ∧ g < f
   | [], _, _, _, h => by cases h
@@ -560,10 +560,10 @@ theorem parIn_lt : ∀ {F : List Nat}, F.Pairwise (· > ·) → ∀ {f g : Nat},
       obtain ⟨hm, hg⟩ := parIn_lt hdF h
       exact ⟨List.mem_cons_of_mem _ hm, hg⟩
 
-/-- Projection of the single-context state of an `S3` (WC2 C24). -/
+/-- Projection of the single-context state of an `S3` (WC3 C24). -/
 theorem toS3_ofS3 (t : S3) : (SC.ofS3 t).toS3 = t := by cases t; rfl
 
-/-- WC2 C24 ("the reachable sequential domain ... must correspond"): every state reachable in
+/-- WC3 C24 ("the reachable sequential domain ... must correspond"): every state reachable in
 Spec 1 (§57) is the projection of a single-context state with the frame structure `FramesC`, the
 domain of `conservative_op`; with `single_kInvC`, the re-indexed kernel invariant holds there. -/
 theorem reachable_single {k : K} {statics : Statics} {t : S3} (hdd : DDSound k)

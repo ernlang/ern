@@ -1,9 +1,9 @@
 import Ern.Concurrency.Conservativity
 
 /-!
-# Reparenting at frame exit and context termination (WC2 C6, C7; OB-C13)
+# Reparenting at frame exit and context termination (WC3 C6, C7; OB-C13)
 
-`exitFrameC` (Spec 1 §73 re-indexed with the reparenting of WC2 C6.3) and `terminate` (WC2 C7):
+`exitFrameC` (Spec 1 §73 re-indexed with the reparenting of WC3 C6 effect) and `terminate` (WC3 C7):
 
 * the frame structure after the step (`FramesC`), and the extended ancestry of the surviving
   frames, which is the ancestry before the step with the exiting frame skipped
@@ -24,7 +24,7 @@ namespace ReparentAux
 
 /-! ## Lists -/
 
-/-- Blockwise sublists give a sublist of the concatenation (WC2 C3). -/
+/-- Blockwise sublists give a sublist of the concatenation (WC3 C3). -/
 theorem sublist_flatMap {α β : Type} {f g : α → List β} :
     ∀ {l : List α}, (∀ a ∈ l, (f a).Sublist (g a)) → (l.flatMap f).Sublist (l.flatMap g)
   | [], _ => List.Sublist.slnil
@@ -33,7 +33,7 @@ theorem sublist_flatMap {α β : Type} {f g : α → List β} :
     exact (h a (List.mem_cons_self ..)).append
       (sublist_flatMap fun b hb => h b (List.mem_cons_of_mem _ hb))
 
-/-- `List.modify` read at an index (WC2 C6, C7: the context list after the step), proved
+/-- `List.modify` read at an index (WC3 C6, C7: the context list after the step), proved
 without the classical core lemma. -/
 theorem getElem?_modify' {α : Type} (f : α → α) : ∀ (l : List α) (i j : Nat),
     (l.modify i f)[j]? = (l[j]?).map fun a => if i = j then f a else a
@@ -50,26 +50,26 @@ theorem getElem?_modify' {α : Type} (f : α → α) : ∀ (l : List α) (i j : 
     | none => rfl
     | some b => simp only [Option.map_some, Nat.add_right_cancel_iff]
 
-/-- `List.range` is duplicate-free (identities of contexts, WC2 C2). -/
+/-- `List.range` is duplicate-free (identities of contexts, WC3 C2). -/
 theorem range_nodup (n : Nat) : (List.range n).Nodup :=
   (Frames.range_pairwise_lt n).imp Nat.ne_of_lt
 
-/-! ## Parent replacement (WC2 C6.3) -/
+/-! ## Parent replacement (WC3 C6 effect) -/
 
-/-- Replacement of the parent `f` by `p` (WC2 C6.3). -/
+/-- Replacement of the parent `f` by `p` (WC3 C6 effect). -/
 def repO (f p : Nat) (o : Option Nat) : Option Nat := if o = some f then some p else o
 
-/-- `repO` of `none` (WC2 C6.3). -/
+/-- `repO` of `none` (WC3 C6 effect). -/
 theorem repO_none (f p : Nat) : repO f p none = none := by simp [repO]
 
-/-- `repO` of a value other than `f` (WC2 C6.3). -/
+/-- `repO` of a value other than `f` (WC3 C6 effect). -/
 theorem repO_ne {f p g : Nat} (h : g ≠ f) : repO f p (some g) = some g := by simp [repO, h]
 
-/-- `repO` of `f` (WC2 C6.3). -/
+/-- `repO` of `f` (WC3 C6 effect). -/
 theorem repO_eq (f p : Nat) : repO f p (some f) = some p := by simp [repO]
 
 /-- Replacing the parent of the initial frame replaces the parent within a stack without `f`
-(WC2 C3, C6.3). -/
+(WC3 C3, C6 effect). -/
 theorem parIn_repO {f p y : Nat} {par : Option Nat} : ∀ {l : List Nat}, f ∉ l →
     parIn (repO f p par) y l = repO f p (parIn par y l)
   | [], _ => by simp [parIn, repO]
@@ -84,7 +84,7 @@ theorem parIn_repO {f p y : Nat} {par : Option Nat} : ∀ {l : List Nat}, f ∉ 
     · simp only [parIn, e, ↓reduceIte]
       exact parIn_repO fun hm => h (List.mem_cons_of_mem _ hm)
 
-/-- A duplicate-free stack whose `parIn` links decrease is strictly decreasing (WC2 C3; Spec 1
+/-- A duplicate-free stack whose `parIn` links decrease is strictly decreasing (WC3 C3; Spec 1
 §49, last paragraph). -/
 theorem pairwise_of_parIn' {par : Option Nat} : ∀ {F : List Nat}, F.Nodup →
     (∀ f g, parIn par f F = some g → g < f) → F.Pairwise (· > ·)
@@ -104,16 +104,16 @@ theorem pairwise_of_parIn' {par : Option Nat} : ∀ {F : List Nat}, F.Nodup →
       intro b hb
       exact Nat.lt_of_le_of_lt (le_head_of_pairwise ih b hb) hb'
 
-/-! ## Contexts of frames (WC2 C3) -/
+/-! ## Contexts of frames (WC3 C3) -/
 
-/-- A frame of a stack belongs to an existing context (WC2 C2). -/
+/-- A frame of a stack belongs to an existing context (WC3 C2). -/
 theorem stk_lt {s : SC} {f d : Nat} (h : f ∈ s.stk d) : d < s.C.length := by
   unfold SC.stk at h; split at h
   · exact lt_of_getElem? ‹_›
   · simp at h
 
 /-- With unique frame identities, the context of a frame is the one whose stack contains it
-(WC2 C3). -/
+(WC3 C3). -/
 theorem ctxOf_of_mem {s : SC} (hnd : s.frames.Nodup) {f d : Nat} (h : f ∈ s.stk d) :
     s.ctxOf f = some d := by
   have hd := stk_lt h
@@ -130,18 +130,18 @@ theorem ctxOf_of_mem {s : SC} (hnd : s.frames.Nodup) {f d : Nat} (h : f ∈ s.st
     exact congrArg some (disjoint_of_flatMap (f := s.stk) hnd (range_nodup _) h2
       (List.mem_range.2 hd) h1 h)
 
-/-- The parent of a live frame is read in the stack of its context (WC2 C3). -/
+/-- The parent of a live frame is read in the stack of its context (WC3 C3). -/
 theorem parC_of_mem {s : SC} (hnd : s.frames.Nodup) {f d : Nat} (h : f ∈ s.stk d) :
     s.parC f = parIn (s.ctxParent d) f (s.stk d) := by
   simp [SC.parC, ctxOf_of_mem hnd h]
 
-/-- Two stacks sharing a frame are the same stack (WC2 C3). -/
+/-- Two stacks sharing a frame are the same stack (WC3 C3). -/
 theorem stk_unique {s : SC} (hnd : s.frames.Nodup) {f d d' : Nat} (h : f ∈ s.stk d)
     (h' : f ∈ s.stk d') : d = d' := by
   have := (ctxOf_of_mem hnd h).symm.trans (ctxOf_of_mem hnd h')
   exact Option.some.inj this
 
-/-- Under `FramesC`, every stack is strictly decreasing (WC2 C3; Spec 1 §49, last
+/-- Under `FramesC`, every stack is strictly decreasing (WC3 C3; Spec 1 §49, last
 paragraph). -/
 theorem stk_decreasing {s : SC} (hfr : FramesC s) (d : Nat) : (s.stk d).Pairwise (· > ·) := by
   refine pairwise_of_parIn' (par := s.ctxParent d) (SC.stk_nodup hfr.nodup d) fun f g hg => ?_
@@ -150,10 +150,10 @@ theorem stk_decreasing {s : SC} (hfr : FramesC s) (d : Nat) : (s.stk d).Pairwise
       (by rw [parC_of_mem hfr.nodup hf]; exact hg)).2
   · rw [parIn_not_mem hf] at hg; cases hg
 
-/-! ## Popping a frame with reparenting (WC2 C6, C7) -/
+/-! ## Popping a frame with reparenting (WC3 C6, C7) -/
 
 /-- Shape of the frame structure after popping the top frame `f` of context `c`, whose parent is
-`p`, with the reparenting of WC2 C6.3: the stack of `c` loses `f`, other stacks are unchanged,
+`p`, with the reparenting of WC3 C6 effect: the stack of `c` loses `f`, other stacks are unchanged,
 the initial frames whose parent was `f` get the parent `p`. -/
 structure Pop (s s' : SC) (c f p : Nat) : Prop where
   head : (s.stk c).head? = some f
@@ -168,18 +168,18 @@ section Pop
 
 variable {s s' : SC} {c f p : Nat}
 
-/-- The stack of `c` starts with `f` (WC2 C6). -/
+/-- The stack of `c` starts with `f` (WC3 C6). -/
 theorem Pop.stk_c (h : Pop s s' c f p) : s.stk c = f :: (s.stk c).tail := by
   have := h.head
   cases e : s.stk c with
   | nil => rw [e] at this; cases this
   | cons a l => rw [e] at this; cases this; rfl
 
-/-- The popped frame is live before the step (WC2 C6). -/
+/-- The popped frame is live before the step (WC3 C6). -/
 theorem Pop.f_mem (h : Pop s s' c f p) : f ∈ s.frames := by
   apply SC.mem_frames_of (c := c); rw [h.stk_c]; exact List.mem_cons_self ..
 
-/-- The frames live after the step are those live before, except `f` (WC2 C6, C7). -/
+/-- The frames live after the step are those live before, except `f` (WC3 C6, C7). -/
 theorem Pop.mem_frames (hnd : s.frames.Nodup) (h : Pop s s' c f p) {y : Nat} :
     y ∈ s'.frames ↔ y ∈ s.frames ∧ y ≠ f := by
   have hc := h.stk_c
@@ -204,7 +204,7 @@ theorem Pop.mem_frames (hnd : s.frames.Nodup) (h : Pop s s' c f p) {y : Nat} :
       exact (List.mem_cons.1 hd).resolve_left hyf
     · exact hd
 
-/-- The frames live after the step are duplicate-free (WC2 C3). -/
+/-- The frames live after the step are duplicate-free (WC3 C3). -/
 theorem Pop.nodup (hnd : s.frames.Nodup) (h : Pop s s' c f p) : s'.frames.Nodup := by
   refine hnd.sublist ?_
   unfold SC.frames; rw [h.len]
@@ -214,7 +214,7 @@ theorem Pop.nodup (hnd : s.frames.Nodup) (h : Pop s s' c f p) : s'.frames.Nodup 
   · exact List.Sublist.refl _
 
 /-- The parent of a frame live after the step is its parent before, with `f` replaced by `p`
-(WC2 C6.3). -/
+(WC3 C6 effect). -/
 theorem Pop.parC (hnd : s.frames.Nodup) (h : Pop s s' c f p) {y : Nat} (hy : y ∈ s'.frames) :
     s'.parC y = repO f p (s.parC y) := by
   have hc := h.stk_c
@@ -239,7 +239,7 @@ theorem Pop.parC (hnd : s.frames.Nodup) (h : Pop s s' c f p) {y : Nat} (hy : y �
     have hfd : f ∉ s.stk d := fun hm => hdc (stk_unique hnd hm hfc)
     rw [parIn_repO hfd, parC_of_mem hnd hd']
 
-/-- The chain of parents after the step is the chain before without `f` (WC2 C6.3, C6.4). -/
+/-- The chain of parents after the step is the chain before without `f` (WC3 C6 effect). -/
 theorem Pop.chain (hfr : FramesC s) (h : Pop s s' c f p) :
     ∀ n y, y < n → y ∈ s'.frames → chain s'.parC y = (chain s.parC y).filter (· != f)
   | 0, _, hy, _ => absurd hy (Nat.not_lt_zero _)
@@ -266,7 +266,7 @@ theorem Pop.chain (hfr : FramesC s) (h : Pop s s' c f p) :
           Pop.chain hfr h n g (by omega) hg']
         simp [hgf]
 
-/-- The extended ancestry of frames live after the step is the ancestry before (WC2 C6.4):
+/-- The extended ancestry of frames live after the step is the ancestry before (WC3 C6 effect):
 popping `f` only removes `f` from the chains. -/
 theorem Pop.ancestorC (hfr : FramesC s) (h : Pop s s' c f p) {g y : Nat} (hg : g ∈ s'.frames)
     (hy : y ∈ s'.frames) : s'.ancestorC g y ↔ s.ancestorC g y := by
@@ -276,7 +276,7 @@ theorem Pop.ancestorC (hfr : FramesC s) (h : Pop s s' c f p) {g y : Nat} (hg : g
   rw [h.chain hfr (y + 1) y (Nat.lt_succ_self y) hy]
   simp [hy, hy₀.1, List.mem_filter, hgf]
 
-/-- The frame structure after the step (WC2 C3, C6.5, C20), given the initial context and the
+/-- The frame structure after the step (WC3 C3, C6 preservation obligations, C20), given the initial context and the
 nonempty stacks of the live contexts. -/
 theorem Pop.framesC (hfr : FramesC s) (h : Pop s s' c f p)
     (hinit : OptP (s'.C[0]?) (fun x => x.life = .live ∧ x.parent = none) False)
@@ -312,7 +312,7 @@ theorem Pop.framesC (hfr : FramesC s) (h : Pop s s' c f p)
         exact ⟨(h.mem_frames hfr.nodup).2 ⟨hgF, e⟩, hgy⟩
 
 /-- The surviving frames of the view of `c` (Spec 1 §73: the stack without its top) are the
-frames live after the step (WC2 C6, C7). -/
+frames live after the step (WC3 C6, C7). -/
 theorem Pop.view_tail (hnd : s.frames.Nodup) (h : Pop s s' c f p) {y : Nat} :
     y ∈ (s.view c).F.tail ↔ y ∈ s'.frames := by
   rw [h.mem_frames hnd]
@@ -334,7 +334,7 @@ theorem Pop.view_tail (hnd : s.frames.Nodup) (h : Pop s s' c f p) {y : Nat} :
 
 end Pop
 
-/-- A frame structure has a live frame (WC2 C3). -/
+/-- A frame structure has a live frame (WC3 C3). -/
 theorem frames_ne {s : SC} (hfr : FramesC s) : s.frames ≠ [] := by
   intro he
   have h0 := hfr.initial
@@ -383,8 +383,8 @@ section PopPreserve
 
 variable {s s' : SC} {c f p : Nat}
 
-/-- Theorem 3 (OB-C13; WC2 C6.4, C6.5; Spec 1 §44, §73): popping a frame with the effect of Spec
-1 §73 on the view of `c` and the reparenting of WC2 C6.3 preserves `AnchorOrderC`: a reanchored
+/-- Theorem 3 (OB-C13; WC3 C6 effect and preservation obligations; Spec 1 §44, §73): popping a frame with the effect of Spec
+1 §73 on the view of `c` and the reparenting of WC3 C6 effect preserves `AnchorOrderC`: a reanchored
 anchor has the root of the original chain as effective anchor, which survives, and the extended
 ancestry between surviving frames is unchanged. -/
 theorem Pop.anchorOrderC (hfr : FramesC s) (hw : WF3 s.flat) (hao : AnchorOrderC s)
@@ -459,8 +459,8 @@ theorem Pop.anchorOrderC (hfr : FramesC s) (hw : WF3 s.flat) (hao : AnchorOrderC
     subst e1 e2
     exact h.ancestorC hfr ((h.view_tail hfr.nodup).1 hgF) hf₁F
 
-/-- Theorem 2 restricted to a popped frame (WC2 C20, C23; Spec 1 §57, §73): the effect of Spec 1
-§73 on the view of `c` with the reparenting of WC2 C6.3, under the preconditions §73.2–§73.5,
+/-- Theorem 2 restricted to a popped frame (WC3 C20, C23; Spec 1 §57, §73): the effect of Spec 1
+§73 on the view of `c` with the reparenting of WC3 C6 effect, under the preconditions §73.2–§73.5,
 preserves `KInvC`. -/
 theorem Pop.kInvC (hk : KInvC s) (h : Pop s s' c f p) (hfr' : FramesC s')
     (hflat : s'.flat = { exitEff (s.view c) with F := s'.frames })
@@ -494,7 +494,7 @@ theorem Pop.kInvC (hk : KInvC s) (h : Pop s s' c f p) (hfr' : FramesC s')
   · rw [hflat]; exact noDangling_mem_congr hnd' hmem
 
 /-- The auxiliaries of Spec 1 (`RootHeldConv`, `HeldAnchored`, not clauses of §57) on the live
-frames are preserved by a popped frame (Spec 1 §73; WC2 C6, C7). -/
+frames are preserved by a popped frame (Spec 1 §73; WC3 C6, C7). -/
 theorem Pop.aux (hfr : FramesC s) (haux : RootHeldConv s.flat) (hh : HeldAnchored s.flat)
     (h : Pop s s' c f p) (hflat : s'.flat = { exitEff (s.view c) with F := s'.frames })
     (h3 : Frames.OriginsSurvive (s.view c)) :
@@ -533,13 +533,13 @@ end ReparentAux
 
 open ReparentAux
 
-/-! ## `exitFrameC` and `terminate` pop a frame (WC2 C6, C7) -/
+/-! ## `exitFrameC` and `terminate` pop a frame (WC3 C6, C7) -/
 
 section Steps
 
 variable {s : SC} {c : Nat}
 
-/-- Unfolding of the context list after `exitFrameC` (WC2 C6). -/
+/-- Unfolding of the context list after `exitFrameC` (WC3 C6). -/
 theorem exitEffC_C_get (d : Nat) : (exitEffC s c).C[d]? = (s.C[d]?).map fun x =>
     let x' := if c = d then { x with stack := x.stack.tail } else x
     if x'.life = .live ∧ x'.parent = some ((s.stk c).headD 0) then
@@ -547,7 +547,7 @@ theorem exitEffC_C_get (d : Nat) : (exitEffC s c).C[d]? = (s.C[d]?).map fun x =>
   simp only [exitEffC, reparent, List.getElem?_map, getElem?_modify']
   cases s.C[d]? <;> rfl
 
-/-- Unfolding of the context list after `terminate` (WC2 C7). -/
+/-- Unfolding of the context list after `terminate` (WC3 C7). -/
 theorem termEffC_C_get (d : Nat) : (termEffC s c).C[d]? = (s.C[d]?).map fun x =>
     let x' := if c = d then { x with stack := [], life := .done } else x
     if x'.life = .live ∧ x'.parent = some ((s.stk c).headD 0) then
@@ -555,7 +555,7 @@ theorem termEffC_C_get (d : Nat) : (termEffC s c).C[d]? = (s.C[d]?).map fun x =>
   simp only [termEffC, reparent, List.getElem?_map, getElem?_modify']
   cases s.C[d]? <;> rfl
 
-/-- `exitFrameC` pops the top frame of `c` and reparents to its caller (WC2 C6). -/
+/-- `exitFrameC` pops the top frame of `c` and reparents to its caller (WC3 C6). -/
 theorem exitEffC_pop (hnd : s.frames.Nodup) (hcall : (s.stk c).tail ≠ []) :
     Pop s (exitEffC s c) c ((s.stk c).headD 0) ((s.stk c).tail.headD 0) := by
   obtain ⟨f, p, rest, hc⟩ : ∃ f p rest, s.stk c = f :: p :: rest := by
@@ -596,7 +596,7 @@ theorem exitEffC_pop (hnd : s.frames.Nodup) (hcall : (s.stk c).tail ≠ []) :
     rw [hc] at e ⊢
     simpa [parIn] using e
 
-/-- `terminate` pops the initial frame of `c` and reparents to its parent (WC2 C7, C6.3). -/
+/-- `terminate` pops the initial frame of `c` and reparents to its parent (WC3 C7, C6 effect). -/
 theorem termEffC_pop (hnd : s.frames.Nodup) (hone : (s.stk c).length = 1)
     (hpar : s.ctxParent c ≠ none) :
     Pop s (termEffC s c) c ((s.stk c).headD 0) ((s.ctxParent c).getD 0) := by
@@ -643,14 +643,14 @@ theorem termEffC_pop (hnd : s.frames.Nodup) (hone : (s.stk c).length = 1)
     show s.parC f = some ((s.ctxParent c).getD 0)
     rw [e, hp]; rfl
 
-/-- After `terminate`, the terminated context is not live (WC2 C7). -/
+/-- After `terminate`, the terminated context is not live (WC3 C7). -/
 theorem termEffC_not_live : ¬ (termEffC s c).Live c := by
   unfold SC.Live; rw [termEffC_C_get]
   cases hx : s.C[c]? with
   | none => simp [OptP]
   | some x => simp only [Option.map_some, OptP, ↓reduceIte]; split <;> simp
 
-/-- WC2 C3, C6.5, C20: `exitFrameC` keeps a well-founded frame structure. -/
+/-- WC3 C3, C6 preservation obligations, C20: `exitFrameC` keeps a well-founded frame structure. -/
 theorem exitEffC_framesC (hfr : FramesC s) (hcall : (s.stk c).tail ≠ []) :
     FramesC (exitEffC s c) := by
   have h := exitEffC_pop hfr.nodup hcall
@@ -667,7 +667,7 @@ theorem exitEffC_framesC (hfr : FramesC s) (hcall : (s.stk c).tail ≠ []) :
     · exact hcall
     · exact hfr.nonempty d (h.live d hl)
 
-/-- WC2 C3, C6.5, C7, C20: `terminate` keeps a well-founded frame structure. -/
+/-- WC3 C3, C6 preservation obligations, C7, C20: `terminate` keeps a well-founded frame structure. -/
 theorem termEffC_framesC (hfr : FramesC s) (hc0 : c ≠ 0) (hone : (s.stk c).length = 1)
     (hpar : s.ctxParent c ≠ none) : FramesC (termEffC s c) := by
   have h := termEffC_pop hfr.nodup hone hpar
@@ -684,7 +684,7 @@ theorem termEffC_framesC (hfr : FramesC s) (hc0 : c ≠ 0) (hone : (s.stk c).len
     · rename_i hdc; subst hdc; exact absurd hl termEffC_not_live
     · exact hfr.nonempty d (h.live d hl)
 
-/-- WC2 C6.3, C6.4 (OB-C13): after `exitFrameC`, the live frames are those before except the
+/-- WC3 C6 effect (OB-C13): after `exitFrameC`, the live frames are those before except the
 exiting frame, and the extended ancestry between live frames is unchanged: reparenting only
 removes the exiting frame from the chains. -/
 theorem exitEffC_ancestorC (hfr : FramesC s) (hcall : (s.stk c).tail ≠ []) {g y : Nat} :
@@ -694,7 +694,7 @@ theorem exitEffC_ancestorC (hfr : FramesC s) (hcall : (s.stk c).tail ≠ []) {g 
   ⟨(exitEffC_pop hfr.nodup hcall).mem_frames hfr.nodup,
    (exitEffC_pop hfr.nodup hcall).ancestorC hfr⟩
 
-/-- WC2 C6.3, C6.4, C7 (OB-C13): after `terminate`, the live frames are those before except the
+/-- WC3 C6 effect, C7 (OB-C13): after `terminate`, the live frames are those before except the
 initial frame of the terminated context, and the extended ancestry between live frames is
 unchanged. -/
 theorem termEffC_ancestorC (hfr : FramesC s) (hone : (s.stk c).length = 1)
@@ -705,7 +705,7 @@ theorem termEffC_ancestorC (hfr : FramesC s) (hone : (s.stk c).length = 1)
   ⟨(termEffC_pop hfr.nodup hone hpar).mem_frames hfr.nodup,
    (termEffC_pop hfr.nodup hone hpar).ancestorC hfr⟩
 
-/-- WC2 C6.3 (OB-C13): `exitFrameC` reparents exactly the live contexts whose initial frame had
+/-- WC3 C6 effect (OB-C13): `exitFrameC` reparents exactly the live contexts whose initial frame had
 the exiting frame as parent, to the immediate surviving parent of the exiting frame (its caller),
 and changes no other parent. -/
 theorem exitEffC_reparent (hfr : FramesC s) (hcall : (s.stk c).tail ≠ []) :
@@ -715,7 +715,7 @@ theorem exitEffC_reparent (hfr : FramesC s) (hcall : (s.stk c).tail ≠ []) :
       else s.ctxParent d :=
   ⟨(exitEffC_pop hfr.nodup hcall).pf, (exitEffC_pop hfr.nodup hcall).par⟩
 
-/-- WC2 C6.3, C7 (OB-C13): `terminate` reparents exactly the live contexts whose initial frame
+/-- WC3 C6 effect, C7 (OB-C13): `terminate` reparents exactly the live contexts whose initial frame
 had the terminated initial frame as parent, to the immediate parent of that frame. -/
 theorem termEffC_reparent (hfr : FramesC s) (hone : (s.stk c).length = 1)
     (hpar : s.ctxParent c ≠ none) :
@@ -725,7 +725,7 @@ theorem termEffC_reparent (hfr : FramesC s) (hone : (s.stk c).length = 1)
       else s.ctxParent d :=
   ⟨(termEffC_pop hfr.nodup hone hpar).pf, (termEffC_pop hfr.nodup hone hpar).par⟩
 
-/-- Theorem 3 (OB-C13; WC2 C6, C6.6; Spec 1 §73 effect): `exitFrameC` changes the kernel
+/-- Theorem 3 (OB-C13; WC3 C6 effect; Spec 1 §73 effect): `exitFrameC` changes the kernel
 components exactly as the effect of Spec 1 §73 on the view of `c`; reparenting changes only the
 contexts, so it creates, elevates, revives and reanchors nothing. -/
 theorem exitEffC_kernel (s : SC) (c : Nat) :
@@ -734,7 +734,7 @@ theorem exitEffC_kernel (s : SC) (c : Nat) :
     (exitEffC s c).pins = s.pins ∧ (exitEffC s c).nF = s.nF :=
   ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩
 
-/-- Theorem 3 (OB-C13; WC2 C6, C7; Spec 1 §73 effect): `terminate` changes the kernel components
+/-- Theorem 3 (OB-C13; WC3 C6, C7; Spec 1 §73 effect): `terminate` changes the kernel components
 exactly as the effect of Spec 1 §73 on the view of `c`. -/
 theorem termEffC_kernel (s : SC) (c : Nat) :
     (termEffC s c).A = (exitEff (s.view c)).A ∧ (termEffC s c).D = (exitEff (s.view c)).D ∧
@@ -750,7 +750,7 @@ section Main
 
 variable {k : K} {s s' : SC} {c : Nat}
 
-/-- Theorem 3 (OB-C13; WC2 C6; Spec 1 §44, §73): an `ok` `exitFrameC` preserves `AnchorOrderC`
+/-- Theorem 3 (OB-C13; WC3 C6; Spec 1 §44, §73): an `ok` `exitFrameC` preserves `AnchorOrderC`
 (not a precondition of O7) and establishes `AnchorOrderHeldC` (§73.5), with the reparented
 initial frames. Fragment: states with the frame structure `FramesC`, `WF3` and `AnchorOrderC`
 on the live frames. -/
@@ -761,7 +761,7 @@ theorem exitFrameC_anchorOrder (hfr : FramesC s) (hw : WF3 s.flat) (hao : Anchor
   exact ⟨(exitEffC_pop hfr.nodup hpre.hasCaller).anchorOrderC hfr hw hao rfl hpre.anchors
     hpre.origins, hpre.anchorOrderHeld⟩
 
-/-- Theorem 3 (OB-C13; WC2 C6, C7; Spec 1 §44, §73): an `ok` `terminate` preserves
+/-- Theorem 3 (OB-C13; WC3 C6, C7; Spec 1 §44, §73): an `ok` `terminate` preserves
 `AnchorOrderC` and establishes `AnchorOrderHeldC`, with the reparented initial frames.
 Fragment: as `exitFrameC_anchorOrder`. -/
 theorem terminate_anchorOrder (hfr : FramesC s) (hw : WF3 s.flat) (hao : AnchorOrderC s)
@@ -773,7 +773,7 @@ theorem terminate_anchorOrder (hfr : FramesC s) (hw : WF3 s.flat) (hao : AnchorO
   exact ⟨(termEffC_pop hfr.nodup hpre.initialOnly hpar).anchorOrderC hfr hw hao rfl
     hpre.anchors hpre.origins, hpre.anchorOrderHeld⟩
 
-/-- Theorem 2 for `exitFrameC` (WC2 C6, C20, C23; Spec 1 §57, §73): an `ok` `exitFrameC`
+/-- Theorem 2 for `exitFrameC` (WC3 C6, C20, C23; Spec 1 §57, §73): an `ok` `exitFrameC`
 preserves `KInvC` and the auxiliaries `RootHeldConv` and `HeldAnchored` of Spec 1 (not clauses
 of §57) on the live frames. Fragment: O7 re-indexed. -/
 theorem exitFrameC_preserves (hk : KInvC s) (haux : RootHeldConv s.flat)
@@ -786,7 +786,7 @@ theorem exitFrameC_preserves (hk : KInvC s) (haux : RootHeldConv s.flat)
   exact ⟨hp.kInvC hk (exitEffC_framesC hfr hpre.hasCaller) rfl hpre.anchors hpre.origins
     hpre.anchorOrderHeld, hp.aux hfr haux hh rfl hpre.origins⟩
 
-/-- Theorem 2 for `terminate` (WC2 C7, C20, C23; Spec 1 §57, §73): an `ok` `terminate`
+/-- Theorem 2 for `terminate` (WC3 C7, C20, C23; Spec 1 §57, §73): an `ok` `terminate`
 preserves `KInvC` and the auxiliaries `RootHeldConv` and `HeldAnchored` of Spec 1 on the live
 frames. -/
 theorem terminate_preserves (hk : KInvC s) (haux : RootHeldConv s.flat)

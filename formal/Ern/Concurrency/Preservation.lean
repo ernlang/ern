@@ -2,13 +2,13 @@ import Ern.Concurrency.Conservativity
 import Ern.Concurrency.Sync
 
 /-!
-# Preservation of the re-indexed kernel invariant (WC2 C20, C23)
+# Preservation of the re-indexed kernel invariant (WC3 C20, C23)
 
 Theorem 2 of the exploratory pass, except `exitFrameC` and `terminate`: the kernel invariant of
 Spec 1 §57 re-indexed (`KInvC`), with the auxiliaries of Spec 1 `reachable_inv` (`KAux`,
 `HeldAnchored`) read on the flat state, is preserved by the inherited operations O1–O16 other than
-O7 executed by a context (Spec 1 §60–§72, §74, §75; WC2 C2), by `spawn` (WC2 C4), `join` (WC2 C8)
-and `deriveSync` (WC2 C15).
+O7 executed by a context (Spec 1 §60–§72, §74, §75; WC3 C2), by `spawn` (WC3 C4), `join` (WC3 C8)
+and `deriveSync` (WC3 C15).
 
 The clauses of Spec 1 that read the stack only through membership are obtained from the Spec 1
 lemmas on the view of the executing context; the anchor orders are proved on `ancestorC`.
@@ -19,20 +19,20 @@ namespace Ern.Concurrency
 
 open Ern.MemoryModel.Access
 
-/-- The inductive invariant of theorem 2 (WC2 C20, C23): `KInvC` (Spec 1 §57 re-indexed) with the
+/-- The inductive invariant of theorem 2 (WC3 C20, C23): `KInvC` (Spec 1 §57 re-indexed) with the
 auxiliaries `KAux` and `HeldAnchored` of Spec 1 `reachable_inv`, read on the flat state. -/
 def KInvCA (s : SC) : Prop := KInvC s ∧ KAux s.flat ∧ HeldAnchored s.flat
 
 namespace PreservationAux
 
-/-! ## Membership transport (WC2 C2) -/
+/-! ## Membership transport (WC3 C2) -/
 
 /-- `HeldAnchored` reads the stack only through membership (Spec 1 §44, §40). -/
 theorem heldAnchored_mem_congr {t : S3} {F' : Frames} (h : HeldAnchored t)
     (hF : ∀ f, f ∈ F' ↔ f ∈ t.F) : HeldAnchored { t with F := F' } :=
   fun x y q hy ya ho hh hq => h x y q hy ya ho hh ((usable_mem_congr hF).1 hq)
 
-/-- The kernel facts of Spec 1 on the view of a context, from the re-indexed invariant (WC2
+/-- The kernel facts of Spec 1 on the view of a context, from the re-indexed invariant (WC3
 C2). -/
 theorem view_facts {s : SC} (hk : KInvCA s) (c : Nat) :
     WF3 (s.view c) ∧ Inv3base (s.view c) ∧ NoDangling (s.view c) ∧ RootHeldConv (s.view c) ∧
@@ -42,7 +42,7 @@ theorem view_facts {s : SC} (hk : KInvCA s) (c : Nat) :
   exact ⟨SC.wf3_view hfr hw, ⟨h1, h2, i3_mem_congr h3 hF, i4_always _⟩,
     noDangling_mem_congr hnd hF, hc, heldAnchored_mem_congr hh hF⟩
 
-/-- The flat state of `s'` is `t` with the globally live frames of `s'` (WC2 C2); the kernel
+/-- The flat state of `s'` is `t` with the globally live frames of `s'` (WC3 C2); the kernel
 facts of Spec 1 on `t` carry to the flat state of `s'` when `t` lists the same frames. -/
 theorem flat_facts {s' : SC} {t : S3} (hflat : s'.flat = { t with F := s'.frames })
     (hmem : ∀ f, f ∈ t.F ↔ f ∈ s'.frames) (hnd : s'.frames.Nodup) (hne : s'.frames ≠ [])
@@ -55,14 +55,14 @@ theorem flat_facts {s' : SC} {t : S3} (hflat : s'.flat = { t with F := s'.frames
   exact ⟨wf3_mem_congr hw hF hnd hne, hb.1, hb.2.1, i3_mem_congr hb.2.2.1 hF,
     noDangling_mem_congr hd hF, hc, heldAnchored_mem_congr hh hF⟩
 
-/-- Assembly of the re-indexed invariant (WC2 C20; Spec 1 §54: `NoOrphan` follows from `WF3`). -/
+/-- Assembly of the re-indexed invariant (WC3 C20; Spec 1 §54: `NoOrphan` follows from `WF3`). -/
 theorem kInvCA_of {s : SC} (hfr : FramesC s)
     (hf : WF3 s.flat ∧ I1 s.flat ∧ I2 s.flat ∧ I3 s.flat ∧ NoDangling s.flat ∧ KAux s.flat ∧
       HeldAnchored s.flat) (hao : AnchorOrderC s) (haoh : AnchorOrderHeldC s) : KInvCA s :=
   ⟨⟨⟨hfr, hf.1⟩, ⟨⟨hf.2.1, hf.2.2.1, hf.2.2.2.1, fun _ => i4_always _⟩, hao, hf.2.2.2.2.1⟩,
     haoh, noOrphan_of_wf3 hf.1⟩, hf.2.2.2.2.2.1, hf.2.2.2.2.2.2⟩
 
-/-- The live frames of a nonempty frame structure are nonempty (WC2 C3). -/
+/-- The live frames of a nonempty frame structure are nonempty (WC3 C3). -/
 theorem frames_ne {s : SC} (hfr : FramesC s) : s.frames ≠ [] := by
   intro he
   have h0 := hfr.initial
@@ -73,7 +73,7 @@ theorem frames_ne {s : SC} (hfr : FramesC s) : s.frames ≠ [] := by
     have := SC.mem_frames_of hf; rw [he] at this; simp at this
   · exact h0.elim
 
-/-! ## Effective anchors on the extended ancestry (Spec 1 §44; WC2 C3) -/
+/-! ## Effective anchors on the extended ancestry (Spec 1 §44; WC3 C3) -/
 
 /-- `EffAnchorOKC` carries over between states whose effective anchors have the same holder frame
 and whose extended ancestry contains the former on the target frame (Spec 1 §44, mirroring
@@ -139,7 +139,7 @@ theorem SkelV.effAnchor {s : SC} {t : S3} (h : SkelV s t) {x : Nat} (hx : x < s.
   simp only [S3.effAnchor, this]
 
 /-- Under `SkelV`, `EffAnchorOKC` of an authority below `|A|` carries to the written-back state
-(Spec 1 §44; WC2 C2). -/
+(Spec 1 §44; WC3 C2). -/
 theorem SkelV.effAnchorOKC {s : SC} {t : S3} (h : SkelV s t) {x : Nat} (hx : x < s.A.length)
     {fd : Option Nat} (hok : EffAnchorOKC s x fd) : EffAnchorOKC (s.set t) x fd := by
   obtain ⟨z, hz⟩ := effAnchorOKC_get hok
@@ -154,12 +154,12 @@ theorem SkelV.effAnchorOKC {s : SC} {t : S3} (h : SkelV s t) {x : Nat} (hx : x <
     ?_ (fun g f _ hg => hg) hok
   rw [hzh]; exact S3.hframe_congr h.P _
 
-/-- Usability in the written-back state is usability in `t` (WC2 C2). -/
+/-- Usability in the written-back state is usability in `t` (WC3 C2). -/
 theorem set_usable {s : SC} {t : S3} (hmem : ∀ f, f ∈ t.F ↔ f ∈ s.frames) {q : Nat} :
     (s.set t).flat.Usable q ↔ t.Usable q :=
   usable_mem_congr (t := t) (F' := s.frames) fun f => (hmem f).symm
 
-/-- `AnchorOrderC` after a `SkelV` step (Spec 1 §44, §52; WC2 C2). -/
+/-- `AnchorOrderC` after a `SkelV` step (Spec 1 §44, §52; WC3 C2). -/
 theorem SkelV.anchorOrderC {s : SC} {t : S3} (h : SkelV s t)
     (hmem : ∀ f, f ∈ t.F ↔ f ∈ s.frames) (h3 : I3 s.flat) (hao : AnchorOrderC s) :
     AnchorOrderC (s.set t) := by
@@ -172,7 +172,7 @@ theorem SkelV.anchorOrderC {s : SC} {t : S3} (h : SkelV s t)
   rw [hpf]
   exact h.effAnchorOKC (lt_of_getElem? hy) (hao q hqs x hx')
 
-/-- `AnchorOrderHeldC` after a `SkelV` step (Spec 1 §44; WC2 C2). -/
+/-- `AnchorOrderHeldC` after a `SkelV` step (Spec 1 §44; WC3 C2). -/
 theorem SkelV.anchorOrderHeldC {s : SC} {t : S3} (h : SkelV s t)
     (hmem : ∀ f, f ∈ t.F ↔ f ∈ s.frames) (haoh : AnchorOrderHeldC s) :
     AnchorOrderHeldC (s.set t) := by
@@ -186,7 +186,7 @@ theorem SkelV.anchorOrderHeldC {s : SC} {t : S3} (h : SkelV s t)
   · obtain ⟨f, hf⟩ := h.new x y' hy' (Nat.le_of_not_lt hx)
     rw [hf] at hh; cases hh
 
-/-- `FramesC` after a step that keeps the contexts and `nF` (WC2 C3). -/
+/-- `FramesC` after a step that keeps the contexts and `nF` (WC3 C3). -/
 theorem framesC_set {s : SC} {t : S3} (hfr : FramesC s) (hn : t.nF = s.nF) :
     FramesC (s.set t) where
   initial := hfr.initial
@@ -197,7 +197,7 @@ theorem framesC_set {s : SC} {t : S3} (hfr : FramesC s) (hn : t.nF = s.nF) :
   parent := hfr.parent
 
 /-- A `SkelV` step on the view of a context with Spec 1 facts on its result preserves the
-re-indexed invariant (WC2 C2, C20). -/
+re-indexed invariant (WC3 C2, C20). -/
 theorem set_preserves {s : SC} {c : Nat} {t : S3} (hk : KInvCA s) (hF : t.F = (s.view c).F)
     (hn : t.nF = s.nF) (hsk : SkelV s t) (hw : WF3 t) (hb : Inv3base t) (hd : NoDangling t)
     (hc : RootHeldConv t) (hh : HeldAnchored t) : KInvCA (s.set t) := by
@@ -211,14 +211,14 @@ theorem set_preserves {s : SC} {c : Nat} {t : S3} (hk : KInvCA s) (hF : t.F = (s
 /-! ## Skeletons of the operations on the view (Spec 1 §60–§62, §66–§68, §74, §75 `ok` effects) -/
 
 /-- Usability after a step on the view that keeps places and only adds death markers (Spec 1
-§40; WC2 C2). -/
+§40; WC3 C2). -/
 theorem usable_back {s : SC} {c : Nat} {t : S3} {q : Nat} (h : t.Usable q) (hP : t.P = s.P)
     (hF : t.F = (s.view c).F) (hd : ∀ q, t.dead q = false → s.dead q = false) :
     s.flat.Usable q :=
   S3.Usable.mono (s' := t) (s := s.flat) hP (fun _ hf => SC.mem_view_F.1 (hF ▸ hf)) hd h
 
 /-- Skeleton of a step on the view appending frame-held authorities (Spec 1 §60, §61 `ok`
-effects; WC2 C15). -/
+effects; WC3 C15). -/
 theorem skelV_append {s : SC} {c : Nat} {E : List Authority}
     (hE : ∀ y ∈ E, ∃ f, y.holder = .frame f) :
     SkelV s { s.view c with A := (s.view c).A ++ E } where
@@ -461,7 +461,7 @@ section AllocC
 
 variable {k : K} {s : SC} {c pr ow : Nat} {ls : LocalShape}
 
-/-- Usability on the view is usability on the flat state (WC2 C2). -/
+/-- Usability on the view is usability on the flat state (WC3 C2). -/
 theorem view_usable_flat {q : Nat} (h : (s.view c).Usable q) : s.flat.Usable q :=
   (usable_mem_congr (t := s.flat) (F' := (s.view c).F) (fun _ => SC.mem_view_F)).1 h
 
@@ -556,7 +556,7 @@ end AllocC
 /-! ## The operations run on the view (Spec 1 §60–§62, §66–§71, §74, §75) -/
 
 /-- Every inherited operation other than O4, O5, O6, O7, O8, run on the view of a context,
-preserves the re-indexed invariant (Spec 1 §57 re-indexed; WC2 C2, C20), under `DDSound`
+preserves the re-indexed invariant (Spec 1 §57 re-indexed; WC3 C2, C20), under `DDSound`
 (Spec 1 §80, used by `split`). -/
 theorem viewOp_preserves {k : K} {s : SC} {c : Nat} {op : KernelOp} {t : S3} (hdd : DDSound k)
     (hk : KInvCA s) (hop : op.Step k (s.view c) (.ok t)) (hnx : op ≠ .exit)
@@ -730,7 +730,7 @@ theorem effAnchorOKC_skel {s : SC} {t : S3} (hw : WF3 s.flat) (sk : SameSkel s.f
     rw [he]; exact (hroot _ z hzo).2 hz
   exact effAnchorOKC_of_same hz hz' (S3.hframe_congr hP _) (fun g f _ hg => hg) h
 
-/-- Usability on the flat state after a write-back keeping places and death markers (WC2
+/-- Usability on the flat state after a write-back keeping places and death markers (WC3
 C2). -/
 theorem set_usable_iff {s : SC} {t : S3} (hP : t.P = s.P) (hd : t.dead = s.dead) {q : Nat} :
     (s.set t).flat.Usable q ↔ s.flat.Usable q :=
@@ -752,7 +752,7 @@ theorem heldAnchored_of_step {s s' : S3} (hw : WF3 s) (hh : HeldAnchored s)
 
 /-! ## O5 `depend` re-indexed (Spec 1 §64) -/
 
-/-- `depend` executed by a context preserves the re-indexed invariant (Spec 1 §57, §64; WC2 C2,
+/-- `depend` executed by a context preserves the re-indexed invariant (Spec 1 §57, §64; WC3 C2,
 C20): only anchors change; the new anchor is active (§64.2) and satisfies §64.3 on
 `ancestorC`. -/
 theorem depend_preserves {s : SC} {c q x : Nat} (hk : KInvCA s) (hpre : DependPreC s c q x) :
@@ -854,7 +854,7 @@ theorem store_D (hy : t.A[a]? = some y) {q x : Nat} (hx : x ∈ (storeEff t a p)
 
 end Store
 
-/-- `store` executed by a context preserves the re-indexed invariant (Spec 1 §57, §65; WC2 C2,
+/-- `store` executed by a context preserves the re-indexed invariant (Spec 1 §57, §65; WC3 C2,
 C20): the stored authority is derived and keeps its skeleton; §65.4 and §65.5 hold on
 `ancestorC`. -/
 theorem store_preserves {s : SC} {c a p : Nat} (hk : KInvCA s) (hpre : StorePreC s c a p) :
@@ -912,7 +912,7 @@ theorem store_preserves {s : SC} {c a p : Nat} (hk : KInvCA s) (hpre : StorePreC
   · have := hpre.anchorOrder
     rwa [S3.pframe_congr (s' := s.view c) (s := s.flat) rfl q] at this
 
-/-! ## `deriveSync` (WC2 C15) -/
+/-! ## `deriveSync` (WC3 C15) -/
 
 /-- `deriveSync` preserves the re-indexed invariant (Spec 1 §57, §60; WC3 C15, C20); the own mode
 of `guarded` is the clause C15.1 of `DeriveSyncPre`. -/
@@ -957,7 +957,7 @@ open Ern.MemoryModel.Access.Frames
 
 variable {s : S3} {ps : List Nat} {ls : LocalShape}
 
-/-- Parameters of O6 (Spec 1 §72.1; WC2 C4.3). -/
+/-- Parameters of O6 (Spec 1 §72.1; WC3 C4.3). -/
 def ParamsOK (s : S3) (ps : List Nat) : Prop :=
   ∀ a ∈ ps, OptP (s.A[a]?) (fun y => y.active = true ∧ y.holder = .frame s.top ∧
     y.origin ≠ none) False
@@ -1118,10 +1118,10 @@ theorem enter_heldAnchored' (hwf : WF3 s) (hh : HeldAnchored s) :
 
 end EnterS3
 
-/-! ## Adding a fresh frame (WC2 C3, C4; Spec 1 §72) -/
+/-! ## Adding a fresh frame (WC3 C3, C4; Spec 1 §72) -/
 
 /-- Frame structure after adding the fresh frame `nF` whose parent is the live frame `top`, the
-other parent links unchanged (WC2 C3; Spec 1 §72 `ok` effect, WC2 C4 effect). -/
+other parent links unchanged (WC3 C3; Spec 1 §72 `ok` effect, WC3 C4 effect). -/
 structure Push (s s' : SC) (top : Nat) : Prop where
   mem : ∀ f, f ∈ s'.frames ↔ f = s.nF ∨ f ∈ s.frames
   nodup : s'.frames.Nodup
@@ -1133,7 +1133,7 @@ structure Push (s s' : SC) (top : Nat) : Prop where
   nonempty : ∀ c, s'.Live c → s'.stk c ≠ []
   rooted : ∀ c, c ≠ 0 → s'.Live c → s'.ctxParent c ≠ none
 
-/-- `FramesC` after adding a fresh frame (WC2 C3). -/
+/-- `FramesC` after adding a fresh frame (WC3 C3). -/
 theorem Push.framesC {s s' : SC} {top : Nat} (hfr : FramesC s) (h : Push s s' top) :
     FramesC s' where
   initial := h.initial
@@ -1154,7 +1154,7 @@ theorem Push.framesC {s s' : SC} {top : Nat} (hfr : FramesC s) (h : Push s s' to
       obtain ⟨hg', hlt⟩ := hfr.parent f hf' g hg
       exact ⟨(h.mem g).2 (.inr hg'), hlt⟩
 
-/-- Adding a fresh frame keeps the extended ancestry of the live frames (WC2 C3). -/
+/-- Adding a fresh frame keeps the extended ancestry of the live frames (WC3 C3). -/
 theorem Push.ancestorC {s s' : SC} {top : Nat} (hfr : FramesC s) (h : Push s s' top) {g f : Nat}
     (hf : s.ancestorC g f) : s'.ancestorC g f := by
   refine ⟨(h.mem f).2 (.inr hf.1), ?_⟩
@@ -1163,10 +1163,10 @@ theorem Push.ancestorC {s s' : SC} {top : Nat} (hfr : FramesC s) (h : Push s s' 
   exact hf.2
 
 /-- The re-indexed invariant after the effect of O6 on the view of `c` with a fresh frame added
-to the frame structure (Spec 1 §57, §72; WC2 C3, C4, C20): `WF3`, `I1`–`I4`, `NoDangling` and the
+to the frame structure (Spec 1 §57, §72; WC3 C3, C4, C20): `WF3`, `I1`–`I4`, `NoDangling` and the
 auxiliaries come from the Spec 1 effect; `AnchorOrderC` from the unchanged ancestry of existing
-frames (mirrors `Frames.enter_anchorOrder`); `AnchorOrderHeldC` is a hypothesis (§72.4, WC2
-C4.6). -/
+frames (mirrors `Frames.enter_anchorOrder`); `AnchorOrderHeldC` is a hypothesis (§72.4, WC3
+C4.5). -/
 theorem push_preserves {s : SC} {c top : Nat} {ps : List Nat} {ls : LocalShape}
     {C' : List Ctx} (hk : KInvCA s) (hpar : ParamsOK (s.view c) ps)
     (hsh : ShapeOK s.P.length ls.toShape)
@@ -1336,7 +1336,7 @@ theorem getElem?_modify'' {α : Type} (f : α → α) (i : Nat) (l : List α) (j
 
 /-! ### `enterFrame` (Spec 1 §72 re-indexed) -/
 
-/-- A context with a nonempty stack is an existing live context whose stack is its own (WC2
+/-- A context with a nonempty stack is an existing live context whose stack is its own (WC3
 C2). -/
 theorem stk_ctx {s : SC} {c : Nat} (hc : s.stk c ≠ []) :
     ∃ x, s.C[c]? = some x ∧ x.life = .live ∧ s.stk c = x.stack := by
@@ -1347,7 +1347,7 @@ theorem stk_ctx {s : SC} {c : Nat} (hc : s.stk c ≠ []) :
     · exact absurd rfl hc
   · exact absurd rfl hc
 
-/-- The stacks after `enterFrame` executed by `c` (Spec 1 §72 re-indexed; WC2 C2). -/
+/-- The stacks after `enterFrame` executed by `c` (Spec 1 §72 re-indexed; WC3 C2). -/
 theorem enter_stk {s : SC} {c : Nat} {ps : List Nat} {ls : LocalShape} (hc : s.stk c ≠ [])
     (i : Nat) : (enterEffC s c ps ls).stk i = if i = c then s.nF :: s.stk c else s.stk i := by
   obtain ⟨x, hx, hl, hs⟩ := stk_ctx hc
@@ -1359,7 +1359,7 @@ theorem enter_stk {s : SC} {c : Nat} {ps : List Nat} {ls : LocalShape} (hc : s.s
     simp only [e, e', ↓reduceIte]
     cases s.C[i]? <;> simp
 
-/-- `Push` for `enterFrame` executed by `c` (Spec 1 §72 re-indexed; WC2 C2, C3). -/
+/-- `Push` for `enterFrame` executed by `c` (Spec 1 §72 re-indexed; WC3 C2, C3). -/
 theorem enter_push {s : SC} {c : Nat} {ps : List Nat} {ls : LocalShape} (hfr : FramesC s)
     (hc : s.stk c ≠ []) : Push s (enterEffC s c ps ls) ((s.stk c).headD 0) := by
   obtain ⟨x, hx, hl, hs⟩ := stk_ctx hc
@@ -1450,9 +1450,9 @@ theorem enter_push {s : SC} {c : Nat} {ps : List Nat} {ls : LocalShape} (hfr : F
   · intro i hi hl'
     rw [hpar i]; exact hfr.rooted i hi ((hlive i).1 hl')
 
-/-! ### `spawn` (WC2 C4) -/
+/-! ### `spawn` (WC3 C4) -/
 
-/-- The stacks after `spawn` (WC2 C4 effect). -/
+/-- The stacks after `spawn` (WC3 C4 effect). -/
 theorem spawn_stk {s : SC} {c : Nat} {ps : List Nat} {ls : LocalShape} (i : Nat) :
     (spawnEff s c ps ls).stk i =
       if i < s.C.length then s.stk i else if i = s.C.length then [s.nF] else [] := by
@@ -1467,7 +1467,7 @@ theorem spawn_stk {s : SC} {c : Nat} {ps : List Nat} {ls : LocalShape} (i : Nat)
       simp only [hi, e, ↓reduceIte]
       rw [List.getElem?_eq_none_iff.2 (by simp; omega)]
 
-/-- `Push` for `spawn` executed by `c` (WC2 C3, C4). -/
+/-- `Push` for `spawn` executed by `c` (WC3 C3, C4). -/
 theorem spawn_push {s : SC} {c : Nat} {ps : List Nat} {ls : LocalShape} (hfr : FramesC s)
     (hc : s.stk c ≠ []) : Push s (spawnEff s c ps ls) ((s.stk c).headD 0) := by
   have hlen : (spawnEff s c ps ls).C.length = s.C.length + 1 := by simp [spawnEff]
@@ -1741,7 +1741,7 @@ theorem transfer_heldAnchored' (hwf : WF3 s) (hheld : HeldAnchored s) (hsrc : s.
 
 end TransferS3
 
-/-- `transfer` executed by a context preserves the re-indexed invariant (Spec 1 §57, §63; WC2
+/-- `transfer` executed by a context preserves the re-indexed invariant (Spec 1 §57, §63; WC3
 C2, C20): §63.6 gives `AnchorOrderC`; `AnchorOrderHeldC` from §63.7 for moved held authorities,
 from `AnchorOrderC` and `HeldAnchored` for unmoved derived ones, and from the frame of the
 holder for unmoved root authorities (mirrors the private `transfer_anchorOrderHeld`). -/
@@ -1808,7 +1808,7 @@ open PreservationAux
 
 /-! ## Theorem 2 (except `exitFrameC` and `terminate`) -/
 
-/-- Theorem 2 (WC2 C20, C23; Spec 1 §57 re-indexed): every inherited operation O1–O16 other than
+/-- Theorem 2 (WC3 C20, C23; Spec 1 §57 re-indexed): every inherited operation O1–O16 other than
 O7, executed by a context with an `ok` outcome, preserves `KInvC` with the auxiliaries `KAux` and
 `HeldAnchored` on the flat state, under `DDSound` (Spec 1 §80, used by `split`). Fragment: the
 concurrent kernel without synchronization; O7 (`exitFrameC`) is not covered here. -/
@@ -1838,7 +1838,7 @@ theorem opStepC_preservesC {k : K} (hdd : DDSound k) {s s' : SC} {c : Nat} {op :
     | reject => cases ho
     | fail => cases ho
 
-/-- Theorem 2 (WC2 C4, C20, C23): `spawn` (with the preconditions `SpawnPreBase`) preserves `KInvC`
+/-- Theorem 2 (WC3 C4, C20, C23): `spawn` (with the preconditions `SpawnPre`) preserves `KInvC`
 with the auxiliaries on the flat state: the new context has the fresh frame `nF`, child of the
 creating frame; the kernel effect is that of Spec 1 §72. -/
 theorem spawn_preservesC {s s' : SC} {c : Nat} {ps : List Nat} {ls : LocalShape}
@@ -1847,7 +1847,7 @@ theorem spawn_preservesC {s s' : SC} {c : Nat} {ps : List Nat} {ls : LocalShape}
   exact push_preserves hk hpre.params hpre.localsOK (spawn_push hk.1.1.1 hpre.creatorLive)
     hpre.anchorOrderHeld
 
-/-- Theorem 2 (WC2 C8, C20): `join` leaves the state unchanged, hence preserves the invariant. -/
+/-- Theorem 2 (WC3 C8, C20): `join` leaves the state unchanged, hence preserves the invariant. -/
 theorem join_preservesC {s s' : SC} {c d : Nat} (hk : KInvCA s) (h : JoinStep s c d (.ok s')) :
     KInvCA s' := by
   cases h; exact hk

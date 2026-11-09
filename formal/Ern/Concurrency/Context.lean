@@ -4,34 +4,34 @@ import Ern.MemoryModel.Access.Main
 # Concurrent authority machine: state, frames, invariants
 
 Exploratory formalization of the concurrent state `S_C = (C, F_C, P, I, A, D)` of the working
-candidate `ERN_Concurrency_Model_WC2.md` (WC2 C1–C3, C20) on top of the frozen kernel of
+candidate `ERN_Concurrency_Model_WC3.md` (WC3 C1–C3, C20) on top of the frozen kernel of
 `specs/ERN_Memory_Model_Specification_v0.1.md` (Spec 1 §38–§45, §49–§57).
 
-* contexts with lifecycle states, local stacks and the parent of their initial frame (WC2 C1–C3);
+* contexts with lifecycle states, local stacks and the parent of their initial frame (WC3 C1–C3);
 * globally live frames, current frame of a context, extended parent relation `parC` and
-  `ancestorC` (WC2 C3);
-* the `S3` seen by an executing context (`SC.view`, WC2 C2: current frame = top of its stack,
+  `ancestorC` (WC3 C3);
+* the `S3` seen by an executing context (`SC.view`, WC3 C2: current frame = top of its stack,
   liveness = globally live frames), the kernel components alone (`SC.flat`), and the projection
-  `SC.toS3` on single-context states (WC2 C24);
-* `ConcurrentWF`, `Inv3C`, `AnchorOrderC`, `AnchorOrderHeldC`, `NoOrphanC` (WC2 C20; Spec 1 §44,
+  `SC.toS3` on single-context states (WC3 C24);
+* `ConcurrentWF`, `Inv3C`, `AnchorOrderC`, `AnchorOrderHeldC`, `NoOrphanC` (WC3 C20; Spec 1 §44,
   §49–§57 re-indexed);
 * membership congruence: the kernel invariants of Spec 1 that read the stack only through
-  membership agree on every view (WC2 C2).
+  membership agree on every view (WC3 C2).
 -/
 
 namespace Ern.Concurrency
 
 open Ern.MemoryModel.Access
 
-/-! ## State (WC2 C1–C3) -/
+/-! ## State (WC3 C1–C3) -/
 
-/-- Lifecycle state of an execution context (WC2 C2, C7, C8): live, or completed. -/
+/-- Lifecycle state of an execution context (WC3 C2, C7, C8): live, or completed. -/
 inductive Life where
   | live
   | done
 deriving DecidableEq, Repr
 
-/-- Execution context (WC2 C1–C3): its local frame stack, current frame first; its lifecycle
+/-- Execution context (WC3 C1–C3): its local frame stack, current frame first; its lifecycle
 state; the parent of its initial frame (`none` for the initial context, whose initial frame is
 the base frame of Spec 1 §39). -/
 structure Ctx where
@@ -40,7 +40,7 @@ structure Ctx where
   parent : Option Nat
 deriving DecidableEq, Repr
 
-/-- `S_C = (C, F_C, P, I, A, D)` (WC2 C2). `C` lists the contexts by identity (their index); their
+/-- `S_C = (C, F_C, P, I, A, D)` (WC3 C2). `C` lists the contexts by identity (their index); their
 stacks and the parents of their initial frames form `F_C`; `P`, `I`, `A`, `D` keep their Spec 1
 meaning (§38); `nF`, `dead` and `pins` are the auxiliary components of `S3` (Spec 1 §38). -/
 structure SC where
@@ -53,86 +53,88 @@ structure SC where
   dead : Nat → Bool
   pins : List PinOb
 
-/-- Context `c` is live (WC2 C2). -/
+/-- Context `c` is live (WC3 C2). -/
 def SC.Live (s : SC) (c : Nat) : Prop := OptP (s.C[c]?) (fun x => x.life = .live) False
 
-/-- Decidability of `SC.Live` (WC2 C2). -/
+/-- Decidability of `SC.Live` (WC3 C2). -/
 instance (s : SC) (c : Nat) : Decidable (s.Live c) := by unfold SC.Live; infer_instance
 
-/-- Local stack of context `c` if it is live, empty otherwise (WC2 C2, C3). -/
+/-- Local stack of context `c` if it is live, empty otherwise (WC3 C2, C3). -/
 def SC.stk (s : SC) (c : Nat) : List Nat :=
   match s.C[c]? with
   | some x => if x.life = .live then x.stack else []
   | none => []
 
-/-- Parent of the initial frame of context `c` (WC2 C3). -/
+/-- Parent of the initial frame of context `c` (WC3 C3). -/
 def SC.ctxParent (s : SC) (c : Nat) : Option Nat := (s.C[c]?).bind (·.parent)
 
-/-- Globally live frames: the frames of the stacks of live contexts (WC2 C2). -/
+/-- Globally live frames: the frames of the stacks of live contexts (WC3 C2). -/
 def SC.frames (s : SC) : List Nat := (List.range s.C.length).flatMap s.stk
 
-/-- The kernel components of `s` as an `S3` whose stack lists the globally live frames (WC2 C2:
+/-- The kernel components of `s` as an `S3` whose stack lists the globally live frames (WC3 C2:
 references to live frames consider the globally live frame structure). -/
 def SC.flat (s : SC) : S3 :=
   { F := s.frames, nF := s.nF, P := s.P, I := s.I, A := s.A, D := s.D, dead := s.dead,
     pins := s.pins }
 
-/-- The `S3` seen by executing context `c` (WC2 C2): the stack of `c` first, so that the current
-frame is the top of its local stack, followed by the other globally live frames. -/
+/-- The `S3` seen by executing context `c` (WC3 C2): the stack of `c` first, so that the current
+frame is the top of its local stack, followed by the other globally live frames. It is the `S₃`
+view of WC3 C2 (candidate P1) on which `K.Satisfiable` of an `alloc` executed by `c` is evaluated
+(`alloc_ok_satisfiable`, `alloc_fail_unsatisfiable`). -/
 def SC.view (s : SC) (c : Nat) : S3 :=
   { s.flat with F := s.stk c ++ s.frames.filter fun f => decide (f ∉ s.stk c) }
 
-/-- Kernel components of an `S3` written back into `s`; contexts unchanged (WC2 C2). -/
+/-- Kernel components of an `S3` written back into `s`; contexts unchanged (WC3 C2). -/
 def SC.set (s : SC) (t : S3) : SC :=
   { s with nF := t.nF, P := t.P, I := t.I, A := t.A, D := t.D, dead := t.dead, pins := t.pins }
 
-/-! ## Single-context states (WC2 C24) -/
+/-! ## Single-context states (WC3 C24) -/
 
-/-- Single-context state (WC2 C24): exactly one context, the initial one, live, without
+/-- Single-context state (WC3 C24): exactly one context, the initial one, live, without
 parent. -/
 def SC.Single (s : SC) : Prop := ∃ stk, s.C = [⟨stk, .live, none⟩]
 
-/-- Projection of a state to `S3` (WC2 C24): the stack of context 0. -/
+/-- Projection of a state to `S3` (WC3 C24): the stack of context 0. -/
 def SC.toS3 (s : SC) : S3 :=
   { F := s.stk 0, nF := s.nF, P := s.P, I := s.I, A := s.A, D := s.D, dead := s.dead,
     pins := s.pins }
 
-/-- The single-context state of an `S3` (WC2 C24). -/
+/-- The single-context state of an `S3` (WC3 C24). -/
 def SC.ofS3 (t : S3) : SC :=
   { C := [⟨t.F, .live, none⟩], nF := t.nF, P := t.P, I := t.I, A := t.A, D := t.D,
     dead := t.dead, pins := t.pins }
 
-/-! ## Extended frame-parent relation and ancestry (WC2 C3) -/
+/-! ## Extended frame-parent relation and ancestry (WC3 C3) -/
 
 /-- Parent of frame `f` within a stack whose initial frame has parent `par`: the next frame of
-the stack, or `par` for the initial frame; `none` if `f` is not in the stack (WC2 C3; Spec 1
+the stack, or `par` for the initial frame; `none` if `f` is not in the stack (WC3 C3; Spec 1
 §39). -/
 def parIn (par : Option Nat) (f : Nat) : List Nat → Option Nat
   | [] => none
   | a :: rest => if a = f then rest.head?.or par else parIn par f rest
 
-/-- The live context whose stack contains `f` (WC2 C3: frame identities are globally unique). -/
+/-- The live context whose stack contains `f` (WC3 C3: frame identities are globally unique). -/
 def SC.ctxOf (s : SC) (f : Nat) : Option Nat :=
   (List.range s.C.length).find? fun c => (s.stk c).contains f
 
-/-- Extended frame-parent relation `parC` (WC2 C3): the parent of a live frame, following the
+/-- Extended frame-parent relation `parC` (WC3 C3): the parent of a live frame, following the
 links across contexts; `none` for the base frame and for frames that are not live. -/
 def SC.parC (s : SC) (f : Nat) : Option Nat :=
   (s.ctxOf f).bind fun c => parIn (s.ctxParent c) f (s.stk c)
 
-/-- Extended `ancestor_C(f₁, f₂)` (WC2 C3; Spec 1 §39): `f₂` is live and `f₁` is `f₂` or one of
+/-- Extended `ancestor_C(f₁, f₂)` (WC3 C3; Spec 1 §39): `f₂` is live and `f₁` is `f₂` or one of
 its ancestors along `parC`. Chains follow links to smaller identities (Spec 1 §49, last
 paragraph: identity order represents well-foundedness, required by `FramesC.parent`). -/
 def SC.ancestorC (s : SC) (f₁ f₂ : Nat) : Prop :=
   f₂ ∈ s.frames ∧ (f₁ = f₂ ∨ f₁ ∈ chain s.parC f₂)
 
-/-- Decidability of `ancestorC` (WC2 C3). -/
+/-- Decidability of `ancestorC` (WC3 C3). -/
 instance (s : SC) (f₁ f₂ : Nat) : Decidable (s.ancestorC f₁ f₂) := by
   unfold SC.ancestorC; infer_instance
 
-/-! ## Anchor order on the extended ancestry (Spec 1 §44, §54 re-indexed; WC2 C2, C3) -/
+/-! ## Anchor order on the extended ancestry (Spec 1 §44, §54 re-indexed; WC3 C2, C3) -/
 
-/-- Spec 1 §44 re-indexed (WC2 C2, C3): the frame of the effective anchor of `x` exists and is
+/-- Spec 1 §44 re-indexed (WC3 C2, C3): the frame of the effective anchor of `x` exists and is
 `fd` or one of its ancestors along `ancestorC`. -/
 def EffAnchorOKC (s : SC) (x : Nat) (fd : Option Nat) : Prop :=
   OptP (s.A[s.flat.effAnchor x]?) (fun z => OptP (s.flat.hframe z.holder)
@@ -142,7 +144,7 @@ def EffAnchorOKC (s : SC) (x : Nat) (fd : Option Nat) : Prop :=
 instance (s : SC) (x : Nat) (fd : Option Nat) : Decidable (EffAnchorOKC s x fd) := by
   unfold EffAnchorOKC; infer_instance
 
-/-- `AnchorOrder` re-indexed (Spec 1 §44, §54; WC2 C2): for every anchor `x ∈ D(q)` of a usable
+/-- `AnchorOrder` re-indexed (Spec 1 §44, §54; WC3 C2): for every anchor `x ∈ D(q)` of a usable
 place `q`, the frame of the effective anchor of `x` is an `ancestorC` of the frame of `q`. -/
 def AnchorOrderC (s : SC) : Prop :=
   ∀ q, s.flat.Usable q → ∀ x ∈ s.D q, EffAnchorOKC s x (s.flat.pframe q)
@@ -156,7 +158,7 @@ theorem anchorOrderC_iff {s : SC} : AnchorOrderC s ↔
 /-- Decidability of `AnchorOrderC` (Spec 1 §44). -/
 instance (s : SC) : Decidable (AnchorOrderC s) := decidable_of_iff _ anchorOrderC_iff.symm
 
-/-- `AnchorOrderHeld` re-indexed (Spec 1 §44, §54; WC2 C2): the rule of `AnchorOrderC` for every
+/-- `AnchorOrderHeld` re-indexed (Spec 1 §44, §54; WC3 C2): the rule of `AnchorOrderC` for every
 active authority held by a usable place `q`. -/
 def AnchorOrderHeldC (s : SC) : Prop :=
   ∀ q, s.flat.Usable q → ∀ (x : Nat) (y : Authority), s.A[x]? = some y → y.active = true →
@@ -181,53 +183,53 @@ theorem anchorOrderHeldC_iff {s : SC} : AnchorOrderHeldC s ↔
 instance (s : SC) : Decidable (AnchorOrderHeldC s) :=
   decidable_of_iff _ anchorOrderHeldC_iff.symm
 
-/-! ## Invariants (WC2 C3, C20; Spec 1 §49–§57 re-indexed) -/
+/-! ## Invariants (WC3 C3, C20; Spec 1 §49–§57 re-indexed) -/
 
-/-- Frame structure of `S_C` (WC2 C3, C20; Spec 1 §49.1 re-indexed: "the stack" read as the
+/-- Frame structure of `S_C` (WC3 C3, C20; Spec 1 §49.1 re-indexed: "the stack" read as the
 globally live frames). -/
 structure FramesC (s : SC) : Prop where
-  /-- WC2 C3: the initial context, context 0, is live and its initial frame, the base frame of
+  /-- WC3 C3: the initial context, context 0, is live and its initial frame, the base frame of
   Spec 1 §39, has no parent. -/
   initial : OptP (s.C[0]?) (fun x => x.life = .live ∧ x.parent = none) False
-  /-- WC2 C3: every live context has a nonempty local stack. -/
+  /-- WC3 C3: every live context has a nonempty local stack. -/
   nonempty : ∀ c, s.Live c → s.stk c ≠ []
-  /-- WC2 C3: frame identities are globally unique; Spec 1 §49.1: duplicate-free. -/
+  /-- WC3 C3: frame identities are globally unique; Spec 1 §49.1: duplicate-free. -/
   nodup : s.frames.Nodup
   /-- Spec 1 §49.1: every frame has a valid identity (below `nF`). -/
   bound : ∀ f ∈ s.frames, f < s.nF
-  /-- WC2 C3: the initial frame of a non-initial live context has a parent (the frame that
-  created the context, or its reparenting target, WC2 C6). -/
+  /-- WC3 C3: the initial frame of a non-initial live context has a parent (the frame that
+  created the context, or its reparenting target, WC3 C6). -/
   rooted : ∀ c, c ≠ 0 → s.Live c → s.ctxParent c ≠ none
-  /-- Spec 1 §49.1 re-indexed, WC2 C3: the parent of a live frame is live; the parent precedes
+  /-- Spec 1 §49.1 re-indexed, WC3 C3: the parent of a live frame is live; the parent precedes
   its child, which represents well-foundedness (Spec 1 §49, last paragraph). -/
   parent : ∀ f ∈ s.frames, ∀ g, s.parC f = some g → g ∈ s.frames ∧ g < f
 
-/-- `ConcurrentWF` (WC2 C20): the frame structure of `FramesC` and `WF3` (Spec 1 §49.1–§49.8)
+/-- `ConcurrentWF` (WC3 C20): the frame structure of `FramesC` and `WF3` (Spec 1 §49.1–§49.8)
 read with "the stack" as the globally live frames. -/
 def ConcurrentWF (s : SC) : Prop := FramesC s ∧ WF3 s.flat
 
-/-- `I1 ∧ I2 ∧ I3 ∧ I4` re-indexed (Spec 1 §50–§53, §57; WC2 C2): `I4` reads `Read3Pre`, which
+/-- `I1 ∧ I2 ∧ I3 ∧ I4` re-indexed (Spec 1 §50–§53, §57; WC3 C2): `I4` reads `Read3Pre`, which
 depends on the current frame, so it is required for every executing context. -/
 def Inv3baseC (s : SC) : Prop :=
   I1 s.flat ∧ I2 s.flat ∧ I3 s.flat ∧ ∀ c, I4 (s.view c)
 
-/-- `Inv3 = I1 ∧ I2 ∧ I3 ∧ I4 ∧ AnchorOrder ∧ NoDangling` re-indexed (Spec 1 §57; WC2 C2). -/
+/-- `Inv3 = I1 ∧ I2 ∧ I3 ∧ I4 ∧ AnchorOrder ∧ NoDangling` re-indexed (Spec 1 §57; WC3 C2). -/
 def Inv3C (s : SC) : Prop := Inv3baseC s ∧ AnchorOrderC s ∧ NoDangling s.flat
 
-/-- `NoOrphan` re-indexed (Spec 1 §54; WC2 C2): chains start at a globally live frame. -/
+/-- `NoOrphan` re-indexed (Spec 1 §54; WC3 C2): chains start at a globally live frame. -/
 def NoOrphanC (s : SC) : Prop := NoOrphan s.flat
 
-/-- The kernel invariant of Spec 1 §57 re-indexed (WC2 C20, C23):
+/-- The kernel invariant of Spec 1 §57 re-indexed (WC3 C20, C23):
 `ConcurrentWF ∧ Inv3 ∧ AnchorOrderHeld ∧ NoOrphan`. -/
 def KInvC (s : SC) : Prop := ConcurrentWF s ∧ Inv3C s ∧ AnchorOrderHeldC s ∧ NoOrphanC s
 
-/-! ## Views: membership and current frame (WC2 C2) -/
+/-! ## Views: membership and current frame (WC3 C2) -/
 
-/-- Unfolding of `stk` (WC2 C2). -/
+/-- Unfolding of `stk` (WC3 C2). -/
 theorem SC.stk_of {s : SC} {c : Nat} {x : Ctx} (h : s.C[c]? = some x) (hl : x.life = .live) :
     s.stk c = x.stack := by simp [SC.stk, h, hl]
 
-/-- A context with a nonempty stack is live (WC2 C2). -/
+/-- A context with a nonempty stack is live (WC3 C2). -/
 theorem SC.live_of_stk {s : SC} {c : Nat} (h : s.stk c ≠ []) : s.Live c := by
   unfold SC.stk at h; unfold SC.Live
   split at h
@@ -236,7 +238,7 @@ theorem SC.live_of_stk {s : SC} {c : Nat} (h : s.stk c ≠ []) : s.Live c := by
     · exact absurd rfl h
   · exact absurd rfl h
 
-/-- A frame of a stack is globally live (WC2 C2). -/
+/-- A frame of a stack is globally live (WC3 C2). -/
 theorem SC.mem_frames_of {s : SC} {c f : Nat} (h : f ∈ s.stk c) : f ∈ s.frames := by
   have hc : c < s.C.length := by
     unfold SC.stk at h; split at h
@@ -244,13 +246,13 @@ theorem SC.mem_frames_of {s : SC} {c f : Nat} (h : f ∈ s.stk c) : f ∈ s.fram
     · simp at h
   exact List.mem_flatMap.2 ⟨c, List.mem_range.2 hc, h⟩
 
-/-- Globally live frames are the frames of some stack (WC2 C2). -/
+/-- Globally live frames are the frames of some stack (WC3 C2). -/
 theorem SC.mem_frames {s : SC} {f : Nat} : f ∈ s.frames ↔ ∃ c, f ∈ s.stk c := by
   constructor
   · intro h; obtain ⟨c, -, hc⟩ := List.mem_flatMap.1 h; exact ⟨c, hc⟩
   · rintro ⟨c, hc⟩; exact SC.mem_frames_of hc
 
-/-- The view of a context lists exactly the globally live frames (WC2 C2). -/
+/-- The view of a context lists exactly the globally live frames (WC3 C2). -/
 theorem SC.mem_view_F {s : SC} {c f : Nat} : f ∈ (s.view c).F ↔ f ∈ s.frames := by
   simp only [SC.view, SC.flat, List.mem_append, List.mem_filter, decide_eq_true_eq]
   constructor
@@ -262,7 +264,7 @@ theorem SC.mem_view_F {s : SC} {c f : Nat} : f ∈ (s.view c).F ↔ f ∈ s.fram
     · exact .inl hc
     · exact .inr ⟨h, hc⟩
 
-/-- A block of a duplicate-free concatenation is duplicate-free (WC2 C3). -/
+/-- A block of a duplicate-free concatenation is duplicate-free (WC3 C3). -/
 theorem nodup_of_flatMap {α β : Type} {f : α → List β} :
     ∀ {l : List α} {a : α}, (l.flatMap f).Nodup → a ∈ l → (f a).Nodup
   | b :: l, a, h, ha => by
@@ -271,7 +273,7 @@ theorem nodup_of_flatMap {α β : Type} {f : α → List β} :
     · exact (List.nodup_append.1 h).1
     · exact nodup_of_flatMap (List.nodup_append.1 h).2.1 ha
 
-/-- Two blocks of a duplicate-free concatenation share no element (WC2 C3: frame identities are
+/-- Two blocks of a duplicate-free concatenation share no element (WC3 C3: frame identities are
 globally unique). -/
 theorem disjoint_of_flatMap {α β : Type} {f : α → List β} :
     ∀ {l : List α}, (l.flatMap f).Nodup → l.Nodup → ∀ {a a' : α} {x : β}, a ∈ l → a' ∈ l →
@@ -286,13 +288,13 @@ theorem disjoint_of_flatMap {α β : Type} {f : α → List β} :
     · subst e₂; exact absurd rfl (h₃ x hx' x (List.mem_flatMap.2 ⟨a, h₁, hx⟩))
     · exact disjoint_of_flatMap h₂ hl' h₁ h₂' hx hx'
 
-/-- The stack of a context is duplicate-free when the live frames are (WC2 C3). -/
+/-- The stack of a context is duplicate-free when the live frames are (WC3 C3). -/
 theorem SC.stk_nodup {s : SC} (hnd : s.frames.Nodup) (c : Nat) : (s.stk c).Nodup := by
   by_cases hc : c < s.C.length
   · exact nodup_of_flatMap hnd (List.mem_range.2 hc)
   · simp [SC.stk, List.getElem?_eq_none_iff.2 (Nat.le_of_not_lt hc)]
 
-/-- The view of a context is duplicate-free when the live frames are (WC2 C3). -/
+/-- The view of a context is duplicate-free when the live frames are (WC3 C3). -/
 theorem SC.view_nodup {s : SC} (hnd : s.frames.Nodup) (c : Nat) : (s.view c).F.Nodup := by
   simp only [SC.view, SC.flat]
   refine List.nodup_append.2 ⟨SC.stk_nodup hnd c, hnd.sublist (List.filter_sublist ..),
@@ -301,12 +303,12 @@ theorem SC.view_nodup {s : SC} (hnd : s.frames.Nodup) (c : Nat) : (s.view c).F.N
   simp only [List.mem_filter, decide_eq_true_eq] at hb
   exact hb.2 ha
 
-/-- The current frame of the view of `c` is the top of the stack of `c` (WC2 C2). -/
+/-- The current frame of the view of `c` is the top of the stack of `c` (WC3 C2). -/
 theorem SC.view_top {s : SC} {c f : Nat} {rest : List Nat} (h : s.stk c = f :: rest) :
     (s.view c).top = f := by
   simp [SC.view, S3.top, h]
 
-/-! ## Membership congruence (WC2 C2)
+/-! ## Membership congruence (WC3 C2)
 
 The clauses of `WF3`, `I1`–`I3`, `NoDangling` and `NoOrphan` (Spec 1 §49–§54) read the stack only
 through membership; they agree on states that differ only by the order of the stack. -/
@@ -356,11 +358,11 @@ theorem noDangling_mem_congr (h : NoDangling t) (hF : ∀ f, f ∈ F' ↔ f ∈ 
 
 end Congr
 
-/-- The view of a context is the flat state with a reordered stack (WC2 C2). -/
+/-- The view of a context is the flat state with a reordered stack (WC3 C2). -/
 theorem SC.view_eq (s : SC) (c : Nat) :
     s.view c = { s.flat with F := (s.view c).F } := rfl
 
-/-- `WF3` of the flat state carries to every view (WC2 C2). -/
+/-- `WF3` of the flat state carries to every view (WC3 C2). -/
 theorem SC.wf3_view {s : SC} (hfr : FramesC s) (hw : WF3 s.flat) {c : Nat} :
     WF3 (s.view c) := by
   rw [SC.view_eq]
@@ -375,7 +377,7 @@ theorem SC.wf3_view {s : SC} (hfr : FramesC s) (hw : WF3 s.flat) {c : Nat} :
     rw [he] at this; simp at this
   · exact h0.elim
 
-/-- `WF3` of a view carries to the flat state (WC2 C2). -/
+/-- `WF3` of a view carries to the flat state (WC3 C2). -/
 theorem SC.wf3_flat_of_view {s : SC} {c : Nat} (hw : WF3 (s.view c)) (hnd : s.frames.Nodup) :
     WF3 s.flat := by
   have := wf3_mem_congr (t := s.view c) (F' := s.frames) hw
