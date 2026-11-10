@@ -92,14 +92,15 @@ Aucun verdict ne diffère. Le `spawn` de W-HO′ est `ok`.
 2. **Base de la branche.** Après `fe2f4ee` viennent les trois commits de la revue : `8e2bccf`, `33b672f`, `e645f62`. La passe part de `e645f62`.
 3. **P7 : deux verdicts du corpus et son critère § 0.** Le critère dit qu'une clause d'autorité ou de la Spec 1 défaillante donne `reject`. Or le corpus donne `non habilité` dans deux cas où la clause défaillante est de ce type :
    - **Mise en place de S11 sans la cession d'`o1′`** (`S11_setup_wait`, `Corpus/MX:259`). Le corpus : « sans elle C14.3/§68.2 échoue et `acquire` n'est pas habilité ». C14.3 renvoie à §68.2, une clause d'accès.
-   - **W-C22.2** (`W_C22_2_encap`, `Corpus/MX:349`). Le corpus : `acquire(e)` « non habilitée tant que la dérivée sauvage est active (C13.9/C14) ». Dans `x5`, pour les contextes 0 et 1, `SyncAuthorized` est vrai (faits C14.1–C14.3). Ce qui échoue est `modeOK` (C15.4, Spec 1 §60.2) et `exclusive` (C15.5, §60.3), évalués par `#eval` sur `DeriveSyncPre`.
+   - **W-C22.2** (`W_C22_2_encap`, `Corpus/MX:349`). Le corpus : `acquire(e)` « non habilitée tant que la dérivée sauvage est active (C13.9/C14) ». Dans `x5`, pour les contextes 0 et 1, `SyncAuthorized` est vrai (faits C14.1–C14.3). Ce qui échoue est `modeOK` (C15.4, Spec 1 §60.2) et `exclusive` (C15.5, §60.3). Les sept autres champs de `DeriveSyncPre` sont vrais (évaluation des neuf champs par `#eval`).
    - Le modèle ne distingue pas les deux verdicts pour `acquire`, qui ne définit que `ok`. Les encodages restent tels quels, comme le demande le brief ; l'arbitrage appartient au critère P7.
 
 ## Audit final des axiomes
 
 - **Méthode.** `collectAxioms` sur toutes les constantes `thmInfo` `Ern.Concurrency*` et `_private.Ern.Concurrency*`, après `import Ern`.
 - **Résultat à `bf36d25`.** 1144 théorèmes, dont 886 non internes, contre 1092 (835) au jalon 3. Aucun axiome hors `{propext, Quot.sound}`, y compris pour les théorèmes des tâches 1 à 5.
-- **Build.** `lake build` réussit (69 jobs), sans avertissement.
+- **Build.** `lake build` réussit (69 jobs). Les neuf modules nouveaux ou touchés, recompilés seuls par `lake env lean`, ne produisent aucune sortie.
+- **Énoncés existants.** Toutes les lignes retirées depuis `e645f62` sont des lignes de docstring. Aucun énoncé ni aucune définition existants ne sont modifiés.
 - **Recherches vides.** Le `grep` d'`AGENTS.md` est vide. Aucun `noncomputable`, `decide +kernel` ni `ofReduceBool` dans `formal/Ern/Concurrency/`.
 - **Fichiers intouchés.** `git diff e645f62 --stat` ne touche ni `formal/Ern/MemoryModel/` ni les fichiers protégés.
 - **Lignes longues.** Aucune ligne ajoutée ne dépasse 100 caractères.
