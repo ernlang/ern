@@ -833,4 +833,191 @@ theorem cap5_drop_own_deriveSync {k : K} {L : MutexLayout} {st st' : SC × SyncR
       obtain ⟨e, hmem, hg, hl⟩ := libKC_sound k L reg s _ _ hp.authorized
       exact he.1 e hmem hl hg.symm
 
+/-- Fewer covering descendants keep an allowed mode (Spec 1 §43). -/
+theorem allows_effOf_sub {o m : Mode} {ds ds' : List Mode} (hs : ∀ x ∈ ds', x ∈ ds)
+    (h : Allows (effOf o ds) m) : Allows (effOf o ds') m := by
+  rcases allows_effOf h with ⟨h0, hm⟩ | ⟨hn, rfl⟩
+  · have : ds' = [] := by
+      cases ds' with
+      | nil => rfl
+      | cons x _ => have := hs x (List.mem_cons_self ..); rw [h0] at this; simp at this
+    rw [this]; unfold effOf; simp only [↓reduceIte]; exact hm
+  · unfold effOf
+    split
+    · rcases o with _ | _ <;> exact Or.inl rfl
+    · have hn' : Mode.modify ∉ ds' := fun h => hn (hs _ h)
+      simp only [hn', ↓reduceIte]; exact Or.inl rfl
+
+/-- `release` keeps the origins (Spec 1 §62, `ok` effect: only the activity changes). -/
+theorem release_org (t : S3) (a : Nat) : (releaseEff t a).org = t.org := by
+  funext i
+  unfold releaseEff
+  split
+  · rename_i x hx
+    unfold S3.org
+    by_cases hi : i = a
+    · subst hi; rw [List.getElem?_set_self (lt_of_getElem? hx), hx]; rfl
+    · rw [List.getElem?_set_ne (Ne.symm hi)]
+  · rfl
+
+/-- `release` of `a` keeps the effective mode allowed to any other authority (Spec 1 §43, §62:
+the released authority stops covering, so effective modes can only rise). -/
+theorem release_eff_mono {t : S3} {a u l : Nat} {m : Mode} (hua : u ≠ a)
+    (h : Allows (effective t u l) m) : Allows (effective (releaseEff t a) u l) m := by
+  obtain ⟨z, hz, hza, hzl, -⟩ := eff_present (allows_present h)
+  have hA : ∀ j, j ≠ a → (releaseEff t a).A[j]? = t.A[j]? := fun j hj => by
+    unfold releaseEff; split
+    · exact List.getElem?_set_ne (Ne.symm hj)
+    · rfl
+  have hz' : (releaseEff t a).A[u]? = some z := by rw [hA u hua]; exact hz
+  rw [effective_eq hz hza hzl] at h
+  rw [effective_eq hz' hza hzl]
+  refine allows_effOf_sub (fun md hmd => ?_) h
+  obtain ⟨j, y, hy, hya, hyl, hj, rfl⟩ := Ern.MemoryModel.Access.mem_descModes.1 hmd
+  have hja : j ≠ a := fun hja => by
+    subst hja
+    unfold releaseEff at hy
+    split at hy
+    · rename_i x hx
+      rw [List.getElem?_set_self (lt_of_getElem? hx)] at hy; cases hy; simp at hya
+    · rename_i hx; rw [hx] at hy; cases hy
+  have hanc : u ∈ t.ancs j := by
+    have : (releaseEff t a).ancs j = t.ancs j := by unfold S3.ancs; rw [release_org]
+    rwa [this] at hj
+  exact Ern.MemoryModel.Access.mem_descModes.2
+    ⟨j, y, by rw [← hA j hja]; exact hy, hya, hyl, hanc, rfl⟩
+
+/-- `release` of `a` by context `c'` (Spec 1 §62) does not lower `cap5` of another context `c`:
+`a` is held by the current frame of `c'` or by a place on which `c'` exercises `Modify` (§62.2),
+so it is attributable to no other context (`not_attr_frame`, `not_attr_place`). -/
+theorem release_cap5_mono {s : SC} {reg reg' : SyncReg} (hF : FramesC s) (hI : I1 s.flat)
+    (hw : WF3 s.flat) {c c' a : Nat} (hcc : c ≠ c') (hlive : s.Live c')
+    (hp : ReleasePre (s.view c') a) (hreg : ∀ e' ∈ reg', ∃ e ∈ reg, e.guarded = e'.guarded)
+    (l : Nat) :
+    capRank (cap5 s reg c l) ≤ capRank (cap5 (s.set (releaseEff (s.view c') a)) reg' c l) := by
+  have hne := hF.nonempty c' hlive
+  have hfa : ∀ u m, Attr5 s reg c u m → u ≠ a := fun u m hu hua => by
+    subst hua
+    have hh := hp.holderRight
+    unfold OptP at hh
+    split at hh
+    · rename_i y hy
+      cases hyh : y.holder with
+      | frame f =>
+        rw [hyh] at hh
+        exact not_attr_frame (c := c) (c' := c') hF.nodup hcc hy hyh (hh ▸ view_top_mem hne) hu.attr
+      | place q =>
+        rw [hyh] at hh
+        obtain ⟨g, -, hgx, hge⟩ := hh
+        exact not_attr_place hF.nodup hI hw hcc hy hyh (attr_of_exercisable hne hgx)
+          (fun l hl => by rw [← effective_of_A (t := s.view c') (t' := s.flat) rfl]; exact hge l hl)
+          hu.attr
+    · exact hh.elim
+  have hA : ∀ j, j ≠ a → (releaseEff (s.view c') a).A[j]? = s.A[j]? := fun j hj => by
+    unfold releaseEff; split
+    · exact List.getElem?_set_ne (Ne.symm hj)
+    · rfl
+  refine cap5_transport (s' := s.set (releaseEff (s.view c') a)) (reg' := reg') hw (fun f hf => hf)
+    (fun q _ => by
+      show footprint (releaseEff (s.view c') a).P q = _; unfold releaseEff; split <;> rfl)
+    (fun u m y hu hy => ⟨y, by rw [show (s.set _).A[u]? = _ from hA u (hfa u m hu)]; exact hy, rfl,
+      rfl, rfl⟩) (fun u m hu e' he' hl => ?_) (fun u m l hu hal => ?_) l
+  · obtain ⟨e, he, hg⟩ := hreg e' he'
+    refine hg ▸ hu.notGuarded e he ?_
+    obtain ⟨y, hy, hya⟩ := hl
+    show s.flat.Active e.guarded
+    rw [hg]
+    by_cases hga : e'.guarded = a
+    · have : (releaseEff (s.view c') a).A[e'.guarded]? = some y := hy
+      rw [hga] at this
+      unfold releaseEff at this
+      split at this
+      · rename_i x hx
+        rw [List.getElem?_set_self (lt_of_getElem? hx)] at this; cases this; simp at hya
+      · rename_i hx; rw [hx] at this; cases this
+    · have h2 : (releaseEff (s.view c') a).A[e'.guarded]? = some y := hy
+      rw [hA _ hga] at h2
+      exact ⟨y, h2, hya⟩
+  · have := release_eff_mono (t := s.view c') (hfa u m hu)
+      (by rw [effective_of_A (t := s.view c') (t' := s.flat) rfl]; exact hal)
+    rwa [effective_of_A (t := releaseEff (s.view c') a)
+      (t' := (s.set (releaseEff (s.view c') a)).flat) rfl] at this
+
+/-- L1 (`cap5_drop_own`, WC5 C45) for `release` (Spec 1 §62). Under `DDSound` (Spec 1 §80), from a
+state reached by an `EncapsulatedTrace5` from an initial state (Spec 1 §47). -/
+theorem cap5_drop_own_release {k : K} {L : MutexLayout} {statics : Statics} {lbls : List Label}
+    {st st' : SC × SyncReg × ArenaReg} {c' a : Nat} (hdd : DDSound k) (hst : StaticsOK statics)
+    (htr : EncapsulatedTrace5 k L (SC.ofS3 (S3.init statics), [], []) lbls st)
+    (h : LStep k L (.kernel c' (.release a)) st st') (c l : Nat)
+    (hd : capRank (cap5 st'.1 st'.2.1 c l) < capRank (cap5 st.1 st.2.1 c l)) :
+    (Label.kernel c' (.release a)).ctx = c := by
+  obtain ⟨⟨hF, hw⟩, ⟨⟨hI, -⟩, -⟩, -⟩ := (encapsulated_inv hdd hst (encapsulatedTrace5_imp htr)).1
+  refine Decidable.byContradiction fun hctx => ?_
+  have hcc : c ≠ c' := fun e => hctx (e ▸ rfl)
+  cases h with
+  | @kernel s s' reg ar _ _ hk =>
+    obtain ⟨hlive, o, hR, ho⟩ := hk
+    cases hR with
+    | reject => cases ho
+    | ok hp =>
+      cases ho
+      exact absurd hd (Nat.not_lt.2 (release_cap5_mono hF hI hw hcc hlive hp
+        (fun e he => ⟨e, he, rfl⟩) l))
+
+/-- L1 (`cap5_drop_own`, WC5 C45) for `unlock` (WC4 C17): the grant is released by O3 (C17.2,
+C17.3) and the registry keeps its `guarded` identities. Under `DDSound` (Spec 1 §80), from a state
+reached by an `EncapsulatedTrace5` from an initial state (Spec 1 §47). -/
+theorem cap5_drop_own_unlock {k : K} {L : MutexLayout} {statics : Statics} {lbls : List Label}
+    {st st' : SC × SyncReg × ArenaReg} {c' i : Nat} (hdd : DDSound k) (hst : StaticsOK statics)
+    (htr : EncapsulatedTrace5 k L (SC.ofS3 (S3.init statics), [], []) lbls st)
+    (h : LStep k L (.unlock c' i) st st') (c l : Nat)
+    (hd : capRank (cap5 st'.1 st'.2.1 c l) < capRank (cap5 st.1 st.2.1 c l)) :
+    (Label.unlock c' i).ctx = c := by
+  obtain ⟨⟨hF, hw⟩, ⟨⟨hI, -⟩, -⟩, -⟩ := (encapsulated_inv hdd hst (encapsulatedTrace5_imp htr)).1
+  refine Decidable.byContradiction fun hctx => ?_
+  have hcc : c ≠ c' := fun e => hctx (e ▸ rfl)
+  cases h with
+  | @unlock s reg ar _ _ st₁ hu =>
+    obtain ⟨hlive, e, g, hei, -, -, hp, -, rfl⟩ := hu
+    have he : e ∈ reg := List.mem_of_getElem? hei
+    exact absurd hd (Nat.not_lt.2 (release_cap5_mono hF hI hw hcc hlive hp (fun e' he' => by
+      rcases List.mem_or_eq_of_mem_set he' with h | h
+      · exact ⟨e', h, rfl⟩
+      · exact ⟨e, he, by rw [h]⟩) l))
+
+/-- One authority attributable in `Modify` to `c'` and attributable to another context `c`
+contradicts `attr_compat` (WC5 C43, C45), whatever its footprint. -/
+theorem attr_excl {s : SC} (hnd : s.frames.Nodup) (hI : I1 s.flat) (hw : WF3 s.flat)
+    {c c' x : Nat} {m : Mode} (hcc : c ≠ c') (hx' : Attr s c' x .modify) (hx : Attr s c x m) :
+    False := by
+  cases hx' with
+  | base hy _ _ hf hin => exact not_attr_frame hnd hcc hy hf hin hx
+  | held hy ha _ hp hb hc =>
+    exact not_attr_place hnd hI hw hcc hy hp hb (fun l hl => hc l hl) hx
+
+/-- L1 (`cap5_drop_own`, WC5 C45) for `newMutex` (WC4 C13): the new `guarded` ceases to be
+attributable, and it is attributable to no context but the actor, which exercises `Modify` over it
+(C13.2; `attr_excl`); the kernel state is unchanged. Under `DDSound` (Spec 1 §80), from a state
+reached by an `EncapsulatedTrace5` from an initial state (Spec 1 §47). -/
+theorem cap5_drop_own_newMutex {k : K} {L : MutexLayout} {statics : Statics} {lbls : List Label}
+    {st st' : SC × SyncReg × ArenaReg} {c' g : Nat} (hdd : DDSound k) (hst : StaticsOK statics)
+    (htr : EncapsulatedTrace5 k L (SC.ofS3 (S3.init statics), [], []) lbls st)
+    (h : LStep k L (.newMutex c' g) st st') (c l : Nat)
+    (hd : capRank (cap5 st'.1 st'.2.1 c l) < capRank (cap5 st.1 st.2.1 c l)) :
+    (Label.newMutex c' g).ctx = c := by
+  obtain ⟨⟨hF, hw⟩, ⟨⟨hI, -⟩, -⟩, -⟩ := (encapsulated_inv hdd hst (encapsulatedTrace5_imp htr)).1
+  refine Decidable.byContradiction fun hctx => ?_
+  have hcc : c ≠ c' := fun e => hctx (e ▸ rfl)
+  cases h with
+  | @newMutex s reg ar _ _ st₁ hn =>
+    obtain ⟨hlive, hp, rfl⟩ := hn
+    have hg : Attr s c' g .modify := attr_of_exercisable (hF.nonempty c' hlive) hp.exercisable
+    refine absurd hd (Nat.not_lt.2 (cap5_transport (s' := s) (reg' := reg ++ [⟨g, none⟩]) hw
+      (fun f hf => hf) (fun p _ => rfl) (fun u m y _ hy => ⟨y, hy, rfl, rfl, rfl⟩)
+      (fun u m hu e he hl => ?_) (fun u m l _ hal => hal) l))
+    rcases List.mem_append.1 he with he | he
+    · exact hu.notGuarded e he hl
+    · rw [List.mem_singleton.1 he]
+      exact fun hug => attr_excl hF.nodup hI hw hcc hg (hug ▸ hu.attr)
+
 end Ern.Concurrency
