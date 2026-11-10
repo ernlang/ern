@@ -95,16 +95,12 @@ theorem footprint_ne {P : List Place} (hP : ∀ q o, parentOf P q = some o → o
     ∀ n q, P.length - q ≤ n → q < P.length → ∃ l, l ∈ footprint P q := by
   intro n
   induction n with
-  | zero => intro q hn hq; omega
+  | zero => intro q hn hq; exact absurd hn (by omega)
   | succ n ih =>
     intro q hn hq
-    by_cases hl : isLeaf P q
-    · exact ⟨q, List.mem_filter.2 ⟨List.mem_range.2 hq,
-        decide_eq_true ⟨hl, hq, Or.inl rfl⟩⟩⟩
-    · have hex : ∃ r, r < P.length ∧ parentOf P r = some q := by
-        apply Classical.byContradiction; intro hno
-        exact hl fun r hr hpr => hno ⟨r, hr, hpr⟩
-      obtain ⟨r, hr, hpr⟩ := hex
+    by_cases hex : ∃ r ∈ List.range P.length, parentOf P r = some q
+    · obtain ⟨r, hr, hpr⟩ := hex
+      have hr := List.mem_range.1 hr
       have hqr := hP r q hpr
       obtain ⟨l, hlr⟩ := ih r (by omega) hr
       obtain ⟨hl1, hl2⟩ := List.mem_filter.1 hlr
@@ -114,6 +110,8 @@ theorem footprint_ne {P : List Place} (hP : ∀ q o, parentOf P q = some o → o
       rcases hpart with rfl | hrc
       · rw [hc]; exact List.mem_cons_self ..
       · exact chain_trans hP (l + 1) l (by omega) r hrc q (by rw [hc]; exact List.mem_cons_self ..)
+    · have hl : isLeaf P q := fun r hr hpr => hex ⟨r, List.mem_range.2 hr, hpr⟩
+      exact ⟨q, List.mem_filter.2 ⟨List.mem_range.2 hq, decide_eq_true ⟨hl, hq, Or.inl rfl⟩⟩⟩
 
 /-- An effective mode `Modify` (Spec 1 §43, case 2): the authority exists, is active, covers the
 leaf, has own mode `Modify` and no active descendant covers the leaf. -/
