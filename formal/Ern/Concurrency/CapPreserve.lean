@@ -272,4 +272,293 @@ theorem cap5_compat {k : K} {L : MutexLayout} {statics : Statics} {lbls : List L
   obtain ⟨⟨hF, hw⟩, ⟨⟨hI, -⟩, -⟩, -⟩ := (encapsulated_inv hdd hst (encapsulatedTrace5_imp h)).1
   exact cap5_compat_state hF.nodup hI hw hcc hm
 
+/-! ## L1: per-label lemmas -/
+
+/-- Transport of `Attr5` (brief of milestone 4, task 3) from `s` to `s'` for context `c`: the
+frames of `c` stay live, the footprints of existing places are unchanged, and every authority
+attributable to `c` keeps its activity, own mode and holder, stays outside the live `guarded` set,
+and keeps an effective mode permitting the mode in which it is attributable (Spec 1 §43; WC5
+C43). -/
+theorem attr5_transport {s s' : SC} {reg reg' : SyncReg} {c : Nat} (hw : WF3 s.flat)
+    (hstk : ∀ f ∈ s.stk c, f ∈ s'.stk c)
+    (hfp : ∀ p, p < s.P.length → footprint s'.P p = footprint s.P p)
+    (hA : ∀ u m y, Attr5 s reg c u m → s.A[u]? = some y → ∃ y', s'.A[u]? = some y' ∧
+      y'.active = y.active ∧ y'.mode = y.mode ∧ y'.holder = y.holder)
+    (hng : ∀ u m, Attr5 s reg c u m → NotGuarded s' reg' u)
+    (heff : ∀ u m l, Attr5 s reg c u m → Allows (effective s.flat u l) m →
+      Allows (effective s'.flat u l) m)
+    {u : Nat} {m : Mode} (h : Attr5 s reg c u m) : Attr5 s' reg' c u m := by
+  induction h with
+  | @base a m y f hg hy ha hm hf hin =>
+    obtain ⟨y', hy', ha', hm', hf'⟩ := hA a m y (.base hg hy ha hm hf hin) hy
+    exact .base (hng a m (.base hg hy ha hm hf hin)) hy' (ha'.trans ha) (hm' ▸ hm) (hf'.trans hf)
+      (hstk f hin)
+  | @held a p b m y hg hy ha hm hp hb hc ih =>
+    have hab : Attr5 s reg c a m := .held hg hy ha hm hp hb hc
+    obtain ⟨y', hy', ha', hm', hp'⟩ := hA a m y hab hy
+    have hu : s.flat.Usable p := by
+      have := hw.holders a _ hy ha; rw [hp] at this; exact this
+    refine .held (hng a m hab) hy' (ha'.trans ha) (hm' ▸ hm) (hp'.trans hp) ih fun l hl => ?_
+    rw [hfp p hu.lt] at hl
+    exact heff b m l hb (hc l hl)
+
+/-- `cap5` does not decrease when every `CapAt5` of `c` on `l` is kept (brief of milestone 4,
+task 3; WC5 C43). -/
+theorem cap5_rank_mono {s s' : SC} {reg reg' : SyncReg} {c l : Nat}
+    (h : ∀ m, CapAt5 s reg c l m → CapAt5 s' reg' c l m) :
+    capRank (cap5 s reg c l) ≤ capRank (cap5 s' reg' c l) := by
+  unfold cap5
+  by_cases h1 : CapAt5 s reg c l .modify
+  · simp only [h1, h .modify h1, ↓reduceIte, Nat.le_refl]
+  · by_cases h2 : CapAt5 s reg c l .observe
+    · have h2' := h .observe h2
+      simp only [h1, h2, h2', ↓reduceIte]
+      split <;> simp [capRank]
+    · simp only [h1, h2, ↓reduceIte, capRank]; exact Nat.zero_le _
+
+/-- `cap5` of `c` does not decrease under the hypotheses of `attr5_transport`. -/
+theorem cap5_transport {s s' : SC} {reg reg' : SyncReg} {c : Nat} (hw : WF3 s.flat)
+    (hstk : ∀ f ∈ s.stk c, f ∈ s'.stk c)
+    (hfp : ∀ p, p < s.P.length → footprint s'.P p = footprint s.P p)
+    (hA : ∀ u m y, Attr5 s reg c u m → s.A[u]? = some y → ∃ y', s'.A[u]? = some y' ∧
+      y'.active = y.active ∧ y'.mode = y.mode ∧ y'.holder = y.holder)
+    (hng : ∀ u m, Attr5 s reg c u m → NotGuarded s' reg' u)
+    (heff : ∀ u m l, Attr5 s reg c u m → Allows (effective s.flat u l) m →
+      Allows (effective s'.flat u l) m) (l : Nat) :
+    capRank (cap5 s reg c l) ≤ capRank (cap5 s' reg' c l) := by
+  refine cap5_rank_mono fun m ⟨x, hx, ha, he⟩ => ⟨x, ?_, attr5_transport hw hstk hfp hA hng heff ha,
+    heff x m l ha he⟩
+  have hlt := List.mem_range.1 hx
+  obtain ⟨y, hy⟩ : ∃ y, s.A[x]? = some y := ⟨_, List.getElem?_eq_getElem hlt⟩
+  obtain ⟨y', hy', -⟩ := hA x m y ha hy
+  exact List.mem_range.2 (lt_of_getElem? hy')
+
+/-- `effective` reads only the authorities (Spec 1 §43). -/
+theorem effective_of_A {t t' : S3} (h : t.A = t'.A) (a p : Nat) :
+    effective t a p = effective t' a p := by
+  have ho : t.org = t'.org := by funext i; unfold S3.org; rw [h]
+  unfold effective descModes S3.ancs; rw [h, ho]
+
+/-- Same kernel components `A`, `P` and contexts, and registries with the same `guarded`
+identities: `cap5` does not decrease. -/
+theorem cap5_same {s s' : SC} {reg reg' : SyncReg} (hw : WF3 s.flat) (hA : s'.A = s.A)
+    (hP : s'.P = s.P) (hC : s'.C = s.C) (hreg : ∀ e' ∈ reg', ∃ e ∈ reg, e.guarded = e'.guarded)
+    (c l : Nat) : capRank (cap5 s reg c l) ≤ capRank (cap5 s' reg' c l) := by
+  have hAf : s'.flat.A = s.flat.A := hA
+  refine cap5_transport hw (fun f hf => by unfold SC.stk at hf ⊢; rw [hC]; exact hf)
+    (fun p _ => by rw [hP]) (fun u m y _ hy => ⟨y, by rw [hA]; exact hy, rfl, rfl, rfl⟩)
+    (fun u m h e he hl => ?_) (fun u m l _ h => by rw [effective_of_A hAf]; exact h) l
+  obtain ⟨e₀, he₀, hg⟩ := hreg e he
+  have hng : NotGuarded s reg u := by
+    cases h with
+    | base hg' => exact hg'
+    | held hg' => exact hg'
+  have hl' : e₀.Live s := by
+    show s.flat.Active e₀.guarded
+    obtain ⟨y, hy, hya⟩ : s'.flat.Active e.guarded := hl
+    exact ⟨y, by rw [hg]; rw [← hAf]; exact hy, hya⟩
+  exact hg ▸ hng e₀ he₀ hl'
+
+/-- Labels whose `ok` effect changes neither the authorities, the places, the contexts nor the
+`guarded` identities of the registry: `read3`, `write3`, `writeShared` (Spec 1 §66–§68: initialization
+states only), `depend` (§64: anchors only), `pin`, `unpin` (§74, §75: pinning obligations only),
+`join` (WC4 C8: no change), `resetLock` (WC4 C18: the grant record only), `newArena` (Spec 1
+§76: the arena registry only). -/
+def Label.Inert : Label → Prop
+  | .kernel _ (.read _ _) | .kernel _ (.write _ _) | .kernel _ (.writeShared _ _)
+  | .kernel _ (.depend _ _) | .kernel _ (.pin _) | .kernel _ (.unpin _) | .join _ _
+  | .resetLock _ _ | .newArena _ _ _ => True
+  | _ => False
+
+/-- The `ok` effect of an inert label (Spec 1 §64, §66–§68, §74–§76; WC4 C8, C18). -/
+theorem inert_effect {k : K} {L : MutexLayout} {lbl : Label} {st st' : SC × SyncReg × ArenaReg}
+    (hi : lbl.Inert) (h : LStep k L lbl st st') :
+    st'.1.A = st.1.A ∧ st'.1.P = st.1.P ∧ st'.1.C = st.1.C ∧
+      ∀ e' ∈ st'.2.1, ∃ e ∈ st.2.1, e.guarded = e'.guarded := by
+  have same : ∀ (reg : SyncReg), ∀ e' ∈ reg, ∃ e ∈ reg, e.guarded = e'.guarded :=
+    fun _ e' he' => ⟨e', he', rfl⟩
+  cases h with
+  | @kernel s s' reg ar c op hk =>
+    cases op <;> simp only [Label.Inert] at hi
+    · obtain ⟨-, hR⟩ := hk
+      cases hR; exact ⟨rfl, rfl, rfl, same reg⟩
+    · obtain ⟨-, o, hR, ho⟩ := hk
+      cases hR with
+      | ok => cases ho; exact ⟨rfl, rfl, rfl, same reg⟩
+      | reject => cases ho
+    · obtain ⟨-, o, hR, ho⟩ := hk
+      cases hR with
+      | ok => cases ho; exact ⟨rfl, rfl, rfl, same reg⟩
+      | reject => cases ho
+    · obtain ⟨-, o, hR, ho⟩ := hk
+      cases hR with
+      | ok => cases ho; exact ⟨rfl, rfl, rfl, same reg⟩
+      | reject => cases ho
+    · obtain ⟨-, o, hR, ho⟩ := hk
+      cases hR with
+      | ok => cases ho; exact ⟨rfl, rfl, rfl, same reg⟩
+      | reject => cases ho
+    · obtain ⟨-, o, hR, ho⟩ := hk
+      cases hR with
+      | ok => cases ho; exact ⟨rfl, rfl, rfl, same reg⟩
+      | reject => cases ho
+  | join hj =>
+    cases hj; exact ⟨rfl, rfl, rfl, same _⟩
+  | @resetLock s reg ar c i st₁ hr =>
+    obtain ⟨-, e, he, -, -, -, rfl⟩ := hr
+    refine ⟨rfl, rfl, rfl, fun e' he' => ?_⟩
+    rcases List.mem_or_eq_of_mem_set he' with h | h
+    · exact ⟨e', h, rfl⟩
+    · exact ⟨e, List.mem_of_getElem? he, by rw [h]⟩
+  | newArena hn =>
+    obtain ⟨-, hR⟩ := hn
+    cases hR; exact ⟨rfl, rfl, rfl, same _⟩
+  | _ => simp only [Label.Inert] at hi
+
+/-- L1 (`cap5_drop_own`, WC5 C45) for the inert labels: from a state reached by an
+`EncapsulatedTrace` from an initial state (Spec 1 §47), under `DDSound` (Spec 1 §80), an inert
+step lowers no `cap5`, so the implication of `Cap5DropOwn` holds for it. -/
+theorem cap5_drop_own_inert {k : K} {L : MutexLayout} {statics : Statics} {lbls : List Label}
+    {st st' : SC × SyncReg × ArenaReg} {lbl : Label} (hdd : DDSound k) (hst : StaticsOK statics)
+    (htr : EncapsulatedTrace5 k L (SC.ofS3 (S3.init statics), [], []) lbls st) (hi : lbl.Inert)
+    (h : LStep k L lbl st st') (c l : Nat)
+    (hd : capRank (cap5 st'.1 st'.2.1 c l) < capRank (cap5 st.1 st.2.1 c l)) : lbl.ctx = c := by
+  obtain ⟨⟨-, hw⟩, -⟩ := (encapsulated_inv hdd hst (encapsulatedTrace5_imp htr)).1
+  obtain ⟨hA, hP, hC, hreg⟩ := inert_effect hi h
+  exact absurd hd (Nat.not_lt.2 (cap5_same hw hA hP hC hreg c l))
+
+/-- An exercisable authority's own mode permits the requested mode (Spec 1 §43). -/
+theorem exer_mode {t : S3} {a : Nat} {m : Mode} {y : Authority} (h : t.ExercisableAt a m)
+    (hy : t.A[a]? = some y) : m.le y.mode := by
+  cases h with
+  | base hy' _ hm => rw [hy] at hy'; cases hy'; exact hm
+  | held hy' _ hm => rw [hy] at hy'; cases hy'; exact hm
+
+/-- Adding an `Observe` descendant keeps an effective `Observe` (Spec 1 §43, case 4). -/
+theorem allows_effOf_obs {o : Mode} {ds : List Mode} (h : Allows (effOf o ds) .observe) :
+    Allows (effOf o (ds ++ [.observe])) .observe := by
+  have hn : Mode.modify ∉ ds := by
+    rcases allows_effOf h with ⟨h0, -⟩ | ⟨hn, -⟩
+    · rw [h0]; simp
+    · exact hn
+  unfold effOf
+  simp only [List.append_eq_nil_iff, List.cons_ne_self, and_false, ↓reduceIte, List.mem_append,
+    List.mem_singleton, reduceCtorEq, or_false, hn]
+  exact Or.inl rfl
+
+/-- `derive` by context `c'` (Spec 1 §60) keeps, for every other context `c`, the effective mode of
+an authority attributable to `c` (WC5 C43): the new authority lowers only the effective modes of
+its source and of the source's ancestors on its region, which `attr_compat` and `I1` exclude for
+`c` (Spec 1 §43, §50, §60.1, §60.2). -/
+theorem derive_eff_keep {s : SC} (hnd : s.frames.Nodup) (hI : I1 s.flat) (hw : WF3 s.flat)
+    {c c' src : Nat} {region : List Nat} {md : Mode} (hcc : c ≠ c') (hne : s.stk c' ≠ [])
+    (hp : DerivePre (s.view c') src region md) {u : Nat} {m : Mode} (hu : Attr s c u m)
+    {l : Nat} (hal : Allows (effective s.flat u l) m) :
+    Allows (effective (s.flat.addAuth ⟨md, some src, region, .frame (s.view c').top, true⟩) u l)
+      m := by
+  have hvA : ∀ a l, effective (s.view c') a l = effective s.flat a l :=
+    fun a l => effective_of_A rfl a l
+  have hulen : u < s.A.length := by
+    cases hu with
+    | base hy => exact lt_of_getElem? hy
+    | held hy => exact lt_of_getElem? hy
+  by_cases hl : l ∈ region
+  · obtain ⟨x, hx, hxa⟩ := hp.active
+    have hxl : l ∈ x.footprint := by
+      have := hp.within l hl; unfold S3.afp at this; rw [hx] at this; exact this
+    have hsl : src < s.A.length := lt_of_getElem? hx
+    obtain ⟨z, hz, hza, hzl, -⟩ := eff_present (allows_present hal)
+    have hz' : (s.flat.addAuth ⟨md, some src, region, .frame (s.view c').top, true⟩).A[u]? =
+        some z := by rw [addAuth_lt hulen]; exact hz
+    rw [effective_eq hz' hza hzl, descModes_addAuth,
+      ancs_addAuth_self (s := s.flat) (rfl : (⟨md, some src, region, .frame (s.view c').top, true⟩ :
+        Authority).origin = some src) hsl]
+    rw [effective_eq hz hza hzl] at hal
+    by_cases hus : u ∈ src :: s.flat.ancs src
+    · simp only [hl, hus, and_self, ↓reduceIte]
+      have hcomp : ∀ m₁, Attr s c u .modify → effective s.flat u l = some .modify →
+          Attr s c' src m₁ → Allows (effective s.flat src l) m₁ → False :=
+        fun m₁ h1 h2 h3 h4 => attr_compat hnd hI hw hcc h1 rfl src l m₁ h2 h3 h4
+      have hc'src : Attr s c' src md := attr_of_exercisable hne hp.exercisable
+      have hmod : Allows (effective s.flat src l) md := (hvA src l) ▸ hp.modeOK l hl
+      have hxm : md.le x.mode := exer_mode hp.exercisable hx
+      rcases List.mem_cons.1 hus with rfl | hanc
+      · -- `u` is the source
+        cases md with
+        | modify =>
+          exact (attr_compat hnd hI hw (Ne.symm hcc) hc'src rfl _ l m
+            (allows_modify hmod) hu (by rw [effective_eq hz hza hzl]; exact hal)).elim
+        | observe =>
+          cases m with
+          | observe => exact allows_effOf_obs hal
+          | modify =>
+            exact (hcomp _ hu (by rw [effective_eq hz hza hzl]; exact allows_modify hal) hc'src
+              hmod).elim
+      · -- `u` is a strict ancestor of the source
+        have hin : x.mode ∈ descModes s.flat u l := mem_descModes hx hxa hxl hanc
+        have hne' : descModes s.flat u l ≠ [] := List.ne_nil_of_mem hin
+        cases md with
+        | modify =>
+          have : x.mode = .modify := by rcases hxm with h | h; cases h; exact h
+          rw [this] at hin
+          rcases allows_effOf hal with ⟨h0, -⟩ | ⟨hn, -⟩
+          · exact absurd h0 hne'
+          · exact absurd hin hn
+        | observe =>
+          cases m with
+          | observe => exact allows_effOf_obs hal
+          | modify =>
+            rcases allows_effOf hal with ⟨h0, -⟩ | ⟨-, h⟩
+            · exact absurd h0 hne'
+            · cases h
+    · simp only [hus, and_false, ↓reduceIte, List.append_nil]; exact hal
+  · rw [effective_addAuth_notin hulen hl]; exact hal
+
+/-- L1 (`cap5_drop_own`, WC5 C45) for `derive` (Spec 1 §60): from a state reached by an
+`EncapsulatedTrace5` from an initial state (Spec 1 §47), under `DDSound` (Spec 1 §80), a `derive`
+step that strictly lowers `cap5` of `c` is a step of `c`. -/
+theorem cap5_drop_own_derive {k : K} {L : MutexLayout} {statics : Statics} {lbls : List Label}
+    {st st' : SC × SyncReg × ArenaReg} {c' src : Nat} {region : List Nat} {mo : Mode}
+    (hdd : DDSound k) (hst : StaticsOK statics)
+    (htr : EncapsulatedTrace5 k L (SC.ofS3 (S3.init statics), [], []) lbls st)
+    (h : LStep k L (.kernel c' (.derive src region mo)) st st') (c l : Nat)
+    (hd : capRank (cap5 st'.1 st'.2.1 c l) < capRank (cap5 st.1 st.2.1 c l)) :
+    (Label.kernel c' (.derive src region mo)).ctx = c := by
+  obtain ⟨⟨hF, hw⟩, ⟨⟨hI, -⟩, -⟩, -⟩ := (encapsulated_inv hdd hst (encapsulatedTrace5_imp htr)).1
+  refine Decidable.byContradiction fun hcc => ?_
+  have hcc : c ≠ c' := fun e => hcc (e ▸ rfl)
+  cases h with
+  | @kernel s s' reg ar _ _ hk =>
+    obtain ⟨hlive, o, hR, ho⟩ := hk
+    cases hR with
+    | reject => cases ho
+    | ok hp =>
+      cases ho
+      have hne := hF.nonempty c' hlive
+      refine absurd hd (Nat.not_lt.2 (cap5_transport (s' := s.set (deriveEff (s.view c') src region mo))
+        (reg' := reg) hw (fun f hf => hf) (fun p _ => rfl)
+        (fun u m y hu hy => ⟨y, ?_, rfl, rfl, rfl⟩) (fun u m hu e he hl => ?_)
+        (fun u m l hu hal => ?_) l))
+      · have hlt : u < s.A.length := lt_of_getElem? hy
+        show (deriveEff (s.view c') src region mo).A[u]? = some y
+        rw [deriveEff, addAuth_lt hlt]; exact hy
+      · have hng : NotGuarded s reg u := by
+          cases hu with
+          | base hg => exact hg
+          | held hg => exact hg
+        have hlt : u < s.A.length := by
+          cases hu with
+          | base _ hy => exact lt_of_getElem? hy
+          | held _ hy => exact lt_of_getElem? hy
+        obtain ⟨y, hy, hya⟩ := hl
+        by_cases hg : e.guarded < s.A.length
+        · refine hng e he ⟨y, ?_, hya⟩
+          have : (deriveEff (s.view c') src region mo).A[e.guarded]? = some y := hy
+          rwa [deriveEff, addAuth_lt hg] at this
+        · exact fun h => hg (h ▸ hlt)
+      · have := derive_eff_keep hF.nodup hI hw hcc hne hp hu.attr hal
+        rw [effective_of_A (t := (s.set (deriveEff (s.view c') src region mo)).flat)
+          (t' := s.flat.addAuth ⟨mo, some src, region, .frame (s.view c').top, true⟩) rfl]
+        exact this
+
 end Ern.Concurrency
