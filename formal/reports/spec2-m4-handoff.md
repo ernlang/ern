@@ -10,7 +10,7 @@ Branche `formal/spec2-m4`, créée depuis `b4d18ce` (tête de `formal/spec2-m3` 
 - **Définitions existantes :** aucune n'est modifiée (`Encap`, `EncapsulatedTrace`, `SyncInv`, `GrantDiscipline`, `LStep`, `ArenaInvC`, `AdminSep` comprises). Tout est ajouté à côté ; `git diff b4d18ce` ne retire aucune ligne.
 - **Périmètre :** machine d'autorités seule. Aucun événement, aucune relation `po`, `rf`, `mo`, `sw`, `hb`, aucun énoncé sur les courses.
 
-Chemins relatifs à `formal/Ern/Concurrency/`. Numéros de ligne à `66d2d4e`, dernier commit de code.
+Chemins relatifs à `formal/Ern/Concurrency/`. Numéros de ligne à `ec2106b`, dernier commit de code.
 
 ## Résultats
 
@@ -21,7 +21,7 @@ Chemins relatifs à `formal/Ern/Concurrency/`. Numéros de ligne à `66d2d4e`, d
 | L1 pour `cap` | **réfuté** par W-GR, comme le brief l'attendait |
 | `cap5_sound` | **réfuté** |
 | `cap5_compat` (L2, état) | **prouvé** |
-| `cap5_drop_own` (L1) | **inachevé** : prouvé pour 17 des 28 sortes d'étiquettes, non entrepris pour les 11 autres |
+| `cap5_drop_own` (L1) | **inachevé** : prouvé pour 17 des 28 sortes d'étiquettes, non entrepris pour les 11 autres ; aucune baisse pour un autre contexte sur 15 pas existants de 8 d'entre elles (indice, pas preuve) |
 | `handoff_loss_exists` (L2, trace) | **réfuté** |
 | S10b | verdicts obtenus ; échouent `anchorOrderHeld` (§63.7) et `anchorOrder` (§63.6) |
 
@@ -37,7 +37,9 @@ Les deux réfutations ont la même cause : `GuardedExcl` ne porte que sur l'argu
 | `fbc1898`, `2f5b6bc` | 4 — `cap5_compat` ; réfutations de `cap5_sound` et `handoff_loss_exists` ; retrait d'un `Classical.choice` |
 | `73b73cd`, `37f4267`, `bd77fa6` | 4 — L1 sur `cap5`, étiquette par étiquette |
 | `66d2d4e` | 5 — S10b |
-| commit suivant | ce rapport |
+| `50c34fc` | ce rapport, première version |
+| `ec2106b` | 4 — L1 sur des traces existantes, étiquettes sans preuve (indice) |
+| commit suivant | corrections du rapport |
 
 ## Tâche 1 — W-GR (`Corpus/GuardedRead.lean`, corpus v4 § 2 ter)
 
@@ -61,7 +63,7 @@ Depuis `MX₄` (`x4`, registre `regX`), contrat `KM`.
 
 | Témoin, feuille (théorème) | États et valeurs | Baisses : contexte, pas qui la cause |
 |---|---|---|
-| W-HO, `left` (`w_ho_cap`, `:26`) | `t0` M — ; `t1` M — ; `t2` — M ; `h1` — M ; `h2` M — ; `h3` M — | `c0` au `spawn` (son pas) ; `c1` à `release(a)` (son pas) |
+| W-HO, `left` ; `right` identique (`w_ho_cap`, `:26`) | `t0` M — ; `t1` M — ; `t2` — M ; `h1` — M ; `h2` M — ; `h3` M — | `c0` au `spawn` (son pas) ; `c1` à `release(a)` (son pas) |
 | W-HO′, `X` (`w_ho2_cap`, `:34`) | `k0`…`k4` M — ; `k5`, `k6` — M | `c0` à `release(b)` (son pas) |
 | W-HO″, `X` (`w_ho3_cap`, `:44`) | `k0`, `m1` M — — ; `m2`, `m3` — M — ; `m4`, `m5` — — M ; `m6` — M — ; `m7`, `m8`, `m9` M — — | `c0` à son `spawn` ; `c1` à son `spawn` ; `c2` à `release(a₂)` ; `c1` à `release(a)` — tous leurs propres pas |
 | W-GR, `T` (`w_gr_cap`, `:56`) | `x0`, `x1`, `x2` M — ; `x3` O — ; `x4`, `gr1` O O ; `gr2`, `gr3` M — | `c0` à `derive(root_M, Observe)` (son pas) ; **`c1` à `acquire(e)`, pas de `c0`** |
@@ -168,12 +170,15 @@ Tous partent d'une `EncapsulatedTrace5` depuis un état initial `SC.ofS3 (S3.ini
 - **`enterFrame`, `spawn`, `alloc` :**
   - les nouvelles racines n'ont pas d'origine, donc les modes effectifs des anciennes autorités sont inchangés ;
   - les empreintes des anciennes places sont gardées (`enter_footprint_old`) ;
-  - les paramètres changent de détenteur entre frames de l'acteur.
+  - pour `enterFrame`, les paramètres passent de la frame courante de l'acteur à sa nouvelle frame ;
+  - pour `spawn`, ils passent à la frame initiale du nouveau contexte, dont le `cap5` valait `none` avant le pas.
 - **`exitFrame`, `terminate` :**
   - il faut montrer que le réancrage (§73.4) ne fait que raccourcir les chaînes d'origine ;
   - il faut montrer que les autorités libérées, tenues par des places qui meurent, ne sont attribuables à aucun autre contexte, en lisant §73.2 dans `ExitPreC` et `TermPre`.
 - **`endUse`, `free` :** même question pour les places possédées qui meurent (§69.2, §70.3).
 - **`spawnVal`, `issue`, `reset` :** composites. Il faut des versions par état des lemmes ci-dessus et les invariants entre les phases (T2).
+
+**Indice, pas preuve.** `no_other_drops` (`Corpus/L1Evidence:32`), par `decide`, porte sur 15 pas de traces existantes du corpus : S1a, S1b, S13 (b), S4, W-HO″ et S3. Ils couvrent `terminate`, `exitFrame`, `enterFrame`, `spawn`, `split`, `alloc`, `spawnVal` et `issue`. À aucun de ces pas un contexte autre que l'acteur ne voit son `cap5` baisser, sur aucune feuille. `endUse`, `free` et `reset` n'ont pas de pas `ok` multi-contexte dans le corpus existant.
 
 ### `handoff_loss_exists` — réfuté
 
@@ -183,7 +188,12 @@ Tous partent d'une `EncapsulatedTrace5` depuis un état initial `SC.ofS3 (S3.ini
 - **Paire d'accès :** `c1` accède à `Y` au pas 7 (`read3`) ; `c0` y accède au pas 9 en exigeant `Modify`.
 - **Pourquoi l'énoncé tombe :** le seul pas intermédiaire, 8 (`acquire`), est un pas de `c0`. Aucun pas de `c1` ne baisse son `cap5` sur `Y` ; il valait déjà `none` au moment de la lecture.
 
-**Correction proposée, non appliquée** (le brief interdit de toucher la définition) : étendre `GuardedExcl` à tout pas dont l'exercice, au sens de §43, passe par un `guarded` vivant dans la chaîne des détenteurs. Équivalent : exiger que l'autorité d'accès soit `Attr5`-exerçable depuis la frame courante. Avec cette extension, `cap5_sound` découlerait directement de la définition. À arbitrer.
+**Correction proposée, non appliquée et non testée** (le brief interdit de toucher la définition) : étendre `GuardedExcl` à tout pas dont l'exercice, au sens de §43, passe par un `guarded` vivant dans la chaîne des détenteurs. Une formulation possible : exiger que l'autorité d'accès soit `Attr5`-exerçable depuis la frame courante. Ni l'équivalence des deux formulations ni le fait qu'elles rétablissent `cap5_sound` ne sont vérifiés. À arbitrer.
+
+**Ce qui survivrait à cette correction.** Elle restreint les traces admises.
+
+- Restent valides : `cap5_compat` et les lemmes L1 prouvés, qui portent sur toutes les `EncapsulatedTrace5` ; seul `cap5_drop_own_deriveSync` lit `Encap5` sur le pas lui-même.
+- Se rouvrent : `cap5_sound` et `handoff_loss_exists`, dont les contre-exemples ci-dessus seraient exclus.
 
 ## Tâche 5 — S10b (`Corpus/S10b.lean`, corpus v4 § 2 quater)
 
@@ -194,6 +204,27 @@ Le module n'importe que `Ern.MemoryModel.Access.Main`. Contrat `Examples.K0`.
 | mise en place, dont `store(x, L)` | `ok` | `ok` | O1, O6, O10, O8 | `S10b_setup` (`:45`) |
 | `transfer(L, D)` depuis `f1` | `reject` | `reject` ; champs faux : `anchorOrderHeld` (§63.7) et `anchorOrder` (§63.6) ; vrais : §63.1–§63.5, `depsValid` (§63.6), §63.8, §63.9 | §63.7, §63.6 | `S10b_1_reject` (`:54`) |
 | jumeau `transfer(L, L2)` | `ok` | `ok` | §63.7, §63.8 | `S10b_2_ok` (`:74`) |
+
+## Choix de représentation
+
+Aucun ne change un programme accepté ni un verdict ; ils fixent la forme des énoncés.
+
+- **`Run5`** : une trace dont les états sont nommés par une fonction `Nat → état`, reliée à `EncapsulatedTrace5` par `run5_of_trace`.
+- **`Label.Access c l m`** : un pas `read3`, `write3` ou `writeShared` du contexte `c` dont la liste de feuilles contient `l`. `writeShared` compte comme un accès en `Observe` (§68.2).
+- **`capRank`** : `none < Observe < Modify` ; « baisse » veut dire baisse stricte de ce rang.
+- **`DDSound`** : supposé dans les preuves seulement ; les énoncés `Cap5Sound`, `Cap5DropOwn` et `HandoffLossExists` ne le contiennent pas, et les réfutations le prennent en hypothèse de la quantification.
+- **`GuardedExcl`** contient aussi `derive` et `split`, déjà exclus par C22.1 dans `Encap` : ils satisfont le critère du brief (argument soumis à `ExercisableAt`).
+- **`Label.ctx`** : le contexte exécutant ; pour `join c d`, c'est `c`.
+
+## Lemmes du noyau à remonter ou à dédoublonner
+
+`CapPreserve.lean` contient des lemmes qui ne parlent que du noyau de la Spec 1. Ils sont signalés ici et non déplacés, pour ne pas décaler les numéros de ligne.
+
+- **Doublons de lemmes existants :**
+  - `auth_compat` (`CapPreserve:157`) duplique `effective_exclusive` (`MemoryModel/Access/Lemmas.lean:358`) ;
+  - `mem_descModes` (`CapPreserve:148`) est un sens de l'équivalence `mem_descModes` existante (`Lemmas:254`) ;
+  - `eff_modify` et `eff_present` (`CapPreserve:118`, `:135`) recoupent `effective_some` et `effOf_cases`.
+- **Lemmes nouveaux à remonter dans la Spec 1 :** `footprint_ne`, `effective_of_A`, `exer_mode`, `allows_effOf_obs`, `allows_effOf_sub`, `addModify_keep`, `release_org`, `release_eff_mono`, `store_skel`, `storeEff_P`.
 
 ## Écarts
 
@@ -206,11 +237,12 @@ Le module n'importe que `Ern.MemoryModel.Access.Main`. Contrat `Examples.K0`.
 5. **S10b : pas de mise en place ajouté.** Spec 1 §72 crée les locaux `Uninit`. Pour obtenir `X` `Init` comme le dit le corpus, la mise en place ajoute `write3(X)` via `root_X` (O10). Ce pas ne joue sur aucun verdict.
 6. **`CtlExcl` exclut tout `writeShared` brut sur le contrôleur.** Dans le modèle, les opérations de protocole d'`acquire`, `unlock` et `resetLock` n'ont pas de réalisation brute, donc aucun `writeShared` brut n'est « dans le protocole » (WC5 C22.4).
 7. **Réfutations prises sur un contrat de test.** Elles portent sur l'énoncé quantifié sur tout contrat `DDSound`, et sont obtenues sur `KM`.
+8. **Sources citées dans les docstrings.** Le brief demande de citer WC5, la Spec 1 ou le corpus v4. Les définitions propres au brief (`GuardedExcl`, `Encap5`, `Attr5`, `cap5`, les énoncés de la tâche 4) citent « the brief of milestone 4 », seule source exacte.
 
 ## Audit final des axiomes
 
 - **Méthode.** `collectAxioms` sur toutes les constantes `thmInfo` `Ern.Concurrency*` et `_private.Ern.Concurrency*`, après `import Ern`.
-- **Résultat à `66d2d4e`.** 1310 théorèmes, dont 990 non internes, contre 1144 (886) à la clôture du jalon 3. Aucun axiome hors `{propext, Quot.sound}`.
+- **Résultat à `ec2106b`.** 1311 théorèmes, dont 991 non internes, contre 1144 (886) à la clôture du jalon 3. Aucun axiome hors `{propext, Quot.sound}`.
 - **Modules nouveaux**, théorèmes (non internes) :
   - `Cap` : 9 (8) ;
   - `Encap5` : 39 (10) ;
@@ -219,9 +251,10 @@ Le module n'importe que `Ern.MemoryModel.Access.Main`. Contrat `Examples.K0`.
   - `Corpus.CapValues` : 7 (7) ;
   - `Corpus.Encap5Witness` : 4 (4) ;
   - `Corpus.GuardedChain` : 8 (7) ;
-  - `Corpus.S10b` : 4 (4).
+  - `Corpus.S10b` : 4 (4) ;
+  - `Corpus.L1Evidence` : 1 (1).
 - **`Classical.choice` retiré.** Un `omega` fermant un but existentiel l'avait introduit dans `footprint_ne` ; corrigé en `2f5b6bc`.
-- **Build.** `lake build` réussit (77 jobs). Les huit modules nouveaux, recompilés seuls par `lake env lean`, ne produisent aucune sortie.
+- **Build.** `lake build` réussit (78 jobs). Les neuf modules nouveaux, recompilés seuls par `lake env lean`, ne produisent aucune sortie.
 - **Contrôles.**
   - Le `grep` d'`AGENTS.md` est vide.
   - Aucun `noncomputable`, `decide +kernel` ni `ofReduceBool` dans `formal/Ern/Concurrency/`.
