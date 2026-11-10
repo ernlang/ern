@@ -3,12 +3,14 @@
 import Ern.Concurrency.ArenaConservativity
 import Ern.Concurrency.ArenaPreserve
 import Ern.Concurrency.Cap
+import Ern.Concurrency.CapPreserve
 import Ern.Concurrency.Conservativity
 import Ern.Concurrency.Corpus.AR
 import Ern.Concurrency.Corpus.ARRealize
 import Ern.Concurrency.Corpus.CapValues
 import Ern.Concurrency.Corpus.Encap5Witness
 import Ern.Concurrency.Corpus.Frames
+import Ern.Concurrency.Corpus.GuardedChain
 import Ern.Concurrency.Corpus.GuardedRead
 import Ern.Concurrency.Corpus.Handoff
 import Ern.Concurrency.Corpus.MX
