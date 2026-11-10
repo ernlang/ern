@@ -7,6 +7,7 @@ import Ern.Concurrency.Conservativity
 import Ern.Concurrency.Corpus.AR
 import Ern.Concurrency.Corpus.ARRealize
 import Ern.Concurrency.Corpus.CapValues
+import Ern.Concurrency.Corpus.Encap5Witness
 import Ern.Concurrency.Corpus.Frames
 import Ern.Concurrency.Corpus.GuardedRead
 import Ern.Concurrency.Corpus.Handoff
@@ -15,6 +16,7 @@ import Ern.Concurrency.Corpus.S10
 import Ern.Concurrency.Corpus.S10Seq
 import Ern.Concurrency.Corpus.Witness
 import Ern.Concurrency.Context
+import Ern.Concurrency.Encap5
 import Ern.Concurrency.EncapTraces
 import Ern.Concurrency.Frames
 import Ern.Concurrency.NonConflict

@@ -1,4 +1,4 @@
-import Ern.Concurrency.Cap
+import Ern.Concurrency.Encap5
 import Ern.Concurrency.Corpus.Handoff
 import Ern.Concurrency.Corpus.GuardedRead
 
@@ -7,9 +7,10 @@ import Ern.Concurrency.Corpus.GuardedRead
 
 `cap` (WC5 C43, `Ern.Concurrency.Cap`) of each context on the leaf in play, at each state of the
 witnesses W-HO, W-HO′, W-HO″ (`corpus-spec2-m3.md` v4 §2 bis, `Corpus/Handoff.lean`) and W-GR
-(§2 ter, `Corpus/GuardedRead.lean`), by `decide`. Each table lists the states of the witness trace
-in order, one row per state, one column per context. The step between two rows is the label of
-the trace theorem of the witness (`w_ho_trace`, `w_ho2_trace`, `w_ho3_trace`, `w_gr_trace`).
+(§2 ter, `Corpus/GuardedRead.lean`), by `decide`; then `cap5` (brief of milestone 4, task 3) on
+the same states with their synchronization registries. Each table lists the states of the witness
+trace in order, one row per state, one column per context. The step between two rows is the label
+of the trace theorem of the witness (`w_ho_trace`, `w_ho2_trace`, `w_ho3_trace`, `w_gr_trace`).
 -/
 
 namespace Ern.Concurrency.Corpus.CapValues
@@ -78,5 +79,31 @@ theorem cap_L1_counterexample :
   ⟨mx4_trace.snoc (lbl := .kernel 1 (.read 3 [3])) (st' := (gr1, regX, [])) trivial
       (.kernel W_GR_1_ok), trivial, .acquire W_GR_2_ok, rfl, by decide, by decide,
     .acquire ⟨by decide, ⟨3, none⟩, rfl, by decide, by decide, rfl⟩, by decide, by decide⟩
+
+/-! ## `cap5` -/
+
+/-- `cap5` on W-HO, W-HO′ and W-HO″ (`corpus-spec2-m3.md` v4 §2 bis): their registries are empty,
+so `cap5` coincides with `cap` (`w_ho_cap`, `w_ho2_cap`, `w_ho3_cap`). -/
+theorem w_ho_cap5 :
+    [t0, t1, t2, h1, h2, h3].map (fun s => [cap5 s [] 0 1, cap5 s [] 1 1]) =
+      [t0, t1, t2, h1, h2, h3].map (fun s => [cap s 0 1, cap s 1 1]) ∧
+    [k0, k1, k2, k3, k4, k5, k6].map (fun s => [cap5 s [] 0 0, cap5 s [] 1 0]) =
+      [k0, k1, k2, k3, k4, k5, k6].map (fun s => [cap s 0 0, cap s 1 0]) ∧
+    [k0, m1, m2, m3, m4, m5, m6, m7, m8, m9].map
+        (fun s => [cap5 s [] 0 0, cap5 s [] 1 0, cap5 s [] 2 0]) =
+      [k0, m1, m2, m3, m4, m5, m6, m7, m8, m9].map
+        (fun s => [cap s 0 0, cap s 1 0, cap s 2 0]) := by
+  decide
+
+/-- `cap5` on W-GR (`corpus-spec2-m3.md` v4 §2 ter), contexts 0 and 1, leaf `T`, at the states of
+`w_gr_cap` with their registries: `x2` appears before and after `newMutex(guarded)`. Drop: context
+0 at `newMutex` (`Modify` to `none`, its own step: `guarded` ceases to be attributable). Context 1
+has no `cap5` on `T` at any state; the drop of `cap` at `acquire(e)` (`cap_L1_counterexample`) does
+not occur. -/
+theorem w_gr_cap5 :
+    [(x0, []), (x1, []), (x2, []), (x2, regX), (x3, regX), (x4, regX), (gr1, regX), (gr2, regG),
+      (gr3, regG)].map (fun (st : SC × SyncReg) => [cap5 st.1 st.2 0 3, cap5 st.1 st.2 1 3]) =
+    [[some .modify, none], [some .modify, none], [some .modify, none], [none, none], [none, none],
+     [none, none], [none, none], [some .modify, none], [some .modify, none]] := by decide
 
 end Ern.Concurrency.Corpus.CapValues
