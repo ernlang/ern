@@ -251,10 +251,11 @@ theorem S15_5_ok : opStepC KM .exit 1 x11 (.ok x12) ∧ ¬ x12.flat.Active 6 ∧
 /-- `c1 : enterFrame f1′` without parameter (O6): frame 2. -/
 def y0 : SC := enterEffC x4 1 [] []
 
-/-- The setup of `corpus-spec2-m3.md` §1 S11 read literally: after `enterFrame f1′` without
-parameter, frame 2 holds no authority over `lock`, so WC4 C14.3 (`CtrlRight`) fails and
-`acquire(e)` by context 1 has no `ok` outcome. The cases below pass `o1′ := derive(o1, Observe)`
-to `f1′` (`y1`, `y1'`). -/
+/-- `corpus-spec2-m3.md` §1 S11, setup without the cession of `o1′` ("sans elle C14.3/§68.2
+échoue et `acquire` n'est pas habilité"): after `enterFrame f1′` without parameter, frame 2 holds
+no authority over `lock`, so WC4 C14.3 (`CtrlRight`) fails and `acquire(e)` by context 1 has no
+`ok` outcome. The cases below follow the corpus setup, which yields `o1′ := derive(o1, Observe)`
+to `f1′` (`y1`, `y1'`; Spec 1 §45). -/
 theorem S11_setup_wait : opStepC KM (.enter [] []) 1 x4 (.ok y0) ∧ ¬ CtrlRight L0 y0 ⟨3, none⟩ 2 ∧
     ∀ st', ¬ AcquireOk KM L0 y0 regX 1 0 st' := by
   refine ⟨⟨by decide, .ok (by decide)⟩, by decide, ?_⟩
@@ -272,9 +273,10 @@ def regG6 : SyncReg := [⟨3, some 6⟩]
 /-- `c1 : exitFrameC(f1′)` without `unlock` (O7). -/
 def y3 : SC := exitEffC y2 1
 
-/-- `corpus-spec2-m3.md` §1 S11, step 1, `ok` (O7 releases `g`): from `MX₄`, after
-`enterFrame f1′` yielding `o1′` and `acquire(e)` by context 1, `exitFrameC(f1′)` without `unlock`;
-`g` is inactive and the registry still records it. -/
+/-- `corpus-spec2-m3.md` §1 S11, step 1, `ok` (O7 releases `g` and `o1′`; `o1` stays active):
+from `MX₄`, after `enterFrame f1′` yielding `o1′ := derive(o1, Observe)` and `acquire(e)` by
+context 1, `exitFrameC(f1′)` without `unlock`; `g` is inactive and the registry still records
+it. -/
 theorem S11_1_ok : opStepC KM (.derive 4 [1, 2] .observe) 1 x4 (.ok y1) ∧
     opStepC KM (.enter [5] []) 1 y1 (.ok y1') ∧ AcquireOk KM L0 y1' regX 1 0 (y2, regG6) ∧
     opStepC KM .exit 1 y2 (.ok y3) ∧ ¬ y3.flat.Active 6 :=
@@ -341,8 +343,9 @@ theorem S12_2_ok : AcquireOk KM L0 x2 regX 0 0 (x2a, [⟨3, some 4⟩]) ∧
 `acquire` takes the raw `deriveSync(guarded)` step under the library instantiation (the facts
 C14.1–C14.3 hold); `Encap` excludes it (WC4 C22.2). After the step the registry still records
 `grant = none` while an active descendant covers `T`: `GrantDiscipline` fails, and `acquire(e)` is
-enabled for neither context in that state (WC4 C13.9, C14: blocking descendant). The corpus adds
-"`acquire(e)` plus jamais habilitée"; `W_C22_2_reenable` refutes it. Positive twin: `S2_1_ok`. -/
+enabled for neither context while the derivative is active (WC4 C13.9, C14: blocking
+descendant); it is enabled again after its ordinary `release` (`W_C22_2_reenable`). Positive twin:
+`S2_1_ok`. -/
 theorem W_C22_2_encap : DeriveSyncStep (libKC KM L0) regX x4 1 3 (.ok x5) ∧
     ¬ Encap L0 (x4, regX) (.deriveSync 1 3) ∧ ¬ GrantDiscipline x5 regX ∧
     ∀ st', ¬ AcquireOk KM L0 x5 regX 0 0 st' ∧ ¬ AcquireOk KM L0 x5 regX 1 0 st' := by
@@ -357,17 +360,25 @@ theorem W_C22_2_encap : DeriveSyncStep (libKC KM L0) regX x4 1 3 (.ok x5) ∧
 /-- `c1 : release(g)` of the raw grant of W-C22.2 (O3). -/
 def x5r : SC := x5.set (releaseEff (x5.view 1) 5)
 
-/-- `corpus-spec2-m3.md` §2 W-C22.2, disagreement with "`acquire(e)` plus jamais habilitée": after
-the raw `deriveSync` of `W_C22_2_encap`, context 1 releases the derivative by an ordinary `release`
-(O3), an `ok` step that `Encap` admits (WC4 C15 effect: the derivative "is ordinary after
-creation … for its … legal release"); `GrantDiscipline` holds again and `acquire(e)` by context 1
-is enabled. -/
+/-- `corpus-spec2-m3.md` §2 W-C22.2, `acquire(e)` "de nouveau habilitée après son `release`
+ordinaire": after the raw `deriveSync` of `W_C22_2_encap`, context 1 releases the derivative by an
+ordinary `release` (O3), an `ok` step that `Encap` admits (WC4 C15 effect: the derivative "is
+ordinary after creation … for its … legal release"); `GrantDiscipline` holds again and
+`acquire(e)` by context 1 is enabled. -/
 theorem W_C22_2_reenable : opStepC KM (.release 5) 1 x5 (.ok x5r) ∧
     Encap L0 (x5, regX) (.kernel 1 (.release 5)) ∧ GrantDiscipline x5r regX ∧
     AcquireOk KM L0 x5r regX 1 0 (deriveSyncEff x5r 1 3, [⟨3, some 6⟩]) :=
   ⟨⟨by decide, _, .ok (by decide), rfl⟩, trivial,
     fun e he _ _ => by rw [List.mem_singleton.1 he]; decide,
     ⟨by decide, ⟨3, none⟩, rfl, by decide, by decide, rfl⟩⟩
+
+/-- `corpus-spec2-m3.md` §2 W-C22.2, "fondement renforcé de C22.2": the correct cycle `acquire(e)`
+then `unlock(e)` by context 1 from `MX₄` reaches `(x5r, regX)`, the very state and registry
+reached by the raw `deriveSync` of `W_C22_2_encap` followed by the `release` of
+`W_C22_2_reenable`. The registry cannot tell the two histories apart afterwards. -/
+theorem W_C22_2_cycle : AcquireOk KM L0 x4 regX 1 0 (x5, regG) ∧
+    UnlockOk L0 x5 regG 1 0 (x5r, regX) :=
+  ⟨S2_1_ok, ⟨by decide, ⟨3, some 5⟩, 5, rfl, by decide, rfl, by decide, by decide, rfl⟩⟩
 
 /-! ## S9 (`corpus-spec2-m3.md` §1 S9) -/
 

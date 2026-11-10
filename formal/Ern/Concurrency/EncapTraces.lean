@@ -215,10 +215,11 @@ theorem slot_transfer_breaks_control :
 /-- `transfer(lock = 2, Y = 7)` by context 0 after `newMutex` (Spec 1 §63). -/
 def eD : SC := transferEffC e2 0 2 7
 
-/-- WC4 S16 extended, C22.3 (c): from `e2`, `transfer(lock, Y)` is an `ok` step of
-Spec 1 §63 re-indexed; `Encap` excludes it; after it, `KInvCA` holds, the entry is live, its
-controller is still `lock` (place 2), which is `Moved`, and `SyncInv` fails (`ctlInit`, WC4
-C21.7). -/
+/-- WC4 S16 extended, C22.3 (c) (`corpus-spec2-m3.md` §1 S16 (c), `transfer(lock, Z)`, here with
+the one-leaf place `Y`, place 7, also the destination of S16 (a)): from `e2`, `transfer(lock, Y)`
+is an `ok` step of Spec 1 §63 re-indexed; `Encap` excludes it; after it, `KInvCA` holds, the entry
+is live, its controller is still `lock` (place 2), which is `Moved`, and `SyncInv` fails
+(`ctlInit`, WC4 C21.7). -/
 theorem ctl_transfer_breaks_ctlInit :
     opStepC K0 (.transfer 2 7) 0 e2 (.ok eD) ∧ ¬ Encap L0 (e2, reg1) (.kernel 0 (.transfer 2 7)) ∧
     KInvCA eD ∧ (⟨4, none⟩ : SyncEntry).Live eD ∧ ControlOf L0 eD ⟨4, none⟩ = some 2 ∧

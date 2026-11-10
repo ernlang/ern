@@ -116,10 +116,10 @@ theorem S3_4_wait : ∀ st', ¬ AcquireOk KA L0 a8 regA8 0 0 st' := by
   rintro st' ⟨-, e, he, ⟨-, hg, -⟩, -⟩
   cases he; cases hg
 
-/-- `corpus-spec2-m3.md` §1 S3, extra negative, `reject` (Spec 1 §78.2: an active block derived
-from `internal` covers `R1`): `reset(arena)` by context 1 under `g2`. In the derived operation the
-`derive` of `internal` over the storage is rejected (§60.2: the effective mode of `internal` on
-`R1` is absent, §43.3). -/
+/-- `corpus-spec2-m3.md` §1 S3, extra negative, `reject` at the `derive` of `internal` (§60.2,
+§43.3: the effective mode of `internal` on `R1` is absent, an active block derived from `internal`
+covering it): `reset(arena)` by context 1 under `g2`. §78.2 is the library reading of the same
+rejection (`Arena.reset_iff_derive_release`, sequential). -/
 theorem S3_3b_reject : ResetStepC a8 arA1 1 0 .reject ∧
     ¬ DerivePre (a8.view 1) 4 [5, 6] .modify :=
   ⟨⟨by decide, _, .derive rfl (.reject (by decide)), rfl⟩, by decide⟩
