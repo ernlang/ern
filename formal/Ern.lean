@@ -15,6 +15,7 @@ import Ern.Concurrency.Corpus.GuardedRead
 import Ern.Concurrency.Corpus.Handoff
 import Ern.Concurrency.Corpus.MX
 import Ern.Concurrency.Corpus.S10
+import Ern.Concurrency.Corpus.S10b
 import Ern.Concurrency.Corpus.S10Seq
 import Ern.Concurrency.Corpus.Witness
 import Ern.Concurrency.Context
