@@ -2,9 +2,11 @@
 -- Import modules here that should be built as part of the library.
 import Ern.Concurrency.ArenaConservativity
 import Ern.Concurrency.ArenaPreserve
+import Ern.Concurrency.Cap
 import Ern.Concurrency.Conservativity
 import Ern.Concurrency.Corpus.AR
 import Ern.Concurrency.Corpus.ARRealize
+import Ern.Concurrency.Corpus.CapValues
 import Ern.Concurrency.Corpus.Frames
 import Ern.Concurrency.Corpus.GuardedRead
 import Ern.Concurrency.Corpus.Handoff
