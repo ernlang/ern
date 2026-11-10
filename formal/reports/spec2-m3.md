@@ -28,6 +28,8 @@ Sources :
 
 Le rapport fait l'objet d'un commit séparé.
 
+**Passe de clôture** (`d007962` à `bf36d25`, puis un commit des rapports) : voir `spec2-m3-close.md`. Elle met à jour en place la table de § A.3, des annotations de § A.4 et la partie B.
+
 ## Vérifications à `8e2bccf`
 
 - `lake build` réussit (66 jobs). Aucun avertissement : chaque module de `Ern/Concurrency/` et de `Ern/Concurrency/Corpus/` a été recompilé seul par `lake env lean`, sans sortie.
@@ -118,7 +120,7 @@ La lecture littérale change des verdicts. Le témoin est `S3_8_view_literal` (`
   - `lstep_adminSep` (`ArenaPreserve.lean:412`) : préservée par tout `LStep`. `newMutex` et `newArena` la vérifient par la garde. Les autres pas n'enregistrent rien et ne réactivent aucune autorité (`AKeep`), les identités enregistrées existant (`RegBound`, borne d'`ArenaInvC`).
   - **Nécessité.** `adminSep_needed` (`Corpus/Witness.lean:109`). Dans `MX₃`, qui vérifie `KInvCA` et `SyncState`, on ajoute une arène d'`internal` = `guarded` vivant. `AdminSep` est fausse. `issue(T)` est un pas `ok` admis par `Encap`, après lequel `GrantDiscipline` est fausse.
   - Cohérence avec §56 (« This guard is not a condition for any safety property in Section 57 ») : `AdminSep` sert à T4, qui est un invariant de bibliothèque. T2 et T7 ne l'utilisent pas.
-- **Non fait.** L'unicité des `internal` vivants à l'intérieur du registre d'arènes (`Arena.Unique56` en séquentiel) n'est pas énoncée en concurrent. Ce n'était pas demandé.
+- **Non fait.** L'unicité des `internal` vivants à l'intérieur du registre d'arènes (`Arena.Unique56` en séquentiel) n'est pas énoncée en concurrent. Ce n'était pas demandé. Passe de clôture : énoncée et prouvée comme invariant séparé (§ B.2, `lstep_arenaUnique`).
 
 ### A4 — §82.3 et §82.6 sous `ReprC` (extension de R1)
 
@@ -179,7 +181,9 @@ Module `ArenaConservativity.lean`. Sur `s.Single` avec `FramesC s` :
 
 ## A.3 Étape B — le corpus
 
-Modules `Ern/Concurrency/Corpus/` : `MX.lean`, `AR.lean`, `Frames.lean`, `S10.lean`, `Witness.lean`.
+Modules `Ern/Concurrency/Corpus/` : `MX.lean`, `AR.lean`, `Frames.lean`, `S10.lean`, `Witness.lean` ; passe de clôture : `S10Seq.lean`, `ARRealize.lean`, `Handoff.lean` (§ B.3).
+
+**Verdicts attendus : corpus v3** (passe de clôture). Les lignes S3 (négatif supplémentaire), S10, S11.1, S12, S16 et W-C22.2 suivent la v3 ; ailleurs, la v3 ne change aucun verdict de la v1.
 
 - **Contrat.** `KC sm` : celui de `K0`, sauf que seules les feuilles de `sm` sont `SharedMutable`.
 - **États.** Ceux de MX et AR sont atteints depuis l'état initial par des `EncapsulatedTrace` (`mx3_trace`, `mx4_trace`, `s2_trace`, `s9_trace`, `ar_trace`, `s3_trace`).
@@ -200,28 +204,28 @@ Modules `Ern/Concurrency/Corpus/` : `MX.lean`, `AR.lean`, `Frames.lean`, `S10.le
 | S3.5, S3.6 | `ok`, `ok` | idem | `S3_5_ok` (`Corpus/AR:131`), `S3_6_ok` (`:140`) | — |
 | S3.7 | **`fail`** (§77.4) | `fail`, statiques vrais, aucune issue `ok` | `S3_7_fail` (`Corpus/AR:146`) | — |
 | S3.8 | `ok` | `ok` | `S3_8_ok` (`Corpus/AR:167`) | `ok` grâce à la réindexation A1 ; lecture littérale : `S3_8_view_literal` (`:175`, P1) |
-| S3, négatif supplémentaire | `reject` (§78.2) | `reject` | `S3_3b_reject` (`Corpus/AR:123`) | même verdict, autre clause : l'opération dérivée rejette au `derive` (§60.2, mode effectif absent) (P6) |
+| S3, négatif supplémentaire | `reject` au `derive` d'`internal` (§60.2, §43.3) ; §78.2 en est la lecture bibliothèque | `reject` au `derive` (§60.2) | `S3_3b_reject` (`Corpus/AR:123`) | — (P6, réglé par le corpus v2) |
 | S4 | `ok` (C5, C6) ; négatif `reject` (O7.2) | `ok` ; `reject` | référencés : `s4_trace` (`Traces:289`), `s4_detached_child` (`:302`), `s4_realized` (`Realize:842`) ; nouveau : `S4_2_reject` (`Corpus/Frames:114`) | négatif absent avant ce jalon |
 | S5a | `reject` (O11.1) ; jumeau `ok` | idem | `S5a_1_reject` (`Corpus/MX:160`) ; jumeau `S2_2_ok` | — |
 | S5b | `ok noyau` (O11.1, O11.2), hors C22.4, OB-C05 | `ok` noyau, admis par `Encap` | `S5b_1_ok` (`Corpus/MX:170`) | non refusé, comme prescrit |
 | S6 | `hors fragment` (OB-C04) | — | aucun théorème | — |
 | S7 | `ok` (O4) ; négatif `reject` (§63.1, §63.4) | `ok` ; `reject`, les deux clauses fausses | référencés : `traceA`, `traceB` (`EncapTraces:135`, `:145`) ; nouveau : `S7_2_reject` (`Corpus/MX:179`) | négatif absent avant ce jalon |
 | S8 | `reject` (§43) ; jumeau `ok` | idem | `S8_1_reject` (`Corpus/MX:193`), `S8_2_ok` (`:206`) | — |
-| S9 | `ok`, `ok`, propriété ; négatif `reject` (C13.8) | idem | `S9_1_ok` (`Corpus/MX:424`), `S9_2_ok` (`:432`), `s9_trace` (`:408`) ; référencé : `shared_controller_rejected` (`Traces:225`) | — |
-| S10 | **`reject`** (O4.7) | **`ok`**, admis par `Encap`, sur une `EncapsulatedTrace` depuis l'état initial | `S10_1_ok` (`Corpus/S10:43`), `s10_trace` (`:52`) ; jumeau référencé : `traceB` | **désaccord** (P2) |
-| S11.1 | `ok` (O7 libère `g`) | `ok` | `S11_1_ok` (`Corpus/MX:278`) | mise en place lue avec `o1′` cédée à `f1′` (P3) ; lecture littérale : `S11_setup_wait` (`:258`) |
-| S11.2 | `non habilité` (C14.2) | idem | `S11_2_wait` (`Corpus/MX:287`) | — |
-| S11.3 | `reject` (C18.1) | aucune issue `ok` ; `¬ ExercisableAt(guarded, Modify)` | `S11_3_reject` (`Corpus/MX:294`) | encodage de `reject` (P7) |
-| S11, jumeau | `ok` ×4 | idem | `S11_4_ok` (`Corpus/MX:308`) | — |
-| S12 | `ok noyau`, hors C22.4, OB-C05 ; jumeau `acquire`/`unlock` | `ok` noyau, admis par `Encap` ; jumeau `ok` | `S12_1_ok` (`Corpus/MX:322`), `S12_2_ok` (`:333`) | le corpus le dit « déjà encodé » ; il ne l'était pas (P4) |
+| S9 | `ok`, `ok`, propriété ; négatif `reject` (C13.8) | idem | `S9_1_ok` (`Corpus/MX:435`), `S9_2_ok` (`:443`), `s9_trace` (`:419`) ; référencé : `shared_controller_rejected` (`Traces:225`) | — |
+| S10 | `ok` (§63.7, §44) ; suite : `exitFrameC(f1)` `reject` (§73.4), `transfer(M′, M)` `ok` (§63.3, §63.1), `exitFrameC(f1)` `ok` | `ok`, admis par `Encap`, sur une `EncapsulatedTrace` depuis l'état initial ; `reject` ; `ok`, admis par `Encap` ; `ok` | `S10_1_ok` (`Corpus/S10:42`, avec le `reject` de la sortie), `s10_trace` (`:51`), `S10_2_ok` (`:73`), `S10_3_ok` (`:79`) ; témoin séquentiel `S10Seq` (§ B.3) ; jumeau référencé : `traceB` | — (P2, réglé par le corpus v2) |
+| S11.1 | `ok` (O7 libère `g` et `o1′`) ; mise en place : `o1′ := derive(o1, Observe)` cédée à `f1′` | `ok` | `S11_1_ok` (`Corpus/MX:280`) | mise en place du corpus v2, choix P3 conservé ; sans la cession : `S11_setup_wait` (`:259`) |
+| S11.2 | `non habilité` (C14.2) | idem | `S11_2_wait` (`Corpus/MX:289`) | — |
+| S11.3 | `reject` (C18.1) | aucune issue `ok` ; `¬ ExercisableAt(guarded, Modify)` | `S11_3_reject` (`Corpus/MX:296`) | encodage de `reject` (P7) |
+| S11, jumeau | `ok` ×4 | idem | `S11_4_ok` (`Corpus/MX:310`) | — |
+| S12 | `ok noyau`, hors C22.4, OB-C05 ; jumeau `acquire`/`unlock` | `ok` noyau, admis par `Encap` ; jumeau `ok` | `S12_1_ok` (`Corpus/MX:324`), `S12_2_ok` (`:335`) | — (P4, corrigé dans le corpus v2) |
 | S13 | `reject` (O10.1) ; jumeaux (a) et (b) `ok` | idem | `S13_1_reject` (`Corpus/Frames:135`), `S13_2_ok` (`:149`), `S13_3_ok` (`:164`) | — |
 | S14 | `ok`, `ok` ; négatif `reject` (O1.2, O1.3) | idem | `S14_1_ok` (`Corpus/Frames:188`), `S14_2_ok` (`:193`), `S14_3_reject` (`:199`) | — |
 | S15 | `ok`, `ok`, `ok`, **`reject`** (C17.2) ; jumeau `ok` | idem | `S15_1_ok` (`Corpus/MX:222`), `S15_4_reject` (`:231`), `S15_5_ok` (`:244`) | encodage de `reject` (P7) |
-| S16 (a), (c) | `ok noyau / hors C22.3`, sans l'exclusion `control` resp. `ctlInit` faux | idem | référencés : `slot_transfer_breaks_control` (`EncapTraces:202`), `ctl_transfer_breaks_ctlInit` (`:222`) | (c) est encodé avec `transfer(lock, Y)` au lieu de `Z` : sans effet |
-| S17a | `ok noyau / hors C22.5 (a)` ; jumeau : `endUse(slot)`, puis `endUse(lock)` admis | idem | référencé : `endUse_ctl_excluded` (`EncapTraces:243`) ; nouveau : `S17a_2_ok` (`Corpus/Witness:83`) | jumeau du corpus absent avant ce jalon (P5) |
-| S17b | `ok noyau / hors C22.5 (b)` ; jumeau `ok` | idem | référencés : `endUse_slotPart_excluded` (`EncapTraces:307`), `endUse_slot_kills_entry` (`:332`) | — |
-| S18 | (1) `reject` C13.10 ; (2) `reject` §63.3 | idem | référencés : `newMutex_uninit_rejected` (`EncapTraces:450`), `transfer_into_live_mutex_rejected` (`SyncInit:1017`) ; jumeaux `traceA`, `traceB` | (2) est un théorème général sous `SyncState`, sans instance concrète de la configuration (2) |
-| W-C22.2 | `ok noyau / hors C22.2` ; après le pas, `GrantDiscipline` faux, `acquire` plus jamais habilité | `ok` noyau, `¬ Encap`, `¬ GrantDiscipline`, `acquire` non habilité pour les contextes 0 et 1 dans l'état d'arrivée ; **mais** un `release` ordinaire de la dérivée, admis par `Encap`, rétablit `GrantDiscipline` et `acquire` redevient habilité pour le contexte 1 | `W_C22_2_encap` (`Corpus/MX:346`), `W_C22_2_reenable` (`:365`) ; jumeau `S2_1_ok` | **désaccord** sur « plus jamais » (P8) |
+| S16 (a), (c) | `ok noyau / hors C22.3`, sans l'exclusion `control` resp. `ctlInit` faux | idem | référencés : `slot_transfer_breaks_control` (`EncapTraces:202`), `ctl_transfer_breaks_ctlInit` (`:223`) | (c) est encodé avec `transfer(lock, Y)` au lieu de `Z`, même verdict (note d'encodage du corpus v2). Pas de renommage : un `Z` distinct demanderait une place de plus dans les statiques `est`, communes à tout `EncapTraces.lean`. Docstring alignée. |
+| S17a | `ok noyau / hors C22.5 (a)` ; jumeau : `endUse(slot)`, puis `endUse(lock)` admis | idem | référencé : `endUse_ctl_excluded` (`EncapTraces:244`) ; nouveau : `S17a_2_ok` (`Corpus/Witness:83`) | jumeau du corpus absent avant ce jalon (P5) |
+| S17b | `ok noyau / hors C22.5 (b)` ; jumeau `ok` | idem | référencés : `endUse_slotPart_excluded` (`EncapTraces:308`), `endUse_slot_kills_entry` (`:333`) | — |
+| S18 | (1) `reject` C13.10 ; (2) `reject` §63.3 | idem | référencés : `newMutex_uninit_rejected` (`EncapTraces:451`), `transfer_into_live_mutex_rejected` (`SyncInit:1017`) ; jumeaux `traceA`, `traceB` | (2) est un théorème général sous `SyncState`, sans instance concrète de la configuration (2) |
+| W-C22.2 | `ok noyau / hors C22.2` ; après le pas, `GrantDiscipline` faux ; `acquire(e)` non habilitée tant que la dérivée est active, de nouveau habilitée après son `release` ordinaire ; fondement renforcé : l'état atteint est alors celui d'un cycle `acquire`/`unlock` correct | `ok` noyau, `¬ Encap`, `¬ GrantDiscipline`, `acquire` non habilité pour les contextes 0 et 1 ; après le `release`, admis par `Encap`, `GrantDiscipline` vraie et `acquire` habilité pour le contexte 1 ; le cycle `acquire`/`unlock` du contexte 1 depuis `MX₄` atteint le même état et le même registre | `W_C22_2_encap` (`Corpus/MX:349`), `W_C22_2_reenable` (`:368`), `W_C22_2_cycle` (`:379`) ; jumeau `S2_1_ok` | — (P8, réglé par le corpus v2) |
 | W-C22.3 (b) | `ok noyau / hors C22.3 (b)`, `slotInit` faux ; jumeau `transfer(M, M′)` | idem ; jumeau `ok`, admis par `Encap`, `SlotInit` vrai | `W_C22_3b_encap` (`Corpus/Witness:48`), `W_C22_3b_ok` (`:66`) | — |
 | témoin R4 | — | référencé | `r4_nonvacuous` (`NonConflict:185`) | — |
 | `CrossContextConflictOnlyShared` | prouvé | prouvé | `crossContextConflictOnlyShared` (`Corpus/Witness:136`) | — |
@@ -238,26 +242,30 @@ Modules `Ern/Concurrency/Corpus/` : `MX.lean`, `AR.lean`, `Frames.lean`, `S10.le
   - Passage du brief : « réalisées par les opérations dérivées de `Ern.MemoryModel.Arena` sur `s.view c` ».
   - Exemple : S3, pas 8. Avec `Arena.IssueD` sur `a10.view 0`, `store` est rejeté (`S3_8_view_literal`), alors que le corpus prescrit `ok`.
   - Choix fait : la convention du jalon 1, tirée de WC4 C3. Il faut confirmer qu'il est le bon.
+  - Passe de clôture : choix du modèle exploratoire conservé tel quel ; son entérination n'est pas acquise.
 - **P2 — S10 : désaccord entre le corpus et le modèle.**
   - **Clause citée par le corpus :** O4.7, avec la justification « `g` détenue par `f0`, son anchor effectif `root_T` passe en `f1` ».
   - **État :** `r3`. Depuis `MX₃`, `c0` a acquis `g` (autorité 4, tenue par la frame 0) puis est entré en `f1` en cédant `m := derive(root_M, Modify)`, avec un local `M′`.
-  - **Verdict effectif :** `ok` de la machine avec la bibliothèque, pas seulement du noyau. `S10_1_ok` (`S10.lean:43`) établit que `transfer(M, M′)` est `ok` et admis par `Encap` ; `s10_trace` (`:52`) en fait une `EncapsulatedTrace` depuis l'état initial. Après le pas, l'ancre effective de `g` est en `f1`, qui n'est pas ancêtre de la frame 0 (`¬ EffAnchorOKC r4 4 (some 0)`), et `exitFrameC(f1)` est rejeté.
+  - **Verdict effectif :** `ok` de la machine avec la bibliothèque, pas seulement du noyau. `S10_1_ok` (`S10.lean:42`) établit que `transfer(M, M′)` est `ok` et admis par `Encap` ; `s10_trace` (`:51`) en fait une `EncapsulatedTrace` depuis l'état initial. Après le pas, l'ancre effective de `g` est en `f1`, qui n'est pas ancêtre de la frame 0 (`¬ EffAnchorOKC r4 4 (some 0)`), et `exitFrameC(f1)` est rejeté.
   - **Cause :** la première phrase de §63.7 porte sur les autorités tenues **déplacées** (« All moved held authorities … satisfy `AnchorOrderHeld` »). `AnchorOrderHeld` (§44) ne porte que sur les autorités tenues par des places. `g` est tenue par une frame et ne bouge pas. Les autorités déplacées (`guarded` vers `slot′`, `root_T` vers `M′`) satisfont la règle en `f1`. La seconde phrase, « no authority may escape a local anchor on the grounds that its containing value was transferred », ne dit pas si elle couvre une autorité non déplacée dont l'ancre effective est déplacée. Le modèle de la Spec 1 encode §63.7 de la même façon (`Access/Ops.lean`, `TransferPre.anchorOrderHeld` : les seules autorités `AnchorMoves`).
   - **Conséquence :** le pas n'est pas dangereux. L'état est bloqué : `f1` ne peut plus sortir. C'est un silence de la Spec 1 §63.7, à arbitrer ; ni le corpus ni le modèle ne sont corrigés.
+  - **Passe de clôture : réglé.** Le corpus v2 prescrit `ok`, puis `reject`, `ok`, `ok` (§ A.3), et place la question au niveau de la Spec 1 (note de son § 5). Témoin séquentiel : `S10Seq` (§ B.3).
 - **P3 — S11 : mise en place sous-spécifiée.**
   - Passage : « `c1 : enterFrame f1′` ; `acquire(e)` → `g` détenue par `f1′` ».
   - Exemple : `f1′` entrée sans paramètre ne tient aucune autorité sur `lock`. C14.3 (`CtrlRight`) échoue, et `acquire` n'est pas habilité (`S11_setup_wait`).
   - Les cas S11 sont encodés en cédant `o1′ := derive(o1, Observe)` à `f1′`. Les verdicts du corpus sont alors tous obtenus. Ce choix de mise en place est à confirmer.
-- **P4 — S12 « déjà encodé ».** Aucun théorème des jalons 1–2 n'encodait `write3(lock)`. Le jalon 2 le mentionne seulement dans son rapport. Encodé ici : `S12_1_ok`, `S12_2_ok`.
+  - Passe de clôture : le corpus v2 reprend cette mise en place. Le choix reste celui du modèle exploratoire ; son entérination n'est pas acquise.
+- **P4 — S12 « déjà encodé ».** Aucun théorème des jalons 1–2 n'encodait `write3(lock)`. Le jalon 2 le mentionne seulement dans son rapport. Encodé ici : `S12_1_ok`, `S12_2_ok`. Passe de clôture : corrigé dans le corpus v2.
 - **P5 — jumeau de S17a.** Le jalon 1 encodait `endUse(M)`, positif de S17b, faute du positif littéral (remarque X2 de `spec2-m1-close.md`). Le jumeau du corpus, `endUse(slot)` puis `endUse(lock)` admis par `Encap`, est encodé ici (`S17a_2_ok`).
-- **P6 — clause de rejet du `reset` sous bloc actif.** Le corpus cite §78.2. L'opération dérivée rejette au `derive` de `internal` : son mode effectif sur `R1` est absent (§43.3, §60.2). Même verdict. Sur les états accessibles séquentiels, `Arena.reset_iff_derive_release` établit l'équivalence des deux lectures. Elle n'est pas transportée au cas concurrent.
-- **P7 — `reject` des opérations à issue `ok` seule.** `UnlockOk` et `ResetLockOk` ne définissent que `ok` (WC4 C17, C18 ne donnent pas d'autre issue). Le modèle ne distingue donc pas `reject` de « non habilité » pour elles. S11.3 et S15.4 sont encodés par l'absence d'`ok` et la clause défaillante du corpus.
+- **P6 — clause de rejet du `reset` sous bloc actif.** Le corpus cite §78.2. L'opération dérivée rejette au `derive` de `internal` : son mode effectif sur `R1` est absent (§43.3, §60.2). Même verdict. Sur les états accessibles séquentiels, `Arena.reset_iff_derive_release` établit l'équivalence des deux lectures. Elle n'est pas transportée au cas concurrent. Passe de clôture : le corpus v2 cite §60.2 et §43.3, et fait de §78.2 la lecture bibliothèque.
+- **P7 — `reject` des opérations à issue `ok` seule.** `UnlockOk` et `ResetLockOk` ne définissent que `ok` (WC4 C17, C18 ne donnent pas d'autre issue). Le modèle ne distingue donc pas `reject` de « non habilité » pour elles. S11.3 et S15.4 sont encodés par l'absence d'`ok` et la clause défaillante du corpus. Passe de clôture : le corpus v3 consigne en § 0 un critère `reject` / `non habilité`, à arbitrer ; C17, C18 et les encodages sont inchangés. Deux verdicts `non habilité` du corpus tombent sur des clauses d'autorité (`spec2-m3-close.md`, écarts).
 - **P8 — W-C22.2 : désaccord sur « `acquire(e)` plus jamais habilitée ».**
   - **Clause citée par le corpus :** C13.9/C14 (« descendant bloquant »).
   - **État :** `x5`, après le `deriveSync` brut du contexte 1 depuis `MX₄` ; le registre garde `grant = none`.
-  - **Verdict effectif :** dans `x5`, `acquire` n'est habilité pour aucun contexte (`W_C22_2_encap`). Mais le contexte 1 peut libérer la dérivée par un `release` ordinaire (O3), pas `ok` admis par `Encap` ; `GrantDiscipline` est alors rétablie et `acquire(e)` par le contexte 1 est habilité (`W_C22_2_reenable`, `MX.lean:365`). WC4 C15 (effet) le permet : la dérivée « is ordinary after creation … for its … legal release ».
+  - **Verdict effectif :** dans `x5`, `acquire` n'est habilité pour aucun contexte (`W_C22_2_encap`). Mais le contexte 1 peut libérer la dérivée par un `release` ordinaire (O3), pas `ok` admis par `Encap` ; `GrantDiscipline` est alors rétablie et `acquire(e)` par le contexte 1 est habilité (`W_C22_2_reenable`, `MX.lean:368`). WC4 C15 (effet) le permet : la dérivée « is ordinary after creation … for its … legal release ».
   - **Lecture :** « plus jamais » est trop fort : dans ce cas, le blocage cesse au `release` de la dérivée. Aucun énoncé général sur la durée du blocage n'est prouvé. Ni le corpus ni le modèle ne sont corrigés.
-- **P9 — nom du document WC4.** Voir l'en-tête.
+  - **Passe de clôture : réglé.** Le corpus v2 adopte cette lecture et ajoute un fondement renforcé de C22.2, établi par `W_C22_2_cycle` (§ A.3).
+- **P9 — nom du document WC4.** Voir l'en-tête. **Passe de clôture : réglé** : le brief de clôture nomme `ERN_WC4.md`, la WC4 corrigée lue au jalon 3.
 
 ## A.5 Décisions de représentation du jalon 3
 
@@ -265,7 +273,7 @@ Modules `Ern/Concurrency/Corpus/` : `MX.lean`, `AR.lean`, `Frames.lean`, `S10.le
 2. **Opérations d'arène exécutées par un contexte.** `newArena` : clauses de `NewArenaBase` sur la vue, §76.6 sur l'état concurrent. `issue` : forme d'`IssueD` avec `opStepC` pour `split` et `store`. `reset` : `ResetD` sur la vue. Voir P1.
 3. **Issues.** Les relations d'arène ont des issues `Outcome3`, `fail` compris pour `issue`. `LStep` ne contient que les pas `ok`, comme au jalon 1.
 4. **`ArenaInvC`** est `Arena.LInv` sur `s.flat` : `ArenaInv` (§55), avec `IssuedShape` et la borne des `internal`.
-5. **`AdminSep`.** Partie inter-registres de §56, invariant de trace. L'unicité intra-registre n'est énoncée que pour le registre de synchronisation (`SyncInv.unique`, jalon 1).
+5. **`AdminSep`.** Partie inter-registres de §56, invariant de trace. L'unicité intra-registre n'est énoncée que pour le registre de synchronisation (`SyncInv.unique`, jalon 1). Passe de clôture : pour le registre d'arènes, `ArenaReg.unique`, invariant de trace séparé, hors de `LibInv` et des hypothèses de T4 et T7.
 6. **`lstep_preserves`.** `AdminSep` y est une hypothèse conditionnelle, active pour `issue` et `reset` seulement.
 7. **`realize` et `StepOblC`.** Ils prennent le registre d'arènes. `issue` est réalisé par `store` sur l'état après `split`, comme `RefinementArena.kexp`. `newArena` et `reset` n'ont aucune opération brute.
 8. **Corpus.** Contrat `KC sm` ; encodages des verdicts de § A.3 ; noms `S<cas>_<n>_<verdict>`. Le verdict obtenu est dans le nom quand il diffère du corpus (S10), et le désaccord est dans la docstring.
@@ -295,7 +303,7 @@ Quatre relecteurs indépendants, en lecture seule, ont revu le jalon : étape A 
 
 # Partie B — index consolidé des jalons 1 à 3
 
-État de la branche à `8e2bccf`. Les numéros de ligne sont ceux de ce commit. Chemins relatifs à `formal/Ern/Concurrency/`.
+État de la branche à `bf36d25`, dernier commit de code de la passe de clôture. Les numéros de ligne de tout le document sont ceux de ce commit, sauf ceux de § « Vérifications à `8e2bccf` ». Chemins relatifs à `formal/Ern/Concurrency/`.
 
 ## B.1 Modules
 
@@ -312,8 +320,8 @@ Quatre relecteurs indépendants, en lecture seule, ont revu le jalon : étape A 
 | `Reparent.lean` | 1 | T3, T2 pour `exitFrameC` et `terminate` | C6, C7, OB-C13 |
 | `SyncPreserve.lean` | 1 | `SyncState` (`:25`) et lemmes par opération | C21, C22 |
 | `SyncInit.lean` | 1, 3 | T4 par pas (`lstep_preserves`, `:945`), `kernel_syncState` (`:921`), `transfer_into_live_mutex_rejected` (`:1017`) | C21.4, C21.7, C22, C23 |
-| `ArenaPreserve.lean` | 3 | `ArenaInvC` (`:27`), `Keep`, `lstep_keep` (`:176`), T7 (`lstep_arenaInv`, `:333`), `lstep_adminSep` (`:412`) | Spec 1 §55, §56 ; C19 |
-| `Reachable.lean` | 1, 3 | `lstep_kInvCA` (`:28`), `LibInv` (`:62`), `libInv_nil` (`:67`), `lstep_inv` (`:75`), `trace_inv` (`:87`), `init_inv` (`:105`), `encapsulated_inv` (`:131`), `encapsulated_arenaInv` (`:143`) | C20–C23 ; Spec 1 §55 |
+| `ArenaPreserve.lean` | 3 | `ArenaInvC` (`:27`), `Keep`, `lstep_keep` (`:176`), T7 (`lstep_arenaInv`, `:333`), `lstep_adminSep` (`:412`) ; **clôture :** `ArenaReg.unique` (`:488`), `lstep_arenaUnique` (`:522`) | Spec 1 §55, §56 ; C19 |
+| `Reachable.lean` | 1, 3 | `lstep_kInvCA` (`:28`), `LibInv` (`:62`), `libInv_nil` (`:67`), `lstep_inv` (`:75`), `trace_inv` (`:87`), `init_inv` (`:105`), `encapsulated_inv` (`:131`), `encapsulated_arenaInv` (`:143`) ; **clôture :** `trace_arenaUnique` (`:155`), `encapsulated_arenaUnique` (`:168`) | C20–C23 ; Spec 1 §55, §56 |
 | `ArenaConservativity.lean` | 3 | `projL`, conservativité des opérations d'arène, `r5_arena` | C24 ; Spec 1 §76–§78, §82.7 |
 | `Repr.lean` | 2 | `ReprC` (`:23`), `repr_congr`, `repr_frames_congr` (`:38`), `reprC_view` (`:46`) | C2, C25 ; Spec 1 §82.1 |
 | `Realize.lean` | 2, 3 | `kopOf`, `valOps`, `realize` (`:271`), `StepOblC` (`:337`), R1, R5, `SimRunC` (`:678`), R2, R3, témoin S4 | C2, C4–C8, C13–C19, C25 ; Spec 1 §82 |
@@ -321,6 +329,9 @@ Quatre relecteurs indépendants, en lecture seule, ont revu le jalon : étape A 
 | `NonConflict.lean` | 2 | R4, R4′ | Spec 1 §43, §50, §82.8 |
 | `Traces.lean`, `EncapTraces.lean` | 1 | tests des jalons 1–2 | § B.3 |
 | `Corpus/MX.lean`, `Corpus/AR.lean`, `Corpus/Frames.lean`, `Corpus/S10.lean`, `Corpus/Witness.lean` | 3 | corpus du jalon 3, `CrossContextConflictOnlyShared` | `corpus-spec2-m3.md` |
+| `Corpus/S10Seq.lean` | 3, clôture | témoin séquentiel de S10 ; n'importe que `Ern.MemoryModel` | corpus v3 §1 S10 et § 5 ; Spec 1 §44, §63, §73 |
+| `Corpus/ARRealize.lean` | 3, clôture | exécution de S3 réalisée jusqu'au pas 3 (`issue`) ; hypothèses d'`issue_pointer_soundC` sur cette exécution | corpus v3 §1 S3 ; Spec 1 §77, §82 ; C19, C25 |
+| `Corpus/Handoff.lean` | 3, clôture | témoins de passation W-HO, W-HO′, W-HO″ | corpus v3 § 2 bis |
 
 ## B.2 Théorèmes
 
@@ -342,8 +353,12 @@ Quatre relecteurs indépendants, en lecture seule, ont revu le jalon : étape A 
 | T7 | `lstep_arenaInv` (`ArenaPreserve:333`) | tout `LStep` préserve `ArenaInvC` | `WF3` avant, `NoDangling` après |
 | T7 | `encapsulated_arenaInv` (`Reachable:143`) | depuis l'état initial : `ArenaInvC` et `AdminSep` | **`EncapsulatedTrace`**, `DDSound`, `StaticsOK` |
 | §56 | `lstep_adminSep` (`ArenaPreserve:412`) | tout `LStep` préserve `AdminSep` | `AdminSep`, bornes des identités enregistrées |
+| §56 (clôture) | `lstep_arenaUnique` (`ArenaPreserve:522`) | tout `LStep` préserve `ArenaReg.unique` : deux entrées vivantes du registre d'arènes ne partagent pas leur `internal` | `ArenaReg.unique`, bornes des `internal` enregistrés |
+| §56 (clôture) | `trace_arenaUnique`, `encapsulated_arenaUnique` (`Reachable:155`, `:168`) | `ArenaReg.unique` le long d'une trace ; depuis l'état initial | **`EncapsulatedTrace`**, `DDSound`, et `KInvCA`, `LibInv`, `ArenaReg.unique` au départ ; resp. `StaticsOK` |
+| §56 (clôture) | `arenaInvC_not_unique` (`Corpus/AR:201`) | `ArenaInvC` n'entraîne pas `ArenaReg.unique` : le registre de S3 dupliqué satisfait l'un, pas l'autre | aucune |
 | R1 | `r1_lstep` (`Realize:512`) | la réalisation d'un pas est une exécution de pas bruts `ok` qui garde `ReprC` | `ParamsOK`, `ReprC`, `KInvCA`, `StepOblC` |
 | R1, §82.3 | `pointer_sound_storeC` (`RealizeSound:38`), `issue_pointer_soundC` (`:124`) | adresse et provenance écrites par `store` et par `issue` | `ReprC`, `FramesC`, `WF3`, `NoDangling`, taille et encodage |
+| R1–R3, §82.3 (clôture) | `s3_realized`, `s3_issue_hyps`, `s3_issue_pointer` (`Corpus/ARRealize:123`, `:152`, `:164`) | S3 jusqu'au pas 3 est une `SimRunC` réalisée sans `ub`, sous `ReprC` à chaque état ; les hypothèses d'`issue_pointer_soundC` y tiennent ensemble ; la référence écrite dans `d1` décode l'adresse 48 | `ParamsOK`, `StepOblC` de chaque pas |
 | R1, §82.6 | `pinned_address_stableC` (`RealizeSound:210`) | une feuille épinglée vivante garde allocation et adresse, pour tout `LStep` | `ReprC`, `KInvCA`, allocation vivante |
 | R2 | `simulationC` (`Realize:699`) | toute `SimRunC` est atteinte par une exécution `ok` depuis la mémoire vide, sous `ReprC`, et sa suite d'étiquettes est une `EncapsulatedTrace` | `DDSound`, `ParamsOK` |
 | R3 | `r3_step` (`Realize:750`), `concrete_safety` (`:764`) | aucune opération brute `ub` | celles de R1 ; de R2 |
@@ -354,7 +369,7 @@ Quatre relecteurs indépendants, en lecture seule, ont revu le jalon : étape A 
 
 ## B.3 Corpus complet
 
-**Jalon 3** (`corpus-spec2-m3.md`) : la table de § A.3 donne pour chaque ligne le verdict attendu, le verdict obtenu, la clause et le théorème. Deux désaccords : S10 (P2) et « plus jamais habilitée » de W-C22.2 (P8) ; S6 est hors fragment.
+**Jalon 3** (`corpus-spec2-m3.md` v3) : la table de § A.3 donne pour chaque ligne le verdict attendu, le verdict obtenu, la clause et le théorème. Aucun désaccord avec la v3, qui corrige S10 (P2) et W-C22.2 (P8). S6 est hors fragment. L'encodage de `reject` de S11.3 et S15.4 relève de P7.
 
 **Jalon 1** (`spec2-m1-close.md` § B.3, repris avec les jumeaux ; « P1 » y désigne la proposition P1 de la passe 1 du jalon 1) :
 
@@ -368,13 +383,13 @@ Quatre relecteurs indépendants, en lecture seule, ont revu le jalon : étape A 
 | `deriveSync_breaks_i2_false` (`Preservation:1896`) | négation, pour tout `KC R`, de l'ancien contre-exemple I2 | — | C15.1 |
 | `spawnVal_covering_rejected` (`Transfer:205`) | paramètre couvrant une source par valeur : `reject` | `spawnVal_apart_ok` (`:214`) | C5, précondition 5 |
 | `newMutex_nonleaf_rejected` (`SyncPreserve:1351`) | contrôleur non feuille : `newMutex` rejeté | `newMutex_ok` (`Traces:58`) | C12, C13.3 |
-| `newMutex_uninit_rejected` (`EncapTraces:450`) | `newMutex` sur des champs `Uninit` : rejeté | sa première moitié | C13.10 (S18 (1)) |
-| `transfer_merges_controllers_false` (`EncapTraces:456`) | `newMutex(1)`, `newMutex(3)`, `transfer(M, M′)` depuis `m0` n'est pas un `LRun` | — | C13.10 |
-| `slot_transfer_breaks_control` (`EncapTraces:202`), `ctl_transfer_breaks_ctlInit` (`:222`) | S16 (a), (c) | `controlAB` (`:184`), `invA` (`:170`), `invB` (`:177`) | C22.3 (a), (c) |
+| `newMutex_uninit_rejected` (`EncapTraces:451`) | `newMutex` sur des champs `Uninit` : rejeté | sa première moitié | C13.10 (S18 (1)) |
+| `transfer_merges_controllers_false` (`EncapTraces:457`) | `newMutex(1)`, `newMutex(3)`, `transfer(M, M′)` depuis `m0` n'est pas un `LRun` | — | C13.10 |
+| `slot_transfer_breaks_control` (`EncapTraces:202`), `ctl_transfer_breaks_ctlInit` (`:223`) | S16 (a), (c) | `controlAB` (`:184`), `invA` (`:170`), `invB` (`:177`) | C22.3 (a), (c) |
 | `transfer_into_live_mutex_rejected` (`SyncInit:1017`) | S18 (2) | `invA`, `invB` | §63.3, C21.7 |
-| `endUse_ctl_excluded` (`EncapTraces:243`) | S17a | `endUse_mutex_kills_entry` (`:265`) ; au jalon 3 : `S17a_2_ok` | C22.5 (a) |
-| `endUse_slotPart_excluded` (`EncapTraces:307`) | S17b | `endUse_slot_kills_entry` (`:332`) | C22.5 (b) |
-| `endUse_then_transfer_merges`, `_false` (`EncapTraces:381`, `:417`) | fusion de contrôleurs dans un `LRun` qui n'est pas une `EncapsulatedTrace` | `invA`, `invB` | C21.4, C22.5 (b) |
+| `endUse_ctl_excluded` (`EncapTraces:244`) | S17a | `endUse_mutex_kills_entry` (`:266`) ; au jalon 3 : `S17a_2_ok` | C22.5 (a) |
+| `endUse_slotPart_excluded` (`EncapTraces:308`) | S17b | `endUse_slot_kills_entry` (`:333`) | C22.5 (b) |
+| `endUse_then_transfer_merges`, `_false` (`EncapTraces:382`, `:418`) | fusion de contrôleurs dans un `LRun` qui n'est pas une `EncapsulatedTrace` | `invA`, `invB` | C21.4, C22.5 (b) |
 | `alloc_ok_satisfiable`, `alloc_fail_unsatisfiable` (`Frames:282`, `:293`) | `K.Satisfiable` évalué sur la vue | — | C2 (P1 du jalon 1) |
 | `s4_steps`, `s4_trace`, `s4_detached_child` (`Traces:280`, `:289`, `:302`) | S4 positif | — ; au jalon 3, négatif `S4_2_reject` | C5, C6 |
 
@@ -391,17 +406,38 @@ Quatre relecteurs indépendants, en lecture seule, ont revu le jalon : étape A 
 |---|---|---|
 | `adminSep_needed` (`Corpus/Witness:109`) | nécessité de `AdminSep` pour T4 | Spec 1 §56 ; C13.7 |
 | `S3_8_view_literal` (`Corpus/AR:175`) | lecture littérale d'`IssueD` sur la vue : `reject` du pas 8 de S3 | WC4 C3 ; Spec 1 §65.5 |
-| `S11_setup_wait` (`Corpus/MX:258`) | lecture littérale de la mise en place de S11 : `acquire` non habilité | C14.3 |
+| `S11_setup_wait` (`Corpus/MX:259`) | mise en place de S11 sans la cession d'`o1′` : `acquire` non habilité | C14.3 |
+
+**Passe de clôture** (`spec2-m3-close.md`). Verdicts attendus du corpus v3, tous obtenus :
+
+| Énoncé (module:ligne) | Verdict attendu | Verdict obtenu | Clause |
+|---|---|---|---|
+| `s10seq_setup` (`Corpus/S10Seq:52`), `S10Seq_1_ok` (`:62`) | S10 séquentiel, `transfer(M, M′)` depuis `f1` : `ok` | `ok` | Spec 1 §63.1, §63.4, §63.7 |
+| `S10Seq_2_reject` (`Corpus/S10Seq:66`) | `exitFrame` : `reject` | `reject` ; aucune origine survivante pour `g` | §73.4 |
+| `S10Seq_anchor_misplaced` (`Corpus/S10Seq:74`) | `EffAnchorOK … g (some f0)` faux | faux | fait d'état ; ni §44 ni §63.7 ne contraignent `g` |
+| `S10Seq_3_ok`, `S10Seq_4_ok` (`Corpus/S10Seq:78`, `:82`) | `transfer(M′, M)` : `ok` ; `exitFrame` : `ok` | `ok` ; `ok` | §63.3 ; §73.4, §73.5 |
+| `s10seq_reachable` (`Corpus/S10Seq:87`) | configuration atteignable en séquentiel pur | `q6` et `q8` atteignables sous `K0` | Spec 1 §57 ; corpus § 5, note Spec 1 |
+| `S10_2_ok`, `S10_3_ok` (`Corpus/S10:73`, `:79`) | suite concurrente de S10 : `ok`, `ok` | `ok` admis par `Encap` ; `ok` | §63.3, §63.1 ; §73.4, §73.5 |
+| `W_C22_2_cycle` (`Corpus/MX:379`) | fondement renforcé de C22.2 | le cycle `acquire`/`unlock` atteint l'état de `W_C22_2_encap` suivi de `W_C22_2_reenable` | C22.2 ; C16, C17 |
+| `s3_realized`, `s3_issue_hyps`, `s3_issue_pointer` (`Corpus/ARRealize:123`, `:152`, `:164`) | — | S3 jusqu'au pas 3 réalisé, sans `ub` ; adresse 48 | Spec 1 §77, §82.3 ; C19, C25 |
+| `ar_unique` (`Corpus/AR:208`) | — | `ArenaReg.unique` dans l'état de S3 | Spec 1 §56 |
+| `W_HO_1_ok`, `W_HO_2_ok`, `W_HO_3_ok` (`Corpus/Handoff:29`, `:33`, `:39`), `w_ho_trace` (`:44`) | W-HO : `ok`, `ok`, `ok` ; jumeau S13 (a) `S13_2_ok` | idem ; `c1` vivant au pas 3 | O10.1 ; O3.1–O3.3 ; O10.1, §40, §43.2 |
+| `W_HO2_0_ok` (`Corpus/Handoff:76`) | W-HO′, mise en place, `spawn` cédant `a` : `ok` | `ok` | C4.3, C4.5, O6.3 |
+| `W_HO2_1_reject` … `W_HO2_4_ok` (`Corpus/Handoff:83`–`95`), `w_ho2_trace` (`:100`) | `reject`, `ok`, `ok`, `ok` | idem | O10.1 (§43.3) ; O10.1 ; O3 ; §43.2 |
+| `w_ho3_setup` (`Corpus/Handoff:137`), `W_HO3_1_ok` … `W_HO3_6_ok` (`:144`–`168`), `w_ho3_trace` (`:178`) | W-HO″ : `ok` ×6 ; au `terminate`, frame initiale de `c2` reparentée sur `f0` | idem ; parent de la frame initiale de `c2` : frame 1 avant `terminate`, frame 0 après (`W_HO3_4_ok`) | O10.1 ; O3 ; O3.3 ; C7, C6 ; C8 ; O10.1, §43.2 |
+| `W_HO3_7_reject` (`Corpus/Handoff:173`) | `release(a)` avant `release(a₂)` : `reject` | `reject` | O3.3 |
+
+Les trois traces de passation sont des `EncapsulatedTrace` depuis l'état initial ; `KInvC` tient à leur état final par `encapsulated_inv`.
 
 ## B.4 Décisions de représentation (cumulées)
 
 - **Jalon 1** : les décisions 1 à 18 de `spec2-m1-close.md` § B.4 restent en vigueur, avec deux mises à jour :
   - la 4 (opérations de bibliothèque à issue `ok` seule) détermine l'encodage de `reject` pour `unlock` et `resetLock` (§ A.4, P7) ;
-  - la 10 (`unique` par indice) ne vaut que dans le registre de synchronisation.
+  - la 10 (`unique` par indice) vaut dans le registre de synchronisation et, depuis la passe de clôture, dans le registre d'arènes (`ArenaReg.unique`).
 - **Jalon 2** : les décisions 1 à 10 de `spec2-m2.md` § 6 restent en vigueur.
   - La 3 (réalisation unique par `opsOf` sur la vue) s'étend à `issue` : `store` sur l'état après `split`.
   - Les hypothèses retirées restent retirées : `DDSound` en R1, `ReprC` en R4′.
-- **Jalon 3** : les décisions 1 à 9 de § A.5. La décision 2 (réindexation des clauses d'ancêtre des opérations d'arène) est à arbitrer (P1).
+- **Jalon 3** : les décisions 1 à 9 de § A.5. La décision 2 (réindexation des clauses d'ancêtre des opérations d'arène) est à arbitrer (P1). La décision 5 est complétée par `ArenaReg.unique` (passe de clôture).
 
 ## B.5 Lemmes de la Spec 1 copiés ou à généraliser
 
@@ -449,15 +485,15 @@ Les copies s'expliquent par la forme des énoncés de la Spec 1. `Arena.kstep_ak
 | OB-C05 réalisation atomique d'`acquire`, `unlock`, `resetLock` | ouverte. Réalisations vides (jalon 2). S5b et S12 sont `ok` noyau et admis par `Encap` ; C22.4 n'est pas représentée. |
 | OB-C06 absence de courses | ouverte. **Réduction** citée ci-dessous. |
 | OB-C07 typage de la transférabilité | ouverte |
-| OB-C08 encapsulation | C22.1–C22.3 et C22.5 formalisées par `Encap` et `EncapsulatedTrace`, T4 sous elles. Témoins de nécessité : C22.1 (`acquire_blocked_by_derive`), C22.2 (`W_C22_2_encap`), C22.3 (a) et (c) (S16), C22.3 (b) (`W_C22_3b_encap`, jumeau `W_C22_3b_ok`), C22.5 (S17a, S17b). C22.4 n'est pas représentée. L'application par les Specs 4 et 10 reste ouverte. |
+| OB-C08 encapsulation | C22.1–C22.3 et C22.5 formalisées par `Encap` et `EncapsulatedTrace`, T4 sous elles. Témoins de nécessité : C22.1 (`acquire_blocked_by_derive`), C22.2 (`W_C22_2_encap` ; fondement renforcé : `W_C22_2_cycle`), C22.3 (a) et (c) (S16), C22.3 (b) (`W_C22_3b_encap`, jumeau `W_C22_3b_ok`), C22.5 (S17a, S17b). C22.4 n'est pas représentée. L'application par les Specs 4 et 10 reste ouverte. |
 | OB-C09 conventions par valeur, annulation | composite provisoire formalisé et réalisé ; annulation et terminaison anormale ouvertes |
 | OB-C10 contextes externes | ouverte |
 | OB-C11 ordre de `join` et de la complétion | issues de `join` formalisées ; l'ordre des événements reste ouvert |
-| OB-C12 correspondance concrète (§82) | sur le fragment des pas abstraits : §82.1 (`ReprC`) ; §82.2–§82.5 (R1, R2) ; §82.3 adresse et provenance (`pointer_sound_storeC`, `issue_pointer_soundC`) ; §82.6 (`pinned_address_stableC`) ; §82.7, partiel : les opérations d'arène se réalisent par leurs pas noyau (R1, `r5_arena`) ; **non couverts** en concurrent : l'absence d'accès après invalidation (`RefinementArena.arena_realized` n'est pas transporté) et la partie « métadonnées » de §82.7, que `arena_realized` ne couvre pas non plus en séquentiel (lecture déclarée dans sa docstring) et dont `realize` hérite ; §82.8 (R4′). |
+| OB-C12 correspondance concrète (§82) | sur le fragment des pas abstraits : §82.1 (`ReprC`) ; §82.2–§82.5 (R1, R2) ; §82.3 adresse et provenance (`pointer_sound_storeC`, `issue_pointer_soundC`, dont les hypothèses tiennent ensemble sur l'exécution de S3 qui contient `issue` : `s3_issue_hyps`, passe de clôture) ; §82.6 (`pinned_address_stableC`) ; §82.7, partiel : les opérations d'arène se réalisent par leurs pas noyau (R1, `r5_arena`) ; **non couverts** en concurrent : l'absence d'accès après invalidation (`RefinementArena.arena_realized` n'est pas transporté) et la partie « métadonnées » de §82.7, que `arena_realized` ne couvre pas non plus en séquentiel (lecture déclarée dans sa docstring) et dont `realize` hérite ; §82.8 (R4′). |
 | OB-C13 H1 sous reparentage | T3 prouvé |
 | OB-C14 composite par valeur | T2, T4, R1 pour le composite ; S4 positif, S4 négatif |
 | OB-C15 contrat de `SyncAuthorized` | `SyncSound`, `libKC_sound`, T5 et sa nécessité d'I1 |
-| OB-C16 garde unifiée | **intégrée** (A3). `newMutex` lit les `internal` vivants, `newArena` les `guarded` vivants. `AdminSep` est préservé (`lstep_adminSep`) et nécessaire à T4 (`adminSep_needed`). L'unicité intra-registre des arènes n'est pas énoncée. `HandlePool` et `DataStack` n'existent pas dans le modèle concurrent. |
+| OB-C16 garde unifiée | **intégrée** (A3). `newMutex` lit les `internal` vivants, `newArena` les `guarded` vivants. `AdminSep` est préservé (`lstep_adminSep`) et nécessaire à T4 (`adminSep_needed`). L'unicité intra-registre des arènes est énoncée (`ArenaReg.unique`) et préservée (`lstep_arenaUnique`, `encapsulated_arenaUnique`), comme invariant séparé, hors des hypothèses de T4 et T7 ; elle ne découle pas d'`ArenaInvC` (`arenaInvC_not_unique`) (passe de clôture). `HandlePool` et `DataStack` n'existent pas dans le modèle concurrent. |
 
 **Réduction d'OB-C06** (`corpus-spec2-m3.md` §3, citée mot pour mot) :
 
@@ -468,14 +504,14 @@ Ce plan de preuve est consigné ; il n'est pas formalisé.
 ## B.7 Audit final des axiomes
 
 - **Méthode.** Script `collectAxioms` sur toutes les constantes `thmInfo` dont le nom commence par `Ern.Concurrency` ou `_private.Ern.Concurrency`, après `import Ern`.
-- **Résultat à `8e2bccf`.** 1092 théorèmes, dont 835 non internes. Aucun axiome hors `{propext, Quot.sound}`.
-- **Évolution.** Jalon 1 : 798 (626) ; jalon 2 : 873 (675) ; jalon 3 : 1092 (835).
+- **Résultat à `bf36d25`.** 1144 théorèmes, dont 886 non internes. Aucun axiome hors `{propext, Quot.sound}`.
+- **Évolution.** Jalon 1 : 798 (626) ; jalon 2 : 873 (675) ; jalon 3 : 1092 (835) ; passe de clôture : 1144 (886).
 - **Théorèmes réutilisés d'`Arena.lean` et de `RefinementArena.lean`.** Audités en § A.1 : tous propres.
-- **Absences.** Le `grep` d'`AGENTS.md` est vide sur le dépôt. Aucun `noncomputable` dans `formal/Ern/Concurrency/`. Le corpus n'utilise aucun `example`.
+- **Absences.** Le `grep` d'`AGENTS.md` est vide sur le dépôt. Aucun `noncomputable`, `decide +kernel` ni `ofReduceBool` dans `formal/Ern/Concurrency/`. Le corpus n'utilise aucun `example`.
 
 ## Ce qui n'est pas vérifié
 
-- P1, P2, P3 et P8 attendent un arbitrage.
-- Les numéros de ligne ont été relevés à `8e2bccf` et contrôlés par script. Ceux des tables des jalons 1 et 2 citées par renvoi se rapportent à leurs propres commits.
-- Aucun `SimRunC` concret ne contient de pas `issue` : les hypothèses d'`issue_pointer_soundC` ne sont pas montrées satisfaites ensemble sur une exécution.
-- L'unicité des `internal` vivants à l'intérieur du registre d'arènes n'est pas énoncée en concurrent.
+- P1, P3 et P7 attendent un arbitrage : P1 et P3 sont des choix du modèle exploratoire, conservés ; P7 est un critère consigné au corpus § 0. P2, P4, P6, P8 et P9 sont réglés par le corpus v2/v3 et le brief de clôture.
+- Les numéros de ligne ont été relevés à `bf36d25` par un script qui ne fait que signaler, puis corrigés à la main. Ceux de § « Vérifications à `8e2bccf` » et des tables des jalons 1 et 2 citées par renvoi se rapportent à leurs propres commits.
+- La réalisation en mémoire de S3 s'arrête au pas 3 (`issue`), comme le demande le brief de clôture ; les pas 4 à 8 ne sont pas réalisés.
+- Les témoins de passation n'établissent que les verdicts des pas. Aucun énoncé sur l'ordre des écritures ni sur les courses (corpus § 2 bis).
