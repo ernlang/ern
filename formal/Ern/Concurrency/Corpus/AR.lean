@@ -191,4 +191,20 @@ theorem s3_trace : EncapsulatedTrace KA L0 (a0, [], [])
   have h := h.snoc (lbl := .acquire 0 0) (st' := (a10, regA10, arA1)) trivial (.acquire S3_6_ok)
   exact h.snoc (lbl := .issue 0 0 [6] 7) (st' := (a11, regA10, arA2)) trivial (.issue S3_8_ok)
 
+/-! ## `ArenaInvC` does not imply `ArenaReg.unique` (Spec 1 §55, §56) -/
+
+/-- `ArenaInvC` (`Arena.LInv`, Spec 1 §55) does not imply the uniqueness of the live `internal`
+identities inside the arena registry (Spec 1 §56, first sentence): `ArenaInvC` quantifies over the
+entries by membership, so the registry of block AR with its entry listed twice satisfies it, while
+its two live entries share `internal`. `ArenaReg.unique` is therefore a separate trace invariant
+(`lstep_arenaUnique`, `encapsulated_arenaUnique`). -/
+theorem arenaInvC_not_unique : ArenaInvC a6 (arA ++ arA) ∧ ¬ ArenaReg.unique (arA ++ arA) a6 := by
+  have h := (encapsulated_arenaInv (ddKC [2]) arst_ok ar_trace.1).1
+  refine ⟨fun E hE => h E ((List.mem_append.1 hE).elim id id), fun hu => ?_⟩
+  exact absurd (hu 0 1 ⟨4, 4, [5, 6], []⟩ ⟨4, 4, [5, 6], []⟩ rfl rfl (by decide) (by decide) rfl)
+    (by decide)
+
+/-- Block AR reaches a state satisfying `ArenaReg.unique` (`encapsulated_arenaUnique`). -/
+theorem ar_unique : ArenaReg.unique arA a6 := encapsulated_arenaUnique (ddKC [2]) arst_ok ar_trace.1
+
 end Ern.Concurrency.Corpus

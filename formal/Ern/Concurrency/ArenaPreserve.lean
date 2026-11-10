@@ -480,4 +480,83 @@ theorem lstep_adminSep {k : K} {L : MutexLayout} {lbl : Label} {st st' : SC × S
         (back _ (hb' _ (List.mem_of_getElem? hi)) hL)
   all_goals exact same rfl rfl
 
+/-! ## Uniqueness of the live `internal` identities inside the arena registry (Spec 1 §56) -/
+
+/-- `ArenaReg.unique` (Spec 1 §56, first sentence: "An authority identity may serve as `internal`
+for at most one live administrative abstraction"), inside the arena registry: two live entries,
+by position, do not share their `internal` identity. -/
+def ArenaReg.unique (ar : ArenaReg) (s : SC) : Prop :=
+  ∀ (i j : Nat) (E E' : Arena.ArenaEntry), ar[i]? = some E → ar[j]? = some E' →
+    Arena.Live s.flat E → Arena.Live s.flat E' → E.internal = E'.internal → i = j
+
+namespace ArenaAux
+
+/-- The entries of a registry extended by one entry (Spec 1 §76 effect). -/
+theorem append_one_cases {ar : ArenaReg} {E₀ E : Arena.ArenaEntry} {j : Nat}
+    (h : (ar ++ [E₀])[j]? = some E) : ar[j]? = some E ∨ (j = ar.length ∧ E = E₀) := by
+  by_cases hj : j < ar.length
+  · rw [List.getElem?_append_left hj] at h; exact .inl h
+  · rw [List.getElem?_append_right (Nat.le_of_not_lt hj)] at h
+    cases e : j - ar.length with
+    | zero =>
+      rw [e] at h; simp only [List.getElem?_cons_zero, Option.some.injEq] at h
+      exact .inr ⟨by omega, h.symm⟩
+    | succ n => rw [e] at h; simp at h
+
+/-- An update of entry `i` that keeps its `internal` (Spec 1 §77, §78 metadata effects) keeps
+the `internal` at every position. -/
+theorem set_internal {ar : ArenaReg} {i j : Nat} {E₀ X E : Arena.ArenaEntry}
+    (hi : ar[i]? = some E₀) (hX : X.internal = E₀.internal) (h : (ar.set i X)[j]? = some E) :
+    ∃ F, ar[j]? = some F ∧ F.internal = E.internal := by
+  rcases Arena.get_set_internal h with ⟨rfl, E₁, hE₁, rfl⟩ | h
+  · rw [hi] at hE₁; cases hE₁; exact ⟨E₀, hi, hX.symm⟩
+  · exact ⟨E, h, rfl⟩
+
+end ArenaAux
+
+/-- `ArenaReg.unique` (Spec 1 §56) is preserved by every labelled step: `newArena` checks the
+arena registry through its guard (Spec 1 §76.4); `issue` and `reset` keep the `internal` of the
+updated entry (Spec 1 §77, §78 effects); no other step changes the arena registry, and no step
+reactivates an authority (Spec 1 §42, §58), the registered identities existing (bound of
+`ArenaInvC`). -/
+theorem lstep_arenaUnique {k : K} {L : MutexLayout} {lbl : Label}
+    {st st' : SC × SyncReg × ArenaReg} (h : LStep k L lbl st st')
+    (hu : ArenaReg.unique st.2.2 st.1) (hb : ∀ E ∈ st.2.2, E.internal < st.1.A.length) :
+    ArenaReg.unique st'.2.2 st'.1 := by
+  have hA := (lstep_keep h).1
+  have mapped : (∀ (j : Nat) (E : Arena.ArenaEntry), st'.2.2[j]? = some E →
+      ∃ F : Arena.ArenaEntry, st.2.2[j]? = some F ∧ F.internal = E.internal) →
+      ArenaReg.unique st'.2.2 st'.1 := by
+    intro hmap i j E E' hi hj hl hl' he
+    obtain ⟨F, hF, hFi⟩ := hmap i E hi
+    obtain ⟨F', hF', hFi'⟩ := hmap j E' hj
+    have hbF := hb F (List.mem_of_getElem? hF)
+    have hbF' := hb F' (List.mem_of_getElem? hF')
+    refine hu i j F F' hF hF' ?_ ?_ (by rw [hFi, hFi', he])
+    · show st.1.flat.Active F.internal
+      rw [hFi] at hbF ⊢; exact hA.active_back hl hbF
+    · show st.1.flat.Active F'.internal
+      rw [hFi'] at hbF' ⊢; exact hA.active_back hl' hbF'
+  cases h
+  case newArena s reg ar c st0 i₀ st'' h =>
+    obtain ⟨-, hpre, rfl⟩ := newArenaStepC_ok h
+    intro i j E E' hi hj hl hl' he
+    have notLive : ∀ F ∈ ar, Arena.Live s.flat F → F.internal ≠ i₀ := fun F hF hlF heq =>
+      hpre.guard _ (List.mem_cons_self ..) (heq ▸ mem_liveInternals hF hlF)
+    rcases ArenaAux.append_one_cases hi with hi | ⟨rfl, rfl⟩ <;>
+      rcases ArenaAux.append_one_cases hj with hj | ⟨rfl, rfl⟩
+    · exact hu i j E E' hi hj hl hl' he
+    · exact absurd he (notLive E (List.mem_of_getElem? hi) hl)
+    · exact absurd he.symm (notLive E' (List.mem_of_getElem? hj) hl')
+    · rfl
+  case issue s reg ar c i₀ region dst st'' h =>
+    obtain ⟨E₀, s₁, hE, -, -, -, -, he2⟩ := issueStepC_ok h
+    exact mapped fun j E hj => ArenaAux.set_internal (X := Arena.issueMeta s.flat E₀ region) hE rfl
+      (by rw [← he2]; exact hj)
+  case reset s reg ar c i₀ st'' h =>
+    obtain ⟨E₀, s₁, hE, -, -, -, he2⟩ := resetStepC_ok (k := k) h
+    exact mapped fun j E hj => ArenaAux.set_internal (X := Arena.resetMeta s.flat E₀) hE rfl
+      (by rw [← he2]; exact hj)
+  all_goals exact mapped fun j E hj => ⟨E, hj, rfl⟩
+
 end Ern.Concurrency

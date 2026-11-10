@@ -148,4 +148,29 @@ theorem encapsulated_arenaInv {k : K} {L : MutexLayout} {statics : Statics} {lbl
   obtain ⟨-, -, hsep, ha⟩ := trace_inv hdd h hk hs
   exact ⟨ha, hsep⟩
 
+/-- `ArenaReg.unique` (Spec 1 §56, first sentence) along an `EncapsulatedTrace`, as a trace
+invariant separate from `LibInv`: from a state satisfying `KInvCA`, `LibInv` and
+`ArenaReg.unique`, every reached state satisfies `ArenaReg.unique`, under `DDSound` (Spec 1
+§80). -/
+theorem trace_arenaUnique {k : K} {L : MutexLayout} {st st' : SC × SyncReg × ArenaReg}
+    {lbls : List Label} (hdd : DDSound k) (h : EncapsulatedTrace k L st lbls st')
+    (hk : KInvCA st.1) (hl : LibInv L st) (hu : ArenaReg.unique st.2.2 st.1) :
+    ArenaReg.unique st'.2.2 st'.1 := by
+  induction h with
+  | nil => exact hu
+  | cons he hst _ ih =>
+    obtain ⟨hk', hl'⟩ := lstep_inv hdd hst he hk hl
+    exact ih hk' hl' (lstep_arenaUnique hst hu fun E hE => (hl.2.2 E hE).1)
+
+/-- `ArenaReg.unique` (Spec 1 §56) from the initial state: every state reached from the initial
+state of Spec 1 §47 (one context, empty registries) by an `EncapsulatedTrace` satisfies it, under
+`DDSound` (Spec 1 §80) and well-formed statics (Spec 1 §47). -/
+theorem encapsulated_arenaUnique {k : K} {L : MutexLayout} {statics : Statics}
+    {lbls : List Label} {st' : SC × SyncReg × ArenaReg} (hdd : DDSound k)
+    (hst : StaticsOK statics)
+    (h : EncapsulatedTrace k L (SC.ofS3 (S3.init statics), [], []) lbls st') :
+    ArenaReg.unique st'.2.2 st'.1 := by
+  obtain ⟨hk, hs⟩ := init_inv (k := k) hdd hst L
+  exact trace_arenaUnique hdd h hk hs fun i j E E' hi => by simp at hi
+
 end Ern.Concurrency
