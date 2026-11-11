@@ -35,6 +35,7 @@ import Ern.Concurrency.Events
 import Ern.Concurrency.EventsCompose
 import Ern.Concurrency.EventsProtocols
 import Ern.Concurrency.EventsStrict
+import Ern.Concurrency.EventsStrictProtocols
 import Ern.Concurrency.Frames
 import Ern.Concurrency.NonConflict
 import Ern.Concurrency.Preservation
