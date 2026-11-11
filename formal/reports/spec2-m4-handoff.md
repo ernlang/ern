@@ -10,7 +10,7 @@ Branche `formal/spec2-m4`, créée depuis `b4d18ce` (tête de `formal/spec2-m3` 
 - **Définitions existantes :** aucune n'est modifiée (`Encap`, `EncapsulatedTrace`, `SyncInv`, `GrantDiscipline`, `LStep`, `ArenaInvC`, `AdminSep` comprises). Tout est ajouté à côté ; `git diff b4d18ce` ne retire aucune ligne.
 - **Périmètre :** machine d'autorités seule. Aucun événement, aucune relation `po`, `rf`, `mo`, `sw`, `hb`, aucun énoncé sur les courses.
 
-Chemins relatifs à `formal/Ern/Concurrency/`. Numéros de ligne à `ec2106b`, dernier commit de code.
+Chemins relatifs à `formal/Ern/Concurrency/`. Numéros de ligne à `882ba6e`, dernier commit de code.
 
 ## Résultats
 
@@ -21,11 +21,11 @@ Chemins relatifs à `formal/Ern/Concurrency/`. Numéros de ligne à `ec2106b`, d
 | L1 pour `cap` | **réfuté** par W-GR, comme le brief l'attendait |
 | `cap5_sound` | **réfuté** |
 | `cap5_compat` (L2, état) | **prouvé** |
-| `cap5_drop_own` (L1) | **inachevé** : prouvé pour 17 des 28 sortes d'étiquettes, non entrepris pour les 11 autres ; aucune baisse pour un autre contexte sur 15 pas existants de 8 d'entre elles (indice, pas preuve) |
+| `cap5_drop_own` (L1) | **prouvé** pour les 28 sortes d'étiquettes, sous `DDSound` (`cap5_drop_own`, `CapDrop:1332`) |
 | `handoff_loss_exists` (L2, trace) | **réfuté** |
 | S10b | verdicts obtenus ; échouent `anchorOrderHeld` (§63.7) et `anchorOrder` (§63.6) |
 
-Les deux réfutations ont la même cause : `GuardedExcl` ne porte que sur l'argument d'autorité du pas, alors que la troisième clause de Spec 1 §43 est récursive le long de la chaîne des détenteurs (§ Tâche 4).
+Les deux réfutations ont la même cause : `GuardedExcl` ne porte que sur l'argument d'autorité du pas, alors que la troisième clause de Spec 1 §43 est récursive le long de la chaîne des détenteurs (§ Tâche 4). L1 et la forme d'état de L2 tiennent ; c'est `cap5_sound` qui manque pour en tirer la forme de trace.
 
 ## Commits
 
@@ -39,7 +39,12 @@ Les deux réfutations ont la même cause : `GuardedExcl` ne porte que sur l'argu
 | `66d2d4e` | 5 — S10b |
 | `50c34fc` | ce rapport, première version |
 | `ec2106b` | 4 — L1 sur des traces existantes, étiquettes sans preuve (indice) |
-| commit suivant | corrections du rapport |
+| `8c2d454` | corrections du rapport |
+| `281025e` | 4 — L1 : `split`, `alloc`, `enterFrame`, `spawn`, `issue`, `reset` |
+| `c6a9b3c` | 4 — L1 : `exitFrame`, `terminate` |
+| `6b21df1`, `ad45185` | 4 — L1 : `endUse`, `free` |
+| `882ba6e` | 4 — L1 : `spawnVal` ; `cap5_drop_own` sur toutes les étiquettes |
+| commit suivant | ce rapport, mis à jour |
 
 ## Tâche 1 — W-GR (`Corpus/GuardedRead.lean`, corpus v4 § 2 ter)
 
@@ -103,11 +108,11 @@ Depuis `MX₄` (`x4`, registre `regX`), contrat `KM`.
   - `(gr2, regG)`, `(gr3, regG)` : M —.
 - **Baisses sur W-GR :** une seule, `c0` à son `newMutex`, car `guarded` cesse d'être attribuable. `c1` n'a de `cap5` sur `T` dans aucun état : la baisse de `cap` à `acquire(e)` disparaît.
 
-## Tâche 4 — L1 et L2 sur `cap5` (`CapPreserve.lean`)
+## Tâche 4 — L1 et L2 sur `cap5` (`CapPreserve.lean`, `CapDrop.lean`)
 
 Énoncés en `Prop` (`CapPreserve`) :
 
-- `Cap5Sound` (`:55`), `Cap5DropOwn` (`:70`), `HandoffLossExists` (`:81`) ;
+- `Cap5Sound` (`CapPreserve:55`), `Cap5DropOwn` (`:70`), `HandoffLossExists` (`:81`) ;
 - outils : `capRank` (`:20`), `Label.Access` (`:27`), `Run5` (`:35`, trace aux états nommés), `run5_of_trace` (`:41`).
 
 Tous partent d'une `EncapsulatedTrace5` depuis un état initial `SC.ofS3 (S3.init statics)` avec `StaticsOK`. Les preuves supposent `DDSound`.
@@ -143,42 +148,44 @@ Tous partent d'une `EncapsulatedTrace5` depuis un état initial `SC.ofS3 (S3.ini
   - Même autorité tenue par une place : récurrence sur une feuille de la place. Elle existe par `footprint_ne` (`:94`), lemme nouveau, car les parents précèdent les enfants (§49.2).
 - **Portée :** `attr_compat` porte sur `Attr` ; la forme d'état de L2 vaut donc aussi pour `cap`.
 
-### `cap5_drop_own` (L1) — inachevé
+### `cap5_drop_own` (L1) — prouvé
 
-**Lemme de transport** : `cap5_transport` (`CapPreserve:320`), par `attr5_transport` (`:282`). `cap5` de `c` ne baisse pas si, du premier état au second :
+`cap5_drop_own : DDSound k → Cap5DropOwn k L` (`CapDrop:1332`). Sous `DDSound`, depuis tout état atteint par une `EncapsulatedTrace5` depuis un état initial, un pas admis par `Encap5` qui fait baisser strictement `cap5` d'un contexte `c` sur une feuille est un pas de `c`. La preuve est une analyse par étiquette ; aucun contre-exemple.
+
+**Lemmes de transport.** `cap5` de `c` ne baisse pas si, du premier état au second :
 
 - les frames de `c` restent vivantes ;
-- les empreintes des places existantes sont inchangées ;
+- les empreintes des places existantes ne grandissent pas ;
 - chaque autorité attribuable à `c` garde activité, mode propre, détenteur et `NotGuarded`, ainsi qu'un mode effectif suffisant.
 
-| Étiquette | Statut | Argument | Théorème (`CapPreserve`) |
-|---|---|---|---|
-| `read3`, `write3`, `writeShared`, `depend`, `pin`, `unpin`, `join`, `resetLock`, `newArena` | prouvé | ni `A`, ni `P`, ni contextes, ni identités `guarded` ne changent | `cap5_drop_own_inert` (`CapPreserve:421`) |
-| `derive` | prouvé | seuls la source et ses ancêtres perdent du mode effectif ; `attr_compat` et `I1` | `cap5_drop_own_derive` (`:520`) |
-| `store` | prouvé | l'autorité stockée est tenue par la frame courante de l'acteur (§65.1) | `cap5_drop_own_store` (`:645`) |
-| `transfer` | prouvé | les détenteurs déplacés sont des parties de la source, sur lesquelles l'acteur a `Modify` (§63.1) ; squelettes et empreintes gardés | `cap5_drop_own_transfer` (`:686`) |
-| `acquire` | prouvé | le grant descend du `guarded` vivant, non attribuable ; ses ancêtres n'ont pas de mode effectif | `cap5_drop_own_acquire` (`:775`) |
-| `deriveSync` brut | prouvé | aucun pas admis par `Encap5` (C14, C22.2) | `cap5_drop_own_deriveSync` (`:824`) |
-| `release` | prouvé | l'autorité libérée n'est attribuable qu'à l'acteur (§62.2) ; les modes effectifs ne peuvent que monter | `cap5_drop_own_release` (`:948`) |
-| `unlock` | prouvé | comme `release` (C17.2, C17.3) | `cap5_drop_own_unlock` (`:970`) |
-| `newMutex` | prouvé | le nouveau `guarded` n'est attribuable qu'à l'acteur (C13.2, `attr_excl`) | `cap5_drop_own_newMutex` (`:1002`) |
-| `split`, `enterFrame`, `exitFrame`, `endUse`, `free`, `alloc`, `spawn`, `terminate`, `spawnVal`, `issue`, `reset` | **non entrepris** | voir ci-dessous | — |
+Deux versions :
 
-**Pour les 11 étiquettes restantes**, l'état du but est le même : établir, pour `c ≠ lbl.ctx`, les cinq hypothèses de `cap5_transport` entre l'état de départ et l'état d'arrivée. Aucun contre-exemple n'a été trouvé, et aucune n'a résisté à une tentative : elles n'ont pas été tentées. Ce qui manque, par étiquette :
+- `cap5_transport` (`CapPreserve:320`) exige ces conditions pour toute autorité attribuable ;
+- `cap5_transport_u` (`CapDrop:65`) ne les exige que pour les autorités utiles (`Useful`, `CapDrop:23` : un mode effectif suffisant sur au moins une feuille). Elle sert à `free` : une racine de l'unité libérée peut être attribuable à un autre contexte sans y avoir aucun mode effectif, et `free` la désactive (`above_root_ground`, `CapDrop:932`).
 
-- **`split` :** comme `derive`, avec plusieurs régions (`splitEff_cons`).
-- **`enterFrame`, `spawn`, `alloc` :**
-  - les nouvelles racines n'ont pas d'origine, donc les modes effectifs des anciennes autorités sont inchangés ;
-  - les empreintes des anciennes places sont gardées (`enter_footprint_old`) ;
-  - pour `enterFrame`, les paramètres passent de la frame courante de l'acteur à sa nouvelle frame ;
-  - pour `spawn`, ils passent à la frame initiale du nouveau contexte, dont le `cap5` valait `none` avant le pas.
-- **`exitFrame`, `terminate` :**
-  - il faut montrer que le réancrage (§73.4) ne fait que raccourcir les chaînes d'origine ;
-  - il faut montrer que les autorités libérées, tenues par des places qui meurent, ne sont attribuables à aucun autre contexte, en lisant §73.2 dans `ExitPreC` et `TermPre`.
-- **`endUse`, `free` :** même question pour les places possédées qui meurent (§69.2, §70.3).
-- **`spawnVal`, `issue`, `reset` :** composites. Il faut des versions par état des lemmes ci-dessus et les invariants entre les phases (T2).
+| Étiquette | Argument | Théorème |
+|---|---|---|
+| `read3`, `write3`, `writeShared`, `depend`, `pin`, `unpin`, `join`, `resetLock`, `newArena` | ni `A`, ni `P`, ni contextes, ni identités `guarded` ne changent | `cap5_drop_own_inert` (`CapPreserve:421`) |
+| `derive` | seuls la source et ses ancêtres perdent du mode effectif ; `attr_compat` et `I1` | `cap5_drop_own_derive` (`:520`) |
+| `store` | l'autorité stockée est tenue par la frame courante de l'acteur (§65.1) | `cap5_drop_own_store` (`:645`) |
+| `transfer` | les détenteurs déplacés sont des parties de la source, sur laquelle l'acteur a `Modify` (§63.1) ; squelettes et empreintes gardés | `cap5_drop_own_transfer` (`:686`) |
+| `acquire` | le grant descend du `guarded` vivant, non attribuable ; les ancêtres de `guarded` n'ont pas de mode effectif | `cap5_drop_own_acquire` (`:775`) |
+| `deriveSync` brut | aucun pas admis par `Encap5` (C14, C22.2) | `cap5_drop_own_deriveSync` (`:824`) |
+| `release` | l'autorité libérée n'est attribuable qu'à l'acteur (§62.2) ; les modes effectifs ne peuvent que monter | `cap5_drop_own_release` (`:948`) |
+| `unlock` | comme `release` (C17.2, C17.3) | `cap5_drop_own_unlock` (`:970`) |
+| `newMutex` | le nouveau `guarded` n'est attribuable qu'à l'acteur (C13.2, `attr_excl`) | `cap5_drop_own_newMutex` (`:1002`) |
+| `split` | comme `derive`, une région à la fois (§61.1) | `cap5_drop_own_split` (`CapDrop:411`) |
+| `alloc` | la nouvelle racine n'a pas d'origine ; empreintes anciennes gardées | `cap5_drop_own_alloc` (`:432`) |
+| `enterFrame` | idem ; les paramètres sont tenus par la frame courante de l'acteur (§72.1) | `cap5_drop_own_enter` (`:451`) |
+| `spawn` | idem ; le nouveau contexte n'avait pas de `cap5` avant le pas | `cap5_drop_own_spawn` (`:474`) |
+| `issue` | `split` puis `store`, invariants entre les phases par T2 | `cap5_drop_own_issue` (`:505`) |
+| `reset` | `derive` puis `release`, invariants entre les phases par T2 | `cap5_drop_own_reset` (`:537`) |
+| `exitFrame`, `terminate` | le réancrage ne garde que d'anciens ancêtres (`exit_ancs_sub`, `:577`) ; les autorités utiles des autres contextes survivent, par `NoDangling` après le pas (`exit_survives`, `:648`) | `cap5_drop_own_exit` (`:740`), `cap5_drop_own_terminate` (`:762`) |
+| `endUse` | le pas ne fait que libérer (`releases_cap5_mono`, `:802`) ; les autorités utiles des autres contextes restent actives (`endUse_keeps`, `:830`) | `cap5_drop_own_endUse` (`:878`) |
+| `free` | idem, et aucune autorité utile d'un autre contexte ne couvre l'unité libérée : grounding (`attr_excl`), au-dessus du grounding (`above_root_ground`), §70.3, ou racine tenue par le propriétaire de sa place racine et `I1` (`free_keeps`, `:968`) | `cap5_drop_own_free` (`:1097`) |
+| `spawnVal` | `spawn` avec paramètres puis les transferts (`create_yield`, `yield_transfers`) ; à chaque phase, le grounding est attribuable au créateur ou au nouveau contexte (`attr_yield`, `:1140`), `KBase` étant porté comme dans `transfers_base` (`transfers_cap5_mono`, `:1206`) | `cap5_drop_own_spawnVal` (`:1255`) |
 
-**Indice, pas preuve.** `no_other_drops` (`Corpus/L1Evidence:32`), par `decide`, porte sur 15 pas de traces existantes du corpus : S1a, S1b, S13 (b), S4, W-HO″ et S3. Ils couvrent `terminate`, `exitFrame`, `enterFrame`, `spawn`, `split`, `alloc`, `spawnVal` et `issue`. À aucun de ces pas un contexte autre que l'acteur ne voit son `cap5` baisser, sur aucune feuille. `endUse`, `free` et `reset` n'ont pas de pas `ok` multi-contexte dans le corpus existant.
+**Vérification indépendante.** `no_other_drops` (`Corpus/L1Evidence:32`), antérieur à la preuve, évalue par `decide` 15 pas de traces existantes du corpus : aucune baisse pour un autre contexte que l'acteur.
 
 ### `handoff_loss_exists` — réfuté
 
@@ -187,12 +194,13 @@ Tous partent d'une `EncapsulatedTrace5` depuis un état initial `SC.ofS3 (S3.ini
 - **Trace :** la trace précédente, prolongée de `c0 : acquire(e)` et de `c0 : write3(Y)` via `z` (exerçable en `Modify` au travers du grant). L'ensemble est une `EncapsulatedTrace5` (`gc_trace`, `:91`).
 - **Paire d'accès :** `c1` accède à `Y` au pas 7 (`read3`) ; `c0` y accède au pas 9 en exigeant `Modify`.
 - **Pourquoi l'énoncé tombe :** le seul pas intermédiaire, 8 (`acquire`), est un pas de `c0`. Aucun pas de `c1` ne baisse son `cap5` sur `Y` ; il valait déjà `none` au moment de la lecture.
+- **Ce qui manque :** avec `cap5_compat`, `cap5_drop_own` et le fait qu'un accès ne change pas `cap5` (`inert_effect`), `handoff_loss_exists` découlerait de `cap5_sound`. Cette dérivation n'est pas formalisée ; le contre-exemple montre que c'est `cap5_sound` qui fait défaut.
 
 **Correction proposée, non appliquée et non testée** (le brief interdit de toucher la définition) : étendre `GuardedExcl` à tout pas dont l'exercice, au sens de §43, passe par un `guarded` vivant dans la chaîne des détenteurs. Une formulation possible : exiger que l'autorité d'accès soit `Attr5`-exerçable depuis la frame courante. Ni l'équivalence des deux formulations ni le fait qu'elles rétablissent `cap5_sound` ne sont vérifiés. À arbitrer.
 
 **Ce qui survivrait à cette correction.** Elle restreint les traces admises.
 
-- Restent valides : `cap5_compat` et les lemmes L1 prouvés, qui portent sur toutes les `EncapsulatedTrace5` ; seul `cap5_drop_own_deriveSync` lit `Encap5` sur le pas lui-même.
+- Restent valides : `cap5_compat` et `cap5_drop_own`, qui portent sur toutes les `EncapsulatedTrace5` ; seul `cap5_drop_own_deriveSync` lit `Encap5` sur le pas lui-même, et il resterait vrai sous un `Encap5` plus fort.
 - Se rouvrent : `cap5_sound` et `handoff_loss_exists`, dont les contre-exemples ci-dessus seraient exclus.
 
 ## Tâche 5 — S10b (`Corpus/S10b.lean`, corpus v4 § 2 quater)
@@ -218,13 +226,17 @@ Aucun ne change un programme accepté ni un verdict ; ils fixent la forme des é
 
 ## Lemmes du noyau à remonter ou à dédoublonner
 
-`CapPreserve.lean` contient des lemmes qui ne parlent que du noyau de la Spec 1. Ils sont signalés ici et non déplacés, pour ne pas décaler les numéros de ligne.
+`CapPreserve.lean` et `CapDrop.lean` contiennent des lemmes qui ne parlent que du noyau de la Spec 1. Ils sont signalés ici et non déplacés, pour ne pas décaler les numéros de ligne.
 
 - **Doublons de lemmes existants :**
   - `auth_compat` (`CapPreserve:157`) duplique `effective_exclusive` (`MemoryModel/Access/Lemmas.lean:358`) ;
   - `mem_descModes` (`CapPreserve:148`) est un sens de l'équivalence `mem_descModes` existante (`Lemmas:254`) ;
-  - `eff_modify` et `eff_present` (`CapPreserve:118`, `:135`) recoupent `effective_some` et `effOf_cases`.
-- **Lemmes nouveaux à remonter dans la Spec 1 :** `footprint_ne`, `effective_of_A`, `exer_mode`, `allows_effOf_obs`, `allows_effOf_sub`, `addModify_keep`, `release_org`, `release_eff_mono`, `store_skel`, `storeEff_P`.
+  - `eff_modify` et `eff_present` (`CapPreserve:118`, `:135`) recoupent `effective_some` et `effOf_cases` ;
+  - `footprint_ne` (`CapPreserve:94`) duplique `exists_mem_footprint` (`Lemmas:838`) ;
+  - `parents_lt` (`CapDrop:26`) reprend un calcul déjà fait dans plusieurs preuves.
+- **Lemmes nouveaux à remonter dans la Spec 1 :**
+  - de `CapPreserve` : `effective_of_A`, `exer_mode`, `allows_effOf_obs`, `allows_effOf_sub`, `addModify_keep`, `release_org`, `release_eff_mono`, `store_skel`, `storeEff_P` ;
+  - de `CapDrop` : `eff_keep_sub`, `no_eff_below_modify`, `split_get`, `exit_ancs_sub`, `ownedIn_up`, `above_root_ground`.
 
 ## Écarts
 
@@ -237,12 +249,13 @@ Aucun ne change un programme accepté ni un verdict ; ils fixent la forme des é
 5. **S10b : pas de mise en place ajouté.** Spec 1 §72 crée les locaux `Uninit`. Pour obtenir `X` `Init` comme le dit le corpus, la mise en place ajoute `write3(X)` via `root_X` (O10). Ce pas ne joue sur aucun verdict.
 6. **`CtlExcl` exclut tout `writeShared` brut sur le contrôleur.** Dans le modèle, les opérations de protocole d'`acquire`, `unlock` et `resetLock` n'ont pas de réalisation brute, donc aucun `writeShared` brut n'est « dans le protocole » (WC5 C22.4).
 7. **Réfutations prises sur un contrat de test.** Elles portent sur l'énoncé quantifié sur tout contrat `DDSound`, et sont obtenues sur `KM`.
-8. **Sources citées dans les docstrings.** Le brief demande de citer WC5, la Spec 1 ou le corpus v4. Les définitions propres au brief (`GuardedExcl`, `Encap5`, `Attr5`, `cap5`, les énoncés de la tâche 4) citent « the brief of milestone 4 », seule source exacte.
+8. **`cap5_drop_own` suppose `DDSound`** (Spec 1 §80), comme tous les invariants de trace (T2–T7) dont il se sert ; l'énoncé `Cap5DropOwn` ne le contient pas.
+9. **Sources citées dans les docstrings.** Le brief demande de citer WC5, la Spec 1 ou le corpus v4. Les définitions propres au brief (`GuardedExcl`, `Encap5`, `Attr5`, `cap5`, les énoncés de la tâche 4) citent « the brief of milestone 4 », seule source exacte.
 
 ## Audit final des axiomes
 
 - **Méthode.** `collectAxioms` sur toutes les constantes `thmInfo` `Ern.Concurrency*` et `_private.Ern.Concurrency*`, après `import Ern`.
-- **Résultat à `ec2106b`.** 1311 théorèmes, dont 991 non internes, contre 1144 (886) à la clôture du jalon 3. Aucun axiome hors `{propext, Quot.sound}`.
+- **Résultat à `882ba6e`.** 1369 théorèmes, dont 1037 non internes, contre 1144 (886) à la clôture du jalon 3. Aucun axiome hors `{propext, Quot.sound}`, `cap5_drop_own` compris.
 - **Modules nouveaux**, théorèmes (non internes) :
   - `Cap` : 9 (8) ;
   - `Encap5` : 39 (10) ;
@@ -252,9 +265,10 @@ Aucun ne change un programme accepté ni un verdict ; ils fixent la forme des é
   - `Corpus.Encap5Witness` : 4 (4) ;
   - `Corpus.GuardedChain` : 8 (7) ;
   - `Corpus.S10b` : 4 (4) ;
-  - `Corpus.L1Evidence` : 1 (1).
+  - `Corpus.L1Evidence` : 1 (1) ;
+  - `CapDrop` : 58 (46).
 - **`Classical.choice` retiré.** Un `omega` fermant un but existentiel l'avait introduit dans `footprint_ne` ; corrigé en `2f5b6bc`.
-- **Build.** `lake build` réussit (78 jobs). Les neuf modules nouveaux, recompilés seuls par `lake env lean`, ne produisent aucune sortie.
+- **Build.** `lake build` réussit (79 jobs). Les dix modules nouveaux, recompilés seuls par `lake env lean`, ne produisent aucune sortie.
 - **Contrôles.**
   - Le `grep` d'`AGENTS.md` est vide.
   - Aucun `noncomputable`, `decide +kernel` ni `ofReduceBool` dans `formal/Ern/Concurrency/`.
