@@ -1,0 +1,13 @@
+C LOCK+xchg-acq+norel
+
+{ l = 0; }
+
+P0 (atomic_int* l) {
+  int r0 = atomic_exchange_explicit(l, 1, memory_order_acquire);
+}
+
+P1 (atomic_int* l) {
+  int r0 = atomic_exchange_explicit(l, 1, memory_order_acquire);
+}
+
+exists (0:r0=0 /\ 1:r0=0)
