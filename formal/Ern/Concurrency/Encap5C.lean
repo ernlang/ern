@@ -392,4 +392,46 @@ theorem handoff_loss_exists_C {k : K} {L : MutexLayout} (hdd : DDSound k) :
   exact cap5_drop_own hdd statics lsk (σ k') (σ (k' + 1)) lbls[k'] c' l hst
     (encapsulatedTrace5C_imp htrk) ⟨hek.1, chainExcl_guardedExcl hek.2.1, hek.2.2⟩ hsk hk3
 
+/-! ## Traces with named states; steps without a live entry -/
+
+/-- Every `EncapsulatedTrace5C` has named states. -/
+theorem run5C_of_trace {k : K} {L : MutexLayout} {st st' : SC × SyncReg × ArenaReg}
+    {lbls : List Label} (h : EncapsulatedTrace5C k L st lbls st') :
+    ∃ σ, σ 0 = st ∧ Run5C k L σ lbls ∧ σ lbls.length = st' := by
+  induction h with
+  | @nil st => exact ⟨fun _ => st, rfl, fun i h => absurd h (Nat.not_lt_zero _), rfl⟩
+  | @cons st st₁ st₂ lbl lbls he hs _ ih =>
+    obtain ⟨σ, h0, hr, hn⟩ := ih
+    refine ⟨fun i => match i with | 0 => st | i + 1 => σ i, rfl, fun i hi => ?_, hn⟩
+    cases i with
+    | zero => exact ⟨he, by show LStep k L lbl st (σ 0); rw [h0]; exact hs⟩
+    | succ i => exact hr i (by simpa using hi)
+
+/-- Without a live `guarded`, every authority exercisable from the current frame of `c` (Spec 1
+§43) satisfies `Exer5`. -/
+theorem exer5_of_exercisable {s : SC} {reg : SyncReg} {c a : Nat} {m : Mode}
+    (hng : ∀ e ∈ reg, ¬ e.Live s) (h : (s.view c).ExercisableAt a m) : Exer5 s reg c a m := by
+  have hg : ∀ x, NotGuarded s reg x := fun x e he hl => absurd hl (hng e he)
+  induction h with
+  | base hy ha hm hf => exact .base (hg _) hy ha hm hf
+  | held hy ha hm hp _ hc ih => exact .held (hg _) hy ha hm hp ih hc
+
+/-- Without a live entry in the synchronization registry, every `ok` step satisfies `ChainExcl`
+(the preconditions of Spec 1 §60.1, §61.1, §66.2, §67.1, §68.2 require `ExercisableAt`): the
+correction leaves the traces without a live mutex unchanged. -/
+theorem chainExcl_of_noLive {k : K} {L : MutexLayout} {lbl : Label} {s : SC} {reg : SyncReg}
+    {ar : ArenaReg} {st' : SC × SyncReg × ArenaReg} (hng : ∀ e ∈ reg, ¬ e.Live s)
+    (h : LStep k L lbl (s, reg, ar) st') : ChainExcl (s, reg) lbl := by
+  cases lbl with
+  | kernel c op =>
+    cases op <;> simp only [ChainExcl] <;> try trivial
+    all_goals
+      cases h with
+      | kernel hk =>
+        obtain ⟨-, o, hR, ho⟩ := hk
+        cases hR with
+        | ok hp => exact exer5_of_exercisable hng hp.exercisable
+        | reject => cases ho
+  | _ => trivial
+
 end Ern.Concurrency

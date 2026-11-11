@@ -79,4 +79,26 @@ theorem lc_cap5 :
     [[none, none], [none, some .modify], [none, some .modify], [none, none], [some .modify, none],
      [some .modify, none]] := by decide
 
+/-- `handoff_loss_exists_C` on the locked trace (`lc_trace`), with the corpus contract `KM`, which
+satisfies `DDSound` (`ddKC`): between the read of `Y` by context 1 (step 8) and the write of `Y` by
+context 0 (step 11), the loss marker it gives is step 9, the `unlock` of context 1, at which
+`cap5` of context 1 on `Y` drops. -/
+theorem lc_handoff_marker : ∃ σ : Nat → SC × SyncReg × ArenaReg, σ 0 = (gc0, [], []) ∧
+    Run5C KM L0 σ lcLbls ∧
+    capRank (cap5 (σ 10).1 (σ 10).2.1 1 4) < capRank (cap5 (σ 9).1 (σ 9).2.1 1 4) := by
+  obtain ⟨σ, h0, hr, -⟩ := run5C_of_trace lc_trace
+  obtain ⟨k', hk, h8, h11, hctx, hdrop⟩ := handoff_loss_exists_C (ddKC [2]) zst σ lcLbls zst_ok
+    h0 hr 8 11 0 1 4 .observe .modify (by decide) (by decide) (by decide)
+    (by show Label.Access (.kernel 1 (.read 3 [4])) 1 4 .observe; exact ⟨rfl, by decide, rfl⟩)
+    (by show Label.Access (.kernel 0 (.write 3 [4])) 0 4 .modify; exact ⟨rfl, by decide, rfl⟩)
+    (Or.inr rfl)
+  refine ⟨σ, h0, hr, ?_⟩
+  have hk' : k' = 9 ∨ k' = 10 := by omega
+  rcases hk' with rfl | rfl
+  · exact hdrop
+  · exfalso
+    have h10 : lcLbls[10]'hk = .acquire 0 0 := rfl
+    rw [h10] at hctx
+    exact absurd hctx (by decide)
+
 end Ern.Concurrency.Corpus.GuardedChainC
