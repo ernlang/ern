@@ -1,4 +1,4 @@
-C LOCK+xchg-acq+norel
+C XCHG+acq
 
 { l = 0; }
 

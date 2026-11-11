@@ -1,7 +1,6 @@
 #!/bin/sh
 # Run every litmus test under the RC11 reference model (rc11.cat) and keep the raw herd7 output
-# in results/. LB+rlx is run a second time with the no-thin-air check skipped, and
-# LOCK+xchg-acq+norel with the atomicity and coherencermw checks skipped.
+# in results/. LB+rlx is run a second time with the no-thin-air check skipped.
 # Set HERD7 to the herd7 binary if it is not on PATH.
 set -u
 HERD7=${HERD7:-herd7}
@@ -25,7 +24,5 @@ for t in *.litmus; do
   run "${t%.litmus}" -model rc11.cat "$t"
 done
 run "LB+rlx+skip-no-thin-air" -model rc11.cat -skipcheck no-thin-air LB+rlx.litmus
-run "LOCK+xchg-acq+norel+skip-rmw" -model rc11.cat -skipchecks atomicity,coherencermw \
-  LOCK+xchg-acq+norel.litmus
 
 exit $status
