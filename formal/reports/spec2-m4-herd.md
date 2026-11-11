@@ -1,6 +1,6 @@
 # Spec 2, jalon 4 — premiers tests herdtools7
 
-Travail exploratoire, branche `formal/spec2-m4`, jamais mergé. Sources lues : le brief « premiers tests herdtools7 » et `ERN_Concurrency_Model_WC5.1.md`, clauses C31–C34, C39, C40, C42, C44, C48 et C53. Les tests, le script et les sorties brutes sont dans `formal/herd/`.
+Travail exploratoire, branche `formal/spec2-m4`, jamais mergé. Sources lues : le brief « premiers tests herdtools7 » et `ERN_Concurrency_Model_WC5.1.md`, clauses C31–C34, C39, C40, C42, C44, C48 et C53. Les tests, le script et les sorties brutes sont dans `formal/herd/`. Le test B7 (`LOCK+xchg-acq+norel`) est hors brief : il a été ajouté sur votre accord, après la première version de ce rapport, pour mesurer directement l'exclusivité de la prise (écart 1).
 
 Ces tests portent sur le modèle de référence RC11, pas sur le fragment ERN : c'est le niveau « RC11 de référence » de WC5.1 C53. L'attendu vient du brief ; un écart est rapporté, pas corrigé.
 
@@ -39,6 +39,8 @@ Les lignes citées sont celles de `formal/herd/results/`. `Positive` et `Negativ
 | B4 `LOCK+sc+sc` | prise exclusive ; aucune course | `Ok` ; `Observation LOCK+sc+sc Sometimes 2 2` | course : conforme ; exclusivité : écart 1 |
 | B5 `LOCK+cas-acq+rel` | comme B1 | `Ok` ; état `0:r0=1; 1:r0=1;` (ici `r0 = 1` veut dire « pris ») ; `Observation LOCK+cas-acq+rel Sometimes 2 2` | course : conforme ; exclusivité : écart 1 ; test adapté (écart 2) |
 | B6 `LOCK3+xchg-acq+rel` | prise exclusive deux à deux ; aucune course | `Ok` ; 15 états ; `Observation LOCK3+xchg-acq+rel Sometimes 18 6` ; 388 s | course : conforme ; exclusivité : écart 1 |
+| B7 `LOCK+xchg-acq+norel` (hors brief) | prise exclusive : les deux `r0 = 0` jamais | `No` ; `Observation LOCK+xchg-acq+norel Never 0 2` | conforme |
+| B7 sans `atomicity` ni `coherencermw` | — | `Ok` ; état `0:r0=0; 1:r0=0;` ; `Observation LOCK+xchg-acq+norel Sometimes 2 4` | les prises se chevauchent |
 | C1 `MIX+store-rlx+read` | course signalée | `Undef`, `Flag *undef*` ; `Observation MIX+store-rlx+read Sometimes 1 1` | conforme |
 | C2 `AT+store+store` | aucune course | `Ok` ; `Observation AT+store+store Sometimes 1 1` | conforme |
 | C3 `NA+write+write` | course signalée | `Undef`, `Flag *undef*` ; `Observation NA+write+write Sometimes 1 1` | conforme |
@@ -46,7 +48,7 @@ Les lignes citées sont celles de `formal/herd/results/`. `Positive` et `Negativ
 Les trois questions du brief :
 
 1. **`release` et `acquire` ordonnent une donnée ordinaire à travers une lecture atomique ; `relaxed` non.** A1 et A3 n'ont ni l'issue interdite ni course ; A2 a les deux (WC5.1 C32 point 1, C40).
-2. **Le mutex de référence ordonne deux sections critiques, et chacun des deux ordres est nécessaire.** B1, B4, B5 et B6 n'ont pas de course ; B2 (libération `relaxed`) et B3 (prise `relaxed`) en ont une (WC5.1 C48). L'exclusivité de la prise n'est pas mesurée par la condition du brief (écart 1).
+2. **Le mutex de référence ordonne deux sections critiques, et chacun des deux ordres est nécessaire.** B1, B4, B5 et B6 n'ont pas de course ; B2 (libération `relaxed`) et B3 (prise `relaxed`) en ont une (WC5.1 C48). L'exclusivité de la prise n'est pas mesurée par la condition du brief (écart 1) ; B7 la mesure : elle tient sous `rc11.cat`.
 3. **`no-thin-air` est ce qui exclut l'issue de *load buffering*.** Sous `rc11.cat` elle n'est jamais observée ; sans ce seul contrôle, elle l'est (WC5.1 C34).
 
 ## Groupe B : les trois propriétés
@@ -59,8 +61,9 @@ Les trois questions du brief :
 | B4 | condition observée (2 témoins) ; contrôle annexe : chevauchement exclu par `atomicity`, `coherencermw` ou `SC` | inférée de l'absence de course | oui (`Ok`) |
 | B5 | condition observée (2 témoins, `r0 = 1`) ; contrôle annexe : idem B1 | inférée de l'absence de course | oui (`Ok`) |
 | B6 | condition observée (18 témoins) ; contrôle annexe non lancé (388 s par exécution) | oui, observée sur les lectures de `d` | oui (`Ok`) |
+| B7 | **mesurée : jamais deux prises** (`Never 0 2`) ; sans `atomicity` ni `coherencermw`, deux prises (`Sometimes 2 4`) | sans objet : pas de section critique | sans objet : pas de donnée |
 
-**Exclusivité.** La condition du brief est observée partout, pour une raison qui ne tient pas à RC11 (écart 1). Un état final ne distingue pas deux prises successives de deux prises qui se chevauchent : dans les deux cas, chaque échange lit `0` et `l` finit à `0`.
+**Exclusivité.** Dans B1 à B6, la condition du brief est observée, pour une raison qui ne tient pas à RC11 (écart 1). Un état final ne distingue pas deux prises successives de deux prises qui se chevauchent : dans les deux cas, chaque échange lit `0` et `l` finit à `0`.
 
 Le contrôle annexe, hors brief, saute des contrôles de `rc11.cat` sans toucher aux tests. Les commandes sont `herd7 -model rc11.cat -skipchecks <liste> <test>.litmus`, lancées depuis `formal/herd/litmus/` ; les sorties ne sont pas commitées.
 
@@ -77,7 +80,9 @@ Le contrôle annexe, hors brief, saute des contrôles de `rc11.cat` sans toucher
 | B5 | `coherencermw` | `Ok`, `Sometimes 2 2` |
 | B5 | `atomicity,coherencermw` | `Undef`, `Sometimes 10 2` |
 
-Lecture, raisonnement non formalisé : les témoins en plus sont les exécutions où les deux RMW lisent l'écriture initiale de `l`, donc où les deux sections critiques se chevauchent. La course qui apparaît sur `d` va dans ce sens : dans B1, elle n'existe que si aucune section n'est `hb`-avant l'autre. Sous `rc11.cat`, l'exclusivité tient donc à l'atomicité du RMW (`atomicity`, `coherencermw`), et pour `seq_cst` aussi à `SC`. Elle ne tient pas à l'ordre mémoire : pour B2 et B3 comme pour B1, sauter ces deux contrôles ajoute des témoins (16 au lieu de 4). C'est ce que dit le brief, mais herd7 ne le montre qu'à travers ces comptes ; les contrôles sautés un par un n'ont été essayés que sur B1 et B5.
+Lecture, raisonnement non formalisé : les témoins en plus sont les exécutions où les deux RMW lisent l'écriture initiale de `l`, donc où les deux sections critiques se chevauchent. La course qui apparaît sur `d` va dans ce sens : dans B1, elle n'existe que si aucune section n'est `hb`-avant l'autre. Sous `rc11.cat`, l'exclusivité tient donc à l'atomicité du RMW (`atomicity`, `coherencermw`), et pour `seq_cst` aussi à `SC`. Elle ne tient pas à l'ordre mémoire : pour B2 et B3 comme pour B1, sauter ces deux contrôles ajoute des témoins (16 au lieu de 4). C'est ce que dit le brief, mais herd7 ne le montre ici qu'à travers ces comptes ; les contrôles sautés un par un n'ont été essayés que sur B1, B5 et B7.
+
+**B7 le montre directement.** Sans libération, `l` ne revient jamais à `0`, donc « les deux `r0 = 0` » veut dire que les deux échanges lisent l'écriture initiale : deux prises qui se chevauchent. Sous `rc11.cat`, l'issue n'est jamais observée (`Never 0 2`). Sauter `atomicity` seul ou `coherencermw` seul ne change rien (`Never 0 2`, sortie non commitée). Sauter les deux fait apparaître l'issue (`Sometimes 2 4`, `results/LOCK+xchg-acq+norel+skip-rmw.txt`). La prise est donc exclusive par l'atomicité du RMW, chacun des deux contrôles suffisant. B7 utilise l'ordre `acquire` de B1 ; aucune variante `relaxed` n'a été lancée, donc l'indépendance vis-à-vis de l'ordre n'est pas testée sur B7.
 
 **Synchronisation.** Dans B1 à B5, la seule case ordinaire est `d` : l'absence de course y équivaut à un `hb` entre les deux écritures de `d` quand les deux threads prennent le verrou. La colonne n'y est donc pas indépendante de la suivante. Une observation de plus, raisonnement non formalisé : B2 et B3 ont 4 témoins de la condition contre 2 pour B1. Sans `hb`, l'ordre de modification des deux écritures de `d` n'est plus contraint par la cohérence, d'où deux exécutions par ordre de prise.
 
@@ -85,7 +90,7 @@ B6 donne une observation indépendante, par les lectures de `d` dans les threads
 
 ## Écarts et tests refusés
 
-1. **La condition d'exclusivité du brief n'est pas l'exclusion mutuelle.** Le brief la définit par « deux threads n'obtiennent jamais tous les deux `r0 = 0` », et attend « prise exclusive » pour B1, B4, B5 et B6, et « toujours exclusive » pour B2 et B3. Or un verrou libéré peut être repris : l'exécution où le thread 0 prend, écrit `d`, libère, puis où le thread 1 prend, donne `r0 = 0` aux deux. C'est l'exécution normale du protocole, et c'est sur elle que porte la question de la course. La condition est donc observée dans les six tests. Le test n'a pas été retouché ; la condition est encodée telle quelle. Proposition, à votre décision : un test sans libération (deux `exchange` seuls), où « les deux `r0 = 0` » mesure directement l'exclusivité ; ou bien retirer la colonne et s'appuyer sur le contrôle annexe.
+1. **La condition d'exclusivité du brief n'est pas l'exclusion mutuelle.** Le brief la définit par « deux threads n'obtiennent jamais tous les deux `r0 = 0` », et attend « prise exclusive » pour B1, B4, B5 et B6, et « toujours exclusive » pour B2 et B3. Or un verrou libéré peut être repris : l'exécution où le thread 0 prend, écrit `d`, libère, puis où le thread 1 prend, donne `r0 = 0` aux deux. C'est l'exécution normale du protocole, et c'est sur elle que porte la question de la course. La condition est donc observée dans les six tests. Le test n'a pas été retouché ; la condition est encodée telle quelle. Sur votre accord, B7 (`LOCK+xchg-acq+norel`, deux `exchange` sans libération) mesure maintenant l'exclusivité directement.
 2. **B5 : `&e` refusé.** La forme du brief, avec l'adresse d'une variable locale comme valeur attendue, est refusée :
    `Warning: File "cas.litmus", line 7, characters 54-55: unexpected '&' (in prog) (User error)`
    (sonde hors dépôt). Le test commité passe à la place un pointeur vers une case partagée ordinaire, une par thread (`e0`, `e1`), initialisée à `0`. Deux différences avec B1 : `r0` est le booléen rendu par la comparaison-échange, et vaut `1` quand le verrou est pris ; en cas d'échec, la comparaison-échange écrit la valeur lue dans `e0` ou `e1`, une écriture ordinaire que seul son thread fait, donc sans course possible. Aucun autre test n'a été refusé.
@@ -112,3 +117,5 @@ B6 donne une observation indépendante, par les lectures de `d` dans les threads
 | `3b5e7ce` | 2 : les treize tests |
 | `6f2b26e` | 3 : `run.sh` et les sorties brutes |
 | `2682dfc` | 4 : `README.md` |
+| `c4c5d15` | rapport |
+| `e28df67` | B7, ses deux exécutions dans `run.sh` et ses sorties |

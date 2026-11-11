@@ -8,9 +8,9 @@ They fix the reference point that WC5.1 C53 calls the "complete external RC11 re
 
 - `litmus/`: one C litmus test per file, in the herd7 C dialect.
   - Group A, memory orders: `MP+rel+acq`, `MP+rlx+rlx`, `MP+sc+sc`, `LB+rlx`.
-  - Group B, reference mutex: `LOCK+xchg-acq+rel`, `LOCK+xchg-acq+rlx`, `LOCK+xchg-rlx+rel`, `LOCK+sc+sc`, `LOCK+cas-acq+rel`, `LOCK3+xchg-acq+rel`.
+  - Group B, reference mutex: `LOCK+xchg-acq+rel`, `LOCK+xchg-acq+rlx`, `LOCK+xchg-rlx+rel`, `LOCK+sc+sc`, `LOCK+cas-acq+rel`, `LOCK3+xchg-acq+rel`, and `LOCK+xchg-acq+norel`, two acquisitions without release.
   - Group C, mixed accesses: `MIX+store-rlx+read`, `AT+store+store`, `NA+write+write`.
-- `run.sh`: runs every test under `rc11.cat` and writes the raw herd7 output to `results/<test>.txt`. It runs `LB+rlx` a second time with the `no-thin-air` check skipped (`results/LB+rlx+skip-no-thin-air.txt`).
+- `run.sh`: runs every test under `rc11.cat` and writes the raw herd7 output to `results/<test>.txt`. It runs `LB+rlx` a second time with the `no-thin-air` check skipped (`results/LB+rlx+skip-no-thin-air.txt`), and `LOCK+xchg-acq+norel` a second time with the `atomicity` and `coherencermw` checks skipped (`results/LOCK+xchg-acq+norel+skip-rmw.txt`).
 - `results/`: the raw outputs.
 
 ## Tool
@@ -42,5 +42,5 @@ HERD7=/path/to/herd7 formal/herd/run.sh
 
 - In the herd7 C dialect, `*x` is a non-atomic access whatever the declared type, and only the `atomic_*` calls produce atomic events.
 - `MP+*` initialise `r1` to `-1`, so that `r1` has a value when the guarded read does not run.
-- In the `LOCK+*` tests, the `exists` clause asks whether both threads take the lock (`r0 = 0` for the exchange tests, `r0 = 1` for the compare-exchange test). A lock that is released can be taken again, so this outcome also covers two successive acquisitions.
+- In the `LOCK+*` tests, the `exists` clause asks whether both threads take the lock (`r0 = 0` for the exchange tests, `r0 = 1` for the compare-exchange test). A lock that is released can be taken again, so this outcome also covers two successive acquisitions. `LOCK+xchg-acq+norel` has no release, so there the same outcome means two overlapping acquisitions.
 - herd7 rejects `&e` for a local `e` as the expected-value argument of `atomic_compare_exchange_strong_explicit`. `LOCK+cas-acq+rel` passes instead a pointer to a per-thread non-atomic location (`e0`, `e1`), and `r0` is the boolean result of the compare-exchange.
