@@ -18,6 +18,7 @@ import Ern.Concurrency.Corpus.GuardedRead
 import Ern.Concurrency.Corpus.GuardedStore
 import Ern.Concurrency.Corpus.L1Evidence
 import Ern.Concurrency.Corpus.Handoff
+import Ern.Concurrency.Corpus.HandoffEvents
 import Ern.Concurrency.Corpus.MX
 import Ern.Concurrency.Corpus.S10
 import Ern.Concurrency.Corpus.S10b
