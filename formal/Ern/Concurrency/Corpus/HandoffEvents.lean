@@ -1,12 +1,14 @@
 import Ern.Concurrency.Events
 import Ern.Concurrency.Corpus.Handoff
+import Ern.Concurrency.Corpus.GuardedChainC
 
 /-!
 # Handoff witnesses on the event graph
 
 `corpus-spec2-m3.md` v8 §2 septies, on the event graph of `Ern.Concurrency.Events`. Each trace is
 given with its named states and is a `Run5R` from the initial state of Spec 1 §47 (no mutex, empty
-registries). Facts written from `corpus-spec2-m3.md` v8 §2 septies, decided by `decide`.
+registries), except the locked trace of `Corpus/GuardedChainC.lean`, which registers a mutex. Facts
+written from `corpus-spec2-m3.md` v8 §2 septies, decided by `decide`.
 -/
 
 namespace Ern.Concurrency.Corpus.HandoffEvents
@@ -145,5 +147,182 @@ theorem W_HO3_unordered : ¬ HandoffOrderedAt ho3σ ho3Lbls 4 9 0 ∧ ¬ Handoff
     Race ho3σ ho3Lbls :=
   ⟨by decide, fun h => (by decide : ¬ HandoffOrderedAt ho3σ ho3Lbls 4 9 0) (h 4 9 0 W_HO3_excl),
     ⟨4, 9, 0, W_HO3_excl, W_HO3_noHb⟩⟩
+
+/-! ## W-HO-J -/
+
+/-- W-HO-J, `c1 : terminate` (WC5.1 C7). -/
+def j5 : SC := termEffC h2 1
+/-- W-HO-J, `c0 : write3(X)` via `root_X` (O10). -/
+def j7 : SC := j5.set (write3Eff (j5.view 0) [1, 2])
+
+/-- `corpus-spec2-m3.md` v8 §2 septies W-HO-J, after the steps of W-HO up to `c1 : release(a)`
+(`W_HO_1_ok`, `W_HO_2_ok`): `c1 : terminate` `ok` (WC5.1 C7), `c0 : join(c1)` `ok` (WC5.1 C8),
+`c0 : write3(X)` via `root_X` `ok` (O10.1). -/
+theorem W_HOJ_ok : TermStep KF h2 1 (.ok j5) ∧ JoinStep j5 0 1 (.ok j5) ∧
+    opStepC KF (.write 0 [1, 2]) 0 j5 (.ok j7) :=
+  ⟨⟨by decide, .ok (by decide)⟩, .ok (by decide) (by decide), ⟨by decide, _, .ok (by decide), rfl⟩⟩
+
+/-- The labels of W-HO-J. -/
+def hojLbls : List Label :=
+  [.kernel 0 (.derive 0 [1, 2] .modify), .spawn 0 [1] [], .kernel 1 (.write 1 [1, 2]),
+   .kernel 1 (.release 1), .terminate 1, .join 0 1, .kernel 0 (.write 0 [1, 2])]
+
+/-- The states of W-HO-J. -/
+def hojSts : List (SC × SyncReg × ArenaReg) :=
+  [(t0, [], []), (t1, [], []), (t2, [], []), (h1, [], []), (h2, [], []), (j5, [], []),
+   (j5, [], []), (j7, [], [])]
+
+/-- The named states of W-HO-J. -/
+def hojσ (i : Nat) : SC × SyncReg × ArenaReg := hojSts.getD i (j7, [], [])
+
+/-- W-HO-J from the initial state of S13 is a `Run5R`. -/
+theorem W_HOJ_run : hojσ 0 = (SC.ofS3 (S3.init xst), [], []) ∧ Run5R KF L0 hojσ hojLbls := by
+  obtain ⟨h0, hs, -⟩ := S13_1_reject
+  obtain ⟨ht, hj, hw⟩ := W_HOJ_ok
+  exact ⟨rfl, (Steps5R.consNil (.kernel h0) <| Steps5R.consNil (.spawn hs) <|
+    Steps5R.consNil (.kernel W_HO_1_ok) <| Steps5R.consNil (.kernel W_HO_2_ok) <|
+    Steps5R.consNil (.terminate ht) <| Steps5R.consNil (.join hj) <|
+    Steps5R.consNil (.kernel hw) .nil).run _⟩
+
+/-- `corpus-spec2-m3.md` v8 §2 septies W-HO-J is an `EncapsulatedTrace5R` from the initial
+state. -/
+theorem W_HOJ_trace : EncapsulatedTrace5R KF L0 (t0, [], []) hojLbls (j7, [], []) :=
+  run5R_trace W_HOJ_run.2
+
+/-- `corpus-spec2-m3.md` v8 §2 septies W-HO-J: the writes of `X` by context 1 (step 2) and by
+context 0 (step 6) form an exclusive pair on each leaf of `X`. -/
+theorem W_HOJ_excl : ∀ l ∈ [1, 2], ExclPair hojLbls 2 6 l := fun _ hl =>
+  ⟨by decide, by decide, 0, 1, .modify, .modify, by decide, ⟨rfl, hl, rfl⟩, ⟨rfl, hl, rfl⟩,
+    Or.inl rfl⟩
+
+/-- `corpus-spec2-m3.md` v8 §2 septies W-HO-J, expected `hb` path: write of context 1 →`po`
+`terminate(c1)` →`sw` `join(c1)` →`po` write of context 0; the pair is ordered by `hb` and
+satisfies `HandoffOrdered` (WC5.1 C46) on each leaf of `X`. -/
+theorem W_HOJ_ordered : PO hojσ hojLbls (.step 2) (.step 4) ∧ SW hojLbls (.step 4) (.step 5) ∧
+    PO hojσ hojLbls (.step 5) (.step 6) ∧ HB hojσ hojLbls (.step 2) (.step 6) ∧
+    ∀ l ∈ [1, 2], HandoffOrderedAt hojσ hojLbls 2 6 l := by
+  decide
+
+/-! ## W-HO″-J -/
+
+/-- W-HO″-J, `c2 : terminate` (WC5.1 C7). -/
+def n7 : SC := termEffC m6 2
+/-- W-HO″-J, `c1 : release(a)` (O3). -/
+def n9 : SC := n7.set (releaseEff (n7.view 1) 1)
+/-- W-HO″-J, `c1 : terminate` (WC5.1 C7). -/
+def n10 : SC := termEffC n9 1
+/-- W-HO″-J, `c0 : write3(X)` via `root_X` (O10). -/
+def n12 : SC := n10.set (write3Eff (n10.view 0) [0])
+
+/-- `corpus-spec2-m3.md` v8 §2 septies W-HO″-J, after the steps of W-HO″ up to `c2 : release(a₂)`
+(`w_ho3_setup`, `W_HO3_1_ok`, `W_HO3_2_ok`): `c2 : terminate` `ok` (WC5.1 C7), `c1 : join(c2)`
+`ok` (WC5.1 C8), `c1 : release(a)` `ok` (O3), `c1 : terminate` `ok`, `c0 : join(c1)` `ok`,
+`c0 : write3(X)` via `root_X` `ok` (O10.1). -/
+theorem W_HO3J_ok : TermStep KF m6 2 (.ok n7) ∧ JoinStep n7 1 2 (.ok n7) ∧
+    opStepC KF (.release 1) 1 n7 (.ok n9) ∧ TermStep KF n9 1 (.ok n10) ∧
+    JoinStep n10 0 1 (.ok n10) ∧ opStepC KF (.write 0 [0]) 0 n10 (.ok n12) :=
+  ⟨⟨by decide, .ok (by decide)⟩, .ok (by decide) (by decide), ⟨by decide, _, .ok (by decide), rfl⟩,
+    ⟨by decide, .ok (by decide)⟩, .ok (by decide) (by decide),
+    ⟨by decide, _, .ok (by decide), rfl⟩⟩
+
+/-- The labels of W-HO″-J. -/
+def ho3jLbls : List Label :=
+  [.kernel 0 (.derive 0 [0] .modify), .spawn 0 [1] [], .kernel 1 (.derive 1 [0] .modify),
+   .spawn 1 [2] [], .kernel 2 (.write 2 [0]), .kernel 2 (.release 2), .terminate 2, .join 1 2,
+   .kernel 1 (.release 1), .terminate 1, .join 0 1, .kernel 0 (.write 0 [0])]
+
+/-- The states of W-HO″-J. -/
+def ho3jSts : List (SC × SyncReg × ArenaReg) :=
+  [(k0, [], []), (m1, [], []), (m2, [], []), (m3, [], []), (m4, [], []), (m5, [], []),
+   (m6, [], []), (n7, [], []), (n7, [], []), (n9, [], []), (n10, [], []), (n10, [], []),
+   (n12, [], [])]
+
+/-- The named states of W-HO″-J. -/
+def ho3jσ (i : Nat) : SC × SyncReg × ArenaReg := ho3jSts.getD i (n12, [], [])
+
+/-- W-HO″-J from the initial state is a `Run5R`. -/
+theorem W_HO3J_run : ho3jσ 0 = (SC.ofS3 (S3.init yst), [], []) ∧
+    Run5R KF L0 ho3jσ ho3jLbls := by
+  obtain ⟨d1, s1, d2, s2, -⟩ := w_ho3_setup
+  obtain ⟨t2', j2, r1, t1', j1, w0⟩ := W_HO3J_ok
+  exact ⟨rfl, (Steps5R.consNil (.kernel d1) <| Steps5R.consNil (.spawn s1) <|
+    Steps5R.consNil (.kernel d2) <| Steps5R.consNil (.spawn s2) <|
+    Steps5R.consNil (.kernel W_HO3_1_ok) <| Steps5R.consNil (.kernel W_HO3_2_ok) <|
+    Steps5R.consNil (.terminate t2') <| Steps5R.consNil (.join j2) <|
+    Steps5R.consNil (.kernel r1) <| Steps5R.consNil (.terminate t1') <|
+    Steps5R.consNil (.join j1) <| Steps5R.consNil (.kernel w0) .nil).run _⟩
+
+/-- `corpus-spec2-m3.md` v8 §2 septies W-HO″-J is an `EncapsulatedTrace5R` from the initial
+state. -/
+theorem W_HO3J_trace : EncapsulatedTrace5R KF L0 (k0, [], []) ho3jLbls (n12, [], []) :=
+  run5R_trace W_HO3J_run.2
+
+/-- `corpus-spec2-m3.md` v8 §2 septies W-HO″-J: the write of `X` by context 2 (step 4) and the
+write of `X` by context 0 (step 11) form an exclusive pair. -/
+theorem W_HO3J_excl : ExclPair ho3jLbls 4 11 0 :=
+  ⟨by decide, by decide, 0, 2, .modify, .modify, by decide, ⟨rfl, by decide, rfl⟩,
+    ⟨rfl, by decide, rfl⟩, Or.inl rfl⟩
+
+/-- `corpus-spec2-m3.md` v8 §2 septies W-HO″-J, expected `hb` path: write of context 2 →`po`
+`terminate(c2)` →`sw` `join(c2)` by context 1 →`po` `terminate(c1)` →`sw` `join(c1)` by context 0
+→`po` write of context 0; the pair is ordered by `hb` and satisfies `HandoffOrdered` (WC5.1
+C46). -/
+theorem W_HO3J_ordered : PO ho3jσ ho3jLbls (.step 4) (.step 6) ∧
+    SW ho3jLbls (.step 6) (.step 7) ∧ PO ho3jσ ho3jLbls (.step 7) (.step 9) ∧
+    SW ho3jLbls (.step 9) (.step 10) ∧ PO ho3jσ ho3jLbls (.step 10) (.step 11) ∧
+    HB ho3jσ ho3jLbls (.step 4) (.step 11) ∧ HandoffOrderedAt ho3jσ ho3jLbls 4 11 0 := by
+  decide
+
+/-! ## The locked trace -/
+
+open Ern.Concurrency.Corpus.GuardedChain (gc0 gc1 gc2 gc3 gc4 gc5 gc6 greg)
+open Ern.Concurrency.Corpus.GuardedChainC (lc7 lc8 lc9 lc10 lc11 lcLbls)
+
+/-- The states of the locked trace (`lc_trace`). -/
+def lcSts : List (SC × SyncReg × ArenaReg) :=
+  [(gc0, [], []), (gc1, [], []), (gc2, [], []), (gc3, [], []), (gc4, [], []), (gc4, greg, []),
+   (gc5, greg, []), (gc6, greg, []), (lc7, [⟨4, some 6⟩], []), (lc8, [⟨4, some 6⟩], []),
+   (lc9, greg, []), (lc10, [⟨4, some 7⟩], []), (lc11, [⟨4, some 7⟩], [])]
+
+/-- The named states of the locked trace. -/
+def lcσ (i : Nat) : SC × SyncReg × ArenaReg := lcSts.getD i (lc11, [⟨4, some 7⟩], [])
+
+/-- The locked trace from the initial state is a `Run5R` (the steps of `lc_trace5R`). -/
+theorem lc_run : lcσ 0 = (SC.ofS3 (S3.init Ern.Concurrency.Corpus.GuardedChain.zst), [], []) ∧
+    Run5R KM L0 lcσ lcLbls := by
+  refine ⟨rfl, Steps5R.run ?_ _⟩
+  exact Steps5R.consNil (.kernel ⟨by decide, _, .ok (by decide), rfl⟩) <|
+    Steps5R.consNil (.kernel ⟨by decide, .ok (by decide)⟩) <|
+    Steps5R.consNil (.kernel ⟨by decide, _, .ok (by decide), rfl⟩) <|
+    Steps5R.consNil (.kernel ⟨by decide, .ok (by decide)⟩) <|
+    Steps5R.consNil (.newMutex ⟨by decide, by decide, rfl⟩) <|
+    .cons ⟨⟨(by decide : ∀ e ∈ greg, e.Live gc4 → 0 ≠ e.guarded), by decide, trivial⟩, trivial⟩
+      (.kernel ⟨by decide, _, .ok (by decide), rfl⟩) <|
+    .cons ⟨⟨trivial, trivial, trivial⟩, trivial⟩ (.spawn ⟨by decide, .ok (by decide)⟩) <|
+    .cons ⟨⟨trivial, trivial, trivial⟩, by decide⟩
+      (.acquire ⟨by decide, ⟨4, none⟩, rfl, by decide, by decide, rfl⟩) <|
+    .cons ⟨⟨trivial, by decide, by decide⟩, trivial⟩
+      (.kernel ⟨by decide, _, .ok (by decide), rfl⟩) <|
+    .cons ⟨⟨trivial, trivial, trivial⟩, trivial⟩
+      (.unlock ⟨by decide, ⟨4, some 6⟩, 6, rfl, by decide, rfl, by decide, by decide, rfl⟩) <|
+    .cons ⟨⟨trivial, trivial, trivial⟩, by decide⟩
+      (.acquire ⟨by decide, ⟨4, none⟩, rfl, by decide, by decide, rfl⟩) <|
+    .cons ⟨⟨trivial, by decide, by decide⟩, trivial⟩
+      (.kernel ⟨by decide, _, .ok (by decide), rfl⟩) .nil
+
+/-- `corpus-spec2-m3.md` v8 §2 septies, mutex: the read of `Y` by context 1 (step 8) and the write
+of `Y` by context 0 (step 11) form an exclusive pair. -/
+theorem lc_excl : ExclPair lcLbls 8 11 4 :=
+  ⟨by decide, by decide, 0, 1, .observe, .modify, by decide, ⟨rfl, by decide, rfl⟩,
+    ⟨rfl, by decide, rfl⟩, Or.inr rfl⟩
+
+/-- `corpus-spec2-m3.md` v8 §2 septies, mutex, expected `hb` path: read of context 1 →`po`
+`unlock(e)` →`sw` `acquire(e)` of context 0 →`po` write of context 0; the pair is ordered by `hb`
+and satisfies `HandoffOrdered` (WC5.1 C46). The `sw` edge is the abstract edge of the mutex, from
+`unlock(e)` to the next successful `acquire(e)` (WC5.1 C48, `OB-C05`). -/
+theorem lc_ordered : PO lcσ lcLbls (.step 8) (.step 9) ∧ SW lcLbls (.step 9) (.step 10) ∧
+    PO lcσ lcLbls (.step 10) (.step 11) ∧ HB lcσ lcLbls (.step 8) (.step 11) ∧
+    HandoffOrderedAt lcσ lcLbls 8 11 4 := by
+  decide
 
 end Ern.Concurrency.Corpus.HandoffEvents
