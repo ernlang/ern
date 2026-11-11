@@ -1,0 +1,12 @@
+Test AT+store+store Allowed
+States 2
+[x]=1;
+[x]=2;
+Ok
+Witnesses
+Positive: 1 Negative: 1
+Condition exists ([x]=1)
+Observation AT+store+store Sometimes 1 1
+Time AT+store+store 0.00
+Hash=eba12e4534b128bb1a826ff60207b3ba
+
