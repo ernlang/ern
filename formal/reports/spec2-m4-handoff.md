@@ -241,7 +241,7 @@ La correction est une proposition de ce rapport, absente de WC5 et du brief ; el
 
 **Portée de la correction.**
 
-- `ChainExcl` ne porte que sur les cinq opérations dont un argument est exercé. Les opérations dont le droit est `HasRight` (`transfer`, `depend`, `store`, `endUse`, `free`, `pin`, `unpin`, `alloc`, et le droit sur le détenteur de `release`) peuvent encore reposer sur une chaîne qui passe par `guarded`. Exercer `guarded` en `Modify` demande d'avoir `Modify` sur `slot`, donc un mutex non partagé, ou partagé partiellement comme dans W-GS. Ces opérations n'entrent ni dans `cap5_sound` ni dans L2, mais `store` écrit la feuille cible dans sa réalisation (WC5 C27). Leur exclusion est testée au § Extension aux droits sur les places.
+- `ChainExcl` ne porte que sur les cinq opérations dont un argument est exercé. Les opérations dont le droit est `HasRight` (`transfer`, `depend`, `store`, `endUse`, `free`, `pin`, `unpin`, `alloc`, et le droit sur le détenteur de `release`) peuvent encore reposer sur une chaîne qui passe par `guarded`. Exercer `guarded` en `Modify` demande d'avoir `Modify` sur `slot`, donc un mutex non partagé, ou partagé partiellement comme dans W-GS. Ces opérations n'entrent ni dans `cap5_sound` ni dans L2 ; le corpus v6 (§ 2 sexies, remarque hors corpus) note que la réalisation de `store` écrit la feuille cible. Leur exclusion est testée au § Extension aux droits sur les places.
 - Hors du cas sans mutex vivant (`chainExcl_of_noLive`), les traces rejouées sous `Encap5C` sont `lc_trace`, W-GS et, par inclusion, les rejeux sous `Encap5R` du § Extension.
 
 ## Tâche 5 — S10b (`Corpus/S10b.lean`, corpus v4 § 2 quater)
@@ -309,7 +309,7 @@ Aucun verdict ne diffère du corpus.
 **Étiquettes laissées à `True` qui ont une prémisse de droit :**
 
 - `newMutex` : C13.2, `ExercisableAt(guarded, Modify)` (`NewMutexPre.exercisable`) ; `guarded` n'est pas encore enregistrée, la forme `Exer5` serait donc possible.
-- `resetLock` : C18.1, `ExercisableAt(guarded, Modify)` ; l'argument est le `guarded` d'une entrée vivante, la forme `Exer5` exclurait donc tout `resetLock`.
+- `resetLock` : C18.1, `ExercisableAt(guarded, Modify)`. Cet exercice exige `guarded` active, donc l'entrée vivante, et `Exer5` exige `NotGuarded` de son argument (`Exer5.notGuarded`, `Encap5C:130`) : la forme `Exer5` exclurait tout `resetLock`. Raisonnement non formalisé.
 - `unlock` : C17.2–C17.3, `ReleasePre` du grant (`HolderRight`), et C17.4, `CtrlRight`.
 - `newArena` : §76.1, `HasRight(storage)` (`NewArenaPreC.storageRight`) ; §76.2, `ExercisableAt(internal, Modify)`.
 - `deriveSync` brut : C14.3 par `SyncAuthorized` ; aucun pas brut n'est admis par `Encap` (C22.2).
@@ -318,6 +318,8 @@ Aucun verdict ne diffère du corpus.
 ### Usages légitimes rejoués (`Corpus/PlaceExclWitness.lean`)
 
 Chacun depuis l'état initial de Spec 1 §47, par `decide`. Tous sont admis ; aucun pas n'est exclu.
+
+Sous une entrée vivante, ces témoins n'exercent que les clauses de `store` (exclue et admise), `transfer`, `issue` et `acquire` (admises). Celles de `release`, `depend`, `endUse`, `free`, `pin`, `unpin`, `alloc` et `spawnVal` ne sont exercées que sans mutex vivant (S4, `placeExcl_of_noLive`) ; celle de `reset` ne l'est pas du tout.
 
 | Usage | Trace | Théorème |
 |---|---|---|
