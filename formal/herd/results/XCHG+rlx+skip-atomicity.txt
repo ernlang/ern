@@ -1,0 +1,12 @@
+Test XCHG+rlx Allowed
+States 2
+0:r0=0; 1:r0=1;
+0:r0=1; 1:r0=0;
+No
+Witnesses
+Positive: 0 Negative: 2
+Condition exists (0:r0=0 /\ 1:r0=0)
+Observation XCHG+rlx Never 0 2
+Time XCHG+rlx 0.00
+Hash=6c6f373168379249822cda33d630688e
+

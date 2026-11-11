@@ -1,0 +1,12 @@
+Test XCHG+sc Allowed
+States 2
+0:r0=0; 1:r0=1;
+0:r0=1; 1:r0=0;
+No
+Witnesses
+Positive: 0 Negative: 2
+Condition exists (0:r0=0 /\ 1:r0=0)
+Observation XCHG+sc Never 0 2
+Time XCHG+sc 0.00
+Hash=c9786821ddeacdc7088528b3e8e68e30
+

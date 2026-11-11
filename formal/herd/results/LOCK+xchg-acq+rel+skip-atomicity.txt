@@ -1,0 +1,13 @@
+Test LOCK+xchg-acq+rel Allowed
+States 3
+0:r0=0; 1:r0=0;
+0:r0=0; 1:r0=1;
+0:r0=1; 1:r0=0;
+Ok
+Witnesses
+Positive: 2 Negative: 2
+Condition exists (0:r0=0 /\ 1:r0=0)
+Observation LOCK+xchg-acq+rel Sometimes 2 2
+Time LOCK+xchg-acq+rel 0.02
+Hash=04e26c4527a9b8a7494746b0b719c4e0
+

@@ -1,0 +1,14 @@
+Test LOCK+sc+sc Allowed
+States 3
+0:r0=0; 1:r0=0;
+0:r0=0; 1:r0=1;
+0:r0=1; 1:r0=0;
+Undef
+Witnesses
+Positive: 10 Negative: 4
+Flag *undef*
+Condition exists (0:r0=0 /\ 1:r0=0)
+Observation LOCK+sc+sc Sometimes 10 4
+Time LOCK+sc+sc 0.02
+Hash=65c09fb4214a8cc10936cd879d5110f9
+

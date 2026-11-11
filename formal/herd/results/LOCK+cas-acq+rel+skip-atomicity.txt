@@ -1,0 +1,13 @@
+Test LOCK+cas-acq+rel Allowed
+States 3
+0:r0=0; 1:r0=1;
+0:r0=1; 1:r0=0;
+0:r0=1; 1:r0=1;
+Ok
+Witnesses
+Positive: 2 Negative: 2
+Condition exists (0:r0=1 /\ 1:r0=1)
+Observation LOCK+cas-acq+rel Sometimes 2 2
+Time LOCK+cas-acq+rel 0.03
+Hash=a36057ecafe36bb8dbdfb23ac524c35e
+
