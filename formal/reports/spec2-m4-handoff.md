@@ -4,13 +4,14 @@ Branche `formal/spec2-m4`, créée depuis `b4d18ce` (tête de `formal/spec2-m3` 
 
 - **Sources :**
   - `ERN_Concurrency_Model_WC5.md`, candidate non normative ; lus : C16–C18, C22, C43–C46, partie IV, partie VI (jalon 4) ;
-  - `corpus-spec2-m3.md` v4, verdicts de référence, lu en entier ;
-  - Spec 1 `specs/ERN_Memory_Model_Specification_v0.1.md` ; lus : §40, §42–§45, §49–§50, §54, §57, §60–§75.
+  - `corpus-spec2-m3.md` v4, verdicts de référence, lu en entier ; puis v6, qui la remplace : § 0, § 2 quinquies (W-GC) et § 2 sexies (W-GS) ;
+  - Spec 1 `specs/ERN_Memory_Model_Specification_v0.1.md` ; lus : §36, §40, §42–§45, §49–§50, §54, §57, §60–§78 ;
+  - pour l'extension aux droits sur les places, WC5 C4, C5, C13–C18 et C21 en plus.
 - **Fichiers non modifiés :** `specs/`, `AGENTS.md`, `CLAUDE.md`, `formal/DESIGN.md`, `formal/Ern/MemoryModel/`.
 - **Définitions existantes :** aucune n'est modifiée (`Encap`, `EncapsulatedTrace`, `SyncInv`, `GrantDiscipline`, `LStep`, `ArenaInvC`, `AdminSep` comprises). Tout est ajouté à côté ; `git diff b4d18ce` ne retire aucune ligne.
 - **Périmètre :** machine d'autorités seule. Aucun événement, aucune relation `po`, `rf`, `mo`, `sw`, `hb`, aucun énoncé sur les courses.
 
-Chemins relatifs à `formal/Ern/Concurrency/`. Numéros de ligne à `10d09a0`, dernier commit de code.
+Chemins relatifs à `formal/Ern/Concurrency/`. Numéros de ligne à `bbf1c0b`, dernier commit de code ; les fichiers antérieurs à l'extension n'ont pas changé depuis `10d09a0`.
 
 ## Résultats
 
@@ -25,6 +26,8 @@ Chemins relatifs à `formal/Ern/Concurrency/`. Numéros de ligne à `10d09a0`, d
 | `handoff_loss_exists` (L2, trace) | **réfuté** |
 | S10b | verdicts obtenus ; échouent `anchorOrderHeld` (§63.7) et `anchorOrder` (§63.6) |
 | correction de `GuardedExcl` (`ChainExcl`), testée | sous `Encap5C`, `cap5_sound` et `handoff_loss_exists` sont **prouvés** (`cap5_sound_C`, `Encap5C:276` ; `handoff_loss_exists_C`, `:336`) |
+| W-GS (corpus v6), 5 verdicts | tous obtenus ; le pas 1, écriture de `T` sans verrou par `store`, est admis par `Encap5C` |
+| extension aux droits sur les places (`PlaceExcl`), testée | le pas 1 de W-GS est **exclu** ; le jumeau, la trace verrouillée, S2, S3 jusqu'à `issue`, S4 et S10 sont **admis** |
 
 Les deux réfutations ont la même cause : `GuardedExcl` ne porte que sur l'argument d'autorité du pas, alors que la troisième clause de Spec 1 §43 est récursive le long de la chaîne des détenteurs (§ Tâche 4). L1 et la forme d'état de L2 tiennent ; c'est `cap5_sound` qui manque pour en tirer la forme de trace. La correction testée, qui interdit un `guarded` vivant sur la chaîne des détenteurs, rétablit `cap5_sound` et, avec lui, la forme de trace de L2.
 
@@ -51,6 +54,12 @@ Les deux réfutations ont la même cause : `GuardedExcl` ne porte que sur l'argu
 | `be8946a` | témoins de la correction |
 | `3e245e0` | rapport : test de la correction |
 | `10d09a0` | instance de `handoff_loss_exists_C`, pas sans mutex |
+| `a89341e` | rapport : instance et pas sans mutex |
+| `960fb94` | extension, tâche 1 — témoin W-GS |
+| `ffd41b8` | docstrings de W-GS : WC5 au lieu de WC4 |
+| `8b9be9c` | extension, tâche 2 — `HasRight5`, `PlaceExcl`, `Encap5R`, `placeExcl_of_noLive` |
+| `052655d` | extension, tâche 3 — exclusion de W-GS et rejeux |
+| `bbf1c0b` | lignes de plus de 100 caractères |
 | commit suivant | ce rapport, mis à jour |
 
 ## Tâche 1 — W-GR (`Corpus/GuardedRead.lean`, corpus v4 § 2 ter)
@@ -232,8 +241,8 @@ La correction est une proposition de ce rapport, absente de WC5 et du brief ; el
 
 **Portée de la correction.**
 
-- `ChainExcl` ne porte que sur les cinq opérations dont un argument est exercé. Les opérations dont le droit est `HasRight` (`transfer`, `depend`, `store`, `endUse`, `free`, `pin`, `unpin`, `alloc`, et le droit sur le détenteur de `release`) peuvent encore reposer sur une chaîne qui passe par `guarded`. Exercer `guarded` en `Modify` demande d'avoir `Modify` sur `slot`, donc un mutex non partagé. Ces opérations n'accèdent à aucune donnée et n'entrent ni dans `cap5_sound` ni dans L2. Cette restriction n'est pas testée au-delà.
-- Hors du cas sans mutex vivant (`chainExcl_of_noLive`), aucune trace des modules existants n'a été rejouée sous `Encap5C`, hormis `lc_trace` et les deux exclusions.
+- `ChainExcl` ne porte que sur les cinq opérations dont un argument est exercé. Les opérations dont le droit est `HasRight` (`transfer`, `depend`, `store`, `endUse`, `free`, `pin`, `unpin`, `alloc`, et le droit sur le détenteur de `release`) peuvent encore reposer sur une chaîne qui passe par `guarded`. Exercer `guarded` en `Modify` demande d'avoir `Modify` sur `slot`, donc un mutex non partagé, ou partagé partiellement comme dans W-GS. Ces opérations n'entrent ni dans `cap5_sound` ni dans L2, mais `store` écrit la feuille cible dans sa réalisation (WC5 C27). Leur exclusion est testée au § Extension aux droits sur les places.
+- Hors du cas sans mutex vivant (`chainExcl_of_noLive`), les traces rejouées sous `Encap5C` sont `lc_trace`, W-GS et, par inclusion, les rejeux sous `Encap5R` du § Extension.
 
 ## Tâche 5 — S10b (`Corpus/S10b.lean`, corpus v4 § 2 quater)
 
@@ -244,6 +253,101 @@ Le module n'importe que `Ern.MemoryModel.Access.Main`. Contrat `Examples.K0`.
 | mise en place, dont `store(x, L)` | `ok` | `ok` | O1, O6, O10, O8 | `S10b_setup` (`:45`) |
 | `transfer(L, D)` depuis `f1` | `reject` | `reject` ; champs faux : `anchorOrderHeld` (§63.7) et `anchorOrder` (§63.6) ; vrais : §63.1–§63.5, `depsValid` (§63.6), §63.8, §63.9 | §63.7, §63.6 | `S10b_1_reject` (`:54`) |
 | jumeau `transfer(L, L2)` | `ok` | `ok` | §63.7, §63.8 | `S10b_2_ok` (`:74`) |
+
+## Extension aux droits sur les places (`Encap5R.lean`, corpus v6 § 2 sexies)
+
+Brief « étendre l'exclusion aux droits sur les places ». `ChainExcl`, `Encap5C` et leurs théorèmes sont inchangés ; tout est ajouté à côté.
+
+### W-GS (`Corpus/GuardedStore.lean`)
+
+Mise en place : statiques `zst` de `Corpus/GuardedChain` (bloc MX sans `M′`, la place 4 tenant le rôle de `Y2`) ; `guarded`, `store(guarded, slot)`, `newMutex` (`MX₃`), `z2 := derive(root_Y2, Modify)`, `o := derive(root_M, Observe, {lock})`, `spawn c1` cédant `o` (`gs_setup`, `:57`, une `EncapsulatedTrace5C` depuis l'état initial). Contrat `KM`.
+
+| Pas | Attendu | Obtenu | Clause | Théorème |
+|---|---|---|---|---|
+| 1. `c0 : store(z2, T)` sans grant | `ok` | `ok` | O8 ; O8.2 par `guarded`, tenue par `slot`, sur les feuilles duquel `root_M` a `Modify` exerçable et effectif (3ᵉ clause de §43) | `W_GS_1_ok` (`Corpus/GuardedStore:71`) |
+| 2. `c1 : acquire(e)` | `ok` | `ok` ; `g₁` (autorité 6) tenue par la frame 1 | C14.1–C14.3 (`o` donne l'accès au contrôleur), C15 | `W_GS_2_ok` (`:75`) |
+| 3. `c1 : read3(T)` via `g₁` | `ok` | `ok` | O9 | `W_GS_3_ok` (`:79`) |
+| 4. pas 1–3 depuis l'état initial | `EncapsulatedTrace5C` | vrai | `store` n'a pas d'argument exercé ; `ChainExcl` ne lit pas son droit sur `T` | `W_GS_encap` (`:89`) |
+| 5. jumeau : `c0 : acquire(e)`, puis `c0 : store(z2, T)` | `ok`, `ok` | `ok`, `ok` | C14, C15 ; O8, le droit sur `T` reposant sur `g₀` | `W_GS_twin_ok` (`:100`) |
+| pas 1 sous la règle étendue | exclu | `ok` noyau, admis par `Encap5C`, `¬ PlaceExcl` ; `HasRight5` sur `T` faux avant le pas (§65.2) et dans l'état résultant (§65.5) | §65.2, §65.5 | `W_GS_1_placeExcl` (`Corpus/PlaceExclWitness:32`) |
+| jumeau prolongé d'`unlock(e)`, depuis l'état initial | admis | `EncapsulatedTrace5R` | C17 | `W_GS_twin_trace5R` (`:58`) |
+
+Aucun verdict ne diffère du corpus.
+
+### `PlaceExcl` (`Encap5R.lean`)
+
+- **`HasRight5 st c m q`** (`Encap5R:24`) : `HasRight` de §43 avec `Exer5` à la place d'`ExercisableAt`. Décidable.
+- **Formes auxiliaires :** `HolderRight5` (`:33`), `CtrlRight5` (`:43`, C14.3), `MetaRight5` (`:54`, §36), `ValRights5` (`:64`, une phase de transfert à la fois).
+- **`PlaceExcl k L st`** (`:86`), **`Encap5R k L st := Encap5C L (st.1, st.2.1) ∧ PlaceExcl k L st`** (`:116`), **`EncapsulatedTrace5R`** (`:121`).
+- **Inclusion :** toute `EncapsulatedTrace5R` est une `EncapsulatedTrace5C` (`encapsulatedTrace5R_imp`, `:131`). `cap5_compat`, `cap5_drop_own` (par `encapsulatedTrace5C_imp`), `cap5_sound_C` et `handoff_loss_exists_C` (par `run5C_of_trace`) s'y appliquent sans nouvelle preuve.
+- **Sans mutex vivant :** tout pas `ok` satisfait `PlaceExcl` (`placeExcl_of_noLive`, `:222`), sous `RegBound` (écart 13).
+
+**Prémisses couvertes**, chacune lue dans l'état où la précondition la lit :
+
+| Étiquette | Prémisse (lieu ; champ du modèle) | Forme dans `PlaceExcl` |
+|---|---|---|
+| `release` | §62.2, détenteur place (`ReleasePre.holderRight`) | `HolderRight5` |
+| `transfer` | §63.1, source et destination (`TransferPreC.srcRight`, `.dstRight`) | deux `HasRight5` |
+| `depend` | §64.1 (`DependPreC.right`) | `HasRight5` |
+| `store` | §65.2 (`StorePreC.right`) ; §65.5 dans l'état résultant (`.keepsTarget`) | `HasRight5` avant, et sur `storeEffC` |
+| `endUse` | §69.1 (`EndUsePre.right`) | `HasRight5` |
+| `free` | §70.3 (`FreePre.right`) | `HasRight5` |
+| `alloc` | §71.2, fournisseur : `HasRight` ou branche `writeShared` de §68 ; §71.3, propriétaire | disjonction miroir (écart 11) ; `HasRight5` |
+| `pin` | §74 (`PinPre.right`) | `HasRight5` |
+| `unpin` | §75 (`UnpinPre.right`) | `HasRight5` sur la place de l'obligation |
+| `issue` | §77.1, `MetaRight` (`IssueStatic.metaRight`) | `MetaRight5` |
+| `reset` | §78.1, `MetaRight` ; dans le modèle, obtenu par le `derive` d'`internal` (`ResetD`) | `MetaRight5` (écart 12) |
+| `spawnVal` | WC5 C5.2, C5 item 1 : source de chaque phase (`ValTransferPre.srcRight`) | `ValRights5`, depuis `spawnCreate`, puis `transferEffC` |
+| `acquire` | WC5 C14.3 (`EntryAuth` → `CtrlRight`) | `CtrlRight5` |
+
+**Prémisses laissées de côté sur les étiquettes couvertes :**
+
+- les clauses `Grounds` (« l'autorité sur laquelle repose ce droit ») : `transfer` §63.4, `spawnVal` C5 item 4 (§63.4), `endUse` §69.2, `free` §70.3. Ce ne sont pas des prémisses `HasRight` ; leur autorité est lue avec `ExercisableAt` et peut passer par `guarded` ;
+- `issue` : §77.2, droit sur la destination (`IssueStatic.dstRight`), §77.6 (`.keepsDst`), et les `split` (§61.1) et `store` (§65.2, §65.5) internes d'`IssueStepC` ;
+- `reset` : le `derive` (§60.1) et le `release` (§62.2) internes de `ResetD`, au-delà de `MetaRight5`.
+
+**Étiquettes laissées à `True` qui ont une prémisse de droit :**
+
+- `newMutex` : C13.2, `ExercisableAt(guarded, Modify)` (`NewMutexPre.exercisable`) ; `guarded` n'est pas encore enregistrée, la forme `Exer5` serait donc possible.
+- `resetLock` : C18.1, `ExercisableAt(guarded, Modify)` ; l'argument est le `guarded` d'une entrée vivante, la forme `Exer5` exclurait donc tout `resetLock`.
+- `unlock` : C17.2–C17.3, `ReleasePre` du grant (`HolderRight`), et C17.4, `CtrlRight`.
+- `newArena` : §76.1, `HasRight(storage)` (`NewArenaPreC.storageRight`) ; §76.2, `ExercisableAt(internal, Modify)`.
+- `deriveSync` brut : C14.3 par `SyncAuthorized` ; aucun pas brut n'est admis par `Encap` (C22.2).
+- Les autres étiquettes (`spawn`, `enterFrame`, `exitFrame`, `terminate`, `join`) n'ont pas de prémisse de droit sur une place ; `derive`, `split`, `read`, `write` et `writeShared` relèvent de `ChainExcl`.
+
+### Usages légitimes rejoués (`Corpus/PlaceExclWitness.lean`)
+
+Chacun depuis l'état initial de Spec 1 §47, par `decide`. Tous sont admis ; aucun pas n'est exclu.
+
+| Usage | Trace | Théorème |
+|---|---|---|
+| S2, qui est aussi le cycle de `cycle_trace5` | MX, puis `acquire(e)`, `write3(T)` via `g`, `unlock(e)` par `c1` | `s2_trace5R` (`:103`) |
+| S4 | les écritures, `alloc`, `spawnVal` déplaçant `v` dans `d`, la sortie de `f1` ; aucun mutex | `s4_trace5R` (`:120`) |
+| S3 jusqu'à `issue` (étiquettes de `s3_realized`) | AR, puis `acquire(e2)` et `issue(arena, R1, d1)` par `c1` ; `MetaRight` sur `AV` par `g2` | `s3_trace5R` (`:135`) |
+| S10 | `MX₃`, `acquire(e)`, `derive(root_M, Modify)`, `enterFrame f1`, puis, grant actif, `transfer(M, M′)` et `transfer(M′, M)` ; droits par `m` et `root_M′`, tenues par `f1` | `s10_trace5R` (`:160`) |
+| trace verrouillée | `lc_trace` de `Corpus/GuardedChainC` | `lc_trace5R` (`:70`) |
+
+### Écarts de cette passe
+
+10. **Signature.** Le brief écrit `PlaceExcl st lbl` et `Encap5R st lbl`. `PlaceExcl` prend en plus :
+    - le registre d'arenas, pour `issue` et `reset` ;
+    - le layout `L`, pour `ControlOf` dans `acquire` ;
+    - le contrat `k`, pour la branche `writeShared` d'`alloc`.
+    D'où `PlaceExcl k L st`, avec `st` le triplet de l'état, et `Encap5R k L st := Encap5C L (st.1, st.2.1) ∧ PlaceExcl k L st`.
+11. **`alloc`.** La prémisse du fournisseur (§71.2) est une disjonction ; la règle du brief n'en fixe pas l'encodage. Choix retenu : la disjonction en miroir, `HasRight5` sur le fournisseur, ou la branche §68 avec son exercice sous la forme `Exer5 … .observe`. Aucun cas du corpus n'exerce `alloc` sous un mutex vivant ; aucun verdict n'en dépend.
+12. **Objets absents.** Quand l'autorité (`release`), l'obligation (`unpin`), l'entrée (`acquire`, `issue`, `reset`) ou la valeur d'arena n'existe pas, `PlaceExcl` n'impose rien. Le noyau rejette alors, sauf dans un cas : une valeur d'arena absente, `internal` tenue par une frame. §36 et §78.1 rendent alors `MetaRight` faux, mais `ResetD` ne lit pas `MetaRight` : il passe par le `derive` d'`internal`. Sous `ArenaInv`, `internal` est tenue par la valeur d'arena, donc les deux lectures coïncident sur les états atteints. Le choix reste ouvert.
+13. **`placeExcl_of_noLive` suppose `RegBound`** (WC5 C21.6, `SyncInv.regBound`) : toute identité `guarded` enregistrée existe. Sans cette hypothèse, la phase de création de `spawnVal` ajoute des autorités racines fraîches, et une entrée dormante dont l'identité `guarded` les désigne deviendrait vivante dans les états de phase. C21.6 énonce exactement ce but. Sans cette hypothèse, je n'ai pas de preuve.
+14. **S2 et le cycle de `cycle_trace5`** ont les mêmes étiquettes et les mêmes états ; un seul théorème les couvre.
+15. **S10 s'arrête au transfert de retour**, comme le demande le brief ; `exitFrameC(f1)` (`S10_3_ok`) n'est pas rejoué.
+16. **Docstrings.** Le module de W-GS citait d'abord WC4 ; corrigé en WC5 (`ffd41b8`). Les nouvelles définitions citent WC5, la Spec 1, le corpus v6 ou ce brief.
+
+### Audit
+
+À `bbf1c0b` :
+
+- théorèmes nouveaux : `Corpus.GuardedStore` 6 (6), `Encap5R` 46 (10), `Corpus.PlaceExclWitness` 8 (8) ;
+- aucun axiome hors `{propext, Quot.sound}`, `placeExcl_of_noLive` et `encapsulatedTrace5R_imp` compris ;
+- détail au § Audit final des axiomes.
 
 ## Choix de représentation
 
@@ -284,11 +388,12 @@ Aucun ne change un programme accepté ni un verdict ; ils fixent la forme des é
 7. **Réfutations prises sur un contrat de test.** Elles portent sur l'énoncé quantifié sur tout contrat `DDSound`, et sont obtenues sur `KM`.
 8. **`cap5_drop_own` suppose `DDSound`** (Spec 1 §80), comme tous les invariants de trace (T2–T7) dont il se sert ; l'énoncé `Cap5DropOwn` ne le contient pas.
 9. **Sources citées dans les docstrings.** Le brief demande de citer WC5, la Spec 1 ou le corpus v4. Les définitions propres au brief (`GuardedExcl`, `Encap5`, `Attr5`, `cap5`, les énoncés de la tâche 4) citent « the brief of milestone 4 », seule source exacte. Celles de la correction (`Exer5`, `ChainExcl`, `Encap5C`) citent ce rapport, qui la propose.
+10–16. Écarts de l'extension aux droits sur les places : voir § Extension, Écarts de cette passe.
 
 ## Audit final des axiomes
 
 - **Méthode.** `collectAxioms` sur toutes les constantes `thmInfo` `Ern.Concurrency*` et `_private.Ern.Concurrency*`, après `import Ern`.
-- **Résultat à `10d09a0`.** 1463 théorèmes, dont 1083 non internes, contre 1144 (886) à la clôture du jalon 3. Aucun axiome hors `{propext, Quot.sound}`, `cap5_drop_own`, `cap5_sound_C` et `handoff_loss_exists_C` compris.
+- **Résultat à `bbf1c0b`.** 1523 théorèmes, dont 1107 non internes, contre 1463 (1083) à `10d09a0` et 1144 (886) à la clôture du jalon 3. Aucun axiome hors `{propext, Quot.sound}`, `cap5_drop_own`, `cap5_sound_C`, `handoff_loss_exists_C` et `placeExcl_of_noLive` compris.
 - **Modules nouveaux**, théorèmes (non internes) :
   - `Cap` : 9 (8) ;
   - `Encap5` : 39 (10) ;
@@ -301,9 +406,12 @@ Aucun ne change un programme accepté ni un verdict ; ils fixent la forme des é
   - `Corpus.L1Evidence` : 1 (1) ;
   - `CapDrop` : 58 (46) ;
   - `Encap5C` : 88 (41) ;
-  - `Corpus.GuardedChainC` : 6 (5).
+  - `Corpus.GuardedChainC` : 6 (5) ;
+  - `Corpus.GuardedStore` : 6 (6) ;
+  - `Encap5R` : 46 (10) ;
+  - `Corpus.PlaceExclWitness` : 8 (8).
 - **`Classical.choice` retiré.** Un `omega` fermant un but existentiel l'avait introduit dans `footprint_ne` ; corrigé en `2f5b6bc`.
-- **Build.** `lake build` réussit (81 jobs). Les douze modules nouveaux, recompilés seuls par `lake env lean`, ne produisent aucune sortie.
+- **Build.** `lake build` réussit (84 jobs), sans avertissement. Les quinze modules nouveaux, recompilés seuls par `lake env lean`, ne produisent aucune sortie.
 - **Contrôles.**
   - Le `grep` d'`AGENTS.md` est vide.
   - Aucun `noncomputable`, `decide +kernel` ni `ofReduceBool` dans `formal/Ern/Concurrency/`.
