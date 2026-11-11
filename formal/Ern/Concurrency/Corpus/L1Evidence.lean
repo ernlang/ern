@@ -4,12 +4,12 @@ import Ern.Concurrency.Corpus.AR
 import Ern.Concurrency.Traces
 
 /-!
-# L1 on existing traces, for the labels without a proof
+# L1 on steps of existing traces
 
-Evidence, not a proof: on steps of existing corpus traces whose labels have no L1 lemma in
-`Ern.Concurrency.CapPreserve` (`terminate`, `exitFrame`, `enterFrame`, `spawn`, `split`, `alloc`,
-`spawnVal`, `issue`), no context other than the actor sees its `cap5` drop, on any leaf (brief of
-milestone 4, task 4; WC5 C45), by `decide`.
+Concrete instances of L1 on `cap5` (WC5 C45; `cap5_drop_own`): on steps of existing corpus traces
+labelled `terminate`, `exitFrame`, `enterFrame`, `spawn`, `split`, `alloc`, `spawnVal` and `issue`,
+no context other than the actor sees its `cap5` drop, on any leaf (brief of milestone 4, task 4),
+by `decide`, independently of the proof of `cap5_drop_own`.
 -/
 
 namespace Ern.Concurrency.Corpus.L1Evidence

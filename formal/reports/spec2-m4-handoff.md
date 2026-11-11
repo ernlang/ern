@@ -5,7 +5,7 @@ Branche `formal/spec2-m4`, créée depuis `b4d18ce` (tête de `formal/spec2-m3` 
 - **Sources :**
   - `ERN_Concurrency_Model_WC5.md`, candidate non normative ; lus : C16–C18, C22, C43–C46, partie IV, partie VI (jalon 4) ;
   - `corpus-spec2-m3.md` v4, verdicts de référence, lu en entier ;
-  - Spec 1 `specs/ERN_Memory_Model_Specification_v0.1.md` ; lus : §42–§45, §60–§75.
+  - Spec 1 `specs/ERN_Memory_Model_Specification_v0.1.md` ; lus : §40, §42–§45, §49–§50, §54, §57, §60–§75.
 - **Fichiers non modifiés :** `specs/`, `AGENTS.md`, `CLAUDE.md`, `formal/DESIGN.md`, `formal/Ern/MemoryModel/`.
 - **Définitions existantes :** aucune n'est modifiée (`Encap`, `EncapsulatedTrace`, `SyncInv`, `GrantDiscipline`, `LStep`, `ArenaInvC`, `AdminSep` comprises). Tout est ajouté à côté ; `git diff b4d18ce` ne retire aucune ligne.
 - **Périmètre :** machine d'autorités seule. Aucun événement, aucune relation `po`, `rf`, `mo`, `sw`, `hb`, aucun énoncé sur les courses.
@@ -44,7 +44,8 @@ Les deux réfutations ont la même cause : `GuardedExcl` ne porte que sur l'argu
 | `c6a9b3c` | 4 — L1 : `exitFrame`, `terminate` |
 | `6b21df1`, `ad45185` | 4 — L1 : `endUse`, `free` |
 | `882ba6e` | 4 — L1 : `spawnVal` ; `cap5_drop_own` sur toutes les étiquettes |
-| commit suivant | ce rapport, mis à jour |
+| `4908b35` | ce rapport, mis à jour |
+| commit suivant | portée de L1, docstring de `L1Evidence` |
 
 ## Tâche 1 — W-GR (`Corpus/GuardedRead.lean`, corpus v4 § 2 ter)
 
@@ -186,6 +187,12 @@ Deux versions :
 | `spawnVal` | `spawn` avec paramètres puis les transferts (`create_yield`, `yield_transfers`) ; à chaque phase, le grounding est attribuable au créateur ou au nouveau contexte (`attr_yield`, `:1140`), `KBase` étant porté comme dans `transfers_base` (`transfers_cap5_mono`, `:1206`) | `cap5_drop_own_spawnVal` (`:1255`) |
 
 **Vérification indépendante.** `no_other_drops` (`Corpus/L1Evidence:32`), antérieur à la preuve, évalue par `decide` 15 pas de traces existantes du corpus : aucune baisse pour un autre contexte que l'acteur.
+
+**Non-vacuité.** Sur `cycle_trace5` (`Corpus/Encap5Witness:43`), une `EncapsulatedTrace5` depuis l'état initial, `cap5` du contexte 0 sur `T` passe de `Modify` à `none` à son propre `newMutex` (`w_gr_cap5`, `Corpus/CapValues:103`).
+
+**Ce que les preuves utilisent.** Les preuves de `cap5_compat` et de `cap5_drop_own` ne lisent la trace qu'au travers de `encapsulatedTrace5_imp`. Elles ne lisent l'hypothèse `Encap5` du pas qu'une fois, sous la forme `Encap` (C22.2), pour le `deriveSync` brut. `GuardedExcl` et `CtlExcl` n'y jouent aucun rôle : L1 et la forme d'état de L2 sur `cap5` tiennent déjà sur `EncapsulatedTrace`. Le test de `GuardedExcl` se résume donc ainsi : `GuardedExcl` ne donne pas `cap5_sound`.
+
+**Portée.** L1 est prouvé pour `cap5`, qui sous-estime ce qu'un contexte peut exercer : `cap5` ignore les chaînes qui passent par `guarded`. Sur la trace du contre-exemple, `cap` du contexte 1 sur `Y` passe de `Observe` (`gc_cap5_none`) à `none` au pas `acquire` du contexte 0 (évaluation par `#eval` de `cap gc8 1 4`). `OB-C17` n'est donc pas acquis pour les accès réels tant que `cap5_sound` fait défaut.
 
 ### `handoff_loss_exists` — réfuté
 
