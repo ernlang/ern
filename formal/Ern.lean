@@ -3,6 +3,7 @@
 import Ern.Concurrency.ArenaConservativity
 import Ern.Concurrency.ArenaPreserve
 import Ern.Concurrency.Cap
+import Ern.Concurrency.CapDrop
 import Ern.Concurrency.CapPreserve
 import Ern.Concurrency.Conservativity
 import Ern.Concurrency.Corpus.AR
