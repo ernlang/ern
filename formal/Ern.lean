@@ -33,6 +33,7 @@ import Ern.Concurrency.Encap5R
 import Ern.Concurrency.EncapTraces
 import Ern.Concurrency.EventModel.Closure
 import Ern.Concurrency.EventModel.Graph
+import Ern.Concurrency.EventModel.Lemmas
 import Ern.Concurrency.Events
 import Ern.Concurrency.EventsCompose
 import Ern.Concurrency.EventsProtocols
