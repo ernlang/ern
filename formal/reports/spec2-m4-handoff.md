@@ -10,7 +10,7 @@ Branche `formal/spec2-m4`, créée depuis `b4d18ce` (tête de `formal/spec2-m3` 
 - **Définitions existantes :** aucune n'est modifiée (`Encap`, `EncapsulatedTrace`, `SyncInv`, `GrantDiscipline`, `LStep`, `ArenaInvC`, `AdminSep` comprises). Tout est ajouté à côté ; `git diff b4d18ce` ne retire aucune ligne.
 - **Périmètre :** machine d'autorités seule. Aucun événement, aucune relation `po`, `rf`, `mo`, `sw`, `hb`, aucun énoncé sur les courses.
 
-Chemins relatifs à `formal/Ern/Concurrency/`. Numéros de ligne à `882ba6e`, dernier commit de code.
+Chemins relatifs à `formal/Ern/Concurrency/`. Numéros de ligne à `be8946a`, dernier commit de code.
 
 ## Résultats
 
@@ -24,8 +24,9 @@ Chemins relatifs à `formal/Ern/Concurrency/`. Numéros de ligne à `882ba6e`, d
 | `cap5_drop_own` (L1) | **prouvé** pour les 28 sortes d'étiquettes, sous `DDSound` (`cap5_drop_own`, `CapDrop:1332`) |
 | `handoff_loss_exists` (L2, trace) | **réfuté** |
 | S10b | verdicts obtenus ; échouent `anchorOrderHeld` (§63.7) et `anchorOrder` (§63.6) |
+| correction de `GuardedExcl` (`ChainExcl`), testée | sous `Encap5C`, `cap5_sound` et `handoff_loss_exists` sont **prouvés** (`cap5_sound_C`, `Encap5C:276` ; `handoff_loss_exists_C`, `:336`) |
 
-Les deux réfutations ont la même cause : `GuardedExcl` ne porte que sur l'argument d'autorité du pas, alors que la troisième clause de Spec 1 §43 est récursive le long de la chaîne des détenteurs (§ Tâche 4). L1 et la forme d'état de L2 tiennent ; c'est `cap5_sound` qui manque pour en tirer la forme de trace.
+Les deux réfutations ont la même cause : `GuardedExcl` ne porte que sur l'argument d'autorité du pas, alors que la troisième clause de Spec 1 §43 est récursive le long de la chaîne des détenteurs (§ Tâche 4). L1 et la forme d'état de L2 tiennent ; c'est `cap5_sound` qui manque pour en tirer la forme de trace. La correction testée, qui interdit un `guarded` vivant sur la chaîne des détenteurs, rétablit `cap5_sound` et, avec lui, la forme de trace de L2.
 
 ## Commits
 
@@ -45,7 +46,10 @@ Les deux réfutations ont la même cause : `GuardedExcl` ne porte que sur l'argu
 | `6b21df1`, `ad45185` | 4 — L1 : `endUse`, `free` |
 | `882ba6e` | 4 — L1 : `spawnVal` ; `cap5_drop_own` sur toutes les étiquettes |
 | `4908b35` | ce rapport, mis à jour |
-| commit suivant | portée de L1, docstring de `L1Evidence` |
+| `6987941` | portée de L1, docstring de `L1Evidence` |
+| `6eb93c2` | test de la correction : `Exer5`, `ChainExcl`, `Encap5C`, `cap5_sound_C`, `handoff_loss_exists_C` |
+| `be8946a` | témoins de la correction |
+| commit suivant | ce rapport, mis à jour |
 
 ## Tâche 1 — W-GR (`Corpus/GuardedRead.lean`, corpus v4 § 2 ter)
 
@@ -192,7 +196,7 @@ Deux versions :
 
 **Ce que les preuves utilisent.** Les preuves de `cap5_compat` et de `cap5_drop_own` ne lisent la trace qu'au travers de `encapsulatedTrace5_imp`. Elles ne lisent l'hypothèse `Encap5` du pas qu'une fois, sous la forme `Encap` (C22.2), pour le `deriveSync` brut. `GuardedExcl` et `CtlExcl` n'y jouent aucun rôle : L1 et la forme d'état de L2 sur `cap5` tiennent déjà sur `EncapsulatedTrace`. Le test de `GuardedExcl` se résume donc ainsi : `GuardedExcl` ne donne pas `cap5_sound`.
 
-**Portée.** L1 est prouvé pour `cap5`, qui sous-estime ce qu'un contexte peut exercer : `cap5` ignore les chaînes qui passent par `guarded`. Sur la trace du contre-exemple, `cap` du contexte 1 sur `Y` passe de `Observe` (`gc_cap5_none`) à `none` au pas `acquire` du contexte 0 (évaluation par `#eval` de `cap gc8 1 4`). `OB-C17` n'est donc pas acquis pour les accès réels tant que `cap5_sound` fait défaut.
+**Portée.** L1 est prouvé pour `cap5`, qui sous-estime ce qu'un contexte peut exercer : `cap5` ignore les chaînes qui passent par `guarded`. Sur la trace du contre-exemple, `cap` du contexte 1 sur `Y` passe de `Observe` (`gc_cap5_none`) à `none` au pas `acquire` du contexte 0 (évaluation par `#eval` de `cap gc8 1 4`). `OB-C17` n'est donc pas acquis pour les accès réels sous `Encap5` ; sous `Encap5C`, `cap5_sound` tient et les accès admis sont vus par `cap5` (§ Test de la correction).
 
 ### `handoff_loss_exists` — réfuté
 
@@ -201,14 +205,32 @@ Deux versions :
 - **Trace :** la trace précédente, prolongée de `c0 : acquire(e)` et de `c0 : write3(Y)` via `z` (exerçable en `Modify` au travers du grant). L'ensemble est une `EncapsulatedTrace5` (`gc_trace`, `:91`).
 - **Paire d'accès :** `c1` accède à `Y` au pas 7 (`read3`) ; `c0` y accède au pas 9 en exigeant `Modify`.
 - **Pourquoi l'énoncé tombe :** le seul pas intermédiaire, 8 (`acquire`), est un pas de `c0`. Aucun pas de `c1` ne baisse son `cap5` sur `Y` ; il valait déjà `none` au moment de la lecture.
-- **Ce qui manque :** avec `cap5_compat`, `cap5_drop_own` et le fait qu'un accès ne change pas `cap5` (`inert_effect`), `handoff_loss_exists` découlerait de `cap5_sound`. Cette dérivation n'est pas formalisée ; le contre-exemple montre que c'est `cap5_sound` qui fait défaut.
+- **Ce qui manque :** `cap5_sound`. Avec lui, `cap5_compat`, `cap5_drop_own` et l'invariance de `cap5` par un pas d'accès (`inert_effect`), `handoff_loss_exists` se déduit ; la déduction est formalisée sous `Encap5C` (`handoff_loss_exists_C`, ci-dessous).
 
-**Correction proposée, non appliquée et non testée** (le brief interdit de toucher la définition) : étendre `GuardedExcl` à tout pas dont l'exercice, au sens de §43, passe par un `guarded` vivant dans la chaîne des détenteurs. Une formulation possible : exiger que l'autorité d'accès soit `Attr5`-exerçable depuis la frame courante. Ni l'équivalence des deux formulations ni le fait qu'elles rétablissent `cap5_sound` ne sont vérifiés. À arbitrer.
+### Test de la correction (`Encap5C.lean`, `Corpus/GuardedChainC.lean`)
 
-**Ce qui survivrait à cette correction.** Elle restreint les traces admises.
+La correction est une proposition de ce rapport, absente de WC5 et du brief ; elle est testée à côté des définitions du brief, qui restent inchangées.
 
-- Restent valides : `cap5_compat` et `cap5_drop_own`, qui portent sur toutes les `EncapsulatedTrace5` ; seul `cap5_drop_own_deriveSync` lit `Encap5` sur le pas lui-même, et il resterait vrai sous un `Encap5` plus fort.
-- Se rouvrent : `cap5_sound` et `handoff_loss_exists`, dont les contre-exemples ci-dessus seraient exclus.
+- **`Exer5`** (`Encap5C:24`) : `ExercisableAt` de Spec 1 §43 lu depuis la frame courante du contexte, par une chaîne de détenteurs dont aucune autorité n'est le `guarded` d'une entrée vivante. Décidable (`exer5_iff`, `:108`).
+- **`ChainExcl`** (`:142`) : l'argument d'autorité de `derive`, `split`, `read`, `write` et `writeShared` vérifie `Exer5` dans le mode que demande la précondition. Comme `ExercisableAt` est existentiel, c'est exactement « aucun exercice possible de l'argument n'évite un `guarded` vivant ».
+- **`Encap5C`** (`:155`) : `Encap ∧ ChainExcl ∧ CtlExcl` ; `EncapsulatedTrace5C` (`:169`), `Run5C` (`:195`).
+- **Inclusion :** `ChainExcl` entraîne `GuardedExcl` (`chainExcl_guardedExcl`, `:159`), donc toute `EncapsulatedTrace5C` est une `EncapsulatedTrace5` (`encapsulatedTrace5C_imp`, `:178`). `cap5_compat` et `cap5_drop_own` s'y appliquent sans nouvelle preuve.
+
+| Énoncé | Statut sous `Encap5C` | Théorème |
+|---|---|---|
+| `cap5_sound` (`Cap5SoundC`, `:214`) | **prouvé** : l'autorité d'accès est attribuable sans `guarded` vivant (`Exer5.attr5`, `:123`) | `cap5_sound_C` (`:276`) |
+| `handoff_loss_exists` (`HandoffLossExistsC`, `:227`) | **prouvé** : `cap5_sound_C` à l'accès antérieur, `cap5_compat` à l'accès postérieur, invariance de `cap5` par le pas d'accès, puis `cap5_drop_own` au premier pas de baisse entre les deux (`exists_drop`, `:309`) | `handoff_loss_exists_C` (`:336`) |
+
+**Témoins** (`Corpus/GuardedChainC.lean`), par `decide` :
+
+- **Exclusions :** la lecture du contre-exemple (`gc_read_excluded`, `Corpus/GuardedChainC:22`) et le pas 1 de W-GR (`W_GR_1_excluded`, `:26`) sont exclus.
+- **Le même accès, verrou tenu, est admis :** depuis l'état initial, la mise en place, puis `c1 : acquire(e)`, `c1 : read3(Y)` via `z`, `c1 : unlock(e)`, `c0 : acquire(e)`, `c0 : write3(Y)` via `z`, forment une `EncapsulatedTrace5C` (`lc_trace`, `:49`).
+- **Le marqueur de perte :** sur cette trace, `cap5` du contexte 1 sur `Y` vaut `Modify` de son `acquire` à son `unlock`, puis `none` (`lc_cap5`, `:75`). Le marqueur que donne `handoff_loss_exists_C` est donc l'`unlock` du contexte 1, un pas du contexte 1.
+
+**Portée de la correction.**
+
+- `ChainExcl` ne porte que sur les cinq opérations dont un argument est exercé. Les opérations dont le droit est `HasRight` (`transfer`, `depend`, `store`, `endUse`, `free`, `pin`, `unpin`, `alloc`, et le droit sur le détenteur de `release`) peuvent encore reposer sur une chaîne qui passe par `guarded`. Exercer `guarded` en `Modify` demande d'avoir `Modify` sur `slot`, donc un mutex non partagé. Ces opérations n'accèdent à aucune donnée et n'entrent ni dans `cap5_sound` ni dans L2. Cette restriction n'est pas testée au-delà.
+- Aucune trace des modules existants n'a été rejouée sous `Encap5C`, hormis `lc_trace` et les deux exclusions.
 
 ## Tâche 5 — S10b (`Corpus/S10b.lean`, corpus v4 § 2 quater)
 
@@ -251,7 +273,7 @@ Aucun ne change un programme accepté ni un verdict ; ils fixent la forme des é
 2. **Baisses de `cap` absentes de la table du brief.** Il y en a trois, toutes des pas du contexte qui baisse :
    - W-HO″ : `c0` à son `spawn` et `c1` à son `spawn` ;
    - W-GR : `c0` à `derive(root_M, Observe)`.
-3. **`GuardedExcl` et la récursivité de §43.** `GuardedExcl` laisse passer l'exercice de `guarded` comme maillon intermédiaire d'une chaîne de détenteurs. C'est la cause des deux réfutations (tâche 4) ; correction proposée ci-dessus, non appliquée.
+3. **`GuardedExcl` et la récursivité de §43.** `GuardedExcl` laisse passer l'exercice de `guarded` comme maillon intermédiaire d'une chaîne de détenteurs. C'est la cause des deux réfutations (tâche 4) ; la correction proposée est testée à côté (§ Test de la correction), sans modifier `GuardedExcl`.
 4. **`Attr5` coupe les chaînes qui passent par `guarded`.** C'est la lecture littérale de « n'est attribuable à aucun contexte » ; elle est consignée ici.
 5. **S10b : pas de mise en place ajouté.** Spec 1 §72 crée les locaux `Uninit`. Pour obtenir `X` `Init` comme le dit le corpus, la mise en place ajoute `write3(X)` via `root_X` (O10). Ce pas ne joue sur aucun verdict.
 6. **`CtlExcl` exclut tout `writeShared` brut sur le contrôleur.** Dans le modèle, les opérations de protocole d'`acquire`, `unlock` et `resetLock` n'ont pas de réalisation brute, donc aucun `writeShared` brut n'est « dans le protocole » (WC5 C22.4).
@@ -262,7 +284,7 @@ Aucun ne change un programme accepté ni un verdict ; ils fixent la forme des é
 ## Audit final des axiomes
 
 - **Méthode.** `collectAxioms` sur toutes les constantes `thmInfo` `Ern.Concurrency*` et `_private.Ern.Concurrency*`, après `import Ern`.
-- **Résultat à `882ba6e`.** 1369 théorèmes, dont 1037 non internes, contre 1144 (886) à la clôture du jalon 3. Aucun axiome hors `{propext, Quot.sound}`, `cap5_drop_own` compris.
+- **Résultat à `be8946a`.** 1458 théorèmes, dont 1079 non internes, contre 1144 (886) à la clôture du jalon 3. Aucun axiome hors `{propext, Quot.sound}`, `cap5_drop_own`, `cap5_sound_C` et `handoff_loss_exists_C` compris.
 - **Modules nouveaux**, théorèmes (non internes) :
   - `Cap` : 9 (8) ;
   - `Encap5` : 39 (10) ;
@@ -273,9 +295,11 @@ Aucun ne change un programme accepté ni un verdict ; ils fixent la forme des é
   - `Corpus.GuardedChain` : 8 (7) ;
   - `Corpus.S10b` : 4 (4) ;
   - `Corpus.L1Evidence` : 1 (1) ;
-  - `CapDrop` : 58 (46).
+  - `CapDrop` : 58 (46) ;
+  - `Encap5C` : 85 (38) ;
+  - `Corpus.GuardedChainC` : 4 (4).
 - **`Classical.choice` retiré.** Un `omega` fermant un but existentiel l'avait introduit dans `footprint_ne` ; corrigé en `2f5b6bc`.
-- **Build.** `lake build` réussit (79 jobs). Les dix modules nouveaux, recompilés seuls par `lake env lean`, ne produisent aucune sortie.
+- **Build.** `lake build` réussit (81 jobs). Les douze modules nouveaux, recompilés seuls par `lake env lean`, ne produisent aucune sortie.
 - **Contrôles.**
   - Le `grep` d'`AGENTS.md` est vide.
   - Aucun `noncomputable`, `decide +kernel` ni `ofReduceBool` dans `formal/Ern/Concurrency/`.
