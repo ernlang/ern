@@ -1,4 +1,4 @@
-import Ern.Concurrency.Events
+import Ern.Concurrency.EventsCompose
 import Ern.Concurrency.Corpus.Handoff
 import Ern.Concurrency.Corpus.GuardedChainC
 
@@ -324,5 +324,73 @@ theorem lc_ordered : PO lcσ lcLbls (.step 8) (.step 9) ∧ SW lcLbls (.step 9) 
     PO lcσ lcLbls (.step 10) (.step 11) ∧ HB lcσ lcLbls (.step 8) (.step 11) ∧
     HandoffOrderedAt lcσ lcLbls 8 11 4 := by
   decide
+
+/-! ## `HandoffOrdered` on the whole trace -/
+
+/-- The mode of an access step is defined (`access_ctx_mode`). -/
+theorem accMode_of_access {lbls : List Label} {i c l : Nat} {m : Mode} (h : i < lbls.length)
+    (ha : (lbls[i]'h).Access c l m) : (lbls[i]'h).accMode ≠ none := by
+  rw [(access_ctx_mode ha).2]; exact fun h' => by cases h'
+
+/-- W-HO-J satisfies `HandoffOrdered` (WC5.1 C46) on all its exclusive pairs: its only accesses are
+steps 2 and 6. So the hypothesis `HandoffOrdered` of `handoffOrdered_no_race` holds on a trace with
+an exclusive pair. -/
+theorem W_HOJ_handoffOrdered : HandoffOrdered hojσ hojLbls := by
+  intro i j l ⟨hij, hj, c, c', m, m', hcc, hai, haj, _⟩
+  have key : ∀ k (h : k < hojLbls.length), (hojLbls[k]'h).accMode ≠ none → k = 2 ∨ k = 6 := by
+    decide
+  have hi := key i _ (accMode_of_access _ hai)
+  have hj' := key j hj (accMode_of_access hj haj)
+  have e1 : i = 2 := by omega
+  have e2 : j = 6 := by omega
+  subst e1 e2
+  obtain ⟨-, hl, -⟩ := hai
+  exact W_HOJ_ordered.2.2.2.2 l hl
+
+/-- `handoffOrdered_no_race` applied to W-HO-J (contract `KF`, which satisfies `DDSound`). -/
+theorem W_HOJ_noRace : ¬ Race hojσ hojLbls :=
+  handoffOrdered_no_race (ddKC []) (by decide : StaticsOK xst) W_HOJ_run.1
+    (run5R_imp W_HOJ_run.2) W_HOJ_handoffOrdered
+
+/-- W-HO″-J satisfies `HandoffOrdered` (WC5.1 C46) on all its exclusive pairs: its only accesses
+are steps 4 and 11. -/
+theorem W_HO3J_handoffOrdered : HandoffOrdered ho3jσ ho3jLbls := by
+  intro i j l ⟨hij, hj, c, c', m, m', hcc, hai, haj, _⟩
+  have key : ∀ k (h : k < ho3jLbls.length), (ho3jLbls[k]'h).accMode ≠ none →
+      k = 4 ∨ k = 11 := by
+    decide
+  have hi := key i _ (accMode_of_access _ hai)
+  have hj' := key j hj (accMode_of_access hj haj)
+  have e1 : i = 4 := by omega
+  have e2 : j = 11 := by omega
+  subst e1 e2
+  obtain ⟨-, hl, -⟩ := hai
+  rw [List.mem_singleton.1 hl]
+  exact W_HO3J_ordered.2.2.2.2.2.2
+
+/-- `handoffOrdered_no_race` applied to W-HO″-J. -/
+theorem W_HO3J_noRace : ¬ Race ho3jσ ho3jLbls :=
+  handoffOrdered_no_race (ddKC []) (by decide : StaticsOK yst) W_HO3J_run.1
+    (run5R_imp W_HO3J_run.2) W_HO3J_handoffOrdered
+
+/-- The locked trace satisfies `HandoffOrdered` (WC5.1 C46) on all its exclusive pairs: its only
+accesses are steps 8 and 11. -/
+theorem lc_handoffOrdered : HandoffOrdered lcσ lcLbls := by
+  intro i j l ⟨hij, hj, c, c', m, m', hcc, hai, haj, _⟩
+  have key : ∀ k (h : k < lcLbls.length), (lcLbls[k]'h).accMode ≠ none → k = 8 ∨ k = 11 := by
+    decide
+  have hi := key i _ (accMode_of_access _ hai)
+  have hj' := key j hj (accMode_of_access hj haj)
+  have e1 : i = 8 := by omega
+  have e2 : j = 11 := by omega
+  subst e1 e2
+  obtain ⟨-, hl, -⟩ := hai
+  rw [List.mem_singleton.1 hl]
+  exact lc_ordered.2.2.2.2
+
+/-- `handoffOrdered_no_race` applied to the locked trace (contract `KM`). -/
+theorem lc_noRace : ¬ Race lcσ lcLbls :=
+  handoffOrdered_no_race (ddKC [2]) Ern.Concurrency.Corpus.GuardedChain.zst_ok lc_run.1
+    (run5R_imp lc_run.2) lc_handoffOrdered
 
 end Ern.Concurrency.Corpus.HandoffEvents

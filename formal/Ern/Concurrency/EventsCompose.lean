@@ -16,6 +16,7 @@ open Ern.MemoryModel.Access
 
 /-! ## Least elements of `List.range` -/
 
+/-- When `List.find?` over `List.range n` finds nothing, the predicate is false below `n`. -/
 theorem find?_range_none {p : Nat → Bool} {n : Nat} (h : (List.range n).find? p = none) :
     ∀ k, k < n → p k = false := fun k hk => by
   have := List.find?_eq_none.1 h k (List.mem_range.2 hk)
@@ -23,6 +24,8 @@ theorem find?_range_none {p : Nat → Bool} {n : Nat} (h : (List.range n).find? 
   · rfl
   · exact absurd hp this
 
+/-- What `List.find?` over `List.range n` finds is below `n`, satisfies the predicate, and is
+the least such number. -/
 theorem find?_range_some {p : Nat → Bool} :
     ∀ {n r : Nat}, (List.range n).find? p = some r →
       r < n ∧ p r = true ∧ ∀ k, k < r → p k = false
@@ -61,10 +64,12 @@ def needRank : Mode → Nat
   | .modify => 1
   | .observe => 2
 
+/-- `CapCompat` by ranks: compatible when the rank is below `needRank`. -/
 theorem capCompat_iff (o : Option Mode) (m : Mode) :
     CapCompat o m = true ↔ capRank o < needRank m := by
   rcases o with _ | _ | _ <;> cases m <;> decide
 
+/-- `CapCompat` by ranks: incompatible when the rank reaches `needRank`. -/
 theorem capCompat_false_iff (o : Option Mode) (m : Mode) :
     CapCompat o m = false ↔ needRank m ≤ capRank o := by
   rcases o with _ | _ | _ <;> cases m <;> decide

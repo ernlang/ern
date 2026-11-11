@@ -61,7 +61,7 @@ theorem Steps5R.run {k : K} {L : MutexLayout} {sts : List (SC × SyncReg × Aren
     | zero => exact ⟨he, hs⟩
     | succ i => exact ih i (Nat.lt_of_succ_lt_succ hi)
 
-/-- The transfer phases of the by-value composite satisfy WC5.1 C22.3 without a registered
+/-- The transfer phases of the by-value composite satisfy WC5.1 C22 item 3 without a registered
 entry. -/
 theorem encapVals_nil (L : MutexLayout) (c : Nat) : ∀ (t : SC) (vs : List (Nat × Nat)),
     EncapVals L [] c t vs
@@ -91,8 +91,8 @@ theorem encap5R_nil {k : K} {L : MutexLayout} {lbl : Label} {s : SC} {ar : Arena
 def SC.lifes (s : SC) : List Life := s.C.map (·.life)
 
 /-- Change of the lifecycle states by an `ok` step: `spawn` and `spawnVal` append a live context
-(WC5.1 C4 effect, C5.1), `terminate c` completes `c` (WC5.1 C7 effect); the other steps keep
-them. -/
+(`spawnEff`; WC5.1 C4, C5 phase 1), `terminate c` completes `c` (WC5.1 C7 effect); the other steps
+keep them. -/
 def Label.lifeEff : Label → List Life → List Life
   | .spawn .., ls | .spawnVal .., ls => ls ++ [.live]
   | .terminate c, ls => ls.set c .done
@@ -145,8 +145,8 @@ theorem transfersEff_C (c : Nat) : ∀ (t : SC) (vs : List (Nat × Nat)),
   | _, [] => rfl
   | t, v :: vs => (transfersEff_C c (transferEffC t c v.1 v.2) vs).trans rfl
 
-/-- Every `ok` step is executed by a live context (WC5.1 C2) and changes the lifecycle states by
-`Label.lifeEff`. -/
+/-- Every `ok` step is executed by a live context (each step relation of `LStep` requires it; WC5.1
+C4 item 1 for `spawn`) and changes the lifecycle states by `Label.lifeEff`. -/
 theorem lstep_lifes {k : K} {L : MutexLayout} {lbl : Label} {st st' : SC × SyncReg × ArenaReg}
     (h : LStep k L lbl st st') : st.1.Live lbl.ctx ∧ st'.1.lifes = lbl.lifeEff st.1.lifes := by
   have same : ∀ {s s' : SC}, s'.C = s.C → s'.lifes = s.lifes := fun h => by
@@ -212,8 +212,8 @@ theorem lstep_lifes {k : K} {L : MutexLayout} {lbl : Label} {st st' : SC × Sync
 theorem lifeEff_length (lbl : Label) (ls : List Life) : ls.length ≤ (lbl.lifeEff ls).length := by
   cases lbl <;> simp [Label.lifeEff]
 
-/-- Along the `ok` steps of a trace, the number of contexts never decreases (WC5.1 C2: identities
-are the indices of `C`). -/
+/-- Along the `ok` steps of a trace, the number of contexts never decreases (context identities are
+the indices of `SC.C`). -/
 theorem len_mono {k : K} {L : MutexLayout} {σ : Nat → SC × SyncReg × ArenaReg} {lbls : List Label}
     (hs : ∀ i (h : i < lbls.length), LStep k L lbls[i] (σ i) (σ (i + 1))) {a : Nat} :
     ∀ b, a ≤ b → b ≤ lbls.length → (σ a).1.C.length ≤ (σ b).1.C.length
@@ -246,6 +246,7 @@ def Ev.pos : Ev → Nat
 /-- The event at a position. -/
 def Ev.ofPos (p : Nat) : Ev := if p % 2 = 0 then .step (p / 2) else .start (p / 2)
 
+/-- `Ev.ofPos` inverts `Ev.pos`. -/
 theorem Ev.ofPos_pos : ∀ e : Ev, Ev.ofPos e.pos = e
   | .step i => by
     have h : 2 * i % 2 = 0 := by omega
@@ -254,6 +255,7 @@ theorem Ev.ofPos_pos : ∀ e : Ev, Ev.ofPos e.pos = e
     have h : ¬ (2 * i + 1) % 2 = 0 := by omega
     simp only [Ev.ofPos, Ev.pos, h, ↓reduceIte, Ev.start.injEq]; omega
 
+/-- `Ev.pos` inverts `Ev.ofPos`. -/
 theorem Ev.pos_ofPos (p : Nat) : (Ev.ofPos p).pos = p := by
   unfold Ev.ofPos
   split
@@ -285,8 +287,9 @@ def Label.acquireOf : Label → Option Nat
   | .acquire _ i => some i
   | _ => none
 
-/-- Identity of the context created by step `i`, a `spawn` or a `spawnVal`: `|C|` in the state
-where it is taken (WC5.1 C4 effect; C5.1 through `spawnCreate`). -/
+/-- Identity of the context created by step `i`, a `spawn` or a `spawnVal`: the fresh identity of
+WC5.1 C4 item 2, `|C|` in the state where the step is taken (`spawnEff`; `spawnCreate` for the
+create phase of WC5.1 C5). -/
 def created (σ : Nat → SC × SyncReg × ArenaReg) (i : Nat) : Nat := (σ i).1.C.length
 
 /-- `po` (WC5.1 C28; brief, "po"): between two steps of the same context, in trace order;
@@ -300,6 +303,7 @@ def PO (σ : Nat → SC × SyncReg × ArenaReg) (lbls : List Label) : Ev → Ev 
       (lbls[j]?).map Label.ctx = some (created σ i)
   | _, _ => False
 
+/-- Decidability of `PO`. -/
 instance (σ : Nat → SC × SyncReg × ArenaReg) (lbls : List Label) (e e' : Ev) :
     Decidable (PO σ lbls e e') := by
   unfold PO; split <;> infer_instance
@@ -316,6 +320,7 @@ def SW (lbls : List Label) : Ev → Ev → Prop
          ∀ p ∈ List.range j, i < p → (lbls[p]?).bind Label.acquireOf ≠ some e) False)
   | _, _ => False
 
+/-- Decidability of `SW`. -/
 instance (lbls : List Label) (e e' : Ev) : Decidable (SW lbls e e') := by
   unfold SW; split <;> infer_instance
 
@@ -323,6 +328,7 @@ instance (lbls : List Label) (e e' : Ev) : Decidable (SW lbls e e') := by
 def Edge (σ : Nat → SC × SyncReg × ArenaReg) (lbls : List Label) (e e' : Ev) : Prop :=
   PO σ lbls e e' ∨ SW lbls e e'
 
+/-- Decidability of `Edge`. -/
 instance (σ : Nat → SC × SyncReg × ArenaReg) (lbls : List Label) (e e' : Ev) :
     Decidable (Edge σ lbls e e') := by
   unfold Edge; infer_instance
@@ -374,6 +380,7 @@ def reachList (R : Ev → Ev → Prop) [DecidableRel R] (src : Ev) : Nat → Lis
     v ++ [decide (R src (Ev.ofPos n)) ||
       (List.range n).any fun r => (v[r]?).getD false && decide (R (Ev.ofPos r) (Ev.ofPos n))]
 
+/-- `reachList R src n` has `n` entries. -/
 theorem reachList_length (R : Ev → Ev → Prop) [DecidableRel R] (src : Ev) :
     ∀ n, (reachList R src n).length = n
   | 0 => rfl
@@ -464,6 +471,7 @@ def HandoffOrderedAt (σ : Nat → SC × SyncReg × ArenaReg) (lbls : List Label
     Prop :=
   ∃ r, lossStep σ lbls i j l = some r ∧ HB σ lbls (.step r) (.step j)
 
+/-- `HandoffOrderedAt` as an `OptP` on the loss step. -/
 theorem handoffOrderedAt_iff {σ : Nat → SC × SyncReg × ArenaReg} {lbls : List Label}
     {i j l : Nat} : HandoffOrderedAt σ lbls i j l ↔
       OptP (lossStep σ lbls i j l) (fun r => HB σ lbls (.step r) (.step j)) False := by
@@ -472,6 +480,7 @@ theorem handoffOrderedAt_iff {σ : Nat → SC × SyncReg × ArenaReg} {lbls : Li
   | none => simp [OptP]
   | some r => simp [OptP]
 
+/-- Decidability of `HandoffOrderedAt`. -/
 instance (σ : Nat → SC × SyncReg × ArenaReg) (lbls : List Label) (i j l : Nat) :
     Decidable (HandoffOrderedAt σ lbls i j l) :=
   decidable_of_iff _ handoffOrderedAt_iff.symm
@@ -484,8 +493,8 @@ def HandoffOrdered (σ : Nat → SC × SyncReg × ArenaReg) (lbls : List Label) 
 /-! ## `po` from `start(c)` on a trace -/
 
 /-- On the `ok` steps of a trace, every step of the context created by step `i` comes after step
-`i`: the created context has the identity `|C|` (WC5.1 C4 effect), only a live context steps
-(WC5.1 C2), and `C` never shrinks. -/
+`i`: the created context has the fresh identity `|C|` (WC5.1 C4 item 2, `spawnEff`), only a live
+context steps (`lstep_lifes`), and `C` never shrinks (`len_mono`). -/
 theorem step_after_create {k : K} {L : MutexLayout} {σ : Nat → SC × SyncReg × ArenaReg}
     {lbls : List Label} (hs : ∀ i (h : i < lbls.length), LStep k L lbls[i] (σ i) (σ (i + 1)))
     {i j : Nat} (hi : (lbls[i]?).map Label.creates = some true) (hj : j < lbls.length)

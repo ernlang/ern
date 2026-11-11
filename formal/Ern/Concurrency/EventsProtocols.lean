@@ -209,7 +209,8 @@ theorem lock_orders {σ : Nat → SC × SyncReg × ArenaReg} {lbls : List Label}
   termination_by u => a - u
 
 /-- `lock_orders` when every intermediate `acquire(e)` is given back by an `unlock(e)` of the
-context that took it, the holder of the grant (WC5.1 C16, C17). -/
+context that took it: the grant is held by the current frame of that context (WC5.1 C15 effect,
+C16), and `unlock` releases it under O3 (WC5.1 C17 item 2). -/
 theorem lock_orders_holder {σ : Nat → SC × SyncReg × ArenaReg} {lbls : List Label} {e u a : Nat}
     (hua : u < a) (ha : a < lbls.length) (hu : (lbls[u]?).bind Label.unlockOf = some e)
     (hacq : (lbls[a]?).bind Label.acquireOf = some e)
