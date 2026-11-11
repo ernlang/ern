@@ -30,6 +30,7 @@ import Ern.Concurrency.Encap5C
 import Ern.Concurrency.Encap5R
 import Ern.Concurrency.EncapTraces
 import Ern.Concurrency.Events
+import Ern.Concurrency.EventsCompose
 import Ern.Concurrency.Frames
 import Ern.Concurrency.NonConflict
 import Ern.Concurrency.Preservation
