@@ -203,4 +203,15 @@ theorem lc_strict : PO lcσ lcLbls (.step 8) (.step 9) ∧ SWS lcσ L0 lcLbls (.
   rw [List.mem_singleton.1 hl]
   decide
 
+/-- `corpus-spec2-m3.md` v9 §2 octies, left column: W-RL₀, W-RL-J and W-TR-J are also ordered on
+the graph of §2 septies and satisfy `HandoffOrdered` there, by `hbS_hb` and `handoffOrderedS_imp`
+from their strict facts. -/
+theorem W_RL0_RLJ_TRJ_ordered : (HB rl0σ rl0Lbls (.step 6) (.step 10) ∧
+      HandoffOrdered rl0σ rl0Lbls) ∧
+    (HB rljσ rljLbls (.step 6) (.step 13) ∧ HandoffOrdered rljσ rljLbls) ∧
+    (HB trjσ trjLbls (.step 6) (.step 13) ∧ HandoffOrdered trjσ trjLbls) :=
+  ⟨⟨hbS_hb W_RL0_strict.2.2.2.1, handoffOrderedS_imp W_RL0_strict.2.2.2.2.1⟩,
+   ⟨hbS_hb W_RLJ_strict.2.2.2.1, handoffOrderedS_imp W_RLJ_strict.2.2.2.2.1⟩,
+   ⟨hbS_hb W_TRJ_strict.2.2.2.1, handoffOrderedS_imp W_TRJ_strict.2.2.2.2.1⟩⟩
+
 end Ern.Concurrency.Corpus.MutexEdgeStrict

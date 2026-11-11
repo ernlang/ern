@@ -1,6 +1,6 @@
 # Spec 2, jalon 4 — graphe d'événements abstrait et ordre de passation
 
-Formalisation exploratoire, branche `formal/spec2-m4`, jamais mergée. Sources lues : les briefs « graphe d'événements abstrait et ordre de passation » et « arête stricte du mutex », `ERN_Concurrency_Model_WC5.1.md` (C1–C8, C12, C15–C18, C21, C22, C26–C33, C43–C52), `corpus-spec2-m3.md` v8 (§ 2 bis, § 2 septies) et v9 (§ 2 octies), Spec 1 §47 et §80. Les numéros de ligne sont ceux de `c049ed7` pour la première passe, et de `cdfc947` pour la section « Arête stricte du mutex » ; les modules de la première passe n'ont pas changé entre les deux.
+Formalisation exploratoire, branche `formal/spec2-m4`, jamais mergée. Sources lues : les briefs « graphe d'événements abstrait et ordre de passation » et « arête stricte du mutex », `ERN_Concurrency_Model_WC5.1.md` (C1–C8, C12, C15–C18, C21, C22, C26–C33, C43–C52), `corpus-spec2-m3.md` v8 (§ 2 bis, § 2 septies) et v9 (§ 2 octies), Spec 1 §47 et §80. Les numéros de ligne sont ceux de `c049ed7` pour la première passe, et de `cdfc947` pour la section « Arête stricte du mutex » ; les modules de la première passe n'ont pas changé entre les deux. Le commit de relecture qui suit `cdfc947` n'ajoute qu'un théorème en fin de `Corpus/MutexEdgeStrict.lean` (`:209`) et ne décale aucune ligne citée.
 
 ## Hypothèse du modèle
 
@@ -157,7 +157,7 @@ Toutes dans `EventsStrict.lean`.
 
 **Écarts et choix de représentation.**
 
-1. **Un graphe recopié plutôt que paramétré.** Un graphe paramétré par sa relation `sw` aurait demandé de redéfinir `SW` et `HB`, ce que le brief interdit. `SWS` recopie donc les clauses de `spawn` et de `join` mot pour mot ; `sws_sw` (`:100`) vérifie l'inclusion.
+1. **Une relation recopiée plutôt qu'un graphe paramétré.** `SWS` recopie mot pour mot les clauses de `spawn` et de `join` de `SW`, et `sws_sw` (`:100`) vérifie l'inclusion. Conséquence : `spawn_ordersS`, `join_ordersS` et `handoffOrdered_no_raceS` refont les preuves de la première passe au lieu de les réutiliser. L'autre encodage, non retenu, était un graphe paramétré par sa relation `sw`, placé à côté des définitions existantes, dont `HB` et `HBS` seraient deux instances ; les théorèmes de protocole n'y seraient prouvés qu'une fois. Le choix vous revient.
 2. **« Désigne la même feuille ».** Lu comme : le contrôleur est défini à l'issue de l'`unlock` et vaut cette feuille dans chaque état jusqu'à l'entrée de l'`acquire`. Un contrôleur indéfini en `σ (u + 1)` coupe l'arête.
 3. **Le graphe strict dépend de la disposition du mutex `L`**, à travers `ControlOf`. `spawn_ordersS` et `join_ordersS` laissent la disposition du graphe libre, distincte de celle des pas : c'est plus général que « même énoncé », puisque les arêtes de `spawn` et de `join` ne lisent pas `L`.
 
@@ -174,6 +174,8 @@ Chaque trace part de l'état initial de `mxst`, qui contient déjà `M′ = {slo
 | W-TR | `transfer(M, M′)`, `acquire(e)`, `write3(T)` : `ok` | `ok`, et `ControlOf(e) = lock′` après le transfert ; `Run5R` | `W_TR_ok` `:177`, `W_TR_run` `:193` |
 | W-TR-J | `terminate`, `join`, puis W-TR : `ok` | `ok` ; `Run5R` | `W_TRJ_ok` `:216`, `W_TRJ_run` `:235` |
 
+Clauses : WC5.1 C7, C8, C16, C17, C18 ; Spec 1 O3, O4, O10 ; corpus v9 § 2 octies.
+
 **Aucun pas attendu `ok` n'est refusé.**
 
 - **`resetLock` avec un grant à `none`.** Le modèle l'accepte : `ResetLockOk` ne lit pas le grant enregistré, comme le dit le corpus.
@@ -187,7 +189,7 @@ Chaque trace part de l'état initial de `mxst`, qui contient déjà `M′ = {slo
 | W-RL | paire exclusive ; ordonnée par `hb`, l'arête du mutex passant par-dessus le `resetLock` ; `HandoffOrderedAt` | paire (6, 11, `T`) exclusive ; chemin 6 →`po` 7 →`sw` 10 →`po` 11 ; `HB` ; `HandoffOrderedAt` | `W_RL_excl` `:253`, `W_RL_defect` `:262` |
 | W-TR | idem, alors que le contrôleur a changé de feuille au pas 9 | même chemin, `HB`, `HandoffOrderedAt` | `W_TR_excl` `:269`, `W_TR_defect` `:277` |
 
-Ces théorèmes restent comme contre-exemple de l'arête abstraite (WC5.1 C45, dernier alinéa).
+Ces théorèmes restent comme contre-exemple de l'arête abstraite (WC5.1 C45, dernier alinéa). Clauses : WC5.1 C32 point 1, C46, C48 ; corpus v9 § 2 octies.
 
 ### Tâche 3 — le graphe strict
 
@@ -218,6 +220,10 @@ Faits par `decide`. Pour les énoncés sur toute la trace, les lemmes `exclPair_
 
 `¬ RaceS` sur les traces entières est montré directement, sans `handoffOrdered_no_raceS`, pour que la tâche 4 ne dépende pas de la tâche 5.
 
+La colonne de gauche du corpus (graphe du § 2 septies) attend aussi W-RL₀, W-RL-J et W-TR-J ordonnés et satisfaisant C46 : c'est obtenu à partir des faits stricts par `hbS_hb` et `handoffOrderedS_imp` (`W_RL0_RLJ_TRJ_ordered`, `:209`).
+
+Clauses : WC5.1 C32, C46, C47, C48 ; corpus v9 § 2 septies et § 2 octies.
+
 ### Tâche 5 — théorèmes sur le graphe strict (`EventsStrictProtocols.lean`)
 
 Tous **prouvés**.
@@ -234,7 +240,7 @@ Comme pour `lock_orders`, l'abandon d'un grant suivi d'un `resetLock` est hors d
 Tous **prouvés**.
 
 - **`reg_set_guarded`** (`:19`) : réécrire une entrée en place, en gardant son `guarded`, garde la longueur du registre et le `guarded` à chaque indice.
-- **`lstep_reg`** (`:32`) : un pas `ok`, quel qu'il soit, ne raccourcit pas le registre et garde le `guarded` à chaque indice existant.
+- **`lstep_reg`** (`:32`) : un pas `ok`, quel qu'il soit, ne raccourcit pas le registre et garde le `guarded` à chaque indice existant. WC5.1 C13 dit seulement que `newMutex` enregistre une entrée, et C16–C18 que le grant de l'entrée est enregistré ou remis à `none` ; l'ajout en fin de liste et la réécriture en place à l'indice sont la représentation du modèle (`NewMutexOk`, `AcquireOk`, `UnlockOk`, `ResetLockOk`).
 - **`reg_stable`** (`:64`) : le long de pas `ok`, de toute position `a` à toute position `b ≥ a`, le registre ne raccourcit pas, et l'entrée de chaque indice existant en `a` garde la même identité `guarded`.
 - **`reg_stable_run5C`** (`:81`) : la même chose le long de toute `Run5C`.
 
@@ -280,12 +286,12 @@ Aucun bloquant. Une observation :
   - `EventsCompose` : 18 (8) ;
   - `EventsProtocols` : 47 (25).
 - **`Classical.choice` évité.** Deux sources l'introduisaient pendant le développement : un `omega` fermant une conjonction, et `List.getElem?_modify`. Elles sont remplacées, par des `omega` sur chaque membre et par des preuves par récurrence (`lifes_modify`, `lifes_done`).
-- **Après l'arête stricte, à `cdfc947`.** 1800 théorèmes, dont 1274 non internes. Aucun axiome hors `{propext, Quot.sound}`, les théorèmes des tâches 3, 5 et 6 compris. Modules nouveaux :
+- **Après l'arête stricte**, relecture comprise. 1801 théorèmes, dont 1275 non internes. Aucun axiome hors `{propext, Quot.sound}`, les théorèmes des tâches 3, 5 et 6 compris. Modules nouveaux :
   - `EventsStrict` : 19 (10) ;
   - `EventsStrictProtocols` : 16 (5) ;
   - `RegIndex` : 7 (4) ;
   - `Corpus.MutexEdge` : 17 (17) ;
-  - `Corpus.MutexEdgeStrict` : 15 (13).
+  - `Corpus.MutexEdgeStrict` : 16 (14).
 - **Build.** `lake build` réussit (88 jobs à `c049ed7`, 93 à `cdfc947`), sans avertissement.
 - **Contrôles.**
   - Le `grep` d'`AGENTS.md` est vide.

@@ -5,9 +5,9 @@ import Ern.Concurrency.Encap5C
 
 Brief of milestone 4, strict mutex edge, task 6 (`formal/reports/spec2-m4-events.md`, écart 5 of
 the event pass): along the `ok` steps of a trace, the synchronization registry never shortens, and
-the entry at a given index keeps the same `guarded` identity. `newMutex` appends an entry (WC5.1
-C13 effect); `acquire`, `unlock` and `resetLock` rewrite the grant of the entry at their index in
-place (WC5.1 C16, C17, C18 effects); every other step keeps the registry.
+the entry at a given index keeps the same `guarded` identity. `NewMutexOk` registers the entry of
+WC5.1 C13 at the end; `AcquireOk`, `UnlockOk` and `ResetLockOk` record the grant of WC5.1 C16, C17,
+C18 in the entry at their index, in place; every other step keeps the registry.
 -/
 
 namespace Ern.Concurrency
