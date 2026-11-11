@@ -10,7 +10,7 @@ Branche `formal/spec2-m4`, créée depuis `b4d18ce` (tête de `formal/spec2-m3` 
 - **Définitions existantes :** aucune n'est modifiée (`Encap`, `EncapsulatedTrace`, `SyncInv`, `GrantDiscipline`, `LStep`, `ArenaInvC`, `AdminSep` comprises). Tout est ajouté à côté ; `git diff b4d18ce` ne retire aucune ligne.
 - **Périmètre :** machine d'autorités seule. Aucun événement, aucune relation `po`, `rf`, `mo`, `sw`, `hb`, aucun énoncé sur les courses.
 
-Chemins relatifs à `formal/Ern/Concurrency/`. Numéros de ligne à `be8946a`, dernier commit de code.
+Chemins relatifs à `formal/Ern/Concurrency/`. Numéros de ligne à `10d09a0`, dernier commit de code.
 
 ## Résultats
 
@@ -49,6 +49,8 @@ Les deux réfutations ont la même cause : `GuardedExcl` ne porte que sur l'argu
 | `6987941` | portée de L1, docstring de `L1Evidence` |
 | `6eb93c2` | test de la correction : `Exer5`, `ChainExcl`, `Encap5C`, `cap5_sound_C`, `handoff_loss_exists_C` |
 | `be8946a` | témoins de la correction |
+| `3e245e0` | rapport : test de la correction |
+| `10d09a0` | instance de `handoff_loss_exists_C`, pas sans mutex |
 | commit suivant | ce rapport, mis à jour |
 
 ## Tâche 1 — W-GR (`Corpus/GuardedRead.lean`, corpus v4 § 2 ter)
@@ -212,7 +214,7 @@ Deux versions :
 La correction est une proposition de ce rapport, absente de WC5 et du brief ; elle est testée à côté des définitions du brief, qui restent inchangées.
 
 - **`Exer5`** (`Encap5C:24`) : `ExercisableAt` de Spec 1 §43 lu depuis la frame courante du contexte, par une chaîne de détenteurs dont aucune autorité n'est le `guarded` d'une entrée vivante. Décidable (`exer5_iff`, `:108`).
-- **`ChainExcl`** (`:142`) : l'argument d'autorité de `derive`, `split`, `read`, `write` et `writeShared` vérifie `Exer5` dans le mode que demande la précondition. Comme `ExercisableAt` est existentiel, c'est exactement « aucun exercice possible de l'argument n'évite un `guarded` vivant ».
+- **`ChainExcl`** (`:142`) : l'argument d'autorité de `derive`, `split`, `read`, `write` et `writeShared` vérifie `Exer5` dans le mode que demande la précondition. `ChainExcl` tient quand une chaîne au moins évite tout `guarded` vivant ; elle exclut donc exactement les pas dont chaque exercice possible de l'argument passe par un `guarded` vivant.
 - **`Encap5C`** (`:155`) : `Encap ∧ ChainExcl ∧ CtlExcl` ; `EncapsulatedTrace5C` (`:169`), `Run5C` (`:195`).
 - **Inclusion :** `ChainExcl` entraîne `GuardedExcl` (`chainExcl_guardedExcl`, `:159`), donc toute `EncapsulatedTrace5C` est une `EncapsulatedTrace5` (`encapsulatedTrace5C_imp`, `:178`). `cap5_compat` et `cap5_drop_own` s'y appliquent sans nouvelle preuve.
 
@@ -225,12 +227,13 @@ La correction est une proposition de ce rapport, absente de WC5 et du brief ; el
 
 - **Exclusions :** la lecture du contre-exemple (`gc_read_excluded`, `Corpus/GuardedChainC:22`) et le pas 1 de W-GR (`W_GR_1_excluded`, `:26`) sont exclus.
 - **Le même accès, verrou tenu, est admis :** depuis l'état initial, la mise en place, puis `c1 : acquire(e)`, `c1 : read3(Y)` via `z`, `c1 : unlock(e)`, `c0 : acquire(e)`, `c0 : write3(Y)` via `z`, forment une `EncapsulatedTrace5C` (`lc_trace`, `:49`).
-- **Le marqueur de perte :** sur cette trace, `cap5` du contexte 1 sur `Y` vaut `Modify` de son `acquire` à son `unlock`, puis `none` (`lc_cap5`, `:75`). Le marqueur que donne `handoff_loss_exists_C` est donc l'`unlock` du contexte 1, un pas du contexte 1.
+- **Le marqueur de perte :** sur cette trace, `cap5` du contexte 1 sur `Y` vaut `Modify` de son `acquire` à son `unlock`, puis `none` (`lc_cap5`, `:75`). Appliqué à cette trace, entre la lecture du pas 8 et l'écriture du pas 11, `handoff_loss_exists_C` donne le pas 9, l'`unlock` du contexte 1 (`lc_handoff_marker`, `:86`, par `run5C_of_trace`, `Encap5C:398`).
+- **Sans mutex vivant, rien ne change :** tout pas `ok` satisfait `ChainExcl` quand aucune entrée n'est vivante (`chainExcl_of_noLive`, `Encap5C:422`).
 
 **Portée de la correction.**
 
 - `ChainExcl` ne porte que sur les cinq opérations dont un argument est exercé. Les opérations dont le droit est `HasRight` (`transfer`, `depend`, `store`, `endUse`, `free`, `pin`, `unpin`, `alloc`, et le droit sur le détenteur de `release`) peuvent encore reposer sur une chaîne qui passe par `guarded`. Exercer `guarded` en `Modify` demande d'avoir `Modify` sur `slot`, donc un mutex non partagé. Ces opérations n'accèdent à aucune donnée et n'entrent ni dans `cap5_sound` ni dans L2. Cette restriction n'est pas testée au-delà.
-- Aucune trace des modules existants n'a été rejouée sous `Encap5C`, hormis `lc_trace` et les deux exclusions.
+- Hors du cas sans mutex vivant (`chainExcl_of_noLive`), aucune trace des modules existants n'a été rejouée sous `Encap5C`, hormis `lc_trace` et les deux exclusions.
 
 ## Tâche 5 — S10b (`Corpus/S10b.lean`, corpus v4 § 2 quater)
 
@@ -262,7 +265,8 @@ Aucun ne change un programme accepté ni un verdict ; ils fixent la forme des é
   - `mem_descModes` (`CapPreserve:148`) est un sens de l'équivalence `mem_descModes` existante (`Lemmas:254`) ;
   - `eff_modify` et `eff_present` (`CapPreserve:118`, `:135`) recoupent `effective_some` et `effOf_cases` ;
   - `footprint_ne` (`CapPreserve:94`) duplique `exists_mem_footprint` (`Lemmas:838`) ;
-  - `parents_lt` (`CapDrop:26`) reprend un calcul déjà fait dans plusieurs preuves.
+  - `parents_lt` (`CapDrop:26`) reprend un calcul déjà fait dans plusieurs preuves ;
+  - `exer5R` (`Encap5C:33`) est une troisième copie de la procédure de décision `exR`, après `attr5R` ; `cap5_of` (`Encap5C:240`) reprend `cap_of` pour `cap5`.
 - **Lemmes nouveaux à remonter dans la Spec 1 :**
   - de `CapPreserve` : `effective_of_A`, `exer_mode`, `allows_effOf_obs`, `allows_effOf_sub`, `addModify_keep`, `release_org`, `release_eff_mono`, `store_skel`, `storeEff_P` ;
   - de `CapDrop` : `eff_keep_sub`, `no_eff_below_modify`, `split_get`, `exit_ancs_sub`, `ownedIn_up`, `above_root_ground`.
@@ -279,12 +283,12 @@ Aucun ne change un programme accepté ni un verdict ; ils fixent la forme des é
 6. **`CtlExcl` exclut tout `writeShared` brut sur le contrôleur.** Dans le modèle, les opérations de protocole d'`acquire`, `unlock` et `resetLock` n'ont pas de réalisation brute, donc aucun `writeShared` brut n'est « dans le protocole » (WC5 C22.4).
 7. **Réfutations prises sur un contrat de test.** Elles portent sur l'énoncé quantifié sur tout contrat `DDSound`, et sont obtenues sur `KM`.
 8. **`cap5_drop_own` suppose `DDSound`** (Spec 1 §80), comme tous les invariants de trace (T2–T7) dont il se sert ; l'énoncé `Cap5DropOwn` ne le contient pas.
-9. **Sources citées dans les docstrings.** Le brief demande de citer WC5, la Spec 1 ou le corpus v4. Les définitions propres au brief (`GuardedExcl`, `Encap5`, `Attr5`, `cap5`, les énoncés de la tâche 4) citent « the brief of milestone 4 », seule source exacte.
+9. **Sources citées dans les docstrings.** Le brief demande de citer WC5, la Spec 1 ou le corpus v4. Les définitions propres au brief (`GuardedExcl`, `Encap5`, `Attr5`, `cap5`, les énoncés de la tâche 4) citent « the brief of milestone 4 », seule source exacte. Celles de la correction (`Exer5`, `ChainExcl`, `Encap5C`) citent ce rapport, qui la propose.
 
 ## Audit final des axiomes
 
 - **Méthode.** `collectAxioms` sur toutes les constantes `thmInfo` `Ern.Concurrency*` et `_private.Ern.Concurrency*`, après `import Ern`.
-- **Résultat à `be8946a`.** 1458 théorèmes, dont 1079 non internes, contre 1144 (886) à la clôture du jalon 3. Aucun axiome hors `{propext, Quot.sound}`, `cap5_drop_own`, `cap5_sound_C` et `handoff_loss_exists_C` compris.
+- **Résultat à `10d09a0`.** 1463 théorèmes, dont 1083 non internes, contre 1144 (886) à la clôture du jalon 3. Aucun axiome hors `{propext, Quot.sound}`, `cap5_drop_own`, `cap5_sound_C` et `handoff_loss_exists_C` compris.
 - **Modules nouveaux**, théorèmes (non internes) :
   - `Cap` : 9 (8) ;
   - `Encap5` : 39 (10) ;
@@ -296,8 +300,8 @@ Aucun ne change un programme accepté ni un verdict ; ils fixent la forme des é
   - `Corpus.S10b` : 4 (4) ;
   - `Corpus.L1Evidence` : 1 (1) ;
   - `CapDrop` : 58 (46) ;
-  - `Encap5C` : 85 (38) ;
-  - `Corpus.GuardedChainC` : 4 (4).
+  - `Encap5C` : 88 (41) ;
+  - `Corpus.GuardedChainC` : 6 (5).
 - **`Classical.choice` retiré.** Un `omega` fermant un but existentiel l'avait introduit dans `footprint_ne` ; corrigé en `2f5b6bc`.
 - **Build.** `lake build` réussit (81 jobs). Les douze modules nouveaux, recompilés seuls par `lake env lean`, ne produisent aucune sortie.
 - **Contrôles.**
