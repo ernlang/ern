@@ -25,6 +25,7 @@ import Ern.Concurrency.Corpus.Witness
 import Ern.Concurrency.Context
 import Ern.Concurrency.Encap5
 import Ern.Concurrency.Encap5C
+import Ern.Concurrency.Encap5R
 import Ern.Concurrency.EncapTraces
 import Ern.Concurrency.Frames
 import Ern.Concurrency.NonConflict
