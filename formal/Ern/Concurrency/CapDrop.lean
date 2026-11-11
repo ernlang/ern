@@ -1,4 +1,5 @@
 import Ern.Concurrency.CapPreserve
+import Ern.Concurrency.TransferPreserve
 
 /-!
 # L1 on `cap5`: the remaining labels
@@ -1119,5 +1120,247 @@ theorem cap5_drop_own_free {k : K} {L : MutexLayout} {statics : Statics} {lbls :
       obtain ⟨y, hy⟩ : ∃ y, s.A[u]? = some y := ⟨_, List.getElem?_eq_getElem hu.lt⟩
       exact ⟨y, free_keeps hF hI hw hk.1.2.1.2.2 hcc (hF.nonempty c' hlive) hp rfl
         hk'.1.2.1.2.2 hu hus y hy, hu.active hy⟩
+
+/-! ## `spawnVal` (WC4 C4, C5) -/
+
+open TransferPreserveAux in
+/-- The yield of WC4 C5.3 changes only holders (Spec 1 §42). -/
+theorem yield_skel (t : SC) (ps : List Nat) (f : Nat) : SameSkel t.flat (yieldEff t ps f).flat := by
+  refine ⟨length_mapI _ 0 t.A, fun j => ?_⟩
+  show ((mapI (yieldF ps f) 0 t.A)[j]?).map skel = (t.A[j]?).map skel
+  rw [getElem?_mapI]
+  cases t.A[j]? with
+  | none => rfl
+  | some y => simp only [Option.map_some, yieldF]; split <;> rfl
+
+open TransferPreserveAux in
+/-- An authority exercisable by `c'` before the yield (Spec 1 §43, WC4 C2) is attributable after
+the yield to `c'` or to the context `d` whose stack holds the yield frame `f` (WC5 C43): the
+yielded parameters are frame-held and move from the current frame of `c'` to `f`. -/
+theorem attr_yield {t : SC} {ps : List Nat} {f c' d g : Nat} {m : Mode} (hne : t.stk c' ≠ [])
+    (hf : f ∈ t.stk d) (hp : ∀ a ∈ ps, ∀ y, t.A[a]? = some y → ∃ g, y.holder = .frame g)
+    (h : (t.view c').ExercisableAt g m) :
+    Attr (yieldEff t ps f) c' g m ∨ Attr (yieldEff t ps f) d g m := by
+  have hget : ∀ a y, t.A[a]? = some y → (yieldEff t ps f).A[a]? = some (yieldF ps f a y) :=
+    fun a y hy => by
+      show (mapI (yieldF ps f) 0 t.A)[a]? = _
+      rw [getElem?_mapI, hy]; simp
+  induction h with
+  | @base a m y hy ha hm hfr =>
+    by_cases hap : a ∈ ps
+    · refine .inr (.base (hget a y hy) (by unfold yieldF; split <;> exact ha)
+        (by unfold yieldF; split <;> exact hm) ?_ hf)
+      simp [yieldF, hap]
+    · refine .inl (.base (hget a y hy) (by unfold yieldF; split <;> exact ha)
+        (by unfold yieldF; split <;> exact hm) ?_ (view_top_mem (s := t) hne))
+      simp [yieldF, hap, hfr]
+  | @held a q b m y hy ha hm hq _ hc ih =>
+    have hap : a ∉ ps := fun hap => by
+      obtain ⟨g, hg⟩ := hp a hap y hy
+      rw [hq] at hg; cases hg
+    have hy' : (yieldEff t ps f).A[a]? = some y := by rw [hget a y hy]; simp [yieldF, hap]
+    have hc' : ∀ l ∈ footprint (yieldEff t ps f).P q,
+        Allows (effective (yieldEff t ps f).flat b l) m := fun l hl => by
+      rw [(yield_skel t ps f).effective, ← effective_of_A (t := t.view c') (t' := t.flat) rfl]
+      exact hc l hl
+    rcases ih with ih | ih
+    · exact .inl (.held hy' ha hm hq ih hc')
+    · exact .inr (.held hy' ha hm hq ih hc')
+
+/-- A transfer (Spec 1 §63 effect) whose source is covered in `Modify` by an authority
+attributable in `Modify` to a context `d ≠ c` does not lower `cap5` of `c` (as
+`transfer_cap5_mono`, with the grounding authority given). -/
+theorem transfer_cap5_mono_g {s : SC} {reg : SyncReg} (hF : FramesC s) (hI : I1 s.flat)
+    (hw : WF3 s.flat) {c d c' g src dst : Nat} (hcd : c ≠ d) (hg : Attr s d g .modify)
+    (hge : ∀ l ∈ footprint s.P src, Allows (effective s.flat g l) .modify) (l : Nat) :
+    capRank (cap5 s reg c l) ≤ capRank (cap5 (transferEffC s c' src dst) reg c l) := by
+  have hsk : SameSkel s.flat (transferEffC s c' src dst).flat :=
+    transfer_skel (s.view c') src dst
+  have hkeep : ∀ u m y, Attr5 s reg c u m → s.A[u]? = some y → ¬ heldIn s.P src y.holder :=
+    fun u m y hu hy hh => by
+      cases hh' : y.holder with
+      | frame f => rw [hh'] at hh; exact hh
+      | place q =>
+        rw [hh'] at hh
+        exact not_attr_place hF.nodup hI hw hcd hy hh' hg
+          (fun l hl => hge l (footprint_sub hw hh hl)) hu.attr
+  refine cap5_transport_u (s' := transferEffC s c' src dst) (reg' := reg) hw (fun f hf => hf)
+    (fun p _ l hl => by
+      have hl' : l ∈ footprint (transferEff (s.view c') src dst).P p := hl
+      rwa [transfer_footprint] at hl')
+    (fun u m y hu _ hy => ⟨y, ?_, rfl, rfl, rfl⟩)
+    (fun u m hu _ => notGuarded_of_skel hsk (fun e he => ⟨e, he, rfl⟩) hu.notGuarded)
+    (fun u m l _ hal => by rw [hsk.effective]; exact hal) l
+  show (transferEff (s.view c') src dst).A[u]? = some y
+  unfold transferEff
+  simp only [List.getElem?_map]
+  rw [show (s.view c').A[u]? = some y from hy]
+  have hk : ¬ heldIn (s.view c').P src y.holder := hkeep u m y hu hy
+  simp [hk]
+
+open TransferPreserveAux in
+/-- The transfer phases of the by-value composite (WC4 C5.2), read on the states where the
+parameters are already yielded (`yield_transfers`): no phase lowers `cap5` of a context `c` other
+than the creator `c'` and the new context `d`. `KBase` holds at each phase, as in
+`transfers_base`. -/
+theorem transfers_cap5_mono {k : K} {fin : S3} {reg : SyncReg} {c c' d f : Nat} {ps : List Nat}
+    (hcc : c ≠ c') (hcd : c ≠ d) (l : Nat) :
+    ∀ (t : SC) (vs : List (Nat × Nat)), ValTransfersPre k fin c' t vs →
+      KBase (yieldEff t ps f) → (∀ v ∈ vs, FrameOwned t.P v.2) →
+      (∀ a ∈ ps, ∀ y, t.A[a]? = some y → ∃ g, y.holder = .frame g) → t.stk c' ≠ [] →
+      f ∈ t.stk d →
+      capRank (cap5 (yieldEff t ps f) reg c l) ≤
+        capRank (cap5 (yieldEff (transfersEff c' t vs) ps f) reg c l)
+  | _, [], _, _, _, _, _, _ => Nat.le_refl _
+  | t, v :: vs, ⟨hpre, hrest⟩, hk, hown, hp, hne, hf => by
+    simp only [transfersEff]
+    have hu : ∀ q, ((yieldEff t ps f).view c').Usable q ↔ (t.view c').Usable q := fun q =>
+      S3.Usable.congr (s' := (yieldEff t ps f).view c') (s := t.view c') rfl rfl rfl
+    have hdeps : ∀ x ∈ movedDeps ((yieldEff t ps f).view c') v.1,
+        ((yieldEff t ps f).view c').Active x := by
+      intro x hx
+      have hmd : movedDeps ((yieldEff t ps f).view c') v.1 = movedDeps (t.view c') v.1 := by
+        unfold movedDeps
+        congr 1
+      rw [hmd] at hx
+      exact (yield_active (v := t.view c') (ps := ps) (f := f)).2 (hpre.depsValid x hx)
+    have hown₀ : FrameOwned ((yieldEff t ps f).view c').P v.2 := hown v (List.mem_cons_self ..)
+    have hk₁ := transfer_base hk ((hu _).2 hpre.srcUsable) ((hu _).2 hpre.dstUsable) hdeps
+      hpre.sameShape hpre.disjoint
+      (transfer_usable_frameOwned ((hu _).2 hpre.dstUsable) hown₀)
+    obtain ⟨hF, hw, hI, -⟩ := hk
+    have hstep : capRank (cap5 (yieldEff t ps f) reg c l) ≤
+        capRank (cap5 (transferEffC (yieldEff t ps f) c' v.1 v.2) reg c l) := by
+      obtain ⟨g, -, hgx, hge⟩ := hpre.srcRight
+      have hge' : ∀ l ∈ footprint (yieldEff t ps f).P v.1,
+          Allows (effective (yieldEff t ps f).flat g l) .modify := fun l hl => by
+        rw [(yield_skel t ps f).effective, ← effective_of_A (t := t.view c') (t' := t.flat) rfl]
+        exact hge l hl
+      rcases attr_yield hne hf hp hgx with hg | hg
+      · exact transfer_cap5_mono_g hF hI hw hcc hg hge' l
+      · exact transfer_cap5_mono_g hF hI hw hcd hg hge' l
+    rw [yield_transfer hp] at hk₁ hstep
+    refine Nat.le_trans hstep (transfers_cap5_mono hcc hcd l (transferEffC t c' v.1 v.2) vs hrest
+      hk₁ (fun w hw => ?_) (fun a ha y hy => ?_) hne hf)
+    · exact transfer_frameOwned (hown w (List.mem_cons_of_mem _ hw))
+    · obtain ⟨y₀, hy₀, e⟩ := transfer_frame_held hy
+      obtain ⟨g, hg⟩ := hp a ha y₀ hy₀
+      exact ⟨g, by rw [e ⟨g, hg⟩, hg]⟩
+
+open TransferPreserveAux in
+/-- L1 (`cap5_drop_own`, WC5 C45) for `spawnVal` (WC4 C4, C5): the composite is `spawn` with the
+parameters followed by the transfer phases (`create_yield`, `yield_transfers`); the new context
+had no `cap5` before the step. Under `DDSound` (Spec 1 §80), from a state reached by an
+`EncapsulatedTrace5` from an initial state (Spec 1 §47). -/
+theorem cap5_drop_own_spawnVal {k : K} {L : MutexLayout} {statics : Statics} {lbls : List Label}
+    {st st' : SC × SyncReg × ArenaReg} {c' : Nat} {ps : List Nat} {ls : LocalShape}
+    {vs : List (Nat × Nat)} (hdd : DDSound k) (hst : StaticsOK statics)
+    (htr : EncapsulatedTrace5 k L (SC.ofS3 (S3.init statics), [], []) lbls st)
+    (h : LStep k L (.spawnVal c' ps ls vs) st st') (c l : Nat)
+    (hd : capRank (cap5 st'.1 st'.2.1 c l) < capRank (cap5 st.1 st.2.1 c l)) :
+    (Label.spawnVal c' ps ls vs).ctx = c := by
+  have hk := trace5_kInvCA hdd hst htr
+  refine Decidable.byContradiction fun hctx => ?_
+  have hcc : c ≠ c' := fun e => hctx (e ▸ rfl)
+  cases h with
+  | @spawnVal s s' reg ar _ _ _ _ hs =>
+    obtain ⟨hF, hw, -⟩ := hk.parts
+    obtain ⟨-, hR⟩ := hs
+    cases hR with
+    | ok hpre =>
+      by_cases hcl : c < s.C.length
+      · have hlt : ∀ a ∈ ps, a < s.A.length := fun a ha => by
+          have := hpre.params a ha
+          unfold OptP at this; split at this
+          · exact lt_of_getElem? ‹_›
+          · exact this.elim
+        have hframe : ∀ a ∈ ps, ∀ y, (spawnCreate s c' ls).A[a]? = some y →
+            ∃ g, y.holder = .frame g := by
+          intro a ha y hy
+          have hp := hpre.params a ha
+          have hy' : (spawnCreate s c' ls).A[a]? = s.A[a]? := by
+            show (mapI _ 0 s.A ++ _)[a]? = _
+            rw [List.getElem?_append_left (by rw [length_mapI]; exact hlt a ha), getElem?_mapI]
+            cases s.A[a]? <;> simp
+          rw [hy'] at hy
+          have hy₂ : (s.view c').A[a]? = some y := hy
+          rw [hy₂] at hp
+          exact ⟨_, hp.2.1⟩
+        have hb₀ : KBase (yieldEff (spawnCreate s c' ls) ps s.nF) := by
+          rw [create_yield hlt]
+          exact spawn_base hk hpre.creatorLive hpre.params hpre.localsOK
+        have hstkc : ∀ (ps' : List Nat), (spawnEff s c' ps' ls).stk c = s.stk c := fun ps' => by
+          unfold SC.stk
+          rw [show (spawnEff s c' ps' ls).C[c]? = s.C[c]? from List.getElem?_append_left hcl]
+        have hstk' : (spawnCreate s c' ls).stk c' ≠ [] := by
+          rw [show spawnCreate s c' ls = spawnEff s c' [] ls from rfl]
+          by_cases hc'l : c' < s.C.length
+          · unfold SC.stk
+            rw [show (spawnEff s c' [] ls).C[c']? = s.C[c']? from
+              List.getElem?_append_left hc'l]
+            exact hpre.creatorLive
+          · exfalso; apply hpre.creatorLive
+            unfold SC.stk; rw [List.getElem?_eq_none (Nat.le_of_not_lt hc'l)]
+        have hnF : s.nF ∈ (spawnCreate s c' ls).stk s.C.length := by
+          have hC : (spawnCreate s c' ls).C[s.C.length]? =
+              some ⟨[s.nF], Life.live, (s.stk c').head?⟩ := by
+            show (s.C ++ [_])[s.C.length]? = _
+            simp
+          unfold SC.stk; rw [hC]; simp
+        have h1 : capRank (cap5 s reg c l) ≤ capRank (cap5 (spawnEff s c' ps ls) reg c l) :=
+          enter_cap5_mono hF hw hcc hpre.creatorLive hpre.params hpre.localsOK ⟨rfl, rfl⟩
+            (fun f hf => by rw [hstkc]; exact hf) l
+        have h2 := transfers_cap5_mono (reg := reg) (k := k)
+          (fin := (spawnValEff s c' ps ls vs).flat) (f := s.nF) (ps := ps) hcc
+          (Nat.ne_of_lt hcl) l (spawnCreate s c' ls) vs hpre.transfers hb₀
+          (fun v hv => by
+            have := spawn_frameOwned (ps := []) (c := c') (hpre.freshDst v hv)
+            exact this) hframe hstk' hnF
+        rw [create_yield hlt] at h2
+        exact absurd hd (Nat.not_lt.2 (Nat.le_trans h1 h2))
+      · have hnil : s.stk c = [] := by
+          unfold SC.stk; rw [List.getElem?_eq_none (Nat.le_of_not_lt hcl)]
+        rw [show cap5 (s, reg, ar).1 (s, reg, ar).2.1 c l = none from cap5_nil hnil] at hd
+        exact absurd hd (Nat.not_lt_zero _)
+
+/-! ## L1 -/
+
+/-- **`cap5_drop_own`** (L1, WC5 C45, `OB-C17`; brief of milestone 4, task 4): under `DDSound`
+(Spec 1 §80), from any state reached by an `EncapsulatedTrace5` from an initial state (Spec 1
+§47), a step admitted by `Encap5` that strictly lowers `cap5` of a context `c` on a leaf is a step
+of `c`. One lemma per label. -/
+theorem cap5_drop_own {k : K} {L : MutexLayout} (hdd : DDSound k) : Cap5DropOwn k L := by
+  intro statics lbls st st' lbl c l hst htr he h hd
+  cases lbl with
+  | kernel c' op =>
+    cases op with
+    | derive => exact cap5_drop_own_derive hdd hst htr h c l hd
+    | split => exact cap5_drop_own_split hdd hst htr h c l hd
+    | release => exact cap5_drop_own_release hdd hst htr h c l hd
+    | transfer => exact cap5_drop_own_transfer hdd hst htr h c l hd
+    | depend => exact cap5_drop_own_inert (h := h) hdd hst htr (by exact trivial) c l hd
+    | enter => exact cap5_drop_own_enter hdd hst htr h c l hd
+    | exit => exact cap5_drop_own_exit hdd hst htr h c l hd
+    | read => exact cap5_drop_own_inert (h := h) hdd hst htr (by exact trivial) c l hd
+    | write => exact cap5_drop_own_inert (h := h) hdd hst htr (by exact trivial) c l hd
+    | writeShared => exact cap5_drop_own_inert (h := h) hdd hst htr (by exact trivial) c l hd
+    | pin => exact cap5_drop_own_inert (h := h) hdd hst htr (by exact trivial) c l hd
+    | unpin => exact cap5_drop_own_inert (h := h) hdd hst htr (by exact trivial) c l hd
+    | endUse => exact cap5_drop_own_endUse hdd hst htr h c l hd
+    | free => exact cap5_drop_own_free hdd hst htr h c l hd
+    | alloc => exact cap5_drop_own_alloc hdd hst htr h c l hd
+    | store => exact cap5_drop_own_store hdd hst htr h c l hd
+  | spawn => exact cap5_drop_own_spawn hdd hst htr h c l hd
+  | terminate => exact cap5_drop_own_terminate hdd hst htr h c l hd
+  | join => exact cap5_drop_own_inert (h := h) hdd hst htr (by exact trivial) c l hd
+  | deriveSync => exact cap5_drop_own_deriveSync he h c
+  | newMutex => exact cap5_drop_own_newMutex hdd hst htr h c l hd
+  | acquire => exact cap5_drop_own_acquire hdd hst htr h c l hd
+  | unlock => exact cap5_drop_own_unlock hdd hst htr h c l hd
+  | resetLock => exact cap5_drop_own_inert (h := h) hdd hst htr (by exact trivial) c l hd
+  | spawnVal => exact cap5_drop_own_spawnVal hdd hst htr h c l hd
+  | newArena => exact cap5_drop_own_inert (h := h) hdd hst htr (by exact trivial) c l hd
+  | issue => exact cap5_drop_own_issue hdd hst htr h c l hd
+  | reset => exact cap5_drop_own_reset hdd hst htr h c l hd
 
 end Ern.Concurrency
