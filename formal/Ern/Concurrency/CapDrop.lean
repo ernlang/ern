@@ -799,7 +799,8 @@ theorem Attr5.active {s : SC} {reg : SyncReg} {c u : Nat} {m : Mode} {y : Author
 and the frames of `c` does not lower `cap5` of `c` when every useful authority attributable to
 `c` stays active: effective modes can only rise. -/
 theorem releases_cap5_mono {s s' : SC} {reg : SyncReg} (hw : WF3 s.flat) {c : Nat}
-    (hr : EndFree.OnlyReleases s.flat s'.flat) (hstk : ∀ f ∈ s.stk c, f ∈ s'.stk c) (hP : s'.P = s.P)
+    (hr : EndFree.OnlyReleases s.flat s'.flat) (hstk : ∀ f ∈ s.stk c, f ∈ s'.stk c)
+    (hP : s'.P = s.P)
     (hkeep : ∀ u m, Attr5 s reg c u m → Useful s u m → s'.flat.Active u) (l : Nat) :
     capRank (cap5 s reg c l) ≤ capRank (cap5 s' reg c l) := by
   have hact : ∀ u m z, Attr5 s reg c u m → Useful s u m → s'.A[u]? = some z → z.active = true :=
@@ -899,5 +900,224 @@ theorem cap5_drop_own_endUse {k : K} {L : MutexLayout} {statics : Statics} {lbls
       obtain ⟨y, hy⟩ : ∃ y, s.A[u]? = some y := ⟨_, List.getElem?_eq_getElem hu.lt⟩
       exact ⟨y, endUse_keeps hF hI hw hcc (hF.nonempty c' hlive) hp rfl hk'.1.2.1.2.2 hu hus y hy,
         hu.active hy⟩
+
+/-- Transitive ownership through `p` goes up the structure (Spec 1 §40, §49.2: parts share their
+parent's owner). -/
+theorem ownedIn_up {t : S3} (hw : WF3 t) {p : Nat} :
+    ∀ n l, l < n → ∀ r, partOf t.P l r → OwnedIn t.P p l → OwnedIn t.P p r
+  | 0, _, h, _, _, _ => absurd h (Nat.not_lt_zero _)
+  | n + 1, l, hl, r, ⟨hlP, hlr⟩, ho => by
+    rcases hlr with rfl | hc
+    · exact ho
+    · cases hq : t.P[l]? with
+      | none => simp [List.getElem?_eq_getElem hlP] at hq
+      | some pl =>
+        cases hpo : pl.parent with
+        | none =>
+          have : parentOf t.P l = none := by simp [parentOf, hq, hpo]
+          rw [chain_none this] at hc; simp at hc
+        | some o =>
+          obtain ⟨pr, hpr, hol, -, -⟩ := hw.places l pl o hq hpo
+          have hpar : parentOf t.P l = some o := by simp [parentOf, hq, hpo]
+          rw [chain_cons hpar hol] at hc
+          have hoo : OwnedIn t.P p o := (EndFree.ownedIn_parent hw hq hpo).2 ho
+          rcases List.mem_cons.1 hc with rfl | hc
+          · exact hoo
+          · exact ownedIn_up hw n o (by omega) r ⟨lt_of_getElem? hpr, .inr hc⟩ hoo
+
+/-- An authority on the origin chain above an authority `g` that has effective `Modify` on every
+leaf of a root place `p` has an effective mode on no leaf (Spec 1 §43, §49.6): its leaves are
+leaves of `p`, which `g` covers in `Modify`. -/
+theorem above_root_ground {t : S3} (hw : WF3 t) {p g u l : Nat} {m : Mode} (hp : RootPlace t.P p)
+    (hg : ∀ l ∈ footprint t.P p, Allows (effective t g l) .modify) (hu : u ∈ t.ancs g)
+    (h : Allows (effective t u l) m) : False := by
+  have hlt : ∀ i o, t.org i = some o → o < i := fun i o h => by
+    simp only [S3.org] at h
+    cases hi : t.A[i]? with
+    | none => rw [hi] at h; cases h
+    | some y => rw [hi] at h; exact hw.origins i y o hi h
+  obtain ⟨z, hz, -, hzl, -⟩ := eff_present (allows_present h)
+  obtain ⟨-, hleaf⟩ := hw.footprints u z hz l hzl
+  obtain ⟨xu, wu, ru, hxu, hwu, wuo, hru, hlru, hwuf⟩ := hw.rootChain u z l hz hzl hleaf
+  obtain ⟨lp, hlp⟩ := exists_mem_footprint hw (t.P.length - p + 1) p (by omega) hp.1
+  obtain ⟨yg, hyg, -, hlpg, -, -⟩ := eff_modify (allows_modify (hg lp hlp))
+  have hlpleaf := (mem_footprint.1 hlp).2.1
+  obtain ⟨xg, wg, rg, hxg, hwg, wgo, hrg, hlprg, hwgf⟩ := hw.rootChain g yg lp hyg hlpg hlpleaf
+  have hxu' : xu = g ∨ xu ∈ t.ancs g := by
+    rcases hxu with rfl | hxu
+    · exact .inr hu
+    · exact .inr (chain_trans hlt (g + 1) g (Nat.lt_succ_self g) u hu xu hxu)
+  have e : xu = xg := EndFree.chain_root_unique hlt (g + 1) g (Nat.lt_succ_self g) xu xg hxu' hxg
+    (by simp [S3.org, hwu, wuo]) (by simp [S3.org, hwg, wgo])
+  subst e
+  rw [hwu] at hwg; cases hwg
+  obtain rfl : rg = p := rootOf_unique hrg hp hlprg (mem_footprint.1 hlp).2.2
+  have hlp' : l ∈ footprint t.P rg :=
+    (hwgf l).1 ((hwuf l).2 (mem_footprint.2 ⟨(mem_footprint.1 (footprint_sub hw hlru
+      (mem_footprint.2 ⟨by have := (mem_footprint.1 hlp).1; exact (hw.footprints u z hz l hzl).1,
+        hleaf, ⟨(hw.footprints u z hz l hzl).1, .inl rfl⟩⟩))).1, hleaf, hlru⟩))
+  obtain ⟨yg', hyg', hyga, hlg, hgm, -⟩ := eff_modify (allows_modify (hg l hlp'))
+  exact no_eff_below_modify hyg' hyga hgm hlg hu h
+
+/-- `free` by context `c'` (Spec 1 §70) keeps every useful authority attributable to another
+context: it is held neither within the released place nor by a place that dies (as for `endUse`),
+and it covers no leaf of the released unit: it is not the grounding authority of `c'`
+(`attr_excl`), not above it (`above_root_ground`), and otherwise §70.3 (`FreeAccessOK`) or, for a
+root authority, its holder (`rootHeldConv_active`) and `I1` exclude it. -/
+theorem free_keeps {k : K} {s s' : SC} {reg : SyncReg} (hF : FramesC s) (hI : I1 s.flat)
+    (hw : WF3 s.flat) (hND0 : NoDangling s.flat) {c c' p auth : Nat} (hcc : c ≠ c')
+    (hne : s.stk c' ≠ []) (hp : FreePre k (s.view c') p auth)
+    (hs' : s' = s.set (freeEff (s.view c') p)) (hND : NoDangling s'.flat) {u : Nat} {m : Mode}
+    (h : Attr5 s reg c u m) (hu : Useful s u m) : ∀ y, s.A[u]? = some y → s'.A[u]? = some y := by
+  have hP := parents_lt hw
+  have hlt : ∀ i o, s.flat.org i = some o → o < i := fun i o h => by
+    simp only [S3.org] at h
+    cases hi : s.flat.A[i]? with
+    | none => rw [hi] at h; cases h
+    | some y => rw [hi] at h; exact hw.origins i y o hi h
+  have hvA : ∀ a l, effective (s.view c') a l = effective s.flat a l :=
+    fun a l => effective_of_A rfl a l
+  have hroot : RootPlace s.P p := EndFree.rootPlace_of_ownedRoot hp.ownedRoot
+  obtain ⟨g, -, ⟨-, hgx, hge⟩, hall⟩ := hp.access
+  have hg : Attr s c' g .modify := attr_of_exercisable hne hgx
+  have hge' : ∀ l ∈ footprint s.P p, Allows (effective s.flat g l) .modify :=
+    fun l hl => by rw [← hvA]; exact hge l hl
+  have hget : ∀ (a : Nat) (y : Authority), s.A[a]? = some y →
+      ¬ ((∃ l ∈ y.footprint, FreedPlace s.P p l) ∨ heldIn s.P p y.holder) →
+      HolderLive (freeS (s.view c') p) y.holder → s'.A[a]? = some y := fun a y hy hn hl => by
+    subst hs'
+    show (cleanup (freeS (s.view c') p)).A[a]? = some y
+    rw [EndFree.cleanup_get, EndFree.freeS_get, show (s.view c').A[a]? = some y from hy]
+    simp only [Option.map_some, show ¬ ((∃ l ∈ y.footprint, FreedPlace (s.view c').P p l) ∨
+      heldIn (s.view c').P p y.holder) from hn, ↓reduceIte]
+    simp only [show HolderLive (freeS (s.view c') p) y.holder from hl, ↓reduceIte]
+  have hfreeDead : ∀ q, FreedPlace s.P p q → ¬ (freeS (s.view c') p).Usable q := fun q hq hu => by
+    have := EndFree.dead_false hu
+    simp [freeS, show FreedPlace (s.view c').P p q from hq] at this
+  -- the covering condition, given the two holder conditions
+  have hcov : ∀ (a : Nat) (y : Authority) (m : Mode), Attr5 s reg c a m → Useful s a m →
+      s.A[a]? = some y → ¬ heldIn s.P p y.holder → HolderLive (freeS (s.view c') p) y.holder →
+      ¬ ∃ l ∈ y.footprint, FreedPlace s.P p l := fun a y m ha has hy hnh hl ⟨l₀, hl₀, hfr⟩ => by
+    obtain ⟨l₁, hl₁⟩ := has
+    have hya : y.active = true := ha.active hy
+    by_cases hag : a = g
+    · subst hag; exact attr_excl hF.nodup hI hw hcc hg ha.attr
+    by_cases hanc : a ∈ s.flat.ancs g
+    · exact above_root_ground hw hroot hge' hanc hl₁
+    have hleaf := (hw.footprints a y hy l₀ hl₀)
+    cases hyo : y.origin with
+    | some o =>
+      have hok := (hall a (List.mem_range.2 (lt_of_getElem? hy))).resolve_left (by
+        rintro (h | h)
+        · exact hag h
+        · exact hanc h)
+      unfold FreeAccessOK OptP at hok
+      rw [show (s.view c').A[a]? = some y from hy] at hok
+      have hfl : FreedLeaf (s.view c') p l₀ := by
+        rcases hfr with hpart | hown
+        · exact .inl (mem_footprint.2 ⟨hleaf.1, hleaf.2, hpart⟩)
+        · refine .inr ⟨hleaf.2, ?_, hfreeDead l₀ (.inr hown)⟩
+          have hus : s.flat.Usable l₀ := Decidable.byContradiction fun hnu =>
+            hND0 a y hy hya l₀ hnu l₀ (mem_footprint.2 ⟨hleaf.1, hleaf.2, hleaf.1, .inl rfl⟩) hl₀
+          exact S3.Usable.mono (s := s.view c') (s' := s.flat) rfl
+            (fun f hf => mem_view_F hf) (fun q h => h) hus
+      rcases hok hya (by rw [hyo]; simp) ⟨l₀, hl₀, hfl⟩ with h | h
+      · exact hnh h
+      · exact h hl
+    | none =>
+      obtain ⟨r, hr, hl₀r⟩ := exists_rootPlace hw (l₀ + 1) l₀ (Nat.lt_succ_self _) hleaf.1
+      obtain ⟨pr, hpr, hho⟩ := rootHeldConv_active hw hI hND0 a y l₀ r hy hya hyo hl₀ hr hl₀r
+      rcases hfr with hpart | hown
+      · obtain rfl : r = p := rootOf_unique hr hroot hl₀r hpart
+        obtain ⟨xa, wa, ra, hxa, hwa, wao, hra, hl₀ra, hwaf⟩ :=
+          hw.rootChain a y l₀ hy hl₀ hleaf.2
+        have horg : s.flat.org a = none := by
+          show (s.A[a]?).bind (·.origin) = none
+          rw [hy]; exact hyo
+        have hxa' : xa = a := by
+          rcases hxa with h | h
+          · exact h
+          · rw [S3.ancs, chain_none horg] at h; simp at h
+        rw [hxa'] at hwa
+        have hwa' : wa = y := by
+          have h2 : s.flat.A[a]? = some y := hy
+          rw [h2] at hwa; cases hwa; rfl
+        rw [hwa'] at hwaf
+        obtain rfl : ra = r := rootOf_unique hra hroot hl₀ra hpart
+        obtain ⟨lp, hlp⟩ := exists_mem_footprint hw (s.flat.P.length - ra + 1) ra (by omega) hroot.1
+        obtain ⟨yg, hyg, hyga, hlpg, hgm, -⟩ := eff_modify (allows_modify (hge' lp hlp))
+        have hga : g ∉ s.flat.ancs a := by rw [S3.ancs, chain_none horg]; simp
+        have := (hI a g y yg lp hag hy hyg hya hyga ((hwaf lp).2 hlp) hlpg hanc hga).2
+        rw [hgm] at this; cases this
+      · have hor : OwnedIn s.P p r := ownedIn_up hw (l₀ + 1) l₀ (Nat.lt_succ_self _) r hl₀r hown
+        have hpr' : s.P[r]? = some pr := hpr
+        cases hor with
+        | direct hq ho hpo =>
+          rw [hpr'] at hq; cases hq
+          exact hnh (by rw [hho, ho]; exact hpo)
+        | step hq ho hown' =>
+          rw [hpr'] at hq; cases hq
+          rw [hho, ho] at hl
+          exact hfreeDead _ (.inr hown') hl
+  induction h with
+  | @base a m y f₀ hg' hy ha hm hfr hin =>
+    intro y' hy'
+    rw [hy] at hy'; cases hy'
+    have hab : Attr5 s reg c a m := .base hg' hy ha hm hfr hin
+    have hnh : ¬ heldIn s.P p y.holder := by rw [hfr]; exact id
+    have hl : HolderLive (freeS (s.view c') p) y.holder := by
+      rw [hfr]; exact mem_view_F (SC.mem_frames_of hin)
+    exact hget a y hy (fun h => h.elim (hcov a y m hab hu hy hnh hl) hnh) hl
+  | @held a q b m y hg' hy ha hm hp' hb hc ih =>
+    intro y' hy'
+    rw [hy] at hy'; cases hy'
+    have hab : Attr5 s reg c a m := .held hg' hy ha hm hp' hb hc
+    have hup : s.flat.Usable q := by
+      have := hw.holders a _ hy ha; rw [hp'] at this; exact this
+    obtain ⟨l₀, hl₀⟩ := footprint_ne hP _ q (Nat.le_refl _) hup.lt
+    obtain ⟨zb, hzb, -, hzl, -⟩ := eff_present (allows_present (hc l₀ hl₀))
+    have hbk := ih ⟨l₀, hc l₀ hl₀⟩ zb hzb
+    have hnh : ¬ heldIn s.P p y.holder := fun hh => by
+      rw [hp'] at hh
+      exact not_attr_place hF.nodup hI hw hcc hy hp' hg
+        (fun l hl => hge' l (footprint_sub hw hh hl)) hab.attr
+    have hl : HolderLive (freeS (s.view c') p) y.holder := by
+      rw [hp']
+      refine Decidable.byContradiction fun hnu => ?_
+      have hnu' : ¬ s'.flat.Usable q := fun hu' => hnu (by
+        refine S3.Usable.mono (s := freeS (s.view c') p) (s' := s'.flat)
+          (by rw [hs']; rfl) (fun f hf => ?_) (fun q hq => by rw [hs'] at hq; exact hq) hu'
+        exact mem_view_F (s := s) (c := c') (by rw [hs'] at hf; exact hf))
+      exact hND b zb hbk (hb.active hzb) q hnu' l₀ (by rw [hs']; exact hl₀) hzl
+    exact hget a y hy (fun h => h.elim (hcov a y m hab hu hy hnh hl) hnh) hl
+
+/-- L1 (`cap5_drop_own`, WC5 C45) for `free` (Spec 1 §70). Under `DDSound` (Spec 1 §80), from a
+state reached by an `EncapsulatedTrace5` from an initial state (Spec 1 §47). -/
+theorem cap5_drop_own_free {k : K} {L : MutexLayout} {statics : Statics} {lbls : List Label}
+    {st st' : SC × SyncReg × ArenaReg} {c' p auth : Nat} (hdd : DDSound k)
+    (hst : StaticsOK statics)
+    (htr : EncapsulatedTrace5 k L (SC.ofS3 (S3.init statics), [], []) lbls st)
+    (h : LStep k L (.kernel c' (.free p auth)) st st') (c l : Nat)
+    (hd : capRank (cap5 st'.1 st'.2.1 c l) < capRank (cap5 st.1 st.2.1 c l)) :
+    (Label.kernel c' (.free p auth)).ctx = c := by
+  have hk := trace5_kInvCA hdd hst htr
+  have hk' := lstep_kInvCA hdd h hk
+  refine Decidable.byContradiction fun hctx => ?_
+  have hcc : c ≠ c' := fun e => hctx (e ▸ rfl)
+  cases h with
+  | @kernel s s' reg ar _ _ hs =>
+    obtain ⟨hF, hw, hI⟩ := hk.parts
+    obtain ⟨hlive, o, hR, ho⟩ := hs
+    cases hR with
+    | reject => cases ho
+    | ok hp =>
+      cases ho
+      have hr : EndFree.OnlyReleases s.flat (s.set (freeEff (s.view c') p)).flat :=
+        (EndFree.freeS_releases (s.view c') p).trans (EndFree.cleanup_releases _)
+      refine absurd hd (Nat.not_lt.2 (releases_cap5_mono (s' := s.set (freeEff (s.view c') p))
+        (reg := reg) hw hr (fun f hf => hf) rfl (fun u m hu hus => ?_) l))
+      obtain ⟨y, hy⟩ : ∃ y, s.A[u]? = some y := ⟨_, List.getElem?_eq_getElem hu.lt⟩
+      exact ⟨y, free_keeps hF hI hw hk.1.2.1.2.2 hcc (hF.nonempty c' hlive) hp rfl
+        hk'.1.2.1.2.2 hu hus y hy, hu.active hy⟩
 
 end Ern.Concurrency
