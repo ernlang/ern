@@ -246,4 +246,37 @@ theorem W_TRJ_run : trjσ 0 = (SC.ofS3 (S3.init mxst), [], []) ∧ Run5R KM L0 t
     .cons ⟨⟨trivial, by decide, by decide⟩, trivial⟩ (.kernel hw) .nil
   exact ⟨rfl, (prefix_steps h).run _⟩
 
+/-! ## The defect of the abstract mutex edge -/
+
+/-- `corpus-spec2-m3.md` v9 §2 octies W-RL: the write of `T` by context 1 (step 6) and the write of
+`T` by context 0 (step 11) form an exclusive pair. -/
+theorem W_RL_excl : ExclPair rlLbls 6 11 3 :=
+  ⟨by decide, by decide, 0, 1, .modify, .modify, by decide, ⟨rfl, by decide, rfl⟩,
+    ⟨rfl, by decide, rfl⟩, Or.inl rfl⟩
+
+/-- `corpus-spec2-m3.md` v9 §2 octies W-RL, graph of §2 septies: the pair is ordered by the
+abstract mutex edge passing over the `resetLock` (step 9), write of context 1 →`po` `unlock(e)`
+(step 7) →`sw` `acquire(e)` of context 0 (step 10) →`po` write of context 0, and it satisfies
+`HandoffOrderedAt` (WC5.1 C46). This is the defect of the abstract edge, kept as a counterexample
+(WC5.1 C45, last paragraph). -/
+theorem W_RL_defect : PO rlσ rlLbls (.step 6) (.step 7) ∧ SW rlLbls (.step 7) (.step 10) ∧
+    PO rlσ rlLbls (.step 10) (.step 11) ∧ HB rlσ rlLbls (.step 6) (.step 11) ∧
+    HandoffOrderedAt rlσ rlLbls 6 11 3 := by
+  decide
+
+/-- `corpus-spec2-m3.md` v9 §2 octies W-TR: the write of `T` by context 1 (step 6) and the write of
+`T` by context 0 (step 11) form an exclusive pair. -/
+theorem W_TR_excl : ExclPair trLbls 6 11 3 :=
+  ⟨by decide, by decide, 0, 1, .modify, .modify, by decide, ⟨rfl, by decide, rfl⟩,
+    ⟨rfl, by decide, rfl⟩, Or.inl rfl⟩
+
+/-- `corpus-spec2-m3.md` v9 §2 octies W-TR, graph of §2 septies: the pair is ordered by the abstract
+mutex edge although the controller moved from `lock` to `lock′` at step 9, and it satisfies
+`HandoffOrderedAt` (WC5.1 C46). Same defect, kept as a counterexample (WC5.1 C45, last
+paragraph). -/
+theorem W_TR_defect : PO trσ trLbls (.step 6) (.step 7) ∧ SW trLbls (.step 7) (.step 10) ∧
+    PO trσ trLbls (.step 10) (.step 11) ∧ HB trσ trLbls (.step 6) (.step 11) ∧
+    HandoffOrderedAt trσ trLbls 6 11 3 := by
+  decide
+
 end Ern.Concurrency.Corpus.MutexEdge
