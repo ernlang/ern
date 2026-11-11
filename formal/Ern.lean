@@ -41,6 +41,7 @@ import Ern.Concurrency.NonConflict
 import Ern.Concurrency.Preservation
 import Ern.Concurrency.Reachable
 import Ern.Concurrency.Realize
+import Ern.Concurrency.RegIndex
 import Ern.Concurrency.RealizeSound
 import Ern.Concurrency.Reparent
 import Ern.Concurrency.Repr
