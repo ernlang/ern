@@ -12,6 +12,7 @@ import Ern.Concurrency.Corpus.CapValues
 import Ern.Concurrency.Corpus.Encap5Witness
 import Ern.Concurrency.Corpus.Frames
 import Ern.Concurrency.Corpus.GuardedChain
+import Ern.Concurrency.Corpus.GuardedChainC
 import Ern.Concurrency.Corpus.GuardedRead
 import Ern.Concurrency.Corpus.L1Evidence
 import Ern.Concurrency.Corpus.Handoff
