@@ -31,6 +31,7 @@ def iter (N : Nat) (R : Nat → Nat → Bool) (src : Nat) : Nat → List Bool
 def reach (N : Nat) (R : Nat → Nat → Bool) (src v : Nat) : Bool :=
   tget (iter N R src (N + 1)) v
 
+/-- Entry `v` after one round. -/
 theorem tget_round (N : Nat) (R : Nat → Nat → Bool) (src : Nat) (S : List Bool) (v : Nat) :
     tget (round N R src S) v = (decide (v < N) &&
       (tget S v || R src v || (List.range N).any fun u => tget S u && R u v)) := by
@@ -52,6 +53,7 @@ theorem tget_iter_ge : ∀ (k : Nat) {v : Nat}, N ≤ v → tget (iter N R src k
     show tget (round N R src (iter N R src k)) v = false
     rw [tget_round, decide_eq_false (Nat.not_lt_of_le h)]; rfl
 
+/-- A reached node is one of `0, …, N - 1`. -/
 theorem lt_of_tget {k v : Nat} (h : tget (iter N R src k) v = true) : v < N :=
   Nat.lt_of_not_le fun hv => by rw [tget_iter_ge k hv] at h; cases h
 
@@ -80,6 +82,7 @@ theorem mono {k v : Nat} (h : tget (iter N R src k) v = true) :
 def Closed (N : Nat) (R : Nat → Nat → Bool) (src k : Nat) : Prop :=
   ∀ v, v < N → tget (iter N R src (k + 1)) v = true → tget (iter N R src k) v = true
 
+/-- Decidability of `Closed`. -/
 instance (k : Nat) : Decidable (Closed N R src k) := by unfold Closed; infer_instance
 
 /-- A closed table contains every node reachable from `src`. -/
@@ -125,6 +128,7 @@ theorem closed_succ {k : Nat} (hk : Closed N R src k) : Closed N R src (k + 1) :
     simp only [tget_round, heq]
   rw [← h2]; exact h
 
+/-- A table closed at round `j` is closed at every later round. -/
 theorem closed_le {j k : Nat} (hj : Closed N R src j) (hjk : j ≤ k) : Closed N R src k := by
   induction k with
   | zero => obtain rfl := Nat.le_zero.1 hjk; exact hj
@@ -136,6 +140,7 @@ theorem closed_le {j k : Nat} (hj : Closed N R src j) (hjk : j ≤ k) : Closed N
 
 /-! ## Counting -/
 
+/-- A weaker filter keeps at most as many elements. -/
 theorem filter_length_le {l : List Nat} {p q : Nat → Bool}
     (h : ∀ x ∈ l, p x = true → q x = true) : (l.filter p).length ≤ (l.filter q).length := by
   induction l with
@@ -150,6 +155,7 @@ theorem filter_length_le {l : List Nat} {p q : Nat → Bool}
     · rw [h a List.mem_cons_self hp]
       simp only [↓reduceIte, List.length_cons]; omega
 
+/-- A weaker filter keeps fewer elements when it misses one that the other keeps. -/
 theorem filter_length_lt {l : List Nat} {p q : Nat → Bool}
     (h : ∀ x ∈ l, p x = true → q x = true) (hn : ¬ ∀ x ∈ l, q x = true → p x = true) :
     (l.filter p).length < (l.filter q).length := by
@@ -178,15 +184,18 @@ theorem filter_length_lt {l : List Nat} {p q : Nat → Bool}
 def cnt (N : Nat) (R : Nat → Nat → Bool) (src k : Nat) : Nat :=
   ((List.range N).filter (tget (iter N R src k))).length
 
+/-- At most `N` nodes are reached. -/
 theorem cnt_le (k : Nat) : cnt N R src k ≤ N := by
   unfold cnt
   have := List.length_filter_le (tget (iter N R src k)) (List.range N)
   rwa [List.length_range] at this
 
+/-- A round adds a node while the table is not closed. -/
 theorem cnt_succ {k : Nat} (hk : ¬ Closed N R src k) : cnt N R src k < cnt N R src (k + 1) := by
   refine filter_length_lt (fun x _ hx => mono hx) fun hl => hk fun v hv h => ?_
   exact hl v (List.mem_range.2 hv) h
 
+/-- After `k` rounds, the table has been closed or has at least `k` nodes. -/
 theorem closed_or_cnt : ∀ k, (∃ j, j ≤ k ∧ Closed N R src j) ∨ k ≤ cnt N R src k
   | 0 => Or.inr (Nat.zero_le _)
   | k + 1 => by

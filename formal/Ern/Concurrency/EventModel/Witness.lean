@@ -22,6 +22,7 @@ def chain : List Nat → List (Nat × Nat)
 /-- No `sw` edge in the graph. -/
 def NoSW (g : Graph) : Prop := ∀ a ∈ List.range g.size, ∀ b ∈ List.range g.size, ¬ SW g a b
 
+/-- Decidability of `NoSW`. -/
 instance (g : Graph) : Decidable (NoSW g) := by unfold NoSW; infer_instance
 
 /-! ## Message passing (WC5.1 corrigé C32 item 1, C33, C40) -/

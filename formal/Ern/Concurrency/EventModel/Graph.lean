@@ -152,12 +152,14 @@ def Kind.OrdOk : Kind → Prop
   | .wsh o _ => o = .rlx ∨ o = .rel ∨ o = .sc
   | _ => True
 
+/-- Decidability of `Kind.OrdOk`. -/
 instance (k : Kind) : Decidable k.OrdOk := by unfold Kind.OrdOk; split <;> infer_instance
 
 /-- A graph is well typed when every event has an order of its row (WC5.1 corrigé C40). Typing is
 not a consistency conjunct. -/
 def WellTyped (g : Graph) : Prop := ∀ e ∈ g.evs, e.kind.OrdOk
 
+/-- Decidability of `WellTyped`. -/
 instance (g : Graph) : Decidable (WellTyped g) := by unfold WellTyped; infer_instance
 
 /-! ## Relations -/
@@ -195,20 +197,29 @@ def EcoBase (g : Graph) (a b : Nat) : Prop := RF g a b ∨ MO g a b ∨ RB g a b
 /-- `eco = (rf ∪ mo ∪ rb)⁺` (brief). -/
 def ECO (g : Graph) (a b : Nat) : Prop := Relation.TransGen (EcoBase g) a b
 
+/-- Decidability of `PO`. -/
 instance (g : Graph) (a b : Nat) : Decidable (PO g a b) := by unfold PO; infer_instance
+/-- Decidability of `RF`. -/
 instance (g : Graph) (a b : Nat) : Decidable (RF g a b) := by unfold RF; infer_instance
+/-- Decidability of `MO`. -/
 instance (g : Graph) (a b : Nat) : Decidable (MO g a b) := by unfold MO; infer_instance
+/-- Decidability of `SW`. -/
 instance (g : Graph) (a b : Nat) : Decidable (SW g a b) := by unfold SW; infer_instance
+/-- Decidability of `PoSw`. -/
 instance (g : Graph) (a b : Nat) : Decidable (PoSw g a b) := by unfold PoSw; infer_instance
+/-- Decidability of `RB`. -/
 instance (g : Graph) (a b : Nat) : Decidable (RB g a b) := by unfold RB; infer_instance
+/-- Decidability of `EcoBase`. -/
 instance (g : Graph) (a b : Nat) : Decidable (EcoBase g a b) := by
   unfold EcoBase; infer_instance
 
+/-- The edges of `po ∪ sw` join events of the graph. -/
 theorem poSw_lt {g : Graph} {a b : Nat} (h : PoSw g a b) : a < g.size ∧ b < g.size := by
   rcases h with ⟨_, h2, h3, _⟩ | ⟨⟨_, h1, h2⟩, _⟩
   · exact ⟨Nat.lt_trans h2 h3, h3⟩
   · exact ⟨h1, h2⟩
 
+/-- The edges of `rf ∪ mo ∪ rb` join events of the graph. -/
 theorem ecoBase_lt {g : Graph} {a b : Nat} (h : EcoBase g a b) : a < g.size ∧ b < g.size := by
   rcases h with ⟨_, h1, h2⟩ | ⟨_, h1, h2⟩ | ⟨⟨w, -, ⟨_, -, ha⟩, ⟨_, -, hb⟩⟩, -⟩
   · exact ⟨h1, h2⟩
@@ -226,11 +237,14 @@ def decTransGen (g : Graph) (R : Nat → Nat → Prop) [∀ a b, Decidable (R a 
   decidable_of_iff (reach g.size (fun a b => decide (R a b)) a b = true)
     (by rw [← transGen_iff_reach hR', heq])
 
+/-- Decidability of the transitive closure of `po ∪ sw`. -/
 instance (g : Graph) (a b : Nat) : Decidable (Relation.TransGen (PoSw g) a b) :=
   decTransGen g (PoSw g) (fun _ _ h => poSw_lt h) a b
 
+/-- Decidability of `HB`. -/
 instance (g : Graph) (a b : Nat) : Decidable (HB g a b) := by unfold HB; infer_instance
 
+/-- Decidability of `ECO`. -/
 instance (g : Graph) (a b : Nat) : Decidable (ECO g a b) :=
   decTransGen g (EcoBase g) (fun _ _ h => ecoBase_lt h) a b
 
@@ -273,11 +287,17 @@ def HbIrrefl (g : Graph) : Prop := ∀ a ∈ List.range g.size, ¬ HB g a a
 def EventConsistent (g : Graph) : Prop :=
   RfWF g ∧ MoTotal g ∧ RmwAtomic g ∧ Coherent g ∧ HbIrrefl g
 
+/-- Decidability of `RfWF`. -/
 instance (g : Graph) : Decidable (RfWF g) := by unfold RfWF; infer_instance
+/-- Decidability of `MoTotal`. -/
 instance (g : Graph) : Decidable (MoTotal g) := by unfold MoTotal; infer_instance
+/-- Decidability of `RmwAtomic`. -/
 instance (g : Graph) : Decidable (RmwAtomic g) := by unfold RmwAtomic; infer_instance
+/-- Decidability of `Coherent`. -/
 instance (g : Graph) : Decidable (Coherent g) := by unfold Coherent; infer_instance
+/-- Decidability of `HbIrrefl`. -/
 instance (g : Graph) : Decidable (HbIrrefl g) := by unfold HbIrrefl; infer_instance
+/-- Decidability of `EventConsistent`. -/
 instance (g : Graph) : Decidable (EventConsistent g) := by
   unfold EventConsistent; infer_instance
 
@@ -299,9 +319,12 @@ def RaceOn (g : Graph) (a b : Nat) : Prop :=
 /-- The graph has a race. -/
 def Racy (g : Graph) : Prop := ∃ a ∈ List.range g.size, ∃ b ∈ List.range g.size, RaceOn g a b
 
+/-- Decidability of `Conflict`. -/
 instance (g : Graph) (a b : Nat) : Decidable (Conflict g a b) := by
   unfold Conflict; infer_instance
+/-- Decidability of `RaceOn`. -/
 instance (g : Graph) (a b : Nat) : Decidable (RaceOn g a b) := by unfold RaceOn; infer_instance
+/-- Decidability of `Racy`. -/
 instance (g : Graph) : Decidable (Racy g) := by unfold Racy; infer_instance
 
 end Ern.Concurrency.EventModel

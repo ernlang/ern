@@ -1,6 +1,6 @@
 # Spec 2, jalon 4, tranche 2 — couche E, fragment d'événements
 
-Formalisation exploratoire, branche `formal/spec2-m4`, jamais mergée. Sources lues : le brief « couche E, fragment d'événements » et `ERN_WC5_1_FINAL.md`, appelé ici « WC5.1 corrigé », clauses C26, C27, C30–C34, C36–C42, C48 et C53. Le corpus n'est pas utilisé. Les numéros de ligne sont ceux de `599aead`. Modules dans `formal/Ern/Concurrency/EventModel/`.
+Formalisation exploratoire, branche `formal/spec2-m4`, jamais mergée. Sources lues : le brief « couche E, fragment d'événements » et `ERN_WC5_1_FINAL.md`, appelé ici « WC5.1 corrigé », clauses C26, C27, C30–C34, C36–C42, C48 et C53. Le corpus n'est pas utilisé. Les numéros de ligne sont ceux du commit qui suit `e774bef` (docstrings ajoutées). Modules dans `formal/Ern/Concurrency/EventModel/`.
 
 C'est le niveau « fragment ERN » de WC5.1 corrigé C53. Le fragment ne dépend pas de la machine d'autorités : aucun module existant de `Ern.Concurrency` n'est importé, aucune définition existante n'est modifiée.
 
@@ -33,16 +33,16 @@ C'est le niveau « fragment ERN » de WC5.1 corrigé C53. Le fragment ne dépend
 - **Genres** `Kind` (`:34`) : `readD`, `writeD` (sans valeur, C36) ; `readX v`, `writeX v` (accès ordinaires à `x`, C36, C42) ; `rsh o v` (`readShared`, C37) ; `wsh o v` (`writeShared`, C39) ; `rmw o vr vw` (RMW réussi, un seul événement, C39). Une comparaison-échange échouée est un `rsh` (C39).
 - **Graphe** `Graph` (`:53`) : la valeur de l'écriture initiale, la liste des autres événements (contexte et genre), et `rf`, `mo` comme listes de paires.
 - **Prédicats d'événement** : `onX`, `onD`, `isMod` (modifications de `x`, C31 : écriture initiale, `writeShared`, RMW, `write3(x, v)`), `isReadX`, `isRMW`, `isWrite`, `isAtomic`, `valW`, `valR`, `relCap`, `acqCap` (C32 point 1, C40), `:76`–`:139`.
-- **Typage** `WellTyped` (`:159`), par `Kind.OrdOk` (`:150`) : les lignes de C40. Ce n'est pas un conjoint de `EventConsistent`.
-- **Relations** : `PO` (`:167`), `RF` (`:171`), `MO` (`:174`), `SW` (`:178`), `HB` (`:186`), `RB` (`:190`), `ECO` (`:196`).
-- **`EventConsistent`** (`:273`) : `RfWF` (`:242`), `MoTotal` (`:250`), `RmwAtomic` (`:261`), `Coherent` (`:266`), `HbIrrefl` (`:270`), nommés séparément.
-- **Conflit** `Conflict` (`:289`), **course** `RaceOn` (`:296`) sur une paire, `Racy` (`:300`) pour le graphe.
+- **Typage** `WellTyped` (`:160`), par `Kind.OrdOk` (`:150`) : les lignes de C40. Ce n'est pas un conjoint de `EventConsistent`.
+- **Relations** : `PO` (`:169`), `RF` (`:173`), `MO` (`:176`), `SW` (`:180`), `HB` (`:188`), `RB` (`:192`), `ECO` (`:198`).
+- **`EventConsistent`** (`:287`) : `RfWF` (`:256`), `MoTotal` (`:264`), `RmwAtomic` (`:275`), `Coherent` (`:280`), `HbIrrefl` (`:284`), nommés séparément.
+- **Conflit** `Conflict` (`:309`), **course** `RaceOn` (`:316`) sur une paire, `Racy` (`:320`) pour le graphe.
 
 ### Décision de `hb` et d'`eco` (`Closure.lean`)
 
-La clôture transitive d'une relation sur les événements `0, …, N - 1` est calculée par tours sur une table de booléens (`reach`, `:31`). Un tour ajoute les successeurs des nœuds atteints. `transGen_iff_reach` (`:206`) prouve que la table après `N + 1` tours est la clôture transitive, pour toute relation dont les extrémités sont des événements. Aucun ordre des arêtes n'est supposé.
+La clôture transitive d'une relation sur les événements `0, …, N - 1` est calculée par tours sur une table de booléens (`reach`, `:31`). Un tour ajoute les successeurs des nœuds atteints. `transGen_iff_reach` (`:215`) prouve que la table après `N + 1` tours est la clôture transitive, pour toute relation dont les extrémités sont des événements. Aucun ordre des arêtes n'est supposé.
 
-La complétude repose sur un comptage. Tant que la table n'est pas close, chaque tour ajoute au moins une entrée (`cnt_succ`, `:186`), et il n'y en a que `N`. Elle est donc close après `N + 1` tours (`closed_final`, `:200`). Une table close contient tout le reachable (`complete`, `:86`). `decTransGen` (`Graph.lean:219`) en tire les instances de `HB` et d'`ECO`.
+La complétude repose sur un comptage. Tant que la table n'est pas close, chaque tour ajoute au moins une entrée (`cnt_succ`, `:194`), et il n'y en a que `N`. Elle est donc close après `N + 1` tours (`closed_final`, `:209`). Une table close contient tout le reachable (`complete`, `:89`). `decTransGen` (`Graph.lean:230`) en tire les instances de `HB` et d'`ECO`.
 
 ### Choix de représentation et écarts au brief
 
@@ -75,50 +75,52 @@ Chaque graphe est donné explicitement. `chain` (`:18`) écrit `mo` comme l'ordr
 
 ### *Message passing* (C32 point 1, C33, C40)
 
-Événements : `init` (0), `a` (1), `b` (2), `e` (3), `g` (4) ; graphe `mp` (`:31`).
+Événements : `init` (0), `a` (1), `b` (2), `e` (3), `g` (4) ; graphe `mp` (`:32`).
 
 | Graphe | Attendu | Obtenu | Théorème | herdtools7 |
 |---|---|---|---|---|
-| G1 `release`, `acquire` | cohérent ; `sw(b, e)` ; `hb(a, g)` ; pas de course | obtenu | `G1` `:38` | A1 |
-| G2 `e` lit `0` de `init`, pas de `g` | cohérent ; aucune arête `sw` ; pas de course | obtenu | `G2` `:48` | A1 |
-| G3 `relaxed`, `relaxed` | cohérent ; pas de `sw` ; course `(a, g)` | obtenu | `G3` `:51` | A2 |
-| G4 `release`, `relaxed` | idem | obtenu | `G4` `:56` | — |
-| G5 `relaxed`, `acquire` | idem | obtenu | `G5` `:61` | — |
-| G6 `seq_cst`, `seq_cst` | cohérent ; `sw(b, e)` ; pas de course | obtenu | `G6` `:67` | A3 |
+| G1 `release`, `acquire` | cohérent ; `sw(b, e)` ; `hb(a, g)` ; pas de course | obtenu | `G1` `:39` | A1 |
+| G2 `e` lit `0` de `init`, pas de `g` | cohérent ; aucune arête `sw` ; pas de course | obtenu | `G2` `:49` | A1 |
+| G3 `relaxed`, `relaxed` | cohérent ; pas de `sw` ; course `(a, g)` | obtenu | `G3` `:52` | A2 |
+| G4 `release`, `relaxed` | idem | obtenu | `G4` `:57` | — |
+| G5 `relaxed`, `acquire` | idem | obtenu | `G5` `:62` | — |
+| G6 `seq_cst`, `seq_cst` | cohérent ; `sw(b, e)` ; pas de course | obtenu | `G6` `:68` | A3 |
 
 ### Accès mixtes (C30, C31, C33, C36, C42)
 
 | Graphe | Attendu | Obtenu | Théorème | herdtools7 |
 |---|---|---|---|---|
-| G7 `writeShared` relaxed contre `read3(x)` | cohérent ; course `(s, r)` | obtenu | `G7` `:79` | C1 |
-| G8 `writeShared` relaxed contre `write3(x, 2)` | cohérent ; `w` dans `mo` ; course `(s, w)` | obtenu : `w` est une modification et `mo(s, w)` | `G8` `:87` | — |
-| G9 deux `writeShared` relaxed | cohérent ; pas de course | obtenu | `G9` `:97` | C2 |
-| G10 deux `write3(d)` | cohérent ; course | obtenu | `G10` `:104` | C3 |
+| G7 `writeShared` relaxed contre `read3(x)` | cohérent ; course `(s, r)` | obtenu | `G7` `:80` | C1 |
+| G8 `writeShared` relaxed contre `write3(x, 2)` | cohérent ; `w` dans `mo` ; course `(s, w)` | obtenu : `w` est une modification et `mo(s, w)` | `G8` `:88` | — |
+| G9 deux `writeShared` relaxed | cohérent ; pas de course | obtenu | `G9` `:98` | C2 |
+| G10 deux `write3(d)` | cohérent ; course | obtenu | `G10` `:105` | C3 |
 
 ### RMW (C31, C32 point 1, C39, C40)
 
 | Graphe | Attendu | Obtenu | Théorème | herdtools7 |
 |---|---|---|---|---|
-| G11 `m0` lit `0`, `m1` lit `1` | cohérent | obtenu | `G11` `:115` | D1 |
-| G12 `m1` lit aussi `0`, deux ordres `mo` | non cohérent, le conjoint 3 échoue dans les deux cas | obtenu ; dans les deux cas, les conjoints 1, 2, 4 et 5 tiennent, seul le 3 échoue | `G12` `:126` | D1 à D3 |
-| G13 RMW contre comparaison-échange échouée | cohérent ; `f` n'est pas une modification | obtenu | `G13` `:139` | — |
-| G14 verrou, prises `acquire`, libérations `release` | cohérent ; `sw(U0, A1)` ; `hb(w0, w1)` ; pas de course | obtenu | `G14` `:152` | B1 |
-| G15 libérations `relaxed` | cohérent ; pas de `sw` ; course `(w0, w1)` | obtenu | `G15` `:158` | B2 |
-| G16 prises `relaxed` | idem | obtenu | `G16` `:164` | B3 |
-| G17 RMW `acq_rel` lu par `readShared` acquire | cohérent ; `sw(m, e)` ; pas de course | obtenu | `G17` `:175` | — |
+| G11 `m0` lit `0`, `m1` lit `1` | cohérent | obtenu | `G11` `:116` | D1 |
+| G12 `m1` lit aussi `0`, deux ordres `mo` | non cohérent, le conjoint 3 échoue dans les deux cas | obtenu ; dans les deux cas, les conjoints 1, 2, 4 et 5 tiennent, seul le 3 échoue | `G12` `:127` | D1 à D3 |
+| G13 RMW contre comparaison-échange échouée | cohérent ; `f` n'est pas une modification | obtenu | `G13` `:140` | — |
+| G14 verrou, prises `acquire`, libérations `release` | cohérent ; `sw(U0, A1)` ; `hb(w0, w1)` ; pas de course | obtenu | `G14` `:153` | B1 |
+| G15 libérations `relaxed` | cohérent ; pas de `sw` ; course `(w0, w1)` | obtenu | `G15` `:159` | B2 |
+| G16 prises `relaxed` | idem | obtenu | `G16` `:165` | B3 |
+| G17 RMW `acq_rel` lu par `readShared` acquire | cohérent ; `sw(m, e)` ; pas de course | obtenu | `G17` `:176` | — |
 
 **G12, observation.** La cohérence du fragment (`hb ; eco?` irréflexif) ne rejette pas G12. Le cycle `eco` entre les deux RMW, `m0 →mo m1 →rb m0` dans le premier ordre, ne passe par aucune arête `hb` : les deux prises en `acquire` ne se synchronisent pas, et l'écriture initiale ne reçoit aucune arête `eco`. Seule l'atomicité des RMW (conjoint 3) l'exclut.
 
-C'est une différence de forme avec `rc11.cat`. Dans le complément herdtools7, `coherencermw` seul suffisait à exclure les deux prises simultanées : le groupe D restait `Never` avec `atomicity` sauté. Le fragment n'a pas d'équivalent de `coherencermw`. Ce n'est pas un défaut à corriger : la forme de cohérence est un choix du fragment (hypothèse 6), et ce résultat montre que, dans ce fragment, le conjoint 3 porte seul l'exclusivité des RMW.
+La portée de ce résultat est limitée aux deux RMW non ordonnés par `hb`. Une vérification hors dépôt, par `#eval` des cinq conjoints, place les deux mêmes RMW dans un seul contexte, `po` les ordonnant. Dans les deux ordres `mo`, le conjoint 3 échoue, et le conjoint 4 aussi : `hb(m0, m1)` avec `eco(m1, m0)`.
+
+Différence avec `rc11.cat` : dans le complément herdtools7, `coherencermw` seul suffisait à exclure les deux prises simultanées, le groupe D restant `Never` avec `atomicity` sauté. Le fragment n'a pas d'équivalent de `coherencermw` : pour deux RMW de contextes distincts non synchronisés, le conjoint 3 est le seul à les exclure. Le jugement sur cette forme de cohérence vous revient (hypothèse 6).
 
 ### Séquence de libération et typage (C32 point 1, C40, C48)
 
 | Graphe | Attendu | Obtenu | Théorème | herdtools7 |
 |---|---|---|---|---|
-| G18 libération puis écriture atomique non-RMW du même thread, lue en `acquire` | cohérent ; aucune arête `sw` vers `e` ; course `(a, g)` | obtenu | `G18` `:190` | E1 : pas de course sous `rc11.cat` |
-| G19 `readShared(x, release)` | mal typé (C40) | obtenu | `G19` `:198` | — |
+| G18 libération puis écriture atomique non-RMW du même thread, lue en `acquire` | cohérent ; aucune arête `sw` vers `e` ; course `(a, g)` | obtenu | `G18` `:191` | E1 : pas de course sous `rc11.cat` |
+| G19 `readShared(x, release)` | mal typé (C40) | obtenu | `G19` `:199` | — |
 
-**Couverture de la décision.** Dans tous les témoins, les arêtes `rf` vont vers un événement plus loin dans la liste. La propriété « la décision de `hb` ne suppose pas que les arêtes croissent dans l'ordre d'énumération » n'est donc établie que par la preuve générale (`transGen_iff_reach`), pas exercée par un témoin.
+**Couverture de la décision.** Dans tous les témoins, les arêtes `rf`, donc toutes les arêtes de `hb`, vont vers un événement plus loin dans la liste. Pour `hb`, la propriété « la décision ne suppose pas que les arêtes croissent dans l'ordre d'énumération » n'est établie que par la preuve générale (`transGen_iff_reach`). Le même moteur décide `eco`, qui a des arêtes vers l'arrière sous `decide` : l'arête `rb` de `e` (3) vers `b` (2) dans G2, et `mo(2, 1)` dans le second ordre de G12. La clôture est donc exercée sur des arêtes non croissantes à travers `eco`.
 
 ## Divergence avec `rc11.cat` : G18
 
@@ -143,7 +145,7 @@ Rien n'est corrigé.
 ## Audit final des axiomes
 
 - **Méthode.** `collectAxioms` sur toutes les constantes `thmInfo` `Ern.Concurrency*` et `_private.Ern.Concurrency*`, après `import Ern`.
-- **Résultat à `599aead`.** 1956 théorèmes, dont 1348 non internes, contre 1801 (1275) avant cette passe. Aucun axiome hors `{propext, Quot.sound}`.
+- **Résultat.** 1956 théorèmes, dont 1348 non internes, contre 1801 (1275) avant cette passe. Aucun axiome hors `{propext, Quot.sound}`.
 - **Modules nouveaux**, théorèmes (non internes) :
   - `EventModel.Closure` : 26 (16) ;
   - `EventModel.Graph` : 103 (31) ;
