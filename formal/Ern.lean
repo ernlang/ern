@@ -10,6 +10,7 @@ import Ern.Concurrency.Corpus.AR
 import Ern.Concurrency.Corpus.ARRealize
 import Ern.Concurrency.Corpus.CapValues
 import Ern.Concurrency.Corpus.Encap5Witness
+import Ern.Concurrency.Corpus.PlaceExclWitness
 import Ern.Concurrency.Corpus.Frames
 import Ern.Concurrency.Corpus.GuardedChain
 import Ern.Concurrency.Corpus.GuardedChainC
