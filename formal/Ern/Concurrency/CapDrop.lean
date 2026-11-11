@@ -779,4 +779,125 @@ theorem cap5_drop_own_terminate {k : K} {L : MutexLayout} {statics : Statics} {l
       exact absurd hd (Nat.not_lt.2 (exit_cap5_mono hF hw hcc (hF.nonempty c' hlive)
         (termEffC_pop hF.nodup hp.initialOnly hpar) rfl rfl rfl hk'.1.2.1.2.2 l))
 
+/-! ## Steps that only release authorities: `endUse`, `free` (Spec 1 §69, §70) -/
+
+/-- A live frame is in the stack of the view of any context (WC4 C2). -/
+theorem mem_view_F {s : SC} {c y : Nat} (hy : y ∈ s.frames) : y ∈ (s.view c).F := by
+  show y ∈ s.stk c ++ s.frames.filter fun f => decide (f ∉ s.stk c)
+  by_cases h : y ∈ s.stk c
+  · exact List.mem_append_left _ h
+  · exact List.mem_append_right _ (List.mem_filter.2 ⟨hy, decide_eq_true h⟩)
+
+/-- An attributable authority is active (WC5 C43). -/
+theorem Attr5.active {s : SC} {reg : SyncReg} {c u : Nat} {m : Mode} {y : Authority}
+    (h : Attr5 s reg c u m) (hy : s.A[u]? = some y) : y.active = true := by
+  cases h with
+  | base _ hy' ha => rw [hy] at hy'; cases hy'; exact ha
+  | held _ hy' ha => rw [hy] at hy'; cases hy'; exact ha
+
+/-- A step that only releases authorities (`OnlyReleases`, Spec 1 §69, §70) and keeps the places
+and the frames of `c` does not lower `cap5` of `c` when every useful authority attributable to
+`c` stays active: effective modes can only rise. -/
+theorem releases_cap5_mono {s s' : SC} {reg : SyncReg} (hw : WF3 s.flat) {c : Nat}
+    (hr : EndFree.OnlyReleases s.flat s'.flat) (hstk : ∀ f ∈ s.stk c, f ∈ s'.stk c) (hP : s'.P = s.P)
+    (hkeep : ∀ u m, Attr5 s reg c u m → Useful s u m → s'.flat.Active u) (l : Nat) :
+    capRank (cap5 s reg c l) ≤ capRank (cap5 s' reg c l) := by
+  have hact : ∀ u m z, Attr5 s reg c u m → Useful s u m → s'.A[u]? = some z → z.active = true :=
+    fun u m z hu hus hz => by
+      obtain ⟨z', hz', hza⟩ := hkeep u m hu hus
+      have : s'.A[u]? = some z' := hz'
+      rw [hz] at this; cases this; exact hza
+  refine cap5_transport_u (s' := s') (reg' := reg) hw hstk (fun q _ l hl => by rwa [hP] at hl)
+    (fun u m y hu hus hy => ?_) (fun u m hu _ e he hl => ?_) (fun u m l hu hal => ?_) l
+  · obtain ⟨z, hz, hm, -, -, hh⟩ := hr.get' (show s.flat.A[u]? = some y from hy)
+    exact ⟨z, hz, by rw [hact u m z hu hus hz, hu.active hy], hm, hh⟩
+  · obtain ⟨y', hy', hya⟩ := hl
+    obtain ⟨y, hy, -, -, -, -, ha⟩ := hr.2 e.guarded y' hy'
+    exact hu.notGuarded e he ⟨y, hy, ha hya⟩
+  · refine eff_keep_sub (t := s.flat) (t' := s'.flat) (fun z hz => ?_) (fun j y hy hya hyl hj => ?_)
+      hal
+    · obtain ⟨z', hz', hm, -, hf, -⟩ := hr.get' hz
+      exact ⟨z', hz', by rw [hact u m z' hu ⟨l, hal⟩ hz', hu.active hz], hm, hf⟩
+    · obtain ⟨y₀, hy₀, hm, -, hf, -, ha⟩ := hr.2 j y hy
+      exact ⟨y₀, hy₀, ha hya, hf ▸ hyl, by rwa [hr.ancs] at hj, hm.symm⟩
+
+/-- `endUse` by context `c'` (Spec 1 §69) keeps active every useful authority attributable to
+another context: it is held neither within the place, over which `c'` exercises `Modify`
+(§69.1; `not_attr_place`), nor by a place that dies, by `NoDangling` after the step (Spec 1 §54,
+§57; T2). -/
+theorem endUse_keeps {k : K} {s s' : SC} {reg : SyncReg} (hF : FramesC s) (hI : I1 s.flat)
+    (hw : WF3 s.flat) {c c' p : Nat} (hcc : c ≠ c') (hne : s.stk c' ≠ [])
+    (hp : EndUsePre k (s.view c') p) (hs' : s' = s.set (endUseEff (s.view c') p))
+    (hND : NoDangling s'.flat) {u : Nat} {m : Mode} (h : Attr5 s reg c u m) (hu : Useful s u m) :
+    ∀ y, s.A[u]? = some y → s'.A[u]? = some y := by
+  have hP := parents_lt hw
+  obtain ⟨g, -, hgx, hge⟩ := hp.right
+  have hg : Attr s c' g .modify := attr_of_exercisable hne hgx
+  have hge' : ∀ l ∈ footprint s.P p, Allows (effective s.flat g l) .modify :=
+    fun l hl => by rw [← effective_of_A (t := s.view c') (t' := s.flat) rfl]; exact hge l hl
+  have hget : ∀ (a : Nat) (y : Authority), s.A[a]? = some y → ¬ heldIn s.P p y.holder →
+      HolderLive (endUseS (s.view c') p) y.holder → s'.A[a]? = some y := fun a y hy hnh hl => by
+    subst hs'
+    show (cleanup (endUseS (s.view c') p)).A[a]? = some y
+    rw [EndFree.cleanup_get, EndFree.endUseS_get,
+      show (s.view c').A[a]? = some y from hy]
+    simp only [Option.map_some, show ¬ heldIn (s.view c').P p y.holder from hnh, ↓reduceIte]
+    simp only [show HolderLive (endUseS (s.view c') p) y.holder from hl, ↓reduceIte]
+  induction h with
+  | @base a m y f₀ hg' hy ha hm hfr hin =>
+    intro y' hy'
+    rw [hy] at hy'; cases hy'
+    refine hget a y hy (by rw [hfr]; exact id) ?_
+    rw [hfr]
+    exact mem_view_F (SC.mem_frames_of hin)
+  | @held a q b m y hg' hy ha hm hp' hb hc ih =>
+    intro y' hy'
+    rw [hy] at hy'; cases hy'
+    have hup : s.flat.Usable q := by
+      have := hw.holders a _ hy ha; rw [hp'] at this; exact this
+    obtain ⟨l₀, hl₀⟩ := footprint_ne hP _ q (Nat.le_refl _) hup.lt
+    obtain ⟨zb, hzb, -, hzl, -⟩ := eff_present (allows_present (hc l₀ hl₀))
+    have hbk := ih ⟨l₀, hc l₀ hl₀⟩ zb hzb
+    refine hget a y hy (fun hh => ?_) ?_
+    · rw [hp'] at hh
+      exact not_attr_place hF.nodup hI hw hcc hy hp' hg
+        (fun l hl => hge' l (footprint_sub hw hh hl)) (.held hy ha hm hp' hb.attr hc)
+    · rw [hp']
+      refine Decidable.byContradiction fun hnu => ?_
+      have hnu' : ¬ s'.flat.Usable q := fun hu' => hnu (by
+        refine S3.Usable.mono (s := endUseS (s.view c') p) (s' := s'.flat)
+          (by rw [hs']; rfl) (fun f hf => ?_) (fun q hq => by rw [hs'] at hq; exact hq) hu'
+        exact mem_view_F (s := s) (c := c') (by rw [hs'] at hf; exact hf))
+      have hza : zb.active = true := hb.active hzb
+      exact hND b zb hbk hza q hnu' l₀ (by rw [hs']; exact hl₀) hzl
+
+/-- L1 (`cap5_drop_own`, WC5 C45) for `endUse` (Spec 1 §69). Under `DDSound` (Spec 1 §80), from a
+state reached by an `EncapsulatedTrace5` from an initial state (Spec 1 §47). -/
+theorem cap5_drop_own_endUse {k : K} {L : MutexLayout} {statics : Statics} {lbls : List Label}
+    {st st' : SC × SyncReg × ArenaReg} {c' p : Nat} (hdd : DDSound k) (hst : StaticsOK statics)
+    (htr : EncapsulatedTrace5 k L (SC.ofS3 (S3.init statics), [], []) lbls st)
+    (h : LStep k L (.kernel c' (.endUse p)) st st') (c l : Nat)
+    (hd : capRank (cap5 st'.1 st'.2.1 c l) < capRank (cap5 st.1 st.2.1 c l)) :
+    (Label.kernel c' (.endUse p)).ctx = c := by
+  have hk := trace5_kInvCA hdd hst htr
+  have hk' := lstep_kInvCA hdd h hk
+  refine Decidable.byContradiction fun hctx => ?_
+  have hcc : c ≠ c' := fun e => hctx (e ▸ rfl)
+  cases h with
+  | @kernel s s' reg ar _ _ hs =>
+    obtain ⟨hF, hw, hI⟩ := hk.parts
+    obtain ⟨hlive, o, hR, ho⟩ := hs
+    cases hR with
+    | reject => cases ho
+    | ok hp =>
+      cases ho
+      have hr : EndFree.OnlyReleases s.flat (s.set (endUseEff (s.view c') p)).flat :=
+        (EndFree.endUseS_releases (s.view c') p).trans (EndFree.cleanup_releases _)
+      refine absurd hd (Nat.not_lt.2 (releases_cap5_mono (s' := s.set (endUseEff (s.view c') p))
+        (reg := reg) hw hr (fun f hf => hf) rfl
+        (fun u m hu hus => ?_) l))
+      obtain ⟨y, hy⟩ : ∃ y, s.A[u]? = some y := ⟨_, List.getElem?_eq_getElem hu.lt⟩
+      exact ⟨y, endUse_keeps hF hI hw hcc (hF.nonempty c' hlive) hp rfl hk'.1.2.1.2.2 hu hus y hy,
+        hu.active hy⟩
+
 end Ern.Concurrency
