@@ -1,0 +1,21 @@
+C LOCK+cas-acq+rel
+
+{ l = 0; d = 0; e0 = 0; e1 = 0; }
+
+P0 (atomic_int* l, int* d, int* e0) {
+  int r0 = atomic_compare_exchange_strong_explicit(l, e0, 1, memory_order_acquire, memory_order_relaxed);
+  if (r0) {
+    *d = 1;
+    atomic_store_explicit(l, 0, memory_order_release);
+  }
+}
+
+P1 (atomic_int* l, int* d, int* e1) {
+  int r0 = atomic_compare_exchange_strong_explicit(l, e1, 1, memory_order_acquire, memory_order_relaxed);
+  if (r0) {
+    *d = 2;
+    atomic_store_explicit(l, 0, memory_order_release);
+  }
+}
+
+exists (0:r0=1 /\ 1:r0=1)

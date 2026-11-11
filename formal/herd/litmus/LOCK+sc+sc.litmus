@@ -1,0 +1,21 @@
+C LOCK+sc+sc
+
+{ l = 0; d = 0; }
+
+P0 (atomic_int* l, int* d) {
+  int r0 = atomic_exchange_explicit(l, 1, memory_order_seq_cst);
+  if (r0 == 0) {
+    *d = 1;
+    atomic_store_explicit(l, 0, memory_order_seq_cst);
+  }
+}
+
+P1 (atomic_int* l, int* d) {
+  int r0 = atomic_exchange_explicit(l, 1, memory_order_seq_cst);
+  if (r0 == 0) {
+    *d = 2;
+    atomic_store_explicit(l, 0, memory_order_seq_cst);
+  }
+}
+
+exists (0:r0=0 /\ 1:r0=0)

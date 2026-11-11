@@ -1,0 +1,18 @@
+C MP+rlx+rlx
+
+{ d = 0; f = 0; }
+
+P0 (int* d, atomic_int* f) {
+  *d = 1;
+  atomic_store_explicit(f, 1, memory_order_relaxed);
+}
+
+P1 (int* d, atomic_int* f) {
+  int r1 = -1;
+  int r0 = atomic_load_explicit(f, memory_order_relaxed);
+  if (r0 == 1) {
+    r1 = *d;
+  }
+}
+
+exists (1:r0=1 /\ 1:r1=0)

@@ -1,0 +1,13 @@
+C NA+write+write
+
+{ d = 0; }
+
+P0 (int* d) {
+  *d = 1;
+}
+
+P1 (int* d) {
+  *d = 2;
+}
+
+exists (d=1)
