@@ -84,7 +84,8 @@ holds as `HasRight5` on the same place, in the state where the premise is read:
 `spawnVal`, the source right of each transfer phase (WC5 C5.2); `acquire`, the controller access of
 WC5 C14.3 (`CtrlRight5`). The other labels are unconstrained. -/
 def PlaceExcl (k : K) (L : MutexLayout) (st : SC × SyncReg × ArenaReg) : Label → Prop
-  | .kernel c (.release a) => OptP (st.1.A[a]?) (fun y => HolderRight5 (st.1, st.2.1) c y.holder) True
+  | .kernel c (.release a) =>
+      OptP (st.1.A[a]?) (fun y => HolderRight5 (st.1, st.2.1) c y.holder) True
   | .kernel c (.transfer src dst) =>
       HasRight5 (st.1, st.2.1) c .modify src ∧ HasRight5 (st.1, st.2.1) c .modify dst
   | .kernel c (.depend q _) => HasRight5 (st.1, st.2.1) c .modify q
@@ -94,7 +95,8 @@ def PlaceExcl (k : K) (L : MutexLayout) (st : SC × SyncReg × ArenaReg) : Label
   | .kernel c (.free p _) => HasRight5 (st.1, st.2.1) c .modify p
   | .kernel c (.alloc pr ow _) =>
       (HasRight5 (st.1, st.2.1) c .modify pr ∨ ∃ via ∈ List.range st.1.A.length,
-        WriteSharedPre k (st.1.view c) via (footprint st.1.P pr) ∧ Exer5 st.1 st.2.1 c via .observe) ∧
+        WriteSharedPre k (st.1.view c) via (footprint st.1.P pr) ∧
+          Exer5 st.1 st.2.1 c via .observe) ∧
       HasRight5 (st.1, st.2.1) c .modify ow
   | .kernel c (.pin p) => HasRight5 (st.1, st.2.1) c .modify p
   | .kernel c (.unpin o) =>
@@ -242,7 +244,8 @@ theorem placeExcl_of_noLive {k : K} {L : MutexLayout} {lbl : Label} {s : SC} {re
           cases y.holder with
           | frame f => intro; trivial
           | place p =>
-            exact (hasRight5_of_noLive hng : HasRight (s.view c) .modify p → HasRight5 (s, reg) c .modify p)
+            exact (hasRight5_of_noLive hng :
+              HasRight (s.view c) .modify p → HasRight5 (s, reg) c .modify p)
       | reject => cases ho
     | transfer src dst =>
       obtain ⟨-, hg⟩ := hk

@@ -86,7 +86,8 @@ theorem lc_trace5R :
     (.acquire ⟨by decide, ⟨4, none⟩, rfl, by decide, by decide, rfl⟩)
   have h := h.snoc (lbl := .kernel 1 (.read 3 [4])) (st'' := (lc8, [⟨4, some 6⟩], []))
     ⟨⟨trivial, by decide, by decide⟩, trivial⟩ (.kernel ⟨by decide, _, .ok (by decide), rfl⟩)
-  have h := h.snoc (lbl := .unlock 1 0) (st'' := (lc9, greg, [])) ⟨⟨trivial, trivial, trivial⟩, trivial⟩
+  have h := h.snoc (lbl := .unlock 1 0) (st'' := (lc9, greg, []))
+    ⟨⟨trivial, trivial, trivial⟩, trivial⟩
     (.unlock ⟨by decide, ⟨4, some 6⟩, 6, rfl, by decide, rfl, by decide, by decide, rfl⟩)
   have h := h.snoc (lbl := .acquire 0 0) (st'' := (lc10, [⟨4, some 7⟩], []))
     ⟨⟨trivial, trivial, trivial⟩, by decide⟩
