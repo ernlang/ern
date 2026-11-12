@@ -115,15 +115,15 @@ theorem classified6_sound {k : K} {L : MutexLayout} {lbl : Label}
 
 /-! ## By-value `spawn` under hypothesis 3 -/
 
-/-- The footprints of a place are kept by a `transfer` (Spec 1 §63: parents are unchanged). -/
+/-- The footprints of a place are kept by a `transfer`: `transferEff` keeps parents. -/
 theorem footprint_transferEffC (t : SC) (c src dst q : Nat) :
     footprint (transferEffC t c src dst).P q = footprint t.P q :=
   footprint_congr (by simp [transferEff])
     (transfer_parentOf (t.view c) src dst) q
 
 /-- Along the transfer phases of the by-value composite, a leaf that lies in no destination and
-was `Moved`, or lies in some source, is `Moved` at the end (Spec 1 §63 effect: the source leaves
-become `Moved`, only the destination leaves become `Init`). -/
+was `Moved`, or lies in some source, is `Moved` at the end (Spec 1 §63 effect: every source leaf
+becomes `Moved`, each corresponding destination leaf `Init`; `transferEff`). -/
 theorem transfers_moved (c l : Nat) : ∀ (t : SC) (vs : List (Nat × Nat)),
     (∀ v ∈ vs, l ∉ footprint t.P v.2) → (t.I l = .moved ∨ ∃ v ∈ vs, l ∈ footprint t.P v.1) →
     (transfersEff c t vs).I l = .moved

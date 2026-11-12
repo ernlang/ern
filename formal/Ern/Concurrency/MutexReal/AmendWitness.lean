@@ -174,4 +174,27 @@ theorem depend_twin : tdtσ 0 = (SC.ofS3 (S3.init mxst), [], []) ∧ Run6 KM L0 
     .cons ⟨⟨trivial, trivial, trivial⟩, by decide⟩ (.kernel ⟨by decide, .ok (by decide)⟩) .nil
   exact ⟨rfl, run6_of_run5R ((mx3_steps h).run _) (by decide)⟩
 
+/-! ## Observations -/
+
+/-- `c0 : alloc(provider = slot, owner = M)` (O14). -/
+def tam1 : SC := x2.set (allocEff (x2.view 0) 0 [(none, 0)])
+
+/-- Observation: from `MX₃`, `c0 : alloc(provider = slot, owner = M)` is an `ok` kernel step
+admitted by `Encap5R`; entry `e` stays live and its controller stays `lock`. The restriction of the
+controller refuses it: the footprint of `alloc` (`Touches`) contains the leaves of its owner `M`,
+`lock` among them. The proposed C22 item 4 names the controller as owner, not a value that
+contains it. -/
+theorem alloc_owner_M_refused : opStepC KM (.alloc 1 0 [(none, 0)]) 0 x2 (.ok tam1) ∧
+    Encap5R KM L0 (x2, regX, []) (.kernel 0 (.alloc 1 0 [(none, 0)])) ∧
+    (⟨3, none⟩ : SyncEntry).Live tam1 ∧ ControlOf L0 tam1 ⟨3, none⟩ = some 2 ∧
+    ¬ CtlRestr L0 (x2, regX, []) (.kernel 0 (.alloc 1 0 [(none, 0)])) (tam1, regX, []) :=
+  ⟨⟨by decide, _, .ok (by decide) trivial, rfl⟩, ⟨⟨trivial, trivial, trivial⟩, by decide⟩,
+    by decide, by decide, by decide⟩
+
+/-- Observation on the dependency clause: `lock` is not in the footprint `Touches` of
+`depend(lock, a)` (`tdσ`, step 4); only the place `result` added by `TouchesX` puts it there. -/
+theorem depend_only_added : ¬ Touches L0 (tdσ 4) (.kernel 0 (.depend 2 4)) 2 ∧
+    TouchesX L0 (tdσ 4) (.kernel 0 (.depend 2 4)) 2 := by
+  decide
+
 end Ern.Concurrency.MutexReal.AmendWitness
