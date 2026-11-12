@@ -79,13 +79,16 @@ block MX, `newMutex(3)` from `x2` (all traces from `MX₃`); block AR, `newMutex
 W-GC and `lc_trace`, `newMutex(4)` from `gc4`; W-GS, `newMutex(3)` from `gs2`; S9, `newMutex(4)`
 and `newMutex(5)` from `n4`; W-C22.3b, `newMutex(1)` from `w0`; the traces of WC4
 (`EncapTraces`): `newMutex(4)` from `e2`, `newMutex(1)` from `z0`, `newMutex(2)` and
-`newMutex(3)` from `u0`, `newMutex(1)` from `m0`. W-NC step 3 (`rc2`) is the exception
-(`W_NC_3_amended_reject`). -/
+`newMutex(3)` from `u0`, `newMutex(1)` from `m0`; the traces of WC4 in `Traces`: `newMutex(1)`
+from `c0` and from `d0`, `newMutex(2)` and `newMutex(3)` from `d1`. W-NC step 3 (`rc2`) is the
+exception (`W_NC_3_amended_reject`). -/
 theorem newMutex_steps_C13_11 :
     NewMutexRight L0 x2 0 3 ∧ NewMutexRight L0 a4 0 5 ∧ NewMutexRight L0 gc4 0 4 ∧
     NewMutexRight L0 gs2 0 3 ∧ NewMutexRight L0 n4 0 4 ∧ NewMutexRight L0 n4 0 5 ∧
     NewMutexRight L0 w0 0 1 ∧ NewMutexRight L0 e2 0 4 ∧ NewMutexRight L0 z0 0 1 ∧
-    NewMutexRight L0 u0 0 2 ∧ NewMutexRight L0 u0 0 3 ∧ NewMutexRight L0 m0 0 1 := by
+    NewMutexRight L0 u0 0 2 ∧ NewMutexRight L0 u0 0 3 ∧ NewMutexRight L0 m0 0 1 ∧
+    NewMutexRight L0 Traces.c0 0 1 ∧ NewMutexRight L0 Traces.d0 0 1 ∧
+    NewMutexRight L0 Traces.d1 0 2 ∧ NewMutexRight L0 Traces.d1 0 3 := by
   decide
 
 /-! ## Final amended executions -/
