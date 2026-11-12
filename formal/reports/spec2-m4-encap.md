@@ -38,6 +38,7 @@ Code : `formal/Ern/Concurrency/FullEncap/`, sept modules, tous importés dans `f
 | `3175c17` | 6 | `ResetException.lean` |
 | `4446f59` | 5 | `Protected.lean` : balayage des traces `RunFull`, W-RX A |
 | `197f5bc`, `81e53eb` | 5 | docstring de `protected_runFull_refuted` (une affirmation non vérifiée retirée ; ligne rewrappée) |
+| `0cbe567`, `318197e` + ce commit | — | ce rapport |
 
 Les numéros de ligne ci-dessous sont ceux de `81e53eb`.
 
