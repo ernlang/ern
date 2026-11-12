@@ -38,6 +38,7 @@ import Ern.Concurrency.EventModel.Lemmas
 import Ern.Concurrency.EventModel.Witness
 import Ern.Concurrency.EventModel.Complements
 import Ern.Concurrency.MutexReal.Graph
+import Ern.Concurrency.MutexReal.Coherence
 import Ern.Concurrency.Events
 import Ern.Concurrency.EventsCompose
 import Ern.Concurrency.EventsProtocols
