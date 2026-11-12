@@ -8,8 +8,8 @@ Formalisation exploratoire, jamais mergée. Branche `formal/spec2-m4`, rien n'es
   - C1 à C8, C12 à C18 et C21 à C25 ;
   - C43 à C46, `OB-C28`, choix de rédaction 10.
 - **Spec 1** (`specs/ERN_Memory_Model_Specification_v0.1.md`). Paragraphes lus :
-  - §36, §43 ;
-  - §60 à §65, §69 à §78 (§73 en entier).
+  - §36, §42, §43, §46, §47, §50, §80 ;
+  - §60 à §78 (§73 en entier).
 - **Corpus** : `corpus-spec2-m3.md` v13, § 2 duodecies.
 - **Rapports précédents** : `spec2-m4-handoff.md` (§ Extension aux droits sur les places), `spec2-m4-mutexreal.md`.
 
@@ -23,7 +23,7 @@ Code : `formal/Ern/Concurrency/FullEncap/`, sept modules, tous importés dans `f
 | 2 | Tous les faits attendus de W-GI et W-RX sont obtenus. Aucun pas attendu `ok` n'est refusé par le noyau. |
 | 3 | Les 24 exécutions amendées finales du dépôt sont des `RunFull`. Les 22 genres qui ont une prémisse de droit admettent un pas `ok` sous une entrée vivante ; `deriveSync` brut n'est jamais admis. |
 | 4 | Prouvé pour 11 genres, et pour `endUse` et `free` sur la place nommée. Sans objet pour 12 genres. Une seule exception, les feuilles qui meurent (`endUse`, `free`, `exitFrame`, `terminate`), avec un témoin par genre. Pour `spawnVal`, prouvé dans l'état de chaque phase, inachevé dans l'état d'avant le pas. Aucun contre-exemple. |
-| 5 | **Réfuté**, aussi sur `RunFull` : un grant abandonné par sortie de frame, dont un dérivé survit dans un contexte enfant. Sur `Run7`, W-GI et W-RX A le réfutent. Il tient à chaque pas des 30 autres traces `RunFull` du dépôt. |
+| 5 | **Réfuté**, aussi sur `RunFull` : un grant abandonné par sortie de frame, dont un dérivé survit dans un contexte enfant. Sur `Run7`, W-GI et W-RX A le réfutent. Il tient à chaque pas des 30 autres traces `RunFull` du dépôt (les 24 exécutions amendées finales, `lvσ`, le jumeau de W-GI, W-RX B et trois nouveaux témoins de la tâche 4). |
 | 6 | Prouvé. La condition de chaîne est posée par la forme sans `guarded` ; le droit sur le `slot` découle de `SyncInv`. |
 
 ## Commits
@@ -235,7 +235,8 @@ Hors liste, et ce n'est pas une régression :
 
 - W-RC et W-NC ne sont pas des exécutions amendées finales ;
 - les contre-exemples `store`, `issue`, `alloc` (dont le fournisseur `M`) ne sont pas des `Run7` ;
-- W-GI (`W_GI_current`) et W-RX A (`W_RX_A_current`) sont des `RunAmF` qui ne sont pas des `RunFull`, comme l'attend le corpus.
+- W-GI (`W_GI_current`) et W-RX A (`W_RX_A_current`) sont des `RunAmF` qui ne sont pas des `RunFull`, comme l'attend le corpus ;
+- les traces qui n'existent que comme `EncapsulatedTrace`, `EncapsulatedTrace5C` ou `EncapsulatedTrace5R` (traces de WC4, S4, S9, W-GS, W-GC) ne sont pas des exécutions amendées finales et ne sont pas rejouées sous `RunFull` ; elles restent non vérifiées, comme à la passe précédente.
 
 Aucune trace existante n'est refusée.
 
@@ -340,7 +341,7 @@ Les clauses de §69.1 et §70.3 n'exigent de droit que sur `place` ; §73 et C7 
 
 ### `spawnVal`
 
-- **Prouvé.** `capacity_spawnVal` (`Capacity:252`) : au début de chaque phase de transfert, dans l'état de phase `t`, le contexte créateur a `cap5 = Modify` sur toute feuille de la source de la phase (`PhaseCap`, lu sur `t.P`).
+- **Prouvé.** `capacity_spawnVal` (`Capacity:252`) : au début de chaque phase de transfert, dans l'état de phase `t`, le contexte créateur a `cap5 = Modify` sur toute feuille de la source de la phase (`PhaseCap`, lu sur `t.P`). Hypothèses : `DDSound k`, `StaticsOK statics`, `σ 0` initial, `RunFull k L σ lbls`, `i < |lbls|`, `lbls[i] = .spawnVal c ps ls vs`.
 - **Inachevé : la forme dans l'état d'avant le pas.** But restant : `Allows (cap5 (σ i).1 (σ i).2.1 c l) .modify`, pour `l ∈ footprint (σ i).1.P v.1`, à partir de `HasRight5 (t, reg) c .modify v.1` dans l'état de phase `t`.
   - Phase 1 : `t = spawnCreate (σ i).1 c ls`.
   - Phases suivantes : `t = transferEffC` des phases précédentes.
@@ -390,7 +391,13 @@ Ce n'est pas un défaut d'encodage :
 - §73 réancre explicitement les dérivés survivants, précise « Reanchoring may change the current `origin` relation », et renvoie la protection de la lignée historique d'un emprunt à une question différée ;
 - C21 point 5 (`GrantSubtree`) ne parle que d'un grant actif.
 
-**Balayage.** `ProtectedOK` tient à chaque pas de toutes les autres traces `RunFull` du dépôt : les 24 exécutions amendées finales, `lvσ`, le jumeau de W-GI, W-RX B et les quatre témoins de la tâche 4 (`protected_sweep`, `:161`). Dans ces témoins, l'entrée meurt avec le pas ; ils sortent donc de l'énoncé « avant et après ».
+**Balayage.** `ProtectedOK` tient à chaque pas des 30 autres traces `RunFull` du dépôt (`protected_sweep`, `:161`) :
+
+- les 24 exécutions amendées finales, dont `ce`, la trace d'`exc_endUse` ;
+- `lvσ`, le jumeau de W-GI, W-RX B ;
+- les trois nouveaux témoins de la tâche 4 (`free`, `exitFrame`, `terminate`).
+
+Dans les quatre témoins de la tâche 4, l'entrée meurt avec le pas ; ils sortent donc de l'énoncé « avant et après ».
 
 **Invariants en jeu.** Avec un grant actif, l'argument serait le suivant ; il n'est **pas formalisé** :
 
@@ -453,6 +460,14 @@ Hypothèses : `DDSound`, `StaticsOK`, `σ 0` initial, `RunFull`, `j < |lbls|`, `
   - **Lecture du brief** (vivante avant et après) : ils sortent du champ. Pour tous les genres autres que les quatre genres à feuilles qui meurent et `spawnVal`, le fait découle directement de `capacity_run`, qui donne `cap5` au moins `Observe` sur toute feuille existante touchée ; ce corollaire n'est pas énoncé comme théorème séparé. Il reste non prouvé pour ces cinq genres : aucun lemme général ne montre que l'entrée meurt quand une feuille protégée meurt.
   - Je ne tranche pas entre les deux lectures.
 
+## Problèmes de spécification
+
+**C22 point 1 et la réancre.** C22 point 1 se termine par « No independent ordinary derivative may be issued directly from `guarded` while the entry is live ». Dans la trace du grant abandonné, après la sortie de frame (pas 6), `x` est un descendant actif direct de `guarded` (`ancs 6 = [3, 1]`, prouvé dans `protected_runFull_refuted`), alors que l'entrée `e` est vivante. Aucun pas n'a dérivé `x` de `guarded` : la réancre de §73 a changé son origine. Savoir si cela relève de « issued » est une lecture qui revient au propriétaire ; je ne tranche pas.
+
+**Lecture de « sous-arbre du grant ».** Voir la tâche 5 : chaîne d'origine courante (réfutée) ou lignée historique (différée par §73).
+
+**Lecture de « entrée vivante »** dans le fait « Donnée protégée » du corpus : voir la section suivante.
+
 ## Ce que `OB-C28` laisse ouvert après cette passe
 
 1. L'application de la restriction dans l'interface sûre (Specs 4 et 10).
@@ -504,19 +519,22 @@ Nature des 204 ajouts :
 
 ## Annexe — parcours des prémisses (`ScanRights.lean`, scratchpad)
 
+Texte complet. La version d'abord utilisée mettait en cache des résultats partiels pendant les cycles de dépendances, ce qui pouvait sous-approximer l'atteignabilité. Celle-ci fait un parcours complet par requête et ne met en cache qu'un parcours terminé. Les deux versions donnent les mêmes nœuds et les mêmes ensembles de primitives. La limite de profondeur (12) ne porte que sur l'affichage, pas sur `reach`.
+
 ```lean
 import Lean
 import Ern
 open Lean Meta Elab Command
 
+/-- The right-reading primitives of the brief of slice 3, task 1. -/
 def prims : List Name :=
   [``Ern.MemoryModel.Access.S3.ExercisableAt, ``Ern.MemoryModel.Access.HasRight,
    ``Ern.MemoryModel.Access.HolderRight, ``Ern.Concurrency.CtrlRight,
    ``Ern.MemoryModel.Arena.MetaRight, ``Ern.MemoryModel.Access.Grounds,
    ``Ern.Concurrency.MutexReal.NewMutexRight]
 
--- Constants in a definition's value, an inductive's constructors, a constructor's type
--- (minus its own inductive); theorems and recursors are not unfolded.
+/-- Constants occurring in a constant's type, its value (definitions) or its constructors'
+types (inductives); theorems and recursors are not unfolded. -/
 def deps (env : Environment) (n : Name) : NameSet := Id.run do
   let some ci := env.find? n | return {}
   let mut s : NameSet := {}
@@ -524,14 +542,76 @@ def deps (env : Environment) (n : Name) : NameSet := Id.run do
   | .defnInfo d => s := d.value.getUsedConstantsAsSet
   | .inductInfo i =>
     for c in i.ctors do
-      if let some cc := env.find? c then s := s.append cc.type.getUsedConstantsAsSet
+      if let some cc := env.find? c then
+        s := s.append cc.type.getUsedConstantsAsSet
   | .ctorInfo c => s := c.type.getUsedConstantsAsSet.erase c.induct
   | _ => pure ()
   return s.erase n
 
--- `reach` (memoized): the primitives reachable from a constant. `tree`: from each constructor of
--- `LStep`, print every node reaching a primitive; for a structure, print each field whose
--- projection type reaches one. Full text in the scratchpad.
+/-- The primitives reachable from `n`, by a complete depth-first search over `deps`; only a
+finished search is cached, so no partial result of a cycle is reused. -/
+def reach (env : Environment) (n : Name) : StateM (Std.HashMap Name (List Name)) (List Name) := do
+  if prims.contains n then return [n]
+  if let some r := (← get)[n]? then return r
+  let mut visited : NameSet := {}
+  let mut stack : List Name := [n]
+  let mut out : List Name := []
+  let mut fuel := 1000000
+  while fuel > 0 do
+    fuel := fuel - 1
+    match stack with
+    | [] => break
+    | m :: rest =>
+      stack := rest
+      if visited.contains m then continue
+      visited := visited.insert m
+      if prims.contains m then
+        if !out.contains m then out := m :: out
+        continue
+      for d in (deps env m).toList do
+        if !visited.contains d then stack := d :: stack
+  if fuel = 0 then panic! "fuel"
+  modify (·.insert n out)
+  return out
+
+partial def tree (env : Environment) (n : Name) (ind : String) (depth : Nat) :
+    StateT NameSet (StateM (Std.HashMap Name (List Name))) Unit := do
+  let r ← liftM (reach env n)
+  if r.isEmpty then return
+  if prims.contains n then return
+  let seen := (← get).contains n
+  let short := n.toString.replace "Ern.MemoryModel.Access." "" |>.replace "Ern.Concurrency." ""
+  dbg_trace s!"{ind}{short}  → {r.map (fun x => x.components.getLast!.toString)}{if seen then " (vu)" else ""}"
+  if seen || depth = 0 then return
+  modify (·.insert n)
+  -- Structures: list fields through projections.
+  if isStructure env n then
+    for f in getStructureFields env n do
+      let proj := n ++ f
+      let some pc := env.find? proj | continue
+      let cs := pc.type.getUsedConstantsAsSet.erase n
+      let mut rr : List Name := []
+      for d in cs.toList do
+        for p in (← liftM (reach env d)) do
+          if !rr.contains p then rr := p :: rr
+      if !rr.isEmpty then
+        dbg_trace s!"{ind}  .{f}  → {rr.map (fun x => x.components.getLast!.toString)}"
+        for d in cs.toList do
+          if !prims.contains d then tree env d (ind ++ "      ") (depth - 1)
+    return
+  for d in (deps env n).toList do
+    tree env d (ind ++ "  ") (depth - 1)
+
+elab "#scan" : command => do
+  let env ← getEnv
+  let some (.inductInfo i) := env.find? ``Ern.Concurrency.LStep | throwError "no LStep"
+  let mut memo : Std.HashMap Name (List Name) := {}
+  for c in i.ctors do
+    let ((_, _), memo') := ((tree env c "" 12).run {}).run memo
+    memo := memo'
+    dbg_trace "----"
+
+#scan
 ```
 
-Sortie résumée : `LStep.terminate` et `LStep.join` n'atteignent rien. `LStep.spawn` n'atteint que `ParamOriginHidden`. Les autres constructeurs atteignent exactement les champs de la table de la tâche 1, ainsi que `EnterPreC.originHidden` et `SpawnValPre.originHidden`.
+Sortie résumée : `LStep.terminate` et `LStep.join` n'atteignent rien. `LStep.spawn` n'atteint que `ParamOriginHidden`. Les autres constructeurs atteignent exactement les champs de la table de la tâche 1, ainsi que `EnterPreC.originHidden` et `SpawnValPre.originHidden`. Commande : `lake env lean ScanRights.lean`, depuis `formal/`.
