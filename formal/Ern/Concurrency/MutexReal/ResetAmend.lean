@@ -54,8 +54,8 @@ the `resetLock(e)` of the abandoned grant by `c0` is `ok` under the amended form
 theorem S11_4_amended_ok : ResetLockAmOk L0 y4 regG6 0 0 (y4, regX) :=
   ⟨S11_4_ok.2.2.1, by decide⟩
 
-/-- W-RL and W-RL-J are amended executions; W-RC is a `Run6` and no amended execution, its step 5
-being the `resetLock` without controller-access right. -/
+/-- W-RL and W-RL-J are amended executions; W-RC is a `Run6` and no amended execution: trace step
+5 (step 4 of the corpus) is the `resetLock` without controller-access right. -/
 theorem amended_runs : RunAm KM L0 rlσ rlLbls ∧ RunAm KM L0 rljσ rljLbls ∧
     Run6 KM L0 rcσ rcLbls ∧ ¬ RunAm KM L0 rcσ rcLbls := by
   refine ⟨⟨NonRegression.W_RL_run6, by decide⟩, ⟨NonRegression.W_RLJ_run6, by decide⟩,

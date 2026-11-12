@@ -45,7 +45,7 @@ Les numéros de ligne sont ceux du commit `3cca039`. Aucune définition existant
 | 1, W-RC | tous les verdicts du corpus obtenus ; le pas 4 est `ok` (question ouverte, voir § Problèmes de spécification) |
 | 2, construction | graphe du contrôleur défini ; il ne contient que des événements sur l'unité atomique |
 | 3, invariant et cohérence | prouvés, sans `Encap5R` |
-| 4, classification | 28 genres classés ; **trois contre-exemples** (`store`, `alloc`, `issue`) là où le brief attendait aucun ; complétude prouvée pour les genres `protocole`, `exclu` et `fin de vie`, et pour `transfer` sous l'hypothèse 3 ; inachevée pour le `spawn` par valeur |
+| 4, classification | 28 genres classés ; **trois contre-exemples** (`store`, `alloc`, `issue`) là où le brief attendait aucun ; complétude prouvée pour les genres `protocole`, `exclu` et `fin de vie`, et pour `transfer` sous l'hypothèse 3 ; inachevée pour le `spawn` par valeur (prouvée depuis, voir § Passe corrective, tâche 4) |
 | 5, correspondance | pont, synchronisation et réciproque prouvés ; réciproque réfutée sans l'hypothèse 3 (W-TR) |
 | 6, témoins | tous les faits attendus du corpus obtenus |
 
@@ -251,7 +251,7 @@ Chacun est une trace `Run5R` depuis l'état initial, minimale, sans correction n
 | Un pas qui touche le contrôleur de `e` est un événement du graphe | prouvé, pour les genres `protocole`, `exclu` et `fin de vie` | `completeness` (`:359`) | Le pas `i` est `ok` et admis par `Encap5R`, depuis un état qui satisfait `KInvCA`, `SyncState` et `AdminSep`, vers un état qui satisfait `WF3`. L'entrée `e` existe avant le pas `i` et elle est vivante avant et après. Conclusion : le pas est l'événement `ctlIdx e lbls i`. |
 | La même chose sur un `Run5R` depuis l'état initial | prouvé | `completeness_run` (`:394`) | Les invariants viennent de `trace_inv`, sous `DDSound` et des statiques bien formées. |
 | `transfer` sous l'hypothèse 3 : s'il laisse inchangé le contrôleur d'une entrée vivante, il ne le touche pas | prouvé | `transfer_fixed_sound` (`:280`) | `ok`, admis par `Encap5R`, `KInvCA` et `SyncState` au départ |
-| `spawn` par valeur sous l'hypothèse 3 | inachevé | — | énoncé ouvert : un `spawnVal` `ok`, admis par `Encap5R`, depuis un état qui satisfait `KInvCA` et `SyncState`, après lequel le contrôleur d'une entrée vivante est inchangé, n'a pas ce contrôleur dans les sources de ses transferts. La preuve demande `transfer_ctl_cases` sur chaque phase de transfert, sur l'état produit par les phases précédentes ; elle n'est pas tentée. |
+| `spawn` par valeur sous l'hypothèse 3 | inachevé dans cette passe ; **prouvé dans la passe corrective** (`spawnVal_fixed_sound`) | — | énoncé ouvert : un `spawnVal` `ok`, admis par `Encap5R`, depuis un état qui satisfait `KInvCA` et `SyncState`, après lequel le contrôleur d'une entrée vivante est inchangé, n'a pas ce contrôleur dans les sources de ses transferts. La preuve demande `transfer_ctl_cases` sur chaque phase de transfert, sur l'état produit par les phases précédentes ; elle n'est pas tentée. |
 | La forme sans restriction de genre | réfutée | `store_cex`, `alloc_cex`, `issue_cex` | — |
 
 La restriction « vivante avant et après » est nécessaire : un pas `fin de vie` touche le contrôleur au moment où l'entrée meurt (`endUse_ends`).
@@ -264,7 +264,7 @@ La restriction « vivante avant et après » est nécessaire : un pas `fin de vi
 
 Aucun genre n'est `non classé` : la notion retenue donne une empreinte à chacun. La lecture complète dépend pourtant de quatre points :
 1. **Les trois genres contre-exemples** (`store`, `alloc`, `issue`). Ils touchent le contrôleur hors protocole.
-2. **Le `spawn` par valeur sous l'hypothèse 3** (inachevé ; `transfer` est prouvé).
+2. **Le `spawn` par valeur sous l'hypothèse 3** (inachevé dans cette passe ; prouvé dans la passe corrective).
 3. **Ce que le modèle ne représente pas** (`OB-C20`) :
    - la mise à jour des métadonnées du fournisseur d'un `alloc` (§71), comptée dans l'empreinte mais sans effet dans le modèle (`allocEff`) ni dans la réalisation (`allocOps`) ;
    - les accès internes des réalisations composées.
@@ -331,7 +331,7 @@ Ils sont rapportés avec le passage exact. Aucune interprétation n'a été choi
 
 - Conformité d'une réalisation physique à la réalisation déclarée (`OB-C05`).
 - W-TR, sinon comme réfutation de la réciproque.
-- Le `spawn` par valeur sous l'hypothèse 3 : son absence de contact avec le contrôleur n'est pas prouvée (`transfer` l'est).
+- Le `spawn` par valeur sous l'hypothèse 3 : son absence de contact avec le contrôleur n'était pas prouvée dans cette passe ; elle l'est dans la passe corrective.
 - `OB-C20` : accès physiques hors de la notion d'empreinte retenue (métadonnées du fournisseur d'`alloc`, désallocations, accès internes des pas composés).
 - Les genres `exitFrame`, `terminate` et `free`, qui peuvent rendre l'entrée morte : aucun témoin n'est construit.
 - Tentatives échouées de comparaison-échange (hypothèse 5) ; marqueurs internes de gain ou de perte (hypothèse 6).
@@ -342,7 +342,7 @@ Ils sont rapportés avec le passage exact. Aucune interprétation n'a été choi
 
 - **Méthode.** `collectAxioms` sur toutes les constantes `thmInfo` `Ern.Concurrency*` et `_private.Ern.Concurrency*`, après `import Ern`.
 - **Résultat.** 2295 théorèmes, dont 1521 non internes, contre 1956 (1348) avant cette passe. Aucun axiome hors `{propext, Quot.sound}`.
-- **Modules nouveaux**, théorèmes (non internes) :
+- **Modules nouveaux**, théorèmes (non internes). Ce tableau compte trois théorèmes anciens dans `MutexReal.Bridge` ; il est corrigé par la tâche 0 de la passe corrective (`Bridge` : 76 (20) théorèmes nouveaux, total 339 (173)) :
 
   | Module | Théorèmes (non internes) |
   |---|---|
@@ -364,7 +364,7 @@ Ils sont rapportés avec le passage exact. Aucune interprétation n'a été choi
 - `ERN_WC5_2_amendements_proposes.md` : deux amendements **proposés, non validés** (remplacement de C22 point 4, ajout de C18 point 4). Cette passe les teste et ne les valide pas. Le fichier n'est pas commité.
 - `corpus-spec2-m3.md` v11, § 2 decies.
 - WC5.1 corrigé (inchangé), C13, C14, C17, C18, C22.
-- Spec 1 §64 (`depend`) et §68.
+- Spec 1 §63 (`transfer`), §64 (`depend`) et §68.
 
 **Décisions de l'arbitre prises en compte.** La définition `Touches` est acceptée, et l'observation sur `release(guarded)` est retenue telle quelle.
 
@@ -378,7 +378,7 @@ Ils sont rapportés avec le passage exact. Aucune interprétation n'a été choi
 - `MutexReal/ResetAmend.lean` (tâche 5) ;
 - `Corpus/NewMutexRight.lean` (tâche 6).
 
-Les numéros de ligne de cette section sont ceux du commit `0b9d3b8`.
+Les numéros de ligne de cette section sont ceux du commit `ab11150`.
 
 | Commit | Tâche |
 |---|---|
@@ -388,6 +388,7 @@ Les numéros de ligne de cette section sont ceux du commit `0b9d3b8`.
 | `54574d0` | 4 : classification rejouée |
 | `df68726` | 5 : `resetLock` amendé |
 | `0b9d3b8` | 6 : W-NC |
+| `b38ac77`, `ab11150` | observations `alloc(owner = M)` et `depend_only_added` ; repli des docstrings |
 
 ## Tâche 0 — décompte réconcilié
 
@@ -437,6 +438,7 @@ Correction : les modules nouveaux de la couche R comptent 339 théorèmes, dont 
 1. **`depend` touche la place `result` elle-même**, pas ses feuilles. `dependEff` ne change que `D result` (Spec 1 §64, effet), et l'amendement parle de l'état de dépendance « de la feuille du contrôleur ». Conséquence : `depend(M, a)`, avec `M` ancêtre de `lock`, n'est pas refusé. La lecture par les feuilles le refuserait ; aucune trace du dépôt ne contient un tel pas.
 2. **L'encapsulation corrigée lit l'état d'arrivée.** L'exception « un pas après lequel l'entrée est morte » l'impose : `Encap6` n'est donc plus un prédicat sur l'état de départ seul, contrairement à `Encap5R`.
 3. **Le pas amendé est un prédicat à côté de la relation de pas**, comme le demande le brief. Une `Run6` n'impose pas C18 point 4 ; seule une `RunAm` l'impose.
+4. **`Run6` refuse plus que le texte de l'amendement pour `alloc`.** L'empreinte `Touches`, acceptée, donne à `alloc` les feuilles de son fournisseur et de son propriétaire. Depuis `MX₃`, `c0 : alloc(provider = slot, owner = M)` est un pas `ok` admis par `Encap5R` ; l'entrée reste vivante et garde `lock` pour contrôleur ; la restriction le refuse, `lock` étant une feuille de `M` (`alloc_owner_M_refused`, `AmendWitness.lean:187`). L'amendement ne nomme que « the controller as the owner ». C'est le cas symétrique de `depend(M, a)`, qui, lui, n'est pas refusé.
 
 ## Tâche 1 — inclusions
 
@@ -456,7 +458,7 @@ Correction : les modules nouveaux de la couche R comptent 339 théorèmes, dont 
 | jumeau `store(z, lock′)` | `ok`, admis | `ok` ; trace `Run6` depuis l'état initial | Spec 1 §65 | `store_twin` `:64` |
 | jumeau `alloc(provider = slot, owner = lock′)` | `ok`, admis | `ok` ; `Run6` | §71.3 | `alloc_twin` `:86` |
 | jumeau `issue(arena, R1, d0)` | `ok`, admis | `ok` ; `Run6` | §77 (comme S3, pas 3) | `issue_twin` `:108` |
-| `depend(lock, a)` | noyau `ok`, refusé | noyau `ok` (§64.1, §64.3) et admis par `Encap5R` ; refusé par la restriction ; l'entrée reste vivante | C22 point 4 proposé (état de dépendance) | `depend_refused` `:156` |
+| `depend(lock, a)` | noyau `ok`, refusé | noyau `ok` (§64.1, §64.3 ; la partie « real dependency » de §64.2 n'est pas représentée dans le modèle, `DependPre`) et admis par `Encap5R` ; refusé par la restriction ; l'entrée reste vivante | C22 point 4 proposé (état de dépendance) | `depend_refused` `:156` |
 | jumeau `depend(lock′, a)` | `ok`, admis | `ok` ; `Run6` | §64 | `depend_twin` `:169` |
 
 Les refus sont énoncés sur les états existants (`csσ`, `caσ`, `ciσ`). Aucun pas attendu `ok` n'est rejeté par le noyau, et aucun jumeau n'est refusé.
@@ -484,11 +486,12 @@ Les refus sont énoncés sur les états existants (`csσ`, `caσ`, `ciσ`). Aucu
 | `store_cex` | **non** (attendu) | `store_refused` |
 | `alloc_cex` | **non** (attendu) | `alloc_refused` |
 | `issue_cex` | **non** (attendu) | `issue_refused` |
+| témoin `depend(lock, a)` de cette passe (`tdσ`) | **non** (attendu par le corpus v11) | `depend_refused` |
 | jumeau de W-GS (§ 2 sexies), reformulé à états nommés | oui | `gs_twin_run6` `:85` |
 | S3 jusqu'à `issue` (arena sous grant), reformulé | oui | `s3_run6` `:121` |
 | S10 (transferts du mutex entier, grant actif), reformulé | oui | `s10_run6` `:158` |
 
-Les trois dernières traces ne figuraient dans le dépôt que comme `EncapsulatedTrace5R`, sans états nommés ; elles sont reformulées ici. Les traces de cette passe (jumeaux, `depend_twin`, W-NC) sont des `Run6` par construction.
+Toutes les traces `Run5R` du dépôt sont des `Run6`, sauf les trois contre-exemples et le témoin `depend` de cette passe, tous attendus refusés. Les trois dernières traces de la table ne figuraient dans le dépôt que comme `EncapsulatedTrace5R`, sans états nommés ; elles sont reformulées ici. Les traces de cette passe (jumeaux, `depend_twin`, W-NC) sont des `Run6` par construction.
 
 Traces encapsulées non vérifiées, faute d'états nommés :
 - les traces `EncapsulatedTrace` de WC4 (`traceA`, `traceB` de S7, `endUse_mutex_kills_entry` de S17) ;
@@ -500,13 +503,36 @@ Traces encapsulées non vérifiées, faute d'états nommés :
 
 ### Table
 
-| Genres | Statut précédent | Statut sous `Run6` | Fondement |
-|---|---|---|---|
-| `derive`, `split`, `depend`, `enterFrame`, `exitFrame`, `read3`, `write3`, `writeShared`, `pin`, `unpin`, `free`, `spawn`, `terminate`, `join`, `deriveSync`, `newArena`, `reset` (17) | exclu | exclu | `classified6_sound` `:100` |
-| `store`, `alloc`, `issue` (3) | contre-exemple | **exclu** | `classified6_sound` ; `ControlOf` gardé par `cex_ctl_same` `:63` |
-| `release`, `endUse` (2) | fin de vie | fin de vie | propriété `exclu` par `classified6_sound` ; témoins `Run6` : `ends_run6` (`Classify6Witness.lean:36`) |
-| `newMutex`, `acquire`, `unlock`, `resetLock` (4) | protocole | protocole | `proto_touch` (inchangé) |
-| `transfer`, `spawn` par valeur (2) | déplacement | déplacement | témoins `Run6` : `moves_run6` (`Classify6Witness.lean:27`) ; sous l'hypothèse 3, ne touchent pas le contrôleur (`transfer_fixed_sound`, `spawnVal_fixed_sound`) |
+| # | Genre | Statut précédent | Statut sous `Run6` | Fondement |
+|---|---|---|---|---|
+| 1 | `derive` | exclu | exclu | `classified6_sound` |
+| 2 | `split` | exclu | exclu | idem |
+| 3 | `release` | fin de vie | fin de vie | `classified6_sound` ; témoin `Run6` `ends_run6` |
+| 4 | `transfer` | déplacement | déplacement | témoin `Run6` `moves_run6` (W-TR) ; sous l'hypothèse 3, `transfer_fixed_sound` |
+| 5 | `depend` | exclu | exclu | `classified6_sound` ; « ne touche pas » est la restriction (place `result`) |
+| 6 | `enterFrame` | exclu | exclu | `classified6_sound` |
+| 7 | `exitFrame` | exclu | exclu | idem |
+| 8 | `read3` | exclu | exclu | idem |
+| 9 | `write3` | exclu | exclu | idem |
+| 10 | `writeShared` | exclu | exclu | idem |
+| 11 | `pin` | exclu | exclu | idem |
+| 12 | `unpin` | exclu | exclu | idem |
+| 13 | `endUse` | fin de vie | fin de vie | `classified6_sound` ; témoin `Run6` `ends_run6` |
+| 14 | `free` | exclu | exclu | `classified6_sound` |
+| 15 | `alloc` | contre-exemple | **exclu** | `classified6_sound` ; `ControlOf` gardé par `cex_ctl_same` |
+| 16 | `store` | contre-exemple | **exclu** | idem |
+| 17 | `spawn` | exclu | exclu | `classified6_sound` |
+| 18 | `terminate` | exclu | exclu | idem |
+| 19 | `join` | exclu | exclu | idem |
+| 20 | `deriveSync` | exclu | exclu | idem |
+| 21 | `newMutex` | protocole | protocole | `proto_touch` |
+| 22 | `acquire` | protocole | protocole | idem |
+| 23 | `unlock` | protocole | protocole | idem |
+| 24 | `resetLock` | protocole | protocole | idem |
+| 25 | `spawn` par valeur | déplacement | déplacement | témoin `Run6` `moves_run6` ; sous l'hypothèse 3, `spawnVal_fixed_sound` |
+| 26 | `newArena` | exclu | exclu | `classified6_sound` |
+| 27 | `issue` | contre-exemple | **exclu** | `classified6_sound` ; `cex_ctl_same` (`split` puis `store`, avec `AdminSep`) |
+| 28 | `reset` (arena) | exclu | exclu | `classified6_sound` |
 
 Bilan : 20 exclus, 2 en fin de vie, 4 de protocole, 2 en déplacement, **aucun contre-exemple**, conformément à l'attendu. 20 + 2 + 4 + 2 = 28.
 
@@ -522,7 +548,7 @@ Bilan : 20 exclus, 2 en fin de vie, 4 de protocole, 2 en déplacement, **aucun c
 | `spawn` par valeur sous l'hypothèse 3 (l'énoncé laissé ouvert) | **prouvé** | `spawnVal_fixed_sound` `:157` | pas `ok`, admis par `Encap5R` (seul C22.3 sert) ; départ `KInvCA`, `SyncState` ; entrée enregistrée et vivante après ; `ControlOf` identique avant et après |
 | Complétude sans restriction de genre | **prouvé** | `completeness6` `:218` | pas `ok`, `Encap6` ; entrée vivante avant et après ; `ControlOf` identique avant et après. `KInvCA` et `SyncState` au départ ne servent qu'aux déplacements. |
 | La même chose sur une `Run6` depuis l'état initial, sous l'hypothèse 3 (`CtlFixed`) | **prouvé** | `completeness6_run` `:274` | `DDSound`, statiques bien formées ; les invariants viennent de `trace_inv` |
-| Instance sur `lc_trace` | obtenue | `lc_complete6` (`Classify6Witness.lean:43`) | `lc_run6`, `CtlFixed` de `lc_bridge` |
+| Instance sur `lc_trace` | obtenue ; elle n'exerce que le cas « pas du protocole » (l'`unlock(e)` du pas 9) | `lc_complete6` (`Classify6Witness.lean:43`) | `lc_run6`, `CtlFixed` de `lc_bridge` |
 
 **Preuve de `spawnVal_fixed_sound`, sans suivre le contrôleur à travers les phases.**
 - Si le contrôleur était une feuille d'une source de transfert, il serait `Moved` à la fin (`transfers_moved` `:127`) :
@@ -542,7 +568,7 @@ Un pas du protocole d'une autre entrée qui toucherait le contrôleur de `e` est
 
 Aucune preuve de cette passe n'a besoin que `depend` vers le contrôleur soit exclu, sauf `completeness6`, et seulement parce que son empreinte (`TouchesX`) contient par définition la place `result` d'un `depend`.
 
-Avec l'empreinte `Touches` de la passe précédente, `depend` est dans `ExclKind`, et `classified_sound` et `completeness` le couvrent sur `Run5R`, sans la clause. Le graphe du contrôleur, l'invariant, la cohérence et le pont ne lisent pas `D`. `depend(lock, a)` est un pas admis par `Encap5R` qui ne change aucun événement du graphe (`depend_refused`).
+Avec l'empreinte `Touches` de la passe précédente, `depend` est dans `ExclKind`, et `classified_sound` et `completeness` le couvrent sur `Run5R`, sans la clause. Le graphe du contrôleur, l'invariant, la cohérence et le pont ne lisent pas `D`. `depend(lock, a)` est un pas admis par `Encap5R` qui ne change aucun événement du graphe (`depend_refused`). Sur ce pas, `lock` n'est pas dans `Touches` ; seule la place `result` ajoutée par `TouchesX` l'y met (`depend_only_added`, `AmendWitness.lean:196`).
 
 **Cette exclusion est donc sans témoin de nécessité**, comme le corpus l'annonçait : `depend` ne crée aucun accès physique (C27).
 
@@ -562,7 +588,7 @@ Avec l'empreinte `Touches` de la passe précédente, `depend` est dans `ExclKind
 | Un pas `acquire(i)`, `unlock(i)` ou `resetLock(i)` par `c`, `ok` et satisfaisant `AmCond`, est fait par une frame qui a, par une autorité exerçable en `Observe`, un mode effectif présent sur `ControlOf(i)` (`CtrlRight`) | prouvé | `protocol_authority` `:74` | `LStep` et `AmCond`. Pour `acquire` et `unlock`, `AmCond` est vide : C14.3 et C17.4 sont dans la relation de pas. Pour `resetLock`, c'est la clause amendée. |
 | La même chose dans une exécution amendée | prouvé | `runAm_protocol_authority` `:93` | `RunAm` |
 
-Sans l'amendement 2, l'énoncé est faux pour `resetLock` : W-RC est une `Run6` dont le pas 5 est fait depuis `f1`, sans droit sur `lock`.
+Sans l'amendement 2, l'énoncé est faux pour `resetLock` : W-RC est une `Run6` dont le pas d'indice 5 de la trace (le pas 4 du corpus) est fait depuis `f1`, sans droit sur `lock`.
 
 ## Tâche 6 — témoin W-NC (`Corpus/NewMutexRight.lean`)
 
@@ -594,23 +620,24 @@ L'amendement 2 ne change pas le graphe : il ajoute seulement l'autorité des pas
 1. **W-NC** : `newMutex` sans droit sur le contrôleur est `ok`. Faut-il une clause d'accès au contrôleur dans C13 ?
 2. **Empreinte de `depend`** : la place `result` elle-même (choix retenu) ou ses feuilles ? Le cas concret est `depend(M, a)`.
 3. **Clause sur les dépendances** : elle n'a pas de témoin de nécessité. Faut-il la garder dans l'amendement 1 ?
+4. **`alloc` dont le propriétaire ou le fournisseur contient le contrôleur** (`alloc(owner = M)`) : `Run6` le refuse, par les feuilles de l'empreinte acceptée, alors que l'amendement ne nomme que le contrôleur lui-même. Lequel des deux est voulu ?
 
 ## Audit final des axiomes (après la passe corrective)
 
 - **Méthode.** La liste des théorèmes `Ern.Concurrency*` et `_private.Ern.Concurrency*` est extraite après `import Ern` et comparée par différence d'ensembles à celle de `83b6adf`. `collectAxioms` est appliqué à chaque théorème.
-- **Résultat.** 2395 théorèmes, dont 1590 non internes. Aucun axiome hors `{propext, Quot.sound}`. Aucun nom retiré et aucun nom réattribué à un autre module.
+- **Résultat.** 2397 théorèmes, dont 1592 non internes. Aucun axiome hors `{propext, Quot.sound}`. Aucun nom retiré et aucun nom réattribué à un autre module.
 
 | Module nouveau | Théorèmes nouveaux | dont non internes |
 |---|---|---|
 | `MutexReal.Amend` | 28 | 7 |
-| `MutexReal.AmendWitness` | 8 | 8 |
+| `MutexReal.AmendWitness` | 10 | 10 |
 | `MutexReal.NonRegression` | 19 | 19 |
 | `MutexReal.Classify6` | 30 | 20 |
 | `MutexReal.Classify6Witness` | 3 | 3 |
 | `MutexReal.ResetAmend` | 8 | 8 |
 | `Corpus.NewMutexRight` | 4 | 4 |
-| **Total** | **100** | **69** |
+| **Total** | **102** | **71** |
 
-- **Somme.** 2295 + 100 = 2395, et 1521 + 69 = 1590.
+- **Somme.** 2295 + 102 = 2397, et 1521 + 71 = 1592.
 - **Build.** `lake build` réussit (112 jobs), sans avertissement.
 - **Contrôles.** Le `grep` d'`AGENTS.md` est vide, et aucun `noncomputable` n'est utilisé.
