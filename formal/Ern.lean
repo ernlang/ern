@@ -59,6 +59,7 @@ import Ern.Concurrency.MutexReal.FinalAuthority
 import Ern.Concurrency.MutexReal.FinalCorollaries
 import Ern.Concurrency.FullEncap.Inventory
 import Ern.Concurrency.FullEncap.Witness
+import Ern.Concurrency.FullEncap.NonRegression
 import Ern.Concurrency.Events
 import Ern.Concurrency.EventsCompose
 import Ern.Concurrency.EventsProtocols
