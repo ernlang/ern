@@ -1,4 +1,5 @@
-import Ern.Concurrency.FullEncap.Witness
+import Ern.Concurrency.FullEncap.NonRegression
+import Ern.Concurrency.FullEncap.CapacityWitness
 
 /-!
 # Protected data
@@ -125,5 +126,56 @@ theorem protected_runFull_refuted : abσ 0 = (SC.ofS3 (S3.init mxst), [], []) �
     .cons (by decide) (.kernel ⟨by decide, _, .ok (by decide), rfl⟩) .nil
   exact ⟨rfl, runFull_of_run7 (run7_of_run5R ((ClassifyWitness.mx3_steps h).run _) (by decide))
     (by decide), by decide, by decide, by decide, by decide, by decide, by decide⟩
+
+/-! ## Sweep of the repository -/
+
+/-- `ProtectedOK` at every step of a run. -/
+def ProtectedRun (L : MutexLayout) (σ : Nat → SC × SyncReg × ArenaReg) (lbls : List Label) :
+    Prop :=
+  ∀ i (h : i < lbls.length), ProtectedOK L (σ i) lbls[i] (σ (i + 1))
+
+/-- Decidability of `ProtectedRun`. -/
+instance (L : MutexLayout) (σ : Nat → SC × SyncReg × ArenaReg) (lbls : List Label) :
+    Decidable (ProtectedRun L σ lbls) := by
+  unfold ProtectedRun; infer_instance
+
+/-- W-RX, step A, is a second counterexample on `Run7` (`W_RX_A_current`): `resetLock(e_n)` touches
+`lock_n`, a leaf of `footprint(guarded)` of the outer entry `e`, live before and after, whose
+grant is not recorded. -/
+theorem protected_run7_refuted_rx : RunAmF KX L0 rxaσ rxaLbls ∧
+    ¬ ProtectedOK L0 (rxaσ 6) (.resetLock 0 0) (rxaσ 7) :=
+  ⟨W_RX_A_current, by decide⟩
+
+open Ern.Concurrency.Corpus.HandoffEvents Ern.Concurrency.Corpus.MutexEdge
+open Ern.Concurrency.Corpus.ResetLockRight Ern.Concurrency.MutexReal.ClassifyWitness
+open Ern.Concurrency.MutexReal.NonRegression
+open Ern.Concurrency.MutexReal.Witness (s11σ s11Lbls)
+open Ern.Concurrency.Corpus.GuardedChainC (lcLbls)
+
+/-- Brief of slice 3, task 5, evidence on the `RunFull` traces of the repository: the corollary
+holds at every step of the 24 final amended executions (`runAmF_traces_full`), of the trace of
+legitimate uses, of the twin of W-GI, of twin B of W-RX and of the four witnesses of the
+exceptions of task 4 (in these, the entry dies with the step). The only `RunFull` trace that
+fails it is that of the abandoned grant (`protected_runFull_refuted`). -/
+theorem protected_sweep :
+    ProtectedRun L0 hoσ hoLbls ∧ ProtectedRun L0 ho2σ ho2Lbls ∧ ProtectedRun L0 ho3σ ho3Lbls ∧
+    ProtectedRun L0 hojσ hojLbls ∧ ProtectedRun L0 ho3jσ ho3jLbls ∧ ProtectedRun L0 lcσ lcLbls ∧
+    ProtectedRun L0 rl0σ rl0Lbls ∧ ProtectedRun L0 rlσ rlLbls ∧ ProtectedRun L0 rljσ rljLbls ∧
+    ProtectedRun L0 trσ trLbls ∧ ProtectedRun L0 trjσ trjLbls ∧ ProtectedRun L0 s11σ s11Lbls ∧
+    ProtectedRun L0 cvσ cvLbls ∧ ProtectedRun L0 ceσ ceLbls ∧ ProtectedRun L0 crσ crLbls ∧
+    ProtectedRun L0 gsTwinσ gsTwinLbls ∧ ProtectedRun L0 s3σ s3Lbls ∧
+    ProtectedRun L0 s10σ s10Lbls ∧ ProtectedRun L0 AmendWitness.tsσ AmendWitness.tsLbls ∧
+    ProtectedRun L0 AmendWitness.tiσ AmendWitness.tiLbls ∧
+    ProtectedRun L0 AmendWitness.taσ AmendWitness.taLbls ∧
+    ProtectedRun L0 AmendWitness.tdtσ AmendWitness.tdtLbls ∧
+    ProtectedRun L0 FinalWitness.amσ FinalWitness.amLbls ∧
+    ProtectedRun L0 AmendWitness.tdσ AmendWitness.tdLbls ∧
+    ProtectedRun L0 FullEncap.NonRegression.lvσ FullEncap.NonRegression.lvLbls ∧
+    ProtectedRun L0 gtσ gtLbls ∧ ProtectedRun L0 rxbσ rxbLbls ∧
+    ProtectedRun L0 CapacityWitness.frσ CapacityWitness.frLbls ∧
+    ProtectedRun L0 CapacityWitness.exσ CapacityWitness.exLbls ∧
+    ProtectedRun L0 CapacityWitness.tmσ CapacityWitness.tmLbls := by
+  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_,
+    ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> decide
 
 end Ern.Concurrency.FullEncap.Protected
