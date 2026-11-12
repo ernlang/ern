@@ -81,6 +81,42 @@ theorem sweep :
   refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_,
     ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> decide
 
+/-- The kinds whose effect may make a leaf unusable (brief of the complement, task 3, "which
+kinds kill leaves"): `endUse` (Spec 1 §69), `free` (§70), `exitFrame` (§73) and `terminate`
+(WC5.2 C7). -/
+def killKind : Label → Bool
+  | .kernel _ (.endUse _) | .kernel _ (.free _ _) | .kernel _ .exit | .terminate _ => true
+  | _ => false
+
+/-- At every step of a run, a leaf dies only in a step of one of the kinds of `killKind`. -/
+def KillOK (σ : Nat → SC × SyncReg × ArenaReg) (lbls : List Label) : Prop :=
+  ∀ i (h : i < lbls.length), ∀ l ∈ List.range (σ i).1.P.length, Dying (σ i).1 (σ (i + 1)).1 l →
+    killKind lbls[i] = true
+
+/-- Decidability of `KillOK`. -/
+instance (σ : Nat → SC × SyncReg × ArenaReg) (lbls : List Label) : Decidable (KillOK σ lbls) := by
+  unfold KillOK; infer_instance
+
+/-- Brief of the complement, task 3, on the traces of `sweep`: no step outside `endUse`, `free`,
+`exitFrame` and `terminate` kills a leaf. -/
+theorem sweep_kill :
+    KillOK hoσ hoLbls ∧ KillOK ho2σ ho2Lbls ∧ KillOK ho3σ ho3Lbls ∧ KillOK hojσ hojLbls ∧
+    KillOK ho3jσ ho3jLbls ∧ KillOK lcσ lcLbls ∧ KillOK rl0σ rl0Lbls ∧ KillOK rlσ rlLbls ∧
+    KillOK rljσ rljLbls ∧ KillOK trσ trLbls ∧ KillOK trjσ trjLbls ∧ KillOK s11σ s11Lbls ∧
+    KillOK cvσ cvLbls ∧ KillOK ceσ ceLbls ∧ KillOK crσ crLbls ∧ KillOK gsTwinσ gsTwinLbls ∧
+    KillOK s3σ s3Lbls ∧ KillOK s10σ s10Lbls ∧ KillOK AmendWitness.tsσ AmendWitness.tsLbls ∧
+    KillOK AmendWitness.tiσ AmendWitness.tiLbls ∧ KillOK AmendWitness.taσ AmendWitness.taLbls ∧
+    KillOK AmendWitness.tdtσ AmendWitness.tdtLbls ∧ KillOK FinalWitness.amσ FinalWitness.amLbls ∧
+    KillOK AmendWitness.tdσ AmendWitness.tdLbls ∧
+    KillOK FullEncap.NonRegression.lvσ FullEncap.NonRegression.lvLbls ∧
+    KillOK Witness.gtσ Witness.gtLbls ∧ KillOK Witness.rxbσ Witness.rxbLbls ∧
+    KillOK CapacityWitness.frσ CapacityWitness.frLbls ∧
+    KillOK CapacityWitness.exσ CapacityWitness.exLbls ∧
+    KillOK CapacityWitness.tmσ CapacityWitness.tmLbls ∧
+    KillOK agσ agLbls ∧ KillOK ajσ ajLbls ∧ KillOK apσ apLbls := by
+  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_,
+    ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> decide
+
 /-- `corpus-spec2-m3.md` v14 §2 terdecies W-AG, step 7 (`c1 : write3(T)` via `x`, index 9): entry
 `e` is live before and after, `T` is a protected leaf in the footprint, the recorded grant `g`
 (authority 5) is inactive: the step falls in the third case, the capacity of `c1` coming from `x`
