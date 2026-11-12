@@ -22,6 +22,7 @@ import Ern.Concurrency.Corpus.HandoffEvents
 import Ern.Concurrency.Corpus.MX
 import Ern.Concurrency.Corpus.MutexEdge
 import Ern.Concurrency.Corpus.MutexEdgeStrict
+import Ern.Concurrency.Corpus.ResetLockRight
 import Ern.Concurrency.Corpus.S10
 import Ern.Concurrency.Corpus.S10b
 import Ern.Concurrency.Corpus.S10Seq
