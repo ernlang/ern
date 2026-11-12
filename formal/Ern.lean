@@ -70,6 +70,7 @@ import Ern.Concurrency.FullEncap.Dying
 import Ern.Concurrency.FullEncap.SpawnValCap
 import Ern.Concurrency.FullEncap.LastAcquire
 import Ern.Concurrency.FullEncap.ComplementSweep
+import Ern.Concurrency.FullEncap.Replay
 import Ern.Concurrency.Events
 import Ern.Concurrency.EventsCompose
 import Ern.Concurrency.EventsProtocols
