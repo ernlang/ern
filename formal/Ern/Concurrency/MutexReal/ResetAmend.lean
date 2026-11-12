@@ -41,7 +41,8 @@ theorem W_RC_twin_amended_ok : ResetLockAmOk L0 x2 regX 0 0 (x2, regX) :=
 
 /-- `corpus-spec2-m3.md` v11 §2 decies, W-RL: the `resetLock(e)` by `c0` after the prefix P is `ok`
 under the amended form (`root_M` has a present effective mode on `lock`). -/
-theorem W_RL_amended_ok : ResetLockAmOk L0 MutexEdge.p4 regX 0 0 (MutexEdge.p4, regX) := ⟨W_RL_ok.1, by decide⟩
+theorem W_RL_amended_ok : ResetLockAmOk L0 MutexEdge.p4 regX 0 0 (MutexEdge.p4, regX) :=
+  ⟨W_RL_ok.1, by decide⟩
 
 /-- `corpus-spec2-m3.md` v11 §2 decies, W-RL-J: the `resetLock(e)` by `c0` after `terminate` and
 `join` is `ok` under the amended form. -/

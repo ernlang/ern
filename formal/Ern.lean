@@ -49,6 +49,7 @@ import Ern.Concurrency.MutexReal.NonRegression
 import Ern.Concurrency.MutexReal.Classify6
 import Ern.Concurrency.MutexReal.Classify6Witness
 import Ern.Concurrency.MutexReal.ResetAmend
+import Ern.Concurrency.Corpus.NewMutexRight
 import Ern.Concurrency.Events
 import Ern.Concurrency.EventsCompose
 import Ern.Concurrency.EventsProtocols
