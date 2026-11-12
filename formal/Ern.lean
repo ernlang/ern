@@ -55,6 +55,7 @@ import Ern.Concurrency.MutexReal.FinalWitness
 import Ern.Concurrency.MutexReal.FinalNonRegression
 import Ern.Concurrency.MutexReal.Classify7
 import Ern.Concurrency.MutexReal.Classify7Witness
+import Ern.Concurrency.MutexReal.FinalAuthority
 import Ern.Concurrency.Events
 import Ern.Concurrency.EventsCompose
 import Ern.Concurrency.EventsProtocols
