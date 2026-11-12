@@ -65,6 +65,7 @@ import Ern.Concurrency.FullEncap.CapacityWitness
 import Ern.Concurrency.FullEncap.Protected
 import Ern.Concurrency.FullEncap.ResetException
 import Ern.Concurrency.FullEncap.AbandonedGrant
+import Ern.Concurrency.FullEncap.Closure
 import Ern.Concurrency.Events
 import Ern.Concurrency.EventsCompose
 import Ern.Concurrency.EventsProtocols
