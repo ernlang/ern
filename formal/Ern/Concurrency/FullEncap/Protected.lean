@@ -107,8 +107,8 @@ to a new context `c1`, and exits the frame without `unlock` (WC5.2 C18: the gran
 by frame exit; `x` survives in `c1` and its origin becomes `guarded`, Spec 1 §73). Then
 `c1 : write3(T)` via `x` touches the protected leaf `T` of entry `e`, live before and after, whose
 recorded grant `g` is inactive: the capacity of `c1` comes from `x`, whose origin chain is now
-`[guarded, root_T]`, outside the subtree of `g`. Every step is admitted by the complete encapsulation: the trace is a `RunFull`
-from the initial state. -/
+`[guarded, root_T]`, outside the subtree of `g`. Every step is admitted by the complete
+encapsulation: the trace is a `RunFull` from the initial state. -/
 theorem protected_runFull_refuted : abσ 0 = (SC.ofS3 (S3.init mxst), [], []) ∧
     RunFull KM L0 abσ abLbls ∧ ¬ ProtectedOK L0 (abσ 9) (.kernel 1 (.write 6 [3])) (abσ 10) ∧
     ¬ ab8.flat.Active 5 ∧ ab8.flat.ancs 6 = [3, 1] ∧ cap5 ab8 abReg 1 3 = some .modify ∧
