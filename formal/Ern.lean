@@ -39,6 +39,8 @@ import Ern.Concurrency.EventModel.Witness
 import Ern.Concurrency.EventModel.Complements
 import Ern.Concurrency.MutexReal.Graph
 import Ern.Concurrency.MutexReal.Coherence
+import Ern.Concurrency.MutexReal.Classify
+import Ern.Concurrency.MutexReal.ClassifyWitness
 import Ern.Concurrency.Events
 import Ern.Concurrency.EventsCompose
 import Ern.Concurrency.EventsProtocols
