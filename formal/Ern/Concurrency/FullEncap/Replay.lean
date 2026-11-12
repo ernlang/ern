@@ -150,9 +150,9 @@ theorem W_GS_full : opStepC KM (.store 4 3) 0 gs5 (.ok gs6) ∧
 open Ern.Concurrency.Corpus.GuardedStore in
 /-- W-GS, steps 2 and 3 on the states of the corpus trace, after the excluded step 1: `c1 :
 acquire(e)` from `gs6` and `c1 : read3(T)` via `g₁` from `gs7` are `ok` steps that the complete
-encapsulation admits. The corpus v14 gives no verdict for these two steps under the complete
-encapsulation (only `ok` at the kernel, v6 §2 sexies); this is a fact obtained, not an expected
-one. -/
+encapsulation admits, as the brief of the complement, task 6, expects for the rest of the trace.
+Both depend on the state produced by the excluded step 1 (`z2` held by `T`): this is a local
+verification, not an execution. -/
 theorem W_GS_2_3_local :
     EncapFull KM L0 (gs6, sreg, []) (.acquire 1 0) (gs7, sregG, []) ∧
     LStep KM L0 (.acquire 1 0) (gs6, sreg, []) (gs7, sregG, []) ∧
