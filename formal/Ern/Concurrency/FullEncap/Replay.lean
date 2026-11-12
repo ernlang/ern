@@ -66,11 +66,11 @@ def wrσ (i : Nat) : SC × SyncReg × ArenaReg :=
 /-- `corpus-spec2-m3.md` v14 §2 terdecies, W-GR under the complete encapsulation. Local verdict:
 step 1, `c1 : read3(T)` with `access = guarded` from `MX₄`, is `ok` at the kernel (O9) and outside
 the guard-free forms (its access authority is the live `guarded`, WC5.2 C22 item 6), `MX₄` being
-reached by the admitted prefix of the suite. Suite: `MX₄`, then steps 2 and 3, is a `RunFull`
-from the initial state; step 1 leaves the state unchanged (`gr1 = x4`), so the suite is the
-trace of the corpus without it. -/
+reached by the admitted prefix of the suite (`wrσ 5`). Suite: `MX₄`, then steps 2 and 3, is a
+`RunFull` from the initial state; step 1 leaves the state unchanged (`gr1 = x4`), so the suite is
+the trace of the corpus without it. -/
 theorem W_GR_full : opStepC KM (.read 3 [3]) 1 x4 (.ok GuardedRead.gr1) ∧ GuardedRead.gr1 = x4 ∧
-    ¬ PremG KM L0 (x4, regX, []) (.kernel 1 (.read 3 [3])) ∧
+    ¬ PremG KM L0 (x4, regX, []) (.kernel 1 (.read 3 [3])) ∧ wrσ 5 = (x4, regX, []) ∧
     wrσ 0 = (SC.ofS3 (S3.init mxst), [], []) ∧ RunFull KM L0 wrσ wrLbls := by
   have h : Steps5R KM L0 [(x2, regX, []), (x3, regX, []), (x4, regX, []), (wr5, wrReg, []),
       (wr6, wrReg, [])]
@@ -80,7 +80,7 @@ theorem W_GR_full : opStepC KM (.read 3 [3]) 1 x4 (.ok GuardedRead.gr1) ∧ Guar
     .cons (by decide) (.spawn ⟨by decide, .ok (by decide)⟩) <|
     .cons (by decide) (.acquire ⟨by decide, ⟨3, none⟩, rfl, by decide, by decide, rfl⟩) <|
     .cons (by decide) (.kernel ⟨by decide, _, .ok (by decide), rfl⟩) .nil
-  exact ⟨GuardedRead.W_GR_1_ok, rfl, by decide, rfl,
+  exact ⟨GuardedRead.W_GR_1_ok, rfl, by decide, rfl, rfl,
     runFull_of_run7 (run7_of_run5R ((ClassifyWitness.mx3_steps h).run _) (by decide))
       (by decide)⟩
 
@@ -111,11 +111,11 @@ open Ern.Concurrency.Corpus.GuardedChain in
 /-- `corpus-spec2-m3.md` v14 §2 terdecies, W-GC under the complete encapsulation. Local verdict:
 step 1, `c1 : read3(Y)` via `z`, is `ok` at the kernel (O9, `gc_read`) and outside the
 guard-free forms (`Exer5` of `z` passes through the live `guarded`), its state being reached by
-the admitted setup. Suite: the setup, then steps 2 to 4 (`c0 : acquire(e)`, `write3(Y)`,
+the admitted setup (`cgσ 7`). Suite: the setup, then steps 2 to 4 (`c0 : acquire(e)`, `write3(Y)`,
 `read3(Y)` via `z`, through the grant), is a `RunFull` from the initial state; step 1 leaves the
 state unchanged (`gc7 = gc6`), so the suite is the trace of the corpus without it. -/
 theorem W_GC_full : opStepC KM (.read 3 [4]) 1 gc6 (.ok gc7) ∧ gc7 = gc6 ∧
-    ¬ PremG KM L0 (gc6, greg, []) (.kernel 1 (.read 3 [4])) ∧
+    ¬ PremG KM L0 (gc6, greg, []) (.kernel 1 (.read 3 [4])) ∧ cgσ 7 = (gc6, greg, []) ∧
     cgσ 0 = (SC.ofS3 (S3.init zst), [], []) ∧ RunFull KM L0 cgσ cgLbls := by
   have h : Steps5R KM L0 [(gc0, [], []), (gc1, [], []), (gc2, [], []), (gc3, [], []),
       (gc4, [], []), (gc4, greg, []), (gc5, greg, []), (gc6, greg, []), (cg7, cgReg, []),
@@ -130,7 +130,7 @@ theorem W_GC_full : opStepC KM (.read 3 [4]) 1 gc6 (.ok gc7) ∧ gc7 = gc6 ∧
     .cons (by decide) (.acquire ⟨by decide, ⟨4, none⟩, rfl, by decide, by decide, rfl⟩) <|
     .cons (by decide) (.kernel ⟨by decide, _, .ok (by decide), rfl⟩) <|
     .cons (by decide) (.kernel ⟨by decide, _, .ok (by decide), rfl⟩) .nil
-  exact ⟨gc_read.2, rfl, by decide, rfl,
+  exact ⟨gc_read.2, rfl, by decide, rfl, rfl,
     runFull_of_run7 (run7_of_run5R (h.run _) (by decide)) (by decide)⟩
 
 /-! ## W-GS -/
@@ -139,13 +139,15 @@ open Ern.Concurrency.Corpus.GuardedStore in
 /-- `corpus-spec2-m3.md` v14 §2 terdecies, W-GS under the complete encapsulation. Local verdict:
 step 1, `c0 : store(z2, T)` without the grant, is `ok` at the kernel (O8, `W_GS_1_ok`) and
 outside the guard-free forms (the right on `T`, Spec 1 §65.2, holds only through `guarded`), its
-state being reached by the admitted setup. Positive suite: the twin (`c0 : acquire(e)`, then
-`store(z2, T)` under the grant) is a `RunFull` from the initial state, as the corpus v14 expects. -/
+state being reached by the admitted setup (index 6 of the twin). Positive suite: the twin
+(`c0 : acquire(e)`, then `store(z2, T)` under the grant) is a `RunFull` from the initial state,
+as the corpus v14 expects. -/
 theorem W_GS_full : opStepC KM (.store 4 3) 0 gs5 (.ok gs6) ∧
     ¬ PremG KM L0 (gs5, sreg, []) (.kernel 0 (.store 4 3)) ∧
+    MutexReal.NonRegression.gsTwinσ 6 = (gs5, sreg, []) ∧
     MutexReal.NonRegression.gsTwinσ 0 = (SC.ofS3 (S3.init GuardedChain.zst), [], []) ∧
     RunFull KM L0 MutexReal.NonRegression.gsTwinσ MutexReal.NonRegression.gsTwinLbls :=
-  ⟨W_GS_1_ok, by decide, rfl, NonRegression.runAmF_traces_full.2.2.2.2.2.2.2.2.2.2.2.2.2.2.2.1⟩
+  ⟨W_GS_1_ok, by decide, rfl, rfl, NonRegression.runAmF_traces_full.2.2.2.2.2.2.2.2.2.2.2.2.2.2.2.1⟩
 
 open Ern.Concurrency.Corpus.GuardedStore in
 /-- W-GS, steps 2 and 3 on the states of the corpus trace, after the excluded step 1: `c1 :
