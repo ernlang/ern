@@ -35,6 +35,7 @@ import Ern.Concurrency.EventModel.Closure
 import Ern.Concurrency.EventModel.Graph
 import Ern.Concurrency.EventModel.Lemmas
 import Ern.Concurrency.EventModel.Witness
+import Ern.Concurrency.EventModel.Complements
 import Ern.Concurrency.Events
 import Ern.Concurrency.EventsCompose
 import Ern.Concurrency.EventsProtocols
