@@ -62,6 +62,7 @@ import Ern.Concurrency.FullEncap.Witness
 import Ern.Concurrency.FullEncap.NonRegression
 import Ern.Concurrency.FullEncap.Capacity
 import Ern.Concurrency.FullEncap.CapacityWitness
+import Ern.Concurrency.FullEncap.Protected
 import Ern.Concurrency.Events
 import Ern.Concurrency.EventsCompose
 import Ern.Concurrency.EventsProtocols
