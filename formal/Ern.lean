@@ -67,6 +67,7 @@ import Ern.Concurrency.FullEncap.ResetException
 import Ern.Concurrency.FullEncap.AbandonedGrant
 import Ern.Concurrency.FullEncap.Closure
 import Ern.Concurrency.FullEncap.Dying
+import Ern.Concurrency.FullEncap.SpawnValCap
 import Ern.Concurrency.Events
 import Ern.Concurrency.EventsCompose
 import Ern.Concurrency.EventsProtocols
