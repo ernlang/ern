@@ -21,24 +21,24 @@ open Ern.Concurrency.Traces (L0)
 
 /-! ## The three counter-examples are refused -/
 
-/-- `corpus-spec2-m3.md` v11 §2 decies, `store`: the last step of `store_cex`, `c0 : store(z, lock)`,
-admitted by `Encap5R`, is refused by the restriction of the controller (proposed C22 item 4: a
+/-- `corpus-spec2-m3.md` v11 §2 decies, `store`: the last step of `store_cex`,
+`c0 : store(z, lock)`, admitted by `Encap5R`, is refused by the restriction of the controller (proposed C22 item 4: a
 `store` whose target is the controller); the trace is no `Run6`. -/
 theorem store_refused : ¬ CtlRestr L0 (csσ 4) (.kernel 0 (.store 4 2)) (csσ 5) ∧
     ¬ Run6 KM L0 csσ csLbls := by
   have h : ¬ CtlRestr L0 (csσ 4) (.kernel 0 (.store 4 2)) (csσ 5) := by decide
   exact ⟨h, fun hr => h (hr.restr (i := 4) (by decide))⟩
 
-/-- `corpus-spec2-m3.md` v11 §2 decies, `alloc`: the last step of `alloc_cex`, `c0 : alloc(provider =
-slot, owner = lock)`, is refused by the restriction of the controller (an `alloc` whose owner is
+/-- `corpus-spec2-m3.md` v11 §2 decies, `alloc`: the last step of `alloc_cex`,
+`c0 : alloc(provider = slot, owner = lock)`, is refused by the restriction of the controller (an `alloc` whose owner is
 the controller); the trace is no `Run6`. -/
 theorem alloc_refused : ¬ CtlRestr L0 (caσ 3) (.kernel 0 (.alloc 1 2 [(none, 0)])) (caσ 4) ∧
     ¬ Run6 KM L0 caσ caLbls := by
   have h : ¬ CtlRestr L0 (caσ 3) (.kernel 0 (.alloc 1 2 [(none, 0)])) (caσ 4) := by decide
   exact ⟨h, fun hr => h (hr.restr (i := 3) (by decide))⟩
 
-/-- `corpus-spec2-m3.md` v11 §2 decies, `issue`: the last step of `issue_cex`, `c0 : issue(arena, R1,
-lock2)`, is refused by the restriction of the controller (an `issue` whose destination is the
+/-- `corpus-spec2-m3.md` v11 §2 decies, `issue`: the last step of `issue_cex`,
+`c0 : issue(arena, R1, lock2)`, is refused by the restriction of the controller (an `issue` whose destination is the
 controller); the trace is no `Run6`. -/
 theorem issue_refused : ¬ CtlRestr L0 (ciσ 7) (.issue 0 0 [5] 2) (ciσ 8) ∧
     ¬ Run6 KA L0 ciσ ciLbls := by
@@ -80,8 +80,8 @@ def taσ (i : Nat) : SC × SyncReg × ArenaReg :=
   [(x0, [], []), (x1, [], []), (x2, [], []), (x2, regX, []), (ta1, regX, [])].getD i
     (ta1, regX, [])
 
-/-- `corpus-spec2-m3.md` v11 §2 decies, twin of `alloc`: `c0 : alloc(provider = slot, owner = lock′)`
-is `ok` (Spec 1 §71.3: `Modify` exercisable on `lock′` through `root_M′`) and the trace is a `Run6`
+/-- `corpus-spec2-m3.md` v11 §2 decies, twin of `alloc`:
+`c0 : alloc(provider = slot, owner = lock′)` is `ok` (Spec 1 §71.3: `Modify` exercisable on `lock′` through `root_M′`) and the trace is a `Run6`
 from the initial state. -/
 theorem alloc_twin : taσ 0 = (SC.ofS3 (S3.init mxst), [], []) ∧ Run6 KM L0 taσ taLbls := by
   have h : Steps5R KM L0 [(x2, regX, []), (ta1, regX, [])] [.kernel 0 (.alloc 1 6 [(none, 0)])] :=
