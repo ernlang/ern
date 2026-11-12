@@ -328,7 +328,8 @@ open Ern.Concurrency.Corpus.MutexEdge in
 write of the `unlock(e)` (step 7) to the RMW of the `acquire(e)` (step 10), the `transfer` of step 9
 being no protocol step, while the strict mutex edge does not relate them; the controller moves from
 `lock` (place 2) to `lock′` (place 6) at step 9. -/
-theorem converse_needs_fixed : Run5R Ern.Concurrency.Corpus.KM Ern.Concurrency.Traces.L0 trσ trLbls ∧
+theorem converse_needs_fixed :
+    Run5R Ern.Concurrency.Corpus.KM Ern.Concurrency.Traces.L0 trσ trLbls ∧
     trLbls[7]? = some (.unlock 1 0) ∧ trLbls[10]? = some (.acquire 0 0) ∧
     EventModel.RF (ctlGraph refOrds 0 trLbls) (ctlIdx 0 trLbls 7) (ctlIdx 0 trLbls 10) ∧
     ¬ SWS trσ Ern.Concurrency.Traces.L0 trLbls (.step 7) (.step 10) ∧

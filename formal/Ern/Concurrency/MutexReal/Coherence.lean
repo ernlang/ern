@@ -227,8 +227,8 @@ grant `none` and records some grant; `unlock(e)` and `resetLock(e)` record `none
 keeps entry `e`, or creates it with grant `none` when it did not exist (`newMutex`). -/
 def EntryStep (e : Nat) (lbl : Label) (r r' : SyncReg) : Prop :=
   match ctlOp e lbl with
-  | some (_, .acq) => ∃ x, r[e]? = some x ∧ x.grant = none ∧ ∃ g, r'[e]? = some { x with grant := g }
-      ∧ g ≠ none
+  | some (_, .acq) => ∃ x, r[e]? = some x ∧ x.grant = none ∧
+      ∃ g, r'[e]? = some { x with grant := g } ∧ g ≠ none
   | some (_, _) => ∃ x, r[e]? = some x ∧ r'[e]? = some { x with grant := none }
   | none => r'[e]? = r[e]? ∨ (r[e]? = none ∧ ∃ x, r'[e]? = some x ∧ x.grant = none)
 

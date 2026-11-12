@@ -1,6 +1,7 @@
 import Ern.Concurrency.MutexReal.Bridge
 import Ern.Concurrency.Corpus.HandoffEvents
 import Ern.Concurrency.Corpus.MutexEdge
+import Ern.Concurrency.Corpus.MutexEdgeStrict
 
 /-!
 # Witnesses of the controller graph
@@ -60,7 +61,8 @@ step 4 is `newMutex(e)`; the controller events are `init`, `A1`, `U1`, `A0` (eve
 4, 7, 9, 10), `rf` is `init → A1`, `U1 → A0`; the graph is well typed and consistent; `sw(U1, A0)`
 is its only `sw` edge; `newMutex(e)` precedes every protocol step of `c1` in the strict graph. -/
 theorem lc_graph : Run5R KM L0 lcσ lcLbls ∧ NewMutexAt lcσ lcLbls 0 4 ∧
-    (ctlGraph refOrds 0 lcLbls).evs = [A1, U1, A0] ∧ (ctlGraph refOrds 0 lcLbls).rf = [(0, 1), (2, 3)] ∧
+    (ctlGraph refOrds 0 lcLbls).evs = [A1, U1, A0] ∧
+    (ctlGraph refOrds 0 lcLbls).rf = [(0, 1), (2, 3)] ∧
     [ctlIdx 0 lcLbls 7, ctlIdx 0 lcLbls 9, ctlIdx 0 lcLbls 10] = [1, 2, 3] ∧
     EventModel.WellTyped (ctlGraph refOrds 0 lcLbls) ∧
     EventModel.EventConsistent (ctlGraph refOrds 0 lcLbls) ∧
@@ -79,6 +81,26 @@ theorem lc_variants :
     EventModel.EventConsistent (ctlGraph ⟨.rlx, .rel, .rlx⟩ 0 lcLbls) ∧
     EventModel.NoSW (ctlGraph ⟨.rlx, .rel, .rlx⟩ 0 lcLbls) := by
   decide
+
+/-- Brief, task 5, on `lc_trace`: hypothesis 3 holds (the controller of `e` is `lock`, place 2,
+whenever the entry exists); the strict mutex edge from the `unlock(e)` of step 9 to the
+`acquire(e)` of step 10 (`lc_strict`) gives, by `bridge`, `rf` from event 2 to event 3, by
+`bridge_sw_ref` an `sw` edge, and `bridge_converse` gives the strict edge back. -/
+theorem lc_bridge : CtlFixed lcσ L0 lcLbls 0 ∧
+    EventModel.RF (ctlGraph refOrds 0 lcLbls) (ctlIdx 0 lcLbls 9) (ctlIdx 0 lcLbls 10) ∧
+    EventModel.SW (ctlGraph refOrds 0 lcLbls) (ctlIdx 0 lcLbls 9) (ctlIdx 0 lcLbls 10) ∧
+    SWS lcσ L0 lcLbls (.step 9) (.step 10) := by
+  have hs : ∀ i (h : i < lcLbls.length), LStep KM L0 lcLbls[i] (lcσ i) (lcσ (i + 1)) :=
+    fun i h => (lc_run.2 i h).2
+  have h0 : ∀ x, (lcσ 0).2.1[0]? = some x → x.grant = none := fun x hx => by cases hx
+  have hfix : CtlFixed lcσ L0 lcLbls 0 := ⟨2, by decide⟩
+  have hsw := Ern.Concurrency.Corpus.MutexEdgeStrict.lc_strict.2.1
+  have hrf := bridge hs h0 (u := 9) (a := 10) (c := 1) rfl hsw refOrds
+  exact ⟨hfix, hrf, bridge_sw_ref hs h0 (u := 9) (a := 10) (c := 1) rfl hsw,
+    bridge_converse hs h0 hfix (u := 9) (a := 10) (cu := 1) (ca := 0) rfl rfl refOrds hrf⟩
+
+/-- Hypothesis 3 holds on W-RL₀: the controller of `e` is `lock` whenever the entry exists. -/
+theorem rl0_fixed : CtlFixed rl0σ L0 rl0Lbls 0 := ⟨2, by decide⟩
 
 /-! ## W-RL₀, W-RL, W-RL-J -/
 
