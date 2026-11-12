@@ -5,14 +5,15 @@ Formalisation exploratoire, branche `formal/spec2-m4`, jamais mergée.
 **Sources lues** :
 - le brief « couche R, réalisation du mutex de référence » ;
 - `ERN_WC5_1_FINAL.md`, appelé ici « WC5.1 corrigé » : clauses C12 à C18, C21, C22, C26 à C34, C38 à C40, C47 à C49 ;
-- `corpus-spec2-m3.md` v10, § 0, § 1 (S2, S7, S11, S17), § 2 octies et § 2 nonies.
+- `corpus-spec2-m3.md` v10, § 0, § 1 (S2, S7, S11, S17), § 2 octies et § 2 nonies ;
+- la Spec 1 (`specs/ERN_Memory_Model_Specification_v0.1.md`), §58, §59, §62, §65, §69, §70, §71, §73 et §77, pour les effets des pas classés en tâche 4.
 
 **Modules** :
 - `formal/Ern/Concurrency/EventModel/Complements.lean` (tâche 0) ;
 - `formal/Ern/Concurrency/Corpus/ResetLockRight.lean` (tâche 1) ;
 - `formal/Ern/Concurrency/MutexReal/` (tâches 2 à 6).
 
-Les numéros de ligne sont ceux du commit `3764070`. Aucune définition existante n'est modifiée : ni la machine d'autorités, ni le graphe de la tranche 1, ni `EventModel`.
+Les numéros de ligne sont ceux du commit `3cca039`. Aucune définition existante n'est modifiée : ni la machine d'autorités, ni le graphe de la tranche 1, ni `EventModel`.
 
 ## Hypothèses de la réalisation
 
@@ -44,7 +45,7 @@ Les numéros de ligne sont ceux du commit `3764070`. Aucune définition existant
 | 1, W-RC | tous les verdicts du corpus obtenus ; le pas 4 est `ok` (question ouverte, voir § Problèmes de spécification) |
 | 2, construction | graphe du contrôleur défini ; il ne contient que des événements sur l'unité atomique |
 | 3, invariant et cohérence | prouvés, sans `Encap5R` |
-| 4, classification | 28 genres classés ; **trois contre-exemples** (`store`, `alloc`, `issue`) là où le brief attendait aucun ; complétude prouvée pour les genres `protocole`, `exclu` et `fin de vie` |
+| 4, classification | 28 genres classés ; **trois contre-exemples** (`store`, `alloc`, `issue`) là où le brief attendait aucun ; complétude prouvée pour les genres `protocole`, `exclu` et `fin de vie`, et pour `transfer` sous l'hypothèse 3 ; inachevée pour le `spawn` par valeur |
 | 5, correspondance | pont, synchronisation et réciproque prouvés ; réciproque réfutée sans l'hypothèse 3 (W-TR) |
 | 6, témoins | tous les faits attendus du corpus obtenus |
 
@@ -57,6 +58,7 @@ Les numéros de ligne sont ceux du commit `3764070`. Aucune définition existant
 | `683606b` | 4 : `MutexReal/Classify.lean`, `MutexReal/ClassifyWitness.lean` |
 | `3005d40` | 5 : `MutexReal/Bridge.lean` |
 | `3764070` | 6 : `MutexReal/Witness.lean` |
+| `3cca039` | corrections après revue : feuilles qui meurent dans l'empreinte, `transfer` sous l'hypothèse 3, instances du pont et de `CtlFixed` |
 
 ## Tâche 0 — compléments de la couche E (`EventModel/Complements.lean`)
 
@@ -125,7 +127,7 @@ Aucun pas attendu `ok` n'est refusé, ni par le modèle ni par `Encap5R`.
 2. si l'entrée n'existe pas, aucun pas du protocole sur `e` n'a eu lieu ;
 3. chaque RMW lit `0`.
 
-L'énoncé ne lit que le registre, pas l'activité du grant : il couvre donc le grant abandonné. `s11_abandoned` (`Witness.lean:143`) l'instancie sur S11 après `exitFrameC(f1′)` : le grant `6` est enregistré et inactif, le dernier événement est le RMW, et `lastW` vaut `some 1`.
+L'énoncé ne lit que le registre, pas l'activité du grant : il couvre donc le grant abandonné. `s11_abandoned` (`Witness.lean:165`) l'instancie sur S11 après `exitFrameC(f1′)` : le grant `6` est enregistré et inactif, le dernier événement est le RMW, et `lastW` vaut `some 1`.
 
 **Structure de la preuve de cohérence.**
 1. Un lemme sur les listes : des événements de la forme déclarée, dont chaque RMW lit `0`, donnent un graphe `EventConsistent` (`mkGraph_consistent`, `:140`). `po`, `sw`, `rf`, `mo` et `rb` y croissent tous selon l'indice, ce qui donne la cohérence.
@@ -133,32 +135,39 @@ L'énoncé ne lit que le registre, pas l'activité du grant : il couvre donc le 
 
 ## Tâche 4 — classification (`MutexReal/Classify.lean`, `MutexReal/ClassifyWitness.lean`)
 
+### Définitions ajoutées
+
+- `Dying` (`:32`), `Touches` (`:52`) : l'empreinte, décrite ci-dessous.
+- `ExclKind` (`:82`), `FinKind` (`:91`), `ProtoKind` (`:96`) : les genres de statut `exclu`, `fin de vie` et `protocole`.
+- Tâche 3 (`Coherence.lean`) : `CtlShape` (`:30`, les genres d'événements de la réalisation), `PredZero` (`:34`, chaque RMW lit `0`), `Ords.WellTyped` (`:203`), `lastW` (`:223`), `EntryStep` (`:228`, l'effet d'un pas sur l'entrée `e` du registre).
+- Tâche 5 (`Bridge.lean`) : `CtlFixed` (`:255`, l'hypothèse 3).
+- Tâche 6 (`Witness.lean`) : `SwExactly` (`:30`), `AfterNewMutex` (`:39`).
+
 ### Empreinte : décision
 
-`Touches L st lbl l` (`Classify.lean:40`) est une définition nouvelle, à valider.
+`Touches L st lbl l` (`Classify.lean:52`) est une définition nouvelle, à valider.
 
 **Notions que le modèle possède déjà :**
 - `Label.Access` (`CapPreserve.lean`) : les accès de `read3`, `write3` et `writeShared` ;
 - `KernelOp.Writes` (Spec 1 §59) : les feuilles écrites par `write3`, `writeShared`, `store` (sa cible) et `transfer` (sa destination) ;
 - la réalisation du jalon 2, `realize` (`Realize.lean`) : des opérations sur des octets, sous une disposition mémoire.
 
-**Notion retenue** : celle du brief, au niveau des feuilles. C'est l'union de `Label.Access`, de `KernelOp.Writes` et des places source et destination des pas qui changent un état d'initialisation ou un détenteur :
+**Notion retenue** : celle du brief, au niveau des feuilles, élargie aux feuilles qui meurent. C'est l'union de `Label.Access`, de `KernelOp.Writes`, des places source et destination des pas qui changent un état d'initialisation ou un détenteur, et des feuilles utilisables qui cessent de l'être (`Dying`, `Classify.lean:32`), notion que le modèle possède déjà sous la forme de `FreedLeaf` et `EndingLeaf` :
 
 | Pas | Feuilles de l'empreinte |
 |---|---|
 | `transfer` | source et destination |
 | `store` | cible |
-| `endUse` | la place |
-| `alloc` | fournisseur, propriétaire et places neuves |
+| `endUse` | la place (ses feuilles deviennent `Uninit`, §69) et les feuilles qui meurent avec elle |
+| `free`, `exitFrame`, `terminate` | les feuilles qui meurent (§70, §73, effets) |
+| `alloc` | fournisseur (§71.2 : ses métadonnées sont mises à jour), propriétaire (détenteur de la nouvelle racine, §71) et places neuves |
 | `enterFrame`, `spawn` | places neuves |
 | `spawn` par valeur | places neuves et sources des transferts |
-| `issue` | destination |
+| `issue` | destination (§77 : « an explicit write to that destination », qui détient le bloc) |
 | `newMutex`, `acquire`, `unlock`, `resetLock` | le contrôleur de leur entrée (réalisation déclarée) |
-| tous les autres pas | aucune |
+| `derive`, `split`, `release`, `depend`, `pin`, `unpin`, `join`, `deriveSync`, `newArena`, `reset` | aucune : leur effet abstrait ne crée aucun accès physique (C27) et ne change ni un état d'initialisation, ni un détenteur, ni la vie d'une place |
 
-`realize` n'est pas retenue, pour deux raisons. Elle est au niveau des octets, et elle n'a aucune opération pour les pas du protocole (`realize_sync`). Ni l'une ni l'autre notion ne contient l'autre :
-- `realize` désalloue pour `free` et `exitFrame`, ce que la notion retenue ne compte pas ;
-- `realize` n'écrit ni le fournisseur ni le propriétaire d'un `alloc`.
+`realize` n'est pas retenue, pour deux raisons. Elle est au niveau des octets, et elle n'a aucune opération pour les pas du protocole (`realize_sync`). Elle n'écrit ni le fournisseur ni le propriétaire d'un `alloc`, que la notion retenue compte.
 
 ### Règle d'attribution du statut
 
@@ -170,10 +179,12 @@ Un seul statut par genre, par priorité décroissante :
 
 Pour les genres `fin de vie`, la propriété `exclu` est aussi prouvée : tant que l'entrée reste vivante, le pas ne la touche pas.
 
-`classified_sound` (`:145`) prouve les statuts `exclu` et `fin de vie`, sous ces hypothèses :
+`classified_sound` (`:163`) prouve les statuts `exclu` et `fin de vie`, sous ces hypothèses :
 - le pas est `ok` et admis par `Encap5R` ;
-- l'état satisfait `KInvCA` et `AdminSep`, qui valent le long de toute trace encapsulée depuis l'état initial (`trace_inv`) ;
+- l'état de départ satisfait `KInvCA`, `SyncState` et `AdminSep`, et l'état d'arrivée `WF3` ; tous valent le long de toute trace encapsulée depuis l'état initial (`trace_inv`) ;
 - l'entrée est enregistrée, et vivante avant et après le pas.
+
+Pour les feuilles qui meurent, la preuve n'est pas vide par définition : `SyncInv` est préservé (`lstep_preserves`), et C21 point 3 rend le contrôleur d'une entrée vivante utilisable après le pas.
 
 Sa conclusion : la feuille `ControlOf(e)` n'est pas dans l'empreinte, et `ControlOf(e)` ne change pas.
 
@@ -184,24 +195,24 @@ Sa conclusion : la feuille `ControlOf(e)` n'est pas dans l'empreinte, et `Contro
 | 1 | `derive` | exclu | `classified_sound` ; empreinte vide ; `ControlOf` gardé (`opStep_facts`, `ctl_same_eq`) |
 | 2 | `split` | exclu | idem |
 | 3 | `release` | fin de vie | `release_ends` (`ClassifyWitness.lean:238`) : depuis `MX₃`, `release(guarded)` est admis et tue l'entrée ; C22.1 n'exclut que `derive` et `split` de source `guarded` |
-| 4 | `transfer` | déplacement | `transfer_moves` (`:165`) : W-TR, `ControlOf(e)` passe de `lock` à `lock′` (S7) |
+| 4 | `transfer` | déplacement | `transfer_moves` (`:165`) : W-TR, `ControlOf(e)` passe de `lock` à `lock′` (S7) ; sous l'hypothèse 3, il ne touche pas le contrôleur (`transfer_fixed_sound`, `Classify.lean:280`) |
 | 5 | `depend` | exclu | empreinte vide |
-| 6 | `enterFrame` | exclu | l'empreinte ne contient que des places neuves (`ctl_lt`) ; fin de vie non testée |
-| 7 | `exitFrame` | exclu | empreinte vide ; fin de vie possible (mutex local d'une frame qui sort), non testée |
+| 6 | `enterFrame` | exclu | l'empreinte ne contient que des places neuves (`ctl_lt`) |
+| 7 | `exitFrame` | exclu | feuilles qui meurent : le contrôleur d'une entrée vivante après le pas reste utilisable (C21.3) ; fin de vie possible (mutex local d'une frame qui sort), non testée |
 | 8 | `read3` | exclu | `CtlExcl` (C22 point 4) |
 | 9 | `write3` | exclu | `CtlExcl` |
 | 10 | `writeShared` | exclu | `CtlExcl` |
 | 11 | `pin` | exclu | empreinte vide |
 | 12 | `unpin` | exclu | empreinte vide |
-| 13 | `endUse` | fin de vie | `endUse_ends` (`:213`) : `endUse(M)` touche `lock` et tue l'entrée ; vivante après, aucune feuille touchée (`endUse_ctl_not_touched`, `Classify.lean:113`, par C22 point 5) |
-| 14 | `free` | exclu | empreinte vide ; la désallocation n'est pas dans la notion retenue ; fin de vie non testée |
+| 13 | `endUse` | fin de vie | `endUse_ends` (`:213`) : `endUse(M)` touche `lock` et tue l'entrée ; vivante après, le contrôleur n'est ni une feuille de la place (`endUse_ctl_not_touched`, `Classify.lean:129`, par C22 point 5) ni une feuille qui meurt (C21.3) |
+| 14 | `free` | exclu | feuilles qui meurent, comme `exitFrame` ; fin de vie non testée |
 | 15 | `alloc` | **contre-exemple** | `alloc_cex` (`:93`) |
 | 16 | `store` | **contre-exemple** | `store_cex` (`:59`) |
 | 17 | `spawn` | exclu | places neuves seulement |
-| 18 | `terminate` | exclu | empreinte vide (`term_facts`) ; fin de vie non testée |
+| 18 | `terminate` | exclu | feuilles qui meurent, comme `exitFrame` (`term_facts`) ; fin de vie non testée |
 | 19 | `join` | exclu | état inchangé |
 | 20 | `deriveSync` | exclu | `Encap` n'en admet aucun quand une entrée est vivante (`deriveSync_excluded`) |
-| 21 | `newMutex` | protocole | sur une autre entrée, touche un autre contrôleur (C13.8 ; `proto_touch`, `Classify.lean:235`) |
+| 21 | `newMutex` | protocole | sur une autre entrée, touche un autre contrôleur (C13.8 ; `proto_touch`, `Classify.lean:316`) |
 | 22 | `acquire` | protocole | sur une autre entrée, un autre contrôleur (C21.4) |
 | 23 | `unlock` | protocole | idem |
 | 24 | `resetLock` | protocole | idem ; l'entrée réinitialisée est vivante (C18.1 exige `guarded` actif) |
@@ -218,10 +229,10 @@ Bilan : 17 genres `exclu`, 2 `fin de vie`, 4 `protocole`, 2 `déplacement`, 3 `c
 
 Chacun est une trace `Run5R` depuis l'état initial, minimale, sans correction ni hypothèse ajoutée. L'entrée est vivante avant et après le pas, son contrôleur est inchangé, et le pas n'est pas un pas du protocole : il n'est donc pas un événement du graphe construit.
 
-- **`store`** (`store_cex`). Depuis `MX₃` :
+- **`store`** (`store_cex`). Spec 1 §65 : la cible peut déjà être `Init` ; l'effet en fait le détenteur de l'autorité et la rend `Init` ; §59 compte `store` parmi les écritures. Depuis `MX₃` :
   1. `c0 : z := derive(root_M′, Observe, {slot′})` ;
   2. `c0 : store(z, lock)`.
-  - Le `store` écrit `lock` (§59, `KernelOp.Writes`) et en fait le détenteur de `z`.
+  - Le `store` écrit `lock` (§59, §65 ; `KernelOp.Writes`) et en fait le détenteur de `z`.
   - La réalisation du jalon 2 (`storeOps`) écrit aussi les octets de `lock`.
   - `Encap5R` l'admet. Ses seules prémisses sur ce pas sont les droits de `PlaceExcl` sur la cible, que `root_M` satisfait.
 - **`alloc`** (`alloc_cex`). Depuis `MX₃`, `c0 : alloc(provider = slot, owner = lock)`.
@@ -230,29 +241,32 @@ Chacun est une trace `Run5R` depuis l'état initial, minimale, sans correction n
 - **`issue`** (`issue_cex`). Bloc AR avant le partage de `M2` :
   1. `c0 : acquire(e2)` ;
   2. `c0 : issue(arena, R1, lock2)`.
-  - Le bloc est stocké dans `lock2` (§77, §65), sous le grant : `MetaRight` passe par le grant.
+  - Le bloc est stocké dans `lock2`, une écriture explicite de la destination (§77). Le grant justifie `MetaRight` ; le droit noyau sur `lock2` vient de `root_M2`. `PlaceExcl` ne vérifie aucun droit sur la destination d'un `issue`.
   - La réalisation du jalon 2 (`realize_issue`) écrit les octets de `lock2`.
 
 ### Complétude
 
 | Énoncé | Statut | Théorème | Hypothèses exactes |
 |---|---|---|---|
-| Un pas qui touche le contrôleur de `e` est un événement du graphe | prouvé, pour les genres `protocole`, `exclu` et `fin de vie` | `completeness` (`:277`) | Le pas `i` est `ok` et admis par `Encap5R`, depuis un état qui satisfait `KInvCA`, `SyncInv` et `AdminSep`. L'entrée `e` est vivante avant et après le pas `i`. Conclusion : le pas est l'événement `ctlIdx e lbls i`. |
-| La même chose sur un `Run5R` depuis l'état initial | prouvé | `completeness_run` (`:311`) | Les invariants viennent de `trace_inv`, sous `DDSound` et des statiques bien formées. |
+| Un pas qui touche le contrôleur de `e` est un événement du graphe | prouvé, pour les genres `protocole`, `exclu` et `fin de vie` | `completeness` (`:359`) | Le pas `i` est `ok` et admis par `Encap5R`, depuis un état qui satisfait `KInvCA`, `SyncState` et `AdminSep`, vers un état qui satisfait `WF3`. L'entrée `e` existe avant le pas `i` et elle est vivante avant et après. Conclusion : le pas est l'événement `ctlIdx e lbls i`. |
+| La même chose sur un `Run5R` depuis l'état initial | prouvé | `completeness_run` (`:394`) | Les invariants viennent de `trace_inv`, sous `DDSound` et des statiques bien formées. |
+| `transfer` sous l'hypothèse 3 : s'il laisse inchangé le contrôleur d'une entrée vivante, il ne le touche pas | prouvé | `transfer_fixed_sound` (`:280`) | `ok`, admis par `Encap5R`, `KInvCA` et `SyncState` au départ |
+| `spawn` par valeur sous l'hypothèse 3 | inachevé | — | énoncé ouvert : un `spawnVal` `ok`, admis par `Encap5R`, depuis un état qui satisfait `KInvCA` et `SyncState`, après lequel le contrôleur d'une entrée vivante est inchangé, n'a pas ce contrôleur dans les sources de ses transferts. La preuve demande `transfer_ctl_cases` sur chaque phase de transfert, sur l'état produit par les phases précédentes ; elle n'est pas tentée. |
 | La forme sans restriction de genre | réfutée | `store_cex`, `alloc_cex`, `issue_cex` | — |
 
-La restriction « vivante avant et après » est nécessaire. Un pas `fin de vie` touche le contrôleur au moment où l'entrée meurt ; après cela, un autre `newMutex` peut réutiliser la feuille.
+La restriction « vivante avant et après » est nécessaire : un pas `fin de vie` touche le contrôleur au moment où l'entrée meurt (`endUse_ends`).
 
-L'hypothèse 3 n'est pas utilisée : les genres `déplacement` sont hors de l'énoncé. Montrer que, sous l'hypothèse 3, un `transfer` ou un `spawn` par valeur ne touche jamais le contrôleur reste à faire.
+`completeness` ne couvre pas `newMutex(e)` lui-même : l'entrée `e` n'existe pas avant ce pas. Sa correspondance avec `init` est l'hypothèse 4, et `NewMutexAt` la vérifie sur chaque témoin.
+
+`completeness` n'utilise pas l'hypothèse 3 ; les genres `déplacement` sont traités à part, ci-dessus.
 
 ### Ce dont dépend encore la lecture du graphe comme histoire complète du contrôleur
 
 Aucun genre n'est `non classé` : la notion retenue donne une empreinte à chacun. La lecture complète dépend pourtant de quatre points :
 1. **Les trois genres contre-exemples** (`store`, `alloc`, `issue`). Ils touchent le contrôleur hors protocole.
-2. **Les deux genres `déplacement`.** Sous l'hypothèse 3, ils ne sont pas couverts par une preuve.
-3. **Ce que la notion ne représente pas** (`OB-C20`) :
-   - la mise à jour des métadonnées du fournisseur d'un `alloc` (§71.2), sans effet dans le modèle ni dans `allocOps` ;
-   - la désallocation de `free` et des locaux d'`exitFrame` et de `terminate` ;
+2. **Le `spawn` par valeur sous l'hypothèse 3** (inachevé ; `transfer` est prouvé).
+3. **Ce que le modèle ne représente pas** (`OB-C20`) :
+   - la mise à jour des métadonnées du fournisseur d'un `alloc` (§71), comptée dans l'empreinte mais sans effet dans le modèle (`allocEff`) ni dans la réalisation (`allocOps`) ;
    - les accès internes des réalisations composées.
 4. **Les tentatives échouées et les marqueurs internes** (hypothèses 5 et 6).
 
@@ -275,6 +289,8 @@ Les deux événements sont donc adjacents, et le RMW lit l'écriture de l'`unloc
 
 **Preuve de la réciproque.** L'arête `rf` rend les deux événements adjacents ; aucun pas du protocole sur `e` n'est donc entre `u` et `a`. L'hypothèse 3 fournit les clauses `ctlAt` de `MutexGap`.
 
+**Non-vacuité.** Sur `lc_trace`, l'hypothèse 3 tient, et l'arête stricte du pas 9 au pas 10 (`lc_strict`) donne par `bridge` l'arête `rf` de l'événement 2 à l'événement 3, par `bridge_sw_ref` une arête `sw`, et `bridge_converse` rend l'arête stricte (`lc_bridge`, `Witness.lean:89`). L'hypothèse 3 tient aussi sur W-RL₀ (`rl0_fixed`, `:103`).
+
 **Réfutation sans l'hypothèse 3 : W-TR**, un `Run5R`. `rf` relie l'écriture de l'`unlock(e)` (pas 7) au RMW de l'`acquire(e)` (pas 10), mais `SWS` ne les relie pas : le contrôleur passe de `lock` (2) à `lock′` (6) au pas 9, qui n'est pas un pas du protocole.
 
 ## Tâche 6 — témoins (`MutexReal/Witness.lean`)
@@ -283,12 +299,13 @@ Tous les témoins sont des `Run5R` depuis l'état initial, sous la réalisation 
 
 | Trace | Attendu (corpus § 2 nonies) | Obtenu | Théorème |
 |---|---|---|---|
-| `lc_trace` | événements `init`, `A1`, `U1`, `A0` ; `rf` : `init → A1`, `U1 → A0` ; cohérent ; `sw(U1, A0)` et aucune autre ; `newMutex(e)` avant les pas de `c1` | tout obtenu. `newMutex(e)` est le pas 4, et les événements 1 à 3 sont les pas 7, 9 et 10. Le graphe est bien typé, et `newMutex(e)` précède les pas de `c1` dans `HBS`. | `lc_graph` `:62` |
-| variantes de `lc_trace` | `unlock` en `relaxed`, ou `acquire` en `relaxed` : `rf(U1, A0)`, aucune arête `sw` | obtenu pour les deux ; cohérentes | `lc_variants` `:74` |
-| W-RL₀ | comme `lc_trace` | obtenu | `rl0_graph` `:89` |
-| W-RL | `init`, `A1`, `U1`, `R0`, `A0` ; `rf` : `init → A1`, `R0 → A0` ; cohérent ; aucune arête `sw` | obtenu | `rl_graph` `:101` |
-| W-RL-J | comme W-RL ; les écritures de `T` sont ordonnées par le `join` dans le graphe strict | obtenu, avec `HBS(6, 13)` | `rlj_graph` `:114` |
-| S11 (en plus) | l'invariant couvre le grant abandonné | grant enregistré et inactif ; `lastW = some 1` | `s11_abandoned` `:143` |
+| `lc_trace` | événements `init`, `A1`, `U1`, `A0` ; `rf` : `init → A1`, `U1 → A0` ; cohérent ; `sw(U1, A0)` et aucune autre ; `newMutex(e)` avant les pas de `c1` | tout obtenu. `newMutex(e)` est le pas 4, et les événements 1 à 3 sont les pas 7, 9 et 10. Le graphe est bien typé, et `newMutex(e)` précède les pas de `c1` dans `HBS`. | `lc_graph` `:63` |
+| variantes de `lc_trace` | `unlock` en `relaxed`, ou `acquire` en `relaxed` : `rf(U1, A0)`, aucune arête `sw` | obtenu pour les deux ; cohérentes | `lc_variants` `:76` |
+| W-RL₀ | comme `lc_trace` | obtenu | `rl0_graph` `:111` |
+| W-RL | `init`, `A1`, `U1`, `R0`, `A0` ; `rf` : `init → A1`, `R0 → A0` ; cohérent ; aucune arête `sw` | obtenu | `rl_graph` `:123` |
+| W-RL-J | comme W-RL ; les écritures de `T` sont ordonnées par le `join` dans le graphe strict | obtenu, avec `HBS(6, 13)` | `rlj_graph` `:136` |
+| S11 (en plus) | l'invariant couvre le grant abandonné | grant enregistré et inactif ; `lastW = some 1` | `s11_abandoned` `:165` |
+| `lc_trace`, W-RL₀ (en plus) | instances de l'hypothèse 3 et du pont | obtenu | `lc_bridge` `:89`, `rl0_fixed` `:103` |
 
 ## Pas attendus `ok` refusés
 
@@ -300,7 +317,7 @@ Ils sont rapportés avec le passage exact. Aucune interprétation n'a été choi
 
 1. **C22 point 4 ne couvre pas `store` ni `issue` vers le contrôleur.**
    - Le passage : « does not expose ordinary `read3` of `ControlOf(entry)` … It also does not expose ordinary `write3` or out-of-protocol `writeShared` mutations of that controller ».
-   - `store(z, lock)` et `issue(arena, R1, lock2)` écrivent la feuille du contrôleur (§59, §65 ; C27 : « `store` … may write or copy bytes »). C22 point 6 ne les exclut pas : le droit sur `lock` passe par `root_M`, ou par le grant pour `issue`, jamais par un `guarded` vivant.
+   - `store(z, lock)` et `issue(arena, R1, lock2)` écrivent la feuille du contrôleur (Spec 1 §59, §65, §77 ; C27 : « `store` … may write or copy bytes »). C22 point 6 ne les exclut pas : le droit sur `lock` ou `lock2` passe par `root_M` ou `root_M2`, jamais par un `guarded` vivant ; pour `issue`, `PlaceExcl` ne regarde que `MetaRight`, que le grant justifie.
    - C21.7 reste vrai : `lock` reste `Init`.
    - Exemple concret : `store_cex`, `issue_cex`. `alloc(owner = lock)` (`alloc_cex`) en est la variante par changement de détenteur.
    - À arbitrer : étendre C22 point 4 à toute opération dont l'empreinte contient le contrôleur, ou admettre ces pas.
@@ -314,7 +331,7 @@ Ils sont rapportés avec le passage exact. Aucune interprétation n'a été choi
 
 - Conformité d'une réalisation physique à la réalisation déclarée (`OB-C05`).
 - W-TR, sinon comme réfutation de la réciproque.
-- Les genres `déplacement` sous l'hypothèse 3 : leur absence de contact avec le contrôleur n'est pas prouvée.
+- Le `spawn` par valeur sous l'hypothèse 3 : son absence de contact avec le contrôleur n'est pas prouvée (`transfer` l'est).
 - `OB-C20` : accès physiques hors de la notion d'empreinte retenue (métadonnées du fournisseur d'`alloc`, désallocations, accès internes des pas composés).
 - Les genres `exitFrame`, `terminate` et `free`, qui peuvent rendre l'entrée morte : aucun témoin n'est construit.
 - Tentatives échouées de comparaison-échange (hypothèse 5) ; marqueurs internes de gain ou de perte (hypothèse 6).
@@ -324,7 +341,7 @@ Ils sont rapportés avec le passage exact. Aucune interprétation n'a été choi
 ## Audit final des axiomes
 
 - **Méthode.** `collectAxioms` sur toutes les constantes `thmInfo` `Ern.Concurrency*` et `_private.Ern.Concurrency*`, après `import Ern`.
-- **Résultat.** 2283 théorèmes, dont 1515 non internes, contre 1956 (1348) avant cette passe. Aucun axiome hors `{propext, Quot.sound}`.
+- **Résultat.** 2295 théorèmes, dont 1521 non internes, contre 1956 (1348) avant cette passe. Aucun axiome hors `{propext, Quot.sound}`.
 - **Modules nouveaux**, théorèmes (non internes) :
 
   | Module | Théorèmes (non internes) |
@@ -333,10 +350,10 @@ Ils sont rapportés avec le passage exact. Aucune interprétation n'a été choi
   | `Corpus.ResetLockRight` | 8 (8) |
   | `MutexReal.Graph` | 28 (21) |
   | `MutexReal.Coherence` | 63 (36) |
-  | `MutexReal.Classify` | 120 (53) |
+  | `MutexReal.Classify` | 130 (57) |
   | `MutexReal.ClassifyWitness` | 8 (8) |
   | `MutexReal.Bridge` | 79 (22) |
-  | `MutexReal.Witness` | 6 (6) |
+  | `MutexReal.Witness` | 8 (8) |
 
 - **Build.** `lake build` réussit (105 jobs), sans avertissement.
 - **Contrôles.** Le `grep` d'`AGENTS.md` est vide, et aucun `noncomputable` n'est utilisé.
