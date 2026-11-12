@@ -2,6 +2,8 @@
 
 Formalisation exploratoire, jamais mergée. Branche `formal/spec2-m4`, rien n'est poussé.
 
+La section « Complément » rend compte du complément de cette tranche (corpus v14, § 2 terdecies).
+
 ## Sources
 
 - **WC5.2** (`ERN_Concurrency_Model_WC5.2.md`, version retouchée). Clauses lues pour cette passe :
@@ -517,6 +519,371 @@ Nature des 204 ajouts :
 | noms générés (`_proof_N`, `match_N`) | 79 | internes |
 
 72 + 53 + 79 = 204, et 72 + 53 = 125.
+
+## Complément
+
+Cette section rend compte du complément de la tranche 3 : brief « tranche 3 : encapsulation complète, complément », corpus `corpus-spec2-m3.md` v14 (§ 2 terdecies), WC5.2 inchangé. Les sections précédentes restent telles quelles ; celle-ci les complète et, pour la tâche 5, les remplace.
+
+### Sources
+
+- **WC5.2** : C4 à C8, C12 à C18, C21, C22, C32, C43, C45, C46, C49 ; `OB-C28` ; § V (S18).
+- **Spec 1** : §40, §43, §47, §50, §54, §60 à §65, §69, §70, §73, §80.
+- **Corpus** v14 : § 2 terdecies en entier ; § 2 duodecies, fait « Donnée protégée » (rédaction v14).
+- **Décisions du propriétaire** appliquées :
+  - la tâche 5 est énoncée en trois cas ;
+  - la réancre de §73 n'est pas une émission au sens de C22 point 1 ;
+  - « entrée vivante » se lit vivante avant et après le pas.
+
+### Commits
+
+| Commit | Tâche | Contenu |
+|---|---|---|
+| `857972e` | 1 | `AbandonedGrant.lean` : W-AG, W-AG-J, W-AG′, graphe strict |
+| `cca140c` | 2 | `Closure.lean` : fermeture de la descendance |
+| `2a92c48` | 3 | `Dying.lean` : forme des pas, feuille protégée qui ne meurt pas |
+| `88f099c` | 4 | `SpawnValCap.lean` : capacité de `spawnVal` avant le pas |
+| `28312c0` | 5 | `LastAcquire.lean`, `ComplementSweep.lean` : dernière prise, trois cas, fait du corpus, balayage |
+| `7384238` | 6 | `Replay.lean` : traces rejouées |
+| `012921f` | 3 | `DyingCap.lean` : aucun autre contexte n'a de capacité sur une feuille qui meurt |
+| `3477c4c` | 3, 6 | genres qui tuent (`KillOK`) ; traces positives restantes ; balayage des traces rejouées |
+| `2774cfe`, `8ae69ee` | 6 | W-GS pas 2 et 3 en vérification locale ; états de départ des pas exclus atteints par les suites admises |
+
+Les numéros de ligne ci-dessous sont ceux de `8ae69ee`. Huit modules s'ajoutent aux sept de la tranche 3, tous importés dans `formal/Ern.lean`. Aucune définition ni aucun théorème existant n'est modifié, `protected_runFull_refuted` compris.
+
+### Définitions ajoutées et écarts au brief
+
+| Notion du brief | Encodage (module:ligne) | Écart |
+|---|---|---|
+| Descendants couvrants de `e` | `CoveringDesc s e.guarded j` (`SyncLib:158`), existant ; `covSet` (`AbandonedGrant:32`) les liste | aucun : `g ∈ ancs j` (descendant strict, chaîne courante lue transitivement), `j` active, `afp j ∩ afp g ≠ ∅` |
+| Lien d'origine direct | `S3.org j` (champ `origin` courant) | aucun |
+| Feuille qui meurt | `Dying s s' l` (`Classify:32`), définition de la tranche 3 | exige en plus que `l` soit une feuille avant le pas ; gardée comme le brief le permet |
+| Capacité de provenance `S` | `ProvCap st S c l m` (`LastAcquire:84`) : une autorité `x ∈ S`, attribuable à `c` en mode `m` sans `guarded` vivant (`Attr5`, C43), de mode effectif au moins `m` sur `l` | équivaut à « `cap5(c, l) ≥ m`, atteinte par `x ∈ S` » (`cap5_attained`, `:64`) |
+| `CapReq` avec provenance | `CapFrom k st S` (`LastAcquire:90`) | même clause par genre que `CapReq` ; pour `spawnVal`, `Modify` sur les feuilles des sources, lues avant le pas (tâche 4) |
+| Cas 3 de la fermeture | `GrantOf st e j lbl` (`Closure:178`) | l'entrée acquise est identifiée par son `guarded` (`e'.guarded = e.guarded`), pas par sa position ; deux entrées vivantes de même `guarded` sont la même par C21 point 4 (`SyncInv.unique`) |
+| Fermeture pour un pas | `ClosureStep` (`Closure:192`), décidable | `e` parcourt le registre d'avant le pas |
+| Second fait de la tâche 3, pour un pas | `OtherCapFree` (`Dying:190`), décidable | bornes `c' < |C|`, `l < |P|` pour la décidabilité ; le théorème `other_cap_dying_run` n'a pas ces bornes |
+| Genres qui tuent | `killKind`, `KillOK` (`ComplementSweep:87`, `:92`), décidables | contrôle sur les traces, pas de théorème général (voir tâche 3) |
+| Contrôle des trois cas | `ThreeOK` (`ComplementSweep:37`), `SweepOK` (`:50`) | `ThreeOK` vérifie la provenance au mode `Observe`, plus faible que `CapFrom` ; le théorème `three_cases` donne le mode exigé |
+| Phases de `spawnVal` | `PhaseRel s c t` (`SpawnValCap:72`) | structure auxiliaire de preuve |
+
+Aucune hypothèse n'est ajoutée : chaque énoncé `_run` a pour seules hypothèses `DDSound k`, `StaticsOK statics`, `σ 0` initial et `RunFull k L σ lbls`, plus les données quantifiées de l'énoncé (indice, entrée, feuille).
+
+### Tâche 1 — Témoins (corpus § 2 terdecies)
+
+Contrat `KM`, disposition `L0`, depuis `MX₃`. Le pas `k` du corpus est le label d'indice `k + 2`. Identités : `root_M` = 0, `guarded` = 3, `g` = 5, `x` = 6, `g′` = 7 (W-AG), `y` = 7 (W-AG′) ; places `slot` = 1, `lock` = 2, `T` = 3.
+
+| Témoin | Attendu (corpus) | Obtenu | Clause | Théorème |
+|---|---|---|---|---|
+| W-AG, pas 1 à 11 | `ok` au noyau et admis | `RunFull` depuis l'état initial | O1, O6, C14 à C16, O1, C4, C6, O10, O3, C18, C16, O10 | `W_AG_run` (`AbandonedGrant:81`) |
+| W-AG, pas 6 | aucune création ; `origin(x)` : `g` → `guarded`, empreinte et mode inchangés ; ensemble `{g, x}` → `{x}` ; `e` vivante, `g` inactive, `root_M` à `Modify` effectif sur `slot` et `lock` | tous : `|A|` inchangé ; `org 6` : 5 → 3 ; `covSet` `[5, 6]` → `[6]` ; `effective 0 1 = effective 0 2 = Modify` | §73.4, C6, C12, §43.2 | `W_AG_6_facts` (`:93`) |
+| refus a, `c0 : acquire(e)` | sans issue `ok` ; C14.2 échoue ; C14.1 et C14.3 tiennent ; C15.4, C15.5 échouent | idem | C14.2, C15.4 (§60.2), C15.5 (§60.3) | `W_AG_a` (`:106`) |
+| refus b, `c0 : unlock(e)` | `reject`, C17.2 | aucune issue `ok` ; `g` inactive | C17.2 (§62.1) | `W_AG_b` (`:118`) |
+| refus c, `c0 : resetLock(e)` | `reject`, C18.2 | aucune issue `ok` ; `x` couvre `T` ; C18.1 tient par `root_M` | C18.2 | `W_AG_c` (`:126`) |
+| refus d, `c0 : read3(T)` via `guarded` | `reject`, O9.2 | `reject` au noyau ; mode effectif de `guarded` sur `T` absent | O9.2, §43.3 | `W_AG_d` (`:135`) |
+| W-AG-J | `ok` et admise | `RunFull` depuis l'état initial | C7, C8 | `W_AGJ_run` (`:161`) |
+| graphe strict, W-AG | aucun chemin `hb` entre les écritures de `T` ; C46 violé | `ExclPair 9 13 3`, `¬ HBS`, `¬ HandoffOrderedAtS`, `¬ HandoffOrderedS`, `RaceS` | C46 | `W_AG_strict` (`:194`) |
+| graphe strict, W-AG-J | écriture de `c1` →`po` `terminate` →`sw` `join` →`po` écriture de `c0` | `PO 9 11`, `SWS 11 12`, `PO 12 15`, `HBS 9 15`, `HandoffOrderedS`, `¬ RaceS` | C32, C46 | `W_AGJ_strict` (`:208`) |
+| W-AG′, A1 à A4 | `ok` et admis | `RunFull` depuis l'état initial | O1, C4, C7, O10 | `W_AGp_run` (`:249`) |
+| W-AG′, colonne | `{x}` ; A1 `{x, y}`, `y` d'origine `x` ; A2 inchangé ; A3 `{y}`, sans création, `origin(y)` : `x` → `guarded` ; A4 inchangé | `[6]`, `[6, 7]` (`org 7 = 6`), `[6, 7]`, `[7]` (`|A|` inchangé, `org 7` : 6 → 3), `[7]` | §60, §73.4, C7 | `W_AGp_run` (`:249`) |
+| W-AG′, négatif après A3 | `reject`, C18.2 | aucune issue `ok` ; `y` couvre `T` | C18.2 | `W_AGp_neg` (`:278`) |
+| W-AG, pas 7 | troisième cas | `e` vivante avant et après ; `g` inactive ; capacité `Modify` de `c1` par `x`, descendant couvrant | — | `W_AG_7_third` (`ComplementSweep:124`) |
+
+**Écart de représentation (refus b et c).** Le corpus attend `reject`. Le modèle ne représente que les issues `ok` des pas de bibliothèque (`UnlockOk`, `ResetLockOk`) ; le refus s'y lit comme l'absence d'issue `ok`. Le classement entre `reject` et `non habilité` relève de D-C1, hors de portée.
+
+### Tâche 2 — Fermeture de la descendance
+
+**Énoncé prouvé.** `closure_run` (`Closure:401`) : pour tout `i < |lbls|`, `ClosureStep (σ i) lbls[i] (σ (i + 1))`. Hypothèses : `DDSound k`, `StaticsOK statics`, `σ 0` initial, `RunFull k L σ lbls`. Forme par pas : `closure_step` (`:282`), sous `KInvCA`, `AdminSep` et `Encap` (C22 points 1 à 3 et 5), tous vrais sur les états atteints (`runFull_inv`, `Capacity:168`).
+
+**Méthode.** Chaque pas est lu par l'abstraction `Skel` de `SyncPreserve` :
+
+- les autorités existantes gardent empreinte et mode ;
+- elles ne sont jamais réactivées ;
+- leur chaîne d'origine ne fait que perdre des éléments ;
+- les autorités ajoutées sont des racines ou des dérivées d'une autorité existante active.
+
+Une autorité existante n'entre donc jamais dans l'ensemble (cas 1, `cover_of_skel`, `:207`). Une autorité créée a pour origine soit `guarded` lui-même, soit une autorité de l'ensemble. Une origine `guarded` n'arrive que par `acquire` (cas 3) : `derive` et `split` de source `guarded` sont exclus par `Encap` (C22 point 1), et `deriveSync` brut est exclu (`deriveSync_excluded`, `SyncPreserve:1171`).
+
+**Pas composés et forme (2′).** `issue`, `reset` et `spawnVal` sont lus phase par phase (`Skel.comp`, `:33`). Seule leur première phase crée des autorités :
+
+- `issue` : le `split` de `internal`, puis le `store`, qui ne crée rien ;
+- `reset` : le `derive` de `internal`, puis le `release` de l'autorité créée ;
+- `spawnVal` : les racines des locaux, puis les transferts et la cession, qui ne créent rien.
+
+L'origine immédiate d'une autorité créée existait donc avant le pas. Le cas (2) est prouvé tel qu'écrit, et la forme (2′) n'est pas nécessaire. La dernière prise se lit avec le cas (2).
+
+**Acquire d'une autre entrée.** Si le `guarded` d'une entrée `e₀` est lui-même dans l'ensemble de `e`, le grant de `acquire(e₀)` a pour origine une autorité de l'ensemble : cas (2) pour `e`, cas (3) pour `e₀`. La preuve couvre ce cas ; aucun témoin ne le réalise.
+
+**Table des 28 genres.** Les colonnes sont lues sur les effets du modèle ; le seul effet qui écrit `origin` est `exitG` (§73.4), utilisé par `exitFrame` et `terminate`.
+
+| # | Genre | Crée une autorité | Change un lien d'origine direct | Peut faire entrer une autorité (cas) | Statut |
+|---|---|---|---|---|---|
+| 1 | `derive` | oui, d'origine la source (§60) | non | oui, cas 2, si la source est dans l'ensemble ; jamais depuis `guarded` (C22.1) | prouvé |
+| 2 | `split` | oui, d'origine la source (§61) | non | oui, cas 2, même restriction | prouvé |
+| 3 | `release` | non | non | non | prouvé |
+| 4 | `transfer` | non (déplace des détenteurs) | non | non | prouvé |
+| 5 | `depend` | non | non | non | prouvé |
+| 6 | `enterFrame` | oui, racines des locaux (`origin = none`) | non | non | prouvé |
+| 7 | `exitFrame` | non | oui (§73.4, réancre) | non : la chaîne ne fait que perdre des éléments | prouvé |
+| 8 | `read3` | non | non | non | prouvé |
+| 9 | `write3` | non | non | non | prouvé |
+| 10 | `writeShared` | non | non | non | prouvé |
+| 11 | `pin` | non | non | non | prouvé |
+| 12 | `unpin` | non | non | non | prouvé |
+| 13 | `endUse` | non | non | non | prouvé |
+| 14 | `free` | non | non | non | prouvé |
+| 15 | `alloc` | oui, racines (`origin = none`) | non | non | prouvé |
+| 16 | `store` | non | non | non | prouvé |
+| 17 | `spawn` | oui, racines des locaux de l'enfant | non | non | prouvé |
+| 18 | `terminate` | non | oui (C7, §73.4, réancre) | non | prouvé |
+| 19 | `join` | non | non | non | prouvé |
+| 20 | `deriveSync` brut | oui, d'origine `guarded` | non | — | sans objet : exclu par `Encap` (C22.2) |
+| 21 | `newMutex` | non | non | non | prouvé |
+| 22 | `acquire` | oui, le grant, d'origine `guarded` (C15, C16) | non | oui : cas 3 pour l'entrée acquise ; cas 2 pour une entrée dont l'ensemble contient ce `guarded` | prouvé |
+| 23 | `unlock` | non | non | non | prouvé |
+| 24 | `resetLock` | non | non | non | prouvé |
+| 25 | `spawnVal` | oui, racines des locaux (phase 1 seulement) | non | non | prouvé |
+| 26 | `newArena` | non | non | non | prouvé |
+| 27 | `issue` | oui, le bloc, d'origine `internal` (phase 1 seulement) | non | oui, cas 2, si `internal` est dans l'ensemble | prouvé |
+| 28 | `reset` | oui, d'origine `internal` (phase 1), relâchée en phase 2 | non | non : l'autorité créée est inactive après le pas | prouvé |
+
+Décompte : 27 prouvés, 1 sans objet (`deriveSync` brut), 0 contre-exemple.
+
+**Contrôle par `decide`.** `ClosureStep` tient à chaque pas des 46 traces `RunFull` balayées (`sweep`, `ComplementSweep:62` ; `sweep_replay`, `Replay:438`).
+
+### Tâche 3 — Feuilles qui meurent
+
+| Énoncé | Théorème | Statut | Hypothèses en plus de `DDSound`, `StaticsOK`, `σ 0` initial, `RunFull` |
+|---|---|---|---|
+| une feuille de `footprint(e.guarded)` ne meurt pas si `e` est vivante avant et après | `protected_not_dying_run` (`Dying:174`) | prouvé | `i < |lbls|`, `e.Live (σ i)`, `e.Live (σ (i+1))`, `l ∈ afp(e.guarded)` dans `σ i` |
+| avant un pas de `c`, aucun autre contexte n'a de `cap5` sur une feuille qui meurt | `other_cap_dying_run` (`DyingCap:55`) ; forme décidable `otherCapFree_run` (`:84`) | prouvé | `i < |lbls|`, `c' ≠ lbls[i].ctx`, `Dying (σ i) (σ (i+1)) l` |
+| seuls `endUse`, `free`, `exitFrame`, `terminate` font mourir des feuilles | `sweep_kill` (`ComplementSweep:102`), `sweep_replay` (`Replay:438`) | vérifié sur les 46 traces ; établi par relecture ; **pas de théorème général** | — |
+
+**Premier fait.** Le `guarded` de `e` est actif après le pas (C12) et couvre la feuille, dont l'empreinte est conservée (`Skel`). Le pas garde les feuilles feuilles (`PSkel`). `NoDangling` après le pas (§54) interdit alors que la place devienne inutilisable. Les lemmes utilisés sont `shape_step` (`Dying:53`), pour `Skel` et `PSkel` de chacun des 28 genres, et `protected_not_dying` (`:158`).
+
+**Second fait.** C'est un corollaire de L1 :
+
+1. Après le pas, aucun contexte n'a de `cap5` sur une feuille qui est morte (`cap5_none_after`, `DyingCap:26`). Une autorité qui l'atteindrait serait active et couvrirait une feuille d'une place inutilisable, contre `NoDangling`.
+2. Une capacité d'un contexte `c' ≠ c` avant le pas serait donc perdue dans un pas de `c`.
+3. L1 l'interdit (`cap5_drop_own`, `CapDrop:1332`, WC5.2 C45).
+
+La passerelle : un préfixe de `RunFull` est une `Run5R` (`run5R_take`, `:43`), donc une `EncapsulatedTrace5` (`run5R_trace`, `encapsulatedTrace5R_imp`, `encapsulatedTrace5C_imp`).
+
+**Invariants qui servent.** `NoDangling` (§54) et C12 servent directement. Les préconditions §69.2, §70.3, §73.2, §73.4 et C7 ne sont pas invoquées dans ces preuves : le second fait passe par L1, dont la preuve par genre est celle du jalon 4, réutilisée sans être relue ici.
+
+**Genres qui tuent, par relecture.** Une place devient inutilisable si elle est marquée morte, si sa frame terminale disparaît, ou si sa chaîne de propriétaires change :
+
+- `dead` n'est changé que par `endUse` (§69, `OwnedIn`) et `free` (§70, `FreedPlace`) ;
+- les frames ne sont retirées que par `exitFrame` et `terminate` (`exitEff`) ;
+- les propriétaires ne changent que par `transfer` et les phases de `spawnVal`, vers `corr(r)`, partie de la destination, utilisable par §63.
+
+Ce dernier point n'est pas prouvé en général. Le contrôle `KillOK` le confirme sur les 46 traces.
+
+**Les quatre témoins `exc_*`** (`exc_dying_facts`, `Dying:205`). Dans chacun, l'entrée meurt avec le pas, donc le premier fait ne s'applique pas, et `OtherCapFree` tient.
+
+### Tâche 4 — `spawnVal` dans l'état d'avant le pas
+
+**Prouvé.** `spawnVal_cap_pre` (`SpawnValCap:342`) : pour un pas `lbls[i] = .spawnVal c ps ls vs`, toute source `v ∈ vs` et toute feuille `l ∈ footprint (σ i).P v.1`, il existe une autorité attribuable à `c` sans `guarded` vivant (`Attr5`), de mode effectif `Modify` sur `l` dans l'état d'avant le pas, donc `cap5(c, l) = Modify`. Hypothèses : `DDSound`, `StaticsOK`, `σ 0` initial, `RunFull`, `i < |lbls|`, `lbls[i] = .spawnVal c ps ls vs`.
+
+**Argument.** `PhaseRel` (`:72`) relie l'état d'avant le pas à chaque état de phase. Les états de phase n'ajoutent que :
+
+- les racines des locaux de l'enfant, tenues par sa nouvelle frame (`phaseRel_create`, `:196`) ;
+- les détenteurs déplacés vers ces locaux par les transferts précédents (`phaseRel_transfer`, `:232`).
+
+Une chaîne `Exer5` du créateur dans un état de phase n'utilise ni l'un ni l'autre, avec les mêmes modes effectifs sur les feuilles existantes (`exer5_back`, `:107`). La conclusion se transporte phase par phase (`phases_cap`, `:304`).
+
+**Aucun contre-exemple.** Aucun transfert d'une phase ne donne au créateur une capacité qu'il n'avait pas avant le pas.
+
+### Table de capacité de la tranche 3, mise à jour
+
+Seules ces lignes changent ; les autres sont celles de la tâche 4 ci-dessus.
+
+| # | Genre | Avant ce complément | Après |
+|---|---|---|---|
+| 7 | `exitFrame` | exception : feuilles qui meurent | exception, bornée : une feuille protégée par une entrée vivante avant et après ne meurt pas (`protected_not_dying_run`) ; aucun autre contexte n'a de `cap5` sur une feuille qui meurt (`other_cap_dying_run`) |
+| 13 | `endUse` | prouvé sur la place ; exception ailleurs | prouvé sur la place ; exception bornée comme pour `exitFrame` |
+| 14 | `free` | prouvé sur la place ; exception ailleurs | prouvé sur la place ; exception bornée comme pour `exitFrame` |
+| 18 | `terminate` | exception : feuilles qui meurent | exception bornée comme pour `exitFrame` |
+| 25 | `spawnVal` | prouvé par phase ; inachevé avant le pas | prouvé par phase et avant le pas (`spawnVal_cap_pre`) |
+
+Décompte mis à jour des 28 genres :
+
+| Statut | Genres | Nombre |
+|---|---|---|
+| prouvé | les 11 de la tranche 3 et `spawnVal` | 12 |
+| prouvé sur la place, exception bornée ailleurs | `endUse`, `free` | 2 |
+| exception bornée | `exitFrame`, `terminate` | 2 |
+| sans objet | les mêmes 12 | 12 |
+| contre-exemple | — | 0 |
+
+`CapReq` reste inchangé : le contexte qui agit n'a toujours besoin d'aucune capacité sur les feuilles qui meurent. Le second fait de la tâche 3 en tient lieu, comme le dit le corpus.
+
+### Tâche 5 — Dernière prise et donnée protégée
+
+| Énoncé | Théorème | Statut | Hypothèses en plus de `DDSound`, `StaticsOK`, `σ 0` initial, `RunFull` |
+|---|---|---|---|
+| ensemble vide sans grant | `empty_without_grant` (`LastAcquire:295`) | prouvé | `n ≤ |lbls|`, `e ∈ (σ n).reg`, `e.Live (σ n)`, `e.grant = none` |
+| dernière prise | `last_acquire` (`:371`) | prouvé | aucune : énoncé pour tout `n ≤ |lbls|`, tout indice `i` du registre, toute entrée vivante de grant `some g` |
+| trois cas | `three_cases` (`:236`) | prouvé | `i < |lbls|`, `e ∈ (σ i).reg`, `e.Live (σ i)`, `e.Live (σ (i+1))`, `l ∈ afp(e.guarded)`, `TouchesF L (σ i) lbls[i] l` |
+| fait « Donnée protégée » du § 2 duodecies (v14), 28 genres | `protected_cap_run` (`:275`) | prouvé | `i < |lbls|`, `e.Live (σ i)`, `e.Live (σ (i+1))`, `l ∈ afp(e.guarded)`, `TouchesF` ; `e ∈ reg` n'est pas requis |
+
+**`GrantDiscipline` sur `RunFull`.** C'est déjà établi sur les états atteints par `runFull_inv` (`Capacity:168`), sous `DDSound`, `StaticsOK`, `σ 0` initial et `RunFull`, avec `i ≤ |lbls|` : `RunFull ⊆ Run7 ⊆ Run5R`, puis `trace_inv` (`Reachable:87`). Les frontières sont les préconditions des pas qui posent `grant = none` :
+
+- C13.9 (champ `available`, `SyncLib:277`) ;
+- C17.2 et C17.3, préconditions de O3 dans `unlock` ;
+- C18.2 dans `resetLock`.
+
+Rien ne manque.
+
+**Dernière prise.** La récurrence porte sur les indices de la `RunFull` ; aucun historique n'est ajouté à l'état. L'entrée est identifiée par sa position `i` dans le registre, stable par `reg_step` (`:308`) ; le dernier `acquire(i)` réussi est à l'indice `kk`, avec `g = |A(σ kk)|`. Tout descendant couvrant est `g`, ou a été créé à un pas `k'`, avec `kk < k' < n`, du cas (2) de la fermeture. Servent :
+
+- la fermeture (tâche 2) ;
+- `shape_step` ;
+- `SyncInv` : `regBound`, et `unique` pour écarter le cas 3 d'un autre indice.
+
+**Trois cas.** Le grant est lu dans l'état d'avant le pas. Avec `x` l'autorité qui atteint la capacité :
+
+1. `grant = none` : un tel pas n'existe pas. `x` serait un descendant couvrant, contre `GrantDiscipline`.
+2. `grant = some g`, `g` active : `CapFrom` de provenance « `x = g` ou `g ∈ ancs x` », par `GrantSubtree` (C21 point 5).
+3. `grant = some g`, `g` inactive : `CapFrom` de provenance `CoveringDesc (σ i) e.guarded`.
+
+Le lemme commun est `cov_of_attr` (`:201`) : par I1 (§50) et C21 point 1, une autorité qui n'est pas un `guarded` vivant et a un mode effectif présent sur une feuille de `footprint(guarded)` est un descendant couvrant. Un ancêtre de `guarded` n'a pas de mode effectif sur la feuille (§43.3), et une autorité sans lien contredirait I1.
+
+| Cas | Invariants | Tâches |
+|---|---|---|
+| tous | I1, C21.1, WF3 (empreintes) | capacité de la tranche 3 (`capacity_run`), tâche 3 premier fait (la feuille ne meurt pas, donc `CapReq` exige une capacité), tâche 4 (`spawnVal`) |
+| `grant = none` | `GrantDiscipline` (C22) | — |
+| `g` active | `GrantSubtree` (C21.5) | — |
+| `g` inactive | — | — |
+
+La fermeture (tâche 2) ne sert pas aux trois cas ; elle sert à la dernière prise.
+
+**Contrôle par `decide`.** Les trois cas, au mode `Observe` (`ThreeOK`), tiennent à chaque pas des 46 traces `RunFull`. Ces traces sont :
+
+- les 24 exécutions amendées finales ;
+- `lvσ`, le jumeau de W-GI, W-RX B et les trois témoins `free`, `exitFrame`, `terminate` ;
+- W-AG, W-AG-J et W-AG′ ;
+- les 13 traces rejouées de la tâche 6.
+
+Le pas 7 de W-AG tombe dans le troisième cas (`W_AG_7_third`).
+
+**Ce que la tâche 5 établit.** C'est la provenance des capacités. Toute capacité sur une feuille protégée par une entrée vivante avant et après le pas vient de la dernière prise du verrou :
+
+- du grant enregistré ou d'un de ses descendants s'il est actif ;
+- sinon, d'un descendant couvrant, créé après le dernier `acquire(e)` à partir d'un autre descendant couvrant.
+
+Aucune autorité existante n'entre dans l'ensemble. La réancre change le lien direct sans changer l'appartenance.
+
+**Ce qu'elle n'établit pas.** Elle ne dit rien de l'ordre entre les accès (C46) :
+
+- dans W-AG, le survivant `x` écrit `T` au pas 7 et `c0` l'écrit au pas 11 sans chemin `hb` (`W_AG_strict` : `RaceS`, pas de `HandoffOrderedS`) ;
+- W-AG-J ordonne la paire par `terminate` et `join` (`W_AGJ_strict`).
+
+L'exclusivité tient pendant que le survivant vit ; l'ordre reste une obligation distincte (C46). Aucune preuve générale d'absence de course n'est tentée (hors de portée).
+
+### Tâche 6 — Traces rejouées
+
+**Verdicts locaux.** Le pas est `ok` au noyau et exclu par l'encapsulation complète (`¬ PremG`, donc `¬ EncapFull`). Son état de départ est atteint depuis l'état initial par une suite admise. Une trace qui contient ce pas n'est pas une `RunFull`.
+
+| Trace | Pas | État de départ | Théorème |
+|---|---|---|---|
+| W-GR | 1, `c1 : read3(T)` via `guarded` | `MX₄` = `wrσ 5` | `W_GR_full` (`Replay:72`) |
+| W-GC | 1, `c1 : read3(Y)` via `z` | `gc6` = `cgσ 7` | `W_GC_full` (`:117`) |
+| W-GS | 1, `c0 : store(z2, T)` sans grant | `gs5` = `gsTwinσ 6` | `W_GS_full` (`:145`) |
+| W-GS | 2 et 3, après le pas exclu : `c1 : acquire(e)` depuis `gs6`, `c1 : read3(T)` depuis `gs7` | états produits par le pas exclu | `W_GS_2_3_local` (`:158`), vérification locale : `EncapFull` et `LStep` |
+
+**Exécutions `RunFull` depuis l'état initial.**
+
+| Trace | Contenu | Théorème |
+|---|---|---|
+| W-GR, suite | `MX₄`, puis les pas 2 et 3 ; le pas 1 ne change pas l'état (`gr1 = x4`) | `W_GR_full` |
+| W-GC, suite | la mise en place, puis les pas 2 à 4 ; le pas 1 ne change pas l'état (`gc7 = gc6`) | `W_GC_full` |
+| W-GS, jumeau | `acquire(e)`, `store(z2, T)` sous le grant, `unlock(e)` | `W_GS_full` |
+| S2 | préfixe de W-RL₀ | `S2_full` (`:174`) |
+| S10 | préfixe de S10 rejouée | `S10_full` (`:180`) |
+| S3 en entier | arena, deux `issue`, reprise | `S3_full` (`:196`) |
+| S4 | enfant détaché qui survit à son créateur | `S4_full` (`:232`) |
+| S9 | deux mutex pris par `c0` ; attendu admise | `S9_full` (`:254`) |
+| `mutex_trace` | `newMutex`, `acquire`, `unlock` | `mutex_full` (`:281`) |
+| `distinct_controllers_trace` | deux `newMutex` | `distinct_full` (`:300`) |
+| `traceA`, `traceB`, `traceMutex` | S18 positif, transfert du mutex entier | `wc4_full` (`:324`) |
+| `endUse_mutex_kills_entry` | `endUse(M)` tue l'entrée | `endUseM_full` (`:362`) |
+| `endUse_slot_kills_entry` | `endUse(slot)` tue l'entrée | `endUseSlot_full` (`:380`) |
+| jumeau de W-C22.3 (b) | `newMutex`, puis `transfer(M, M′)` | `W_C22_3b_twin_full` (`:400`) |
+| jumeau de S17a | `MX₃`, `endUse(slot)`, `endUse(lock)` | `S17a_twin_full` (`:423`) |
+
+**Aucune trace positive n'est refusée.** Recensement des traces du dépôt par leur type (`EncapsulatedTrace*`, `Run5`, `Run5C`, `Run5R`, `Run6`, `Run7`, `LRun`) :
+
+- **Positives** : chacune est une `RunFull` ou un préfixe d'une `RunFull` ci-dessus, ou des 24 exécutions amendées finales. Préfixes : `mx3_trace`, `mx4_trace`, `ar_trace` et l'état `a8` de `ARRealize`, `gs_setup`, `gc_setup`, `traceMutex`. Formes plus anciennes des mêmes traces : `cycle_trace5`, `s2_trace5R`, `s3_trace5R`, `s4_trace5R`, `s10_trace5R`, `w_ho*_trace`, `lc_trace`.
+- **Contenant un pas exclu, comme attendu** : `w_gr_trace` et `cap_L1_counterexample` (pas 1 de W-GR), `gc_trace`, `W_GS_encap`.
+- **Négatifs ou contre-exemples, comme attendu** : `endUse_ctl_excluded`, `endUse_slotPart_excluded`, `W_C22_3b_encap`, `endUse_then_transfer_merges` (`LRun`), W-RC, W-NC, `store_cex`, `alloc_cex`, `issue_cex` (`ClassifyWitness`), `alloc_provider_M_refused` (`FinalWitness`). Leur prémisse en cause est celle de leur rapport d'origine.
+
+### Pas attendus `ok` refusés, contre-exemples trouvés
+
+- Aucun pas attendu `ok` n'est refusé, ni par le noyau ni par l'encapsulation complète.
+- Aucune trace positive n'est refusée.
+- Aucun contre-exemple aux énoncés des tâches 2 à 5.
+- Seul écart aux attendus : les refus b et c de W-AG (et le négatif de W-AG′) sont obtenus comme « aucune issue `ok` », non comme `reject` (voir la tâche 1).
+
+### Problèmes de spécification
+
+Aucun nouveau. La lecture retenue de C22 point 1 (décision 2) est appliquée : la réancre de §73 entre dans le cas (1) de la fermeture.
+
+### Ce que `OB-C28` laisse ouvert après ce complément
+
+Fermés par ce complément :
+
+- la forme de l'énoncé sur la donnée protégée (trois cas, prouvés) ;
+- la capacité de `spawnVal` avant le pas ;
+- le fait « Donnée protégée » du corpus pour les cinq genres restants.
+
+Restent ouverts :
+
+1. L'application de la restriction dans l'interface sûre (Specs 4 et 10).
+2. §78.1 (`MetaRight` de `reset`), que le pas du modèle ne lit pas.
+3. Les parties de l'exhaustivité de l'inventaire établies seulement par relecture.
+4. La liste des genres qui tuent des feuilles : relecture et contrôle sur les traces, sans théorème général.
+5. L'ordre entre les accès du survivant d'un grant abandonné et ceux du contexte qui reprend le mutex (C46).
+6. Les accès physiques (`OB-C20`).
+
+### Audit du complément
+
+- `lake build` (dans `formal/`) réussit : 134 jobs, sans avertissement. Chacun des huit nouveaux modules, passé par `lake env lean`, ne produit aucun avertissement.
+- Le `grep` d'`AGENTS.md` est vide. Aucun `noncomputable` dans `FullEncap`. Aucune ligne de plus de 100 caractères.
+- Les théorèmes de `Ern.Concurrency` sont recomptés, avec leurs axiomes collectés (`collectAxioms`) :
+
+| | Fin de la tranche 3 | Ajoutés | Total |
+|---|---|---|---|
+| Théorèmes | 2666 | 130 | 2796 |
+| Non internes | 1767 | 94 | 1861 |
+| Hors `{propext, Quot.sound}` | 0 | 0 | 0 |
+
+Aucun nom n'est retiré ni rattaché à un autre module : `comm` sur nom et module, contre la liste de la fin de la tranche 3, donne 0 ligne.
+
+Répartition par module des 130 ajouts, « total (non internes) » :
+
+| Module | Total (non internes) |
+|---|---|
+| `FullEncap.AbandonedGrant` | 12 (12) |
+| `FullEncap.Closure` | 28 (14) |
+| `FullEncap.Dying` | 9 (7) |
+| `FullEncap.DyingCap` | 6 (4) |
+| `FullEncap.SpawnValCap` | 34 (23) |
+| `FullEncap.LastAcquire` | 19 (13) |
+| `FullEncap.ComplementSweep` | 3 (3) |
+| `FullEncap.Replay` | 19 (18) |
+| **Somme** | **130 (94)** |
+
+Nature des 130 ajouts :
+
+| Nature | Nombre | Statut |
+|---|---|---|
+| théorèmes écrits | 84 | non internes |
+| projections des champs de la structure `PhaseRel` | 10 | non internes |
+| noms générés `_proof_N` | 23 | internes |
+| noms générés `match_N` | 12 | internes |
+| `_sparseCasesOn` (`GrantOf`) | 1 | internes |
+
+84 + 10 = 94 ; 23 + 12 + 1 = 36 ; 94 + 36 = 130.
 
 ## Annexe — parcours des prémisses (`ScanRights.lean`, scratchpad)
 
