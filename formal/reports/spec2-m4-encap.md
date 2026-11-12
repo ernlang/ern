@@ -526,8 +526,8 @@ Cette section rend compte du complément de la tranche 3 : brief « tranche 3 : 
 
 ### Sources
 
-- **WC5.2** : C4 à C8, C12 à C18, C21, C22, C32, C43, C45, C46, C49 ; `OB-C28` ; § V (S18).
-- **Spec 1** : §40, §43, §47, §50, §54, §60 à §65, §69, §70, §73, §80.
+- **WC5.2** : relus pour ce complément : C13, `OB-C28`, § V (S18), § VI (jalon 4). Les autres clauses citées (C4 à C8, C12 à C18, C21, C22, C43 à C46) ont été lues à la tranche 3 (voir « Sources » plus haut) et ne sont pas relues. C32 et C49, cités par le brief, ne sont pas relus : le graphe strict réutilise les définitions du jalon 4.
+- **Spec 1** : relus en entier pour ce complément : §40, §42, §54. Les autres paragraphes cités (§43, §47, §50, §60 à §78, §80) ont été lus à la tranche 3 et ne sont pas relus.
 - **Corpus** v14 : § 2 terdecies en entier ; § 2 duodecies, fait « Donnée protégée » (rédaction v14).
 - **Décisions du propriétaire** appliquées :
   - la tâche 5 est énoncée en trois cas ;
@@ -547,6 +547,7 @@ Cette section rend compte du complément de la tranche 3 : brief « tranche 3 : 
 | `012921f` | 3 | `DyingCap.lean` : aucun autre contexte n'a de capacité sur une feuille qui meurt |
 | `3477c4c` | 3, 6 | genres qui tuent (`KillOK`) ; traces positives restantes ; balayage des traces rejouées |
 | `2774cfe`, `8ae69ee` | 6 | W-GS pas 2 et 3 en vérification locale ; états de départ des pas exclus atteints par les suites admises |
+| `415c498` et le commit suivant | — | cette section |
 
 Les numéros de ligne ci-dessous sont ceux de `8ae69ee`. Huit modules s'ajoutent aux sept de la tranche 3, tous importés dans `formal/Ern.lean`. Aucune définition ni aucun théorème existant n'est modifié, `protected_runFull_refuted` compris.
 
@@ -611,7 +612,7 @@ Une autorité existante n'entre donc jamais dans l'ensemble (cas 1, `cover_of_sk
 
 L'origine immédiate d'une autorité créée existait donc avant le pas. Le cas (2) est prouvé tel qu'écrit, et la forme (2′) n'est pas nécessaire. La dernière prise se lit avec le cas (2).
 
-**Acquire d'une autre entrée.** Si le `guarded` d'une entrée `e₀` est lui-même dans l'ensemble de `e`, le grant de `acquire(e₀)` a pour origine une autorité de l'ensemble : cas (2) pour `e`, cas (3) pour `e₀`. La preuve couvre ce cas ; aucun témoin ne le réalise.
+**Acquire d'une autre entrée.** Si le `guarded` d'une entrée `e₀` est lui-même dans l'ensemble de `e`, le grant de `acquire(e₀)` a pour origine une autorité de l'ensemble : cas (2) pour `e`, cas (3) pour `e₀`. La preuve couvre ce cas.
 
 **Table des 28 genres.** Les colonnes sont lues sur les effets du modèle ; le seul effet qui écrit `origin` est `exitG` (§73.4), utilisé par `exitFrame` et `terminate`.
 
@@ -656,7 +657,7 @@ Décompte : 27 prouvés, 1 sans objet (`deriveSync` brut), 0 contre-exemple.
 |---|---|---|---|
 | une feuille de `footprint(e.guarded)` ne meurt pas si `e` est vivante avant et après | `protected_not_dying_run` (`Dying:174`) | prouvé | `i < |lbls|`, `e.Live (σ i)`, `e.Live (σ (i+1))`, `l ∈ afp(e.guarded)` dans `σ i` |
 | avant un pas de `c`, aucun autre contexte n'a de `cap5` sur une feuille qui meurt | `other_cap_dying_run` (`DyingCap:55`) ; forme décidable `otherCapFree_run` (`:84`) | prouvé | `i < |lbls|`, `c' ≠ lbls[i].ctx`, `Dying (σ i) (σ (i+1)) l` |
-| seuls `endUse`, `free`, `exitFrame`, `terminate` font mourir des feuilles | `sweep_kill` (`ComplementSweep:102`), `sweep_replay` (`Replay:438`) | vérifié sur les 46 traces ; établi par relecture ; **pas de théorème général** | — |
+| seuls `endUse`, `free`, `exitFrame`, `terminate` font mourir des feuilles | `sweep_kill` (`ComplementSweep:102`), `sweep_replay` (`Replay:438`), contrôles seulement | **inachevé**. But : pour `i < |lbls|`, si `killKind lbls[i] = false`, alors `Usable (σ i) l → Usable (σ (i+1)) l`. Preuves disponibles : relecture des effets, et `decide` sur les 46 traces | — |
 
 **Premier fait.** Le `guarded` de `e` est actif après le pas (C12) et couvre la feuille, dont l'empreinte est conservée (`Skel`). Le pas garde les feuilles feuilles (`PSkel`). `NoDangling` après le pas (§54) interdit alors que la place devienne inutilisable. Les lemmes utilisés sont `shape_step` (`Dying:53`), pour `Skel` et `PSkel` de chacun des 28 genres, et `protected_not_dying` (`:158`).
 
@@ -821,7 +822,7 @@ L'exclusivité tient pendant que le survivant vit ; l'ordre reste une obligation
 
 - Aucun pas attendu `ok` n'est refusé, ni par le noyau ni par l'encapsulation complète.
 - Aucune trace positive n'est refusée.
-- Aucun contre-exemple aux énoncés des tâches 2 à 5.
+- Aucun contre-exemple aux énoncés des tâches 2 à 5. Un énoncé reste inachevé : la liste des genres qui font mourir des feuilles (tâche 3).
 - Seul écart aux attendus : les refus b et c de W-AG (et le négatif de W-AG′) sont obtenus comme « aucune issue `ok` », non comme `reject` (voir la tâche 1).
 
 ### Problèmes de spécification
