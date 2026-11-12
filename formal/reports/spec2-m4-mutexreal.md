@@ -647,8 +647,8 @@ L'amendement 2 ne change pas le graphe : il ajoute seulement l'autorité des pas
 **Sources.**
 - `ERN_WC5_2_amendements_proposes.md`, deuxième version : C22 point 4 dans sa rédaction finale, C18 point 4 inchangé, C13 point 11 **proposé** avec sa clarification. Les trois amendements sont testés ici et ne sont pas validés. Le fichier n'est pas commité.
 - `corpus-spec2-m3.md` v12, § 2 undecies.
-- WC5.1 corrigé (inchangé), relu pour C13 (préconditions 1 à 10 et effet), C31 et C32.
-- Spec 1 §43, §67 (O10), §71 (O14).
+- WC5.1 corrigé (inchangé), relu pour C13 (préconditions 1 à 10 et effet), C17, C21, C22, C31 et C32.
+- Spec 1 §40, §43, §47, §67 (O10), §71 (O14), §80.
 
 **Décisions de l'arbitre prises en compte.**
 1. W-NC : une clause est proposée pour C13 (point 11). Elle est testée ici.
@@ -665,7 +665,7 @@ L'amendement 2 ne change pas le graphe : il ajoute seulement l'autorité des pas
 - `MutexReal/FinalAuthority.lean` (tâche 5) ;
 - `MutexReal/FinalCorollaries.lean` (tâche 6).
 
-Les numéros de ligne de cette section sont ceux du commit `3913c44`.
+Les numéros de ligne de cette section sont ceux du commit `b7fa471`.
 
 | Commit | Tâche |
 |---|---|
@@ -675,6 +675,7 @@ Les numéros de ligne de cette section sont ceux du commit `3913c44`.
 | `d2f63c1` | 4 : classification et complétude |
 | `bad2dd8` | 5 : autorité du protocole |
 | `3913c44` | 6 : absence de changement silencieux |
+| `b7fa471` | 3 (complément) : les quatre pas `newMutex` de `Traces` |
 
 ## Définitions ajoutées (`MutexReal/Final.lean`)
 
@@ -746,7 +747,7 @@ Aucun pas attendu `ok` n'est rejeté par le noyau ni rendu `fail`.
 
 **Traces `Run6` du dépôt.** Elles sont des `Run7` par `run7_of_run6_init`, appliqué à chacune avec ses statiques initiales (`xst`, `yst`, `zst`, `mxst`, `arst`) et `ddKC`. Aucun pas n'est rejoué. Cela couvre W-HO, W-HO′, W-HO″, W-HO-J, W-HO″-J, `lc_trace`, W-RL₀, W-RL, W-RL-J, W-TR, W-TR-J, W-RC, S11, `spawnVal_moves`, `endUse_ends`, `release_ends`, le jumeau de W-GS, S3 et S10 (`run6_traces_run7` `:43`). Les quatre jumeaux et W-NC sont à la tâche 2. Aucune trace existante n'est refusée.
 
-**Pas `newMutex` des traces existantes** (`newMutex_steps_C13_11` `:84`, par `decide`). La clause ne lit pas le registre : il y a un conjoint par pas distinct, et chacun satisfait C13 point 11.
+**Pas `newMutex` des traces existantes** (`newMutex_steps_C13_11` `:85`, par `decide`). La clause ne lit pas le registre : il y a un conjoint par pas distinct, 16 en tout, et chacun satisfait C13 point 11.
 
 | Pas | État de départ | Traces |
 |---|---|---|
@@ -760,10 +761,13 @@ Aucun pas attendu `ok` n'est rejeté par le noyau ni rendu `fail`.
 | `c0 : newMutex(1)` | `z0` | idem |
 | `c0 : newMutex(2)`, puis `c0 : newMutex(3)` | `u0` | idem (l'`LRun` qui finit sans `SyncInv`) |
 | `c0 : newMutex(1)` | `m0` | `newMutex_uninit_rejected` (premier pas) |
+| `c0 : newMutex(1)` | `Traces.c0` | traces de WC4 (`Traces`) : `mutex_trace` |
+| `c0 : newMutex(1)` | `Traces.d0` | idem : `shared_controller_rejected` (premier pas) |
+| `c0 : newMutex(2)`, puis `c0 : newMutex(3)` | `Traces.d1` | idem : `distinct_controllers_trace` |
 
 Seule exception : W-NC, pas 3 (`rc2`), attendue.
 
-**Exécutions amendées.** `runAmF_traces` (`:98`) établit que toute trace `Run6` du dépôt, sauf W-RC et W-NC, est une exécution amendée finale. Les clauses de C18 point 4 et de C13 point 11 sont vérifiées par `decide` à chaque pas. En particulier, W-RL et W-RL-J, les exécutions amendées de la passe corrective (`amended_runs`), le restent. Il en va de même des quatre jumeaux (`twins_runAmF` `:113`).
+**Exécutions amendées.** `runAmF_traces` (`:101`) établit que toute trace `Run6` du dépôt, sauf W-RC et W-NC, est une exécution amendée finale. Les clauses de C18 point 4 et de C13 point 11 sont vérifiées par `decide` à chaque pas. En particulier, W-RL et W-RL-J, les exécutions amendées de la passe corrective (`amended_runs`), le restent. Il en va de même des quatre jumeaux (`twins_runAmF` `:116`).
 
 W-RC reste hors des exécutions amendées : C18 point 4. W-NC n'a pas de `resetLock`, donc `AmCond` y est vide, mais elle n'est pas une exécution amendée finale : C13 point 11.
 
@@ -826,7 +830,9 @@ L'écart a deux sens :
 - **dans `Touches` seulement** : les feuilles de `ow` autres que `ow`, quand `ow` n'est pas une feuille et qu'elles ne sont pas dans `footprint(pr)` ;
 - **dans `TouchesF` seulement** : la place `ow` elle-même, quand `ow` est une place existante qui n'est pas une feuille et n'est pas dans `footprint(pr)`.
 
-Quand `ow` est une feuille existante, `footprint(ow) = {ow}` et les deux empreintes coïncident. Sur une feuille, `TouchesF` est contenue dans `Touches` (`touches_of_touchesF` `:122`). Le contrôleur d'une entrée vivante étant une feuille sur tout état atteint (C21.3), la restriction finale ne refuse aucun pas que la restriction testée admettait. Elle admet en plus les `alloc` dont le propriétaire contient strictement le contrôleur.
+Quand `ow` est une feuille existante, `footprint(ow) = {ow}` et les deux empreintes coïncident. Sur une feuille, `TouchesF` est contenue dans `Touches` (`touches_of_touchesF` `:122`). Le contrôleur d'une entrée vivante étant une feuille sur tout état atteint (C21.3), la restriction finale ne refuse aucun pas que la restriction testée (`CtlRestr`) admettait. Elle admet en plus deux sortes de pas que celle-ci refusait :
+- les `alloc` dont le propriétaire contient strictement le contrôleur ;
+- les `depend` dont la place `result` est le contrôleur, que `TouchesX` comptait.
 
 **Sur `alloc(provider = slot, owner = M)` depuis `MX₃`** (`alloc_owner_M_gap`, `Classify7Witness.lean:63`, par `decide`) :
 - `lock` est dans `Touches` et pas dans `TouchesF` ;
