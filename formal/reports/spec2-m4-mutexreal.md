@@ -890,7 +890,7 @@ Le retrait de la clause sur les dépendances ne change pas le graphe : ni le gra
 ## Points ouverts pour l'arbitre
 
 1. **Inclusion `Run6 ⊆ Run7`.** Elle n'est obtenue que si les contrôleurs des entrées vivantes sont des feuilles, ce que C21.3 donne sur tout état atteint. L'encodage du propriétaire comme place, sans condition de feuille, est-il celui que vous voulez ? Il suit `store` et `issue`. L'autre lecture rendrait l'inclusion inconditionnelle, mais admettrait plus de pas sur des états non atteints.
-2. **C13 point 11 et O10.2.** La clause n'impose pas l'exclusivité de §67.2, qui n'est pas dans O10.1. Une frame qui a `Modify` effectif sur `lock` pendant qu'une autre autorité y a un mode effectif peut donc construire. Aucun pas `newMutex` du dépôt n'exerce ce cas.
+2. **C13 point 11 et O10.2** (observation). La clause ne reprend pas l'exclusivité de §67.2, qui n'est pas dans O10.1 ; l'amendement ne nomme qu'O10.1. Je n'ai pas vérifié si I1 donne déjà cette exclusivité sur les états atteints. Aucun pas `newMutex` du dépôt ne distingue les deux lectures.
 
 ## Audit final des axiomes (après la passe finale)
 
