@@ -44,6 +44,7 @@ import Ern.Concurrency.MutexReal.ClassifyWitness
 import Ern.Concurrency.MutexReal.Bridge
 import Ern.Concurrency.MutexReal.Witness
 import Ern.Concurrency.MutexReal.Amend
+import Ern.Concurrency.MutexReal.AmendWitness
 import Ern.Concurrency.Events
 import Ern.Concurrency.EventsCompose
 import Ern.Concurrency.EventsProtocols
