@@ -529,6 +529,9 @@ Cette section rend compte du complément de la tranche 3 : brief « tranche 3 : 
 - **WC5.2** : relus pour ce complément : C13, `OB-C28`, § V (S18), § VI (jalon 4). Les autres clauses citées (C4 à C8, C12 à C18, C21, C22, C43 à C46) ont été lues à la tranche 3 (voir « Sources » plus haut) et ne sont pas relues. C32 et C49, cités par le brief, ne sont pas relus : le graphe strict réutilise les définitions du jalon 4.
 - **Spec 1** : relus en entier pour ce complément : §40, §42, §54. Les autres paragraphes cités (§43, §47, §50, §60 à §78, §80) ont été lus à la tranche 3 et ne sont pas relus.
 - **Corpus** v14 : § 2 terdecies en entier ; § 2 duodecies, fait « Donnée protégée » (rédaction v14).
+- **Lemme des genres qui tuent** (demande du propriétaire après le complément) :
+  - Spec 1 : §40 et §63 relus en entier. Les effets de §60 à §78 sont parcourus par recherche des mots *owner*, *owned*, *dead*, *usable* ; les passages trouvés sont lus en entier (§69, §70, §71 et §73, effets ; §72, effet). Les autres paragraphes cités dans les docstrings de `KillKinds` (§60 à §62, §64 à §68, §74 à §78) ne sont pas relus en entier.
+  - WC5.2 : C4 à C8 relus en entier. C2, C3, C13 et C15 à C18, cités dans les docstrings, ont été lus à la tranche 3 et ne sont pas relus.
 - **Décisions du propriétaire** appliquées :
   - la tâche 5 est énoncée en trois cas ;
   - la réancre de §73 n'est pas une émission au sens de C22 point 1 ;
@@ -548,8 +551,10 @@ Cette section rend compte du complément de la tranche 3 : brief « tranche 3 : 
 | `3477c4c` | 3, 6 | genres qui tuent (`KillOK`) ; traces positives restantes ; balayage des traces rejouées |
 | `2774cfe`, `8ae69ee` | 6 | W-GS pas 2 et 3 en vérification locale ; états de départ des pas exclus atteints par les suites admises |
 | `415c498` et le commit suivant | — | cette section |
+| `a234683` | 3 | `KillKinds.lean` : seuls les genres de `killKind` rendent une place inutilisable |
+| le commit qui suit `a234683` | — | mise à jour de cette section |
 
-Les numéros de ligne ci-dessous sont ceux de `8ae69ee`. Huit modules s'ajoutent aux sept de la tranche 3, tous importés dans `formal/Ern.lean`. Aucune définition ni aucun théorème existant n'est modifié, `protected_runFull_refuted` compris.
+Les numéros de ligne ci-dessous sont ceux de `a234683` ; ceux des huit premiers modules sont inchangés depuis `8ae69ee`. Neuf modules s'ajoutent aux sept de la tranche 3, tous importés dans `formal/Ern.lean`. Aucune définition ni aucun théorème existant n'est modifié, `protected_runFull_refuted`, `killKind` et `KillOK` compris.
 
 ### Définitions ajoutées et écarts au brief
 
@@ -563,7 +568,7 @@ Les numéros de ligne ci-dessous sont ceux de `8ae69ee`. Huit modules s'ajoutent
 | Cas 3 de la fermeture | `GrantOf st e j lbl` (`Closure:178`) | l'entrée acquise est identifiée par son `guarded` (`e'.guarded = e.guarded`), pas par sa position ; deux entrées vivantes de même `guarded` sont la même par C21 point 4 (`SyncInv.unique`) |
 | Fermeture pour un pas | `ClosureStep` (`Closure:192`), décidable | `e` parcourt le registre d'avant le pas |
 | Second fait de la tâche 3, pour un pas | `OtherCapFree` (`Dying:190`), décidable | bornes `c' < |C|`, `l < |P|` pour la décidabilité ; le théorème `other_cap_dying_run` n'a pas ces bornes |
-| Genres qui tuent | `killKind`, `KillOK` (`ComplementSweep:87`, `:92`), décidables | contrôle sur les traces, pas de théorème général (voir tâche 3) |
+| Genres qui tuent | `killKind`, `KillOK` (`ComplementSweep:87`, `:92`), décidables, inchangés | théorème général `usable_run` (`KillKinds:247`) ; `KillOK` sur toute `RunFull` depuis l'état initial (`killOK_run`, `:256`) (voir tâche 3) |
 | Contrôle des trois cas | `ThreeOK` (`ComplementSweep:37`), `SweepOK` (`:50`) | `ThreeOK` vérifie la provenance au mode `Observe`, plus faible que `CapFrom` ; le théorème `three_cases` donne le mode exigé |
 | Phases de `spawnVal` | `PhaseRel s c t` (`SpawnValCap:72`) | structure auxiliaire de preuve |
 
@@ -657,7 +662,7 @@ Décompte : 27 prouvés, 1 sans objet (`deriveSync` brut), 0 contre-exemple.
 |---|---|---|---|
 | une feuille de `footprint(e.guarded)` ne meurt pas si `e` est vivante avant et après | `protected_not_dying_run` (`Dying:174`) | prouvé | `i < |lbls|`, `e.Live (σ i)`, `e.Live (σ (i+1))`, `l ∈ afp(e.guarded)` dans `σ i` |
 | avant un pas de `c`, aucun autre contexte n'a de `cap5` sur une feuille qui meurt | `other_cap_dying_run` (`DyingCap:55`) ; forme décidable `otherCapFree_run` (`:84`) | prouvé | `i < |lbls|`, `c' ≠ lbls[i].ctx`, `Dying (σ i) (σ (i+1)) l` |
-| seuls `endUse`, `free`, `exitFrame`, `terminate` font mourir des feuilles | `sweep_kill` (`ComplementSweep:102`), `sweep_replay` (`Replay:438`), contrôles seulement | **inachevé**. But : pour `i < |lbls|`, si `killKind lbls[i] = false`, alors `Usable (σ i) l → Usable (σ (i+1)) l`. Preuves disponibles : relecture des effets, et `decide` sur les 46 traces | — |
+| seuls `endUse`, `free`, `exitFrame`, `terminate` font mourir des feuilles : pour `i < |lbls|`, si `killKind lbls[i] = false`, alors `Usable (σ i) l → Usable (σ (i+1)) l` | `usable_run` (`KillKinds:247`) ; forme par pas `usable_step` (`:210`) ; forme décidable `killOK_run` (`:256`) ; contrôles `sweep_kill` (`ComplementSweep:102`), `sweep_replay` (`Replay:438`) | **prouvé** | `i < |lbls|`, `killKind lbls[i] = false`, `(σ i).flat.Usable l` |
 
 **Premier fait.** Le `guarded` de `e` est actif après le pas (C12) et couvre la feuille, dont l'empreinte est conservée (`Skel`). Le pas garde les feuilles feuilles (`PSkel`). `NoDangling` après le pas (§54) interdit alors que la place devienne inutilisable. Les lemmes utilisés sont `shape_step` (`Dying:53`), pour `Skel` et `PSkel` de chacun des 28 genres, et `protected_not_dying` (`:158`).
 
@@ -671,13 +676,26 @@ La passerelle : un préfixe de `RunFull` est une `Run5R` (`run5R_take`, `:43`), 
 
 **Invariants qui servent.** `NoDangling` (§54) et C12 servent directement. Les préconditions §69.2, §70.3, §73.2, §73.4 et C7 ne sont pas invoquées dans ces preuves : le second fait passe par L1, dont la preuve par genre est celle du jalon 4, réutilisée sans être relue ici.
 
-**Genres qui tuent, par relecture.** Une place devient inutilisable si elle est marquée morte, si sa frame terminale disparaît, ou si sa chaîne de propriétaires change :
+**Genres qui tuent, prouvé.** `usable_run` (`KillKinds:247`) : sur une `RunFull` depuis l'état initial, pour tout `i < |lbls|` tel que `killKind lbls[i] = false` et toute place `l`, `(σ i).flat.Usable l → (σ (i+1)).flat.Usable l`.
 
-- `dead` n'est changé que par `endUse` (§69, `OwnedIn`) et `free` (§70, `FreedPlace`) ;
-- les frames ne sont retirées que par `exitFrame` et `terminate` (`exitEff`) ;
-- les propriétaires ne changent que par `transfer` et les phases de `spawnVal`, vers `corr(r)`, partie de la destination, utilisable par §63.
+- Hypothèses : `DDSound k`, `StaticsOK statics`, `σ 0` initial, `RunFull k L σ lbls`, et rien de plus.
+- `Usable` est celui de §40, lu sur l'état plat (C2). L'énoncé vaut pour toute place, pas seulement pour les feuilles ; `Dying` en est le cas d'une feuille.
+- Forme par pas : `usable_step` (`:210`), sous le seul invariant `KInvCA` de l'état d'avant le pas, vrai sur les états atteints (`runFull_inv`, `Capacity:168`). `Encap`, `AdminSep` et `LibInv` ne servent pas.
+- Corollaire : `KillOK σ lbls` sur toute `RunFull` depuis l'état initial (`killOK_run`, `:256`). `killKind` et `KillOK` sont inchangés.
 
-Ce dernier point n'est pas prouvé en général. Le contrôle `KillOK` le confirme sur les 46 traces.
+**Méthode.** C'est une analyse des transitions `LStep`, genre par genre ; aucune hypothèse ne dit quels genres tuent. `Usable` ne lit que trois composantes : les propriétaires des places, `dead` et les frames vivantes. Pour chaque genre hors de `killKind`, la preuve établit l'un des trois faits suivants.
+
+- **Places et `dead` gardés.** Les places existantes et `dead` restent identiques, et les contextes ne changent pas (`opStepC_usable_fwd_base`, `:96`). C'est le cas de `derive`, `split`, `release`, `depend`, `read3`, `write3`, `writeShared`, `pin`, `unpin` et `store`. C'est aussi le cas de `deriveSync`, `newMutex`, `acquire`, `unlock`, `resetLock`, `join`, `newArena`, et de `issue` et `reset` lus phase par phase.
+- **Ajouts seulement.** `alloc` ajoute des places ; `enterFrame` et `spawn` ajoutent des places et une frame (`enterC_usable_fwd`, `:56` ; `spawn_usable_fwd`, `:71`, avec `Push.mem`).
+- **Propriétaires changés.** C'est le point qui restait ouvert (§63, effet) : une place possédée par une partie `r` de la source passe à `corr(r)`, partie de la destination.
+  - Pour `transfer`, §63.9 (`dstUsableAfter`) donne la destination utilisable après le pas. Une partie de la destination partage son propriétaire et sa marque de mort (§40, `WF3.places`), donc `corr(r)` est utilisable. Le lemme est `transfer_usable_fwd` (Spec 1, `MemoryModel/Access/Lemmas:1246`, existant), transposé au contexte par `transferC_usable_fwd` (`:86`).
+  - Pour `spawnVal`, la vérification finale de C5 point 4 ne sert pas. Chaque phase de transfert part d'une destination utilisable au début de la phase (`ValTransferPre.dstUsable`). Cette destination est une racine fraîche, possédée par la frame de l'enfant (C5 point 2, `spawn_frameOwned`, `TransferPreserve:223`). Un transfert ne change jamais un propriétaire frame (`transfer_usable_frameOwned`, `:211`). La destination reste donc utilisable après la phase, ce qui fournit à chaque phase la prémisse de §63.9. `WF3` passe de phase en phase par `KBase` (`transfer_base`, `:179`). Ces trois lemmes existaient. Le lemme est `transfers_usable_fwd` (`:176`), et la cession ne change que des détenteurs (`spawnVal_usable_fwd`, `:193`).
+
+Une source laissée `Moved` reste utilisable : `transfer` ne change ni `dead` ni les frames, et l'état d'initialisation n'entre pas dans `Usable`.
+
+Aucune trace n'est réfutée et aucun contre-exemple n'existe sous les hypothèses admises. S4 (tâche 6) contient un `spawnVal` avec une phase de transfert (`1 → 4`), et `KillOK` y tient.
+
+Ce résultat complète la caractérisation des effets des opérations. Aucune propriété prouvée plus haut n'en dépend.
 
 **Les quatre témoins `exc_*`** (`exc_dying_facts`, `Dying:205`). Dans chacun, l'entrée meurt avec le pas, donc le premier fait ne s'applique pas, et `OtherCapFree` tient.
 
@@ -763,7 +781,7 @@ La fermeture (tâche 2) ne sert pas aux trois cas ; elle sert à la dernière pr
 - les 24 exécutions amendées finales ;
 - `lvσ`, le jumeau de W-GI, W-RX B et les trois témoins `free`, `exitFrame`, `terminate` ;
 - W-AG, W-AG-J et W-AG′ ;
-- les 13 traces rejouées de la tâche 6.
+- les 13 traces rejouées de la tâche 6 (liste et nature : tâche 6, « Les 13 traces rejouées du balayage »).
 
 Le pas 7 de W-AG tombe dans le troisième cas (`W_AG_7_third`).
 
@@ -812,6 +830,30 @@ L'exclusivité tient pendant que le survivant vit ; l'ordre reste une obligation
 | jumeau de W-C22.3 (b) | `newMutex`, puis `transfer(M, M′)` | `W_C22_3b_twin_full` (`:400`) |
 | jumeau de S17a | `MX₃`, `endUse(slot)`, `endUse(lock)` | `S17a_twin_full` (`:423`) |
 
+**Les 13 traces rejouées du balayage.** Les 46 traces balayées sont les 33 de `sweep` (`ComplementSweep:62`) et les 13 de `sweep_replay` (`Replay:438`). Chacune des 13 est une `RunFull` depuis l'état initial, balayée sur toute sa longueur avec ses propres états `σ` :
+
+| # | Trace (σ, labels) | Ligne de la table | Nature |
+|---|---|---|---|
+| 1 | `wrσ`, `wrLbls` | W-GR, suite | trace du corpus privée du pas 1 exclu, qui ne change pas l'état (`gr1 = x4`) |
+| 2 | `cgσ`, `cgLbls` | W-GC, suite | trace du corpus privée du pas 1 exclu, qui ne change pas l'état (`gc7 = gc6`) |
+| 3 | `s3fσ`, `s3fLbls` | S3 en entier | complète |
+| 4 | `s4σ`, `s4Lbls` | S4 | complète |
+| 5 | `s9σ`, `s9Lbls` | S9 | complète |
+| 6 | `mtσ`, `mtLbls` | `mutex_trace` | complète |
+| 7 | `dtσ`, `dtLbls` | `distinct_controllers_trace` | complète |
+| 8 | `tAσ`, 4 labels | `traceA` | complète |
+| 9 | `tBσ`, 5 labels | `traceB` | complète |
+| 10 | `kmσ`, `kmLbls` | `endUse_mutex_kills_entry` | complète |
+| 11 | `ksσ`, `ksLbls` | `endUse_slot_kills_entry` | complète |
+| 12 | `tbσ`, `tbLbls` | jumeau de W-C22.3 (b) | complète (jumeau positif) |
+| 13 | `saσ`, `saLbls` | jumeau de S17a | complète (jumeau positif) |
+
+Les autres lignes des deux tables de cette tâche ne sont pas parmi les 13 :
+
+- **Parmi les 33 de `sweep`** : le jumeau de W-GS (`gsTwinσ`, trace complète).
+- **Préfixes d'une trace balayée** : S2 (les 8 premiers labels de `rl0σ`, parmi les 33) ; S10 (les 7 premiers labels de `s10σ`, parmi les 33) ; `traceMutex` (les 3 premiers labels de `tAσ`, trace 8). Une propriété vraie à chaque pas d'une trace l'est sur ses préfixes.
+- **Vérifications locales, hors balayage** : les pas 1 exclus de W-GR, W-GC et W-GS (verdicts locaux) ; les pas 2 et 3 de W-GS (`W_GS_2_3_local`), qui partent de l'état produit par le pas exclu.
+
 **Aucune trace positive n'est refusée.** Recensement des traces du dépôt par leur type (`EncapsulatedTrace*`, `Run5`, `Run5C`, `Run5R`, `Run6`, `Run7`, `LRun`) :
 
 - **Positives** : chacune est une `RunFull` ou un préfixe d'une `RunFull` ci-dessus, ou des 24 exécutions amendées finales. Préfixes : `mx3_trace`, `mx4_trace`, `ar_trace` et l'état `a8` de `ARRealize`, `gs_setup`, `gc_setup`, `traceMutex`. Formes plus anciennes des mêmes traces : `cycle_trace5`, `s2_trace5R`, `s3_trace5R`, `s4_trace5R`, `s10_trace5R`, `w_ho*_trace`, `lc_trace`.
@@ -822,7 +864,7 @@ L'exclusivité tient pendant que le survivant vit ; l'ordre reste une obligation
 
 - Aucun pas attendu `ok` n'est refusé, ni par le noyau ni par l'encapsulation complète.
 - Aucune trace positive n'est refusée.
-- Aucun contre-exemple aux énoncés des tâches 2 à 5. Un énoncé reste inachevé : la liste des genres qui font mourir des feuilles (tâche 3).
+- Aucun contre-exemple aux énoncés des tâches 2 à 5. Aucun énoncé ne reste inachevé : la liste des genres qui font mourir des feuilles (tâche 3) est prouvée (`usable_run`).
 - Seul écart aux attendus : les refus b et c de W-AG (et le négatif de W-AG′) sont obtenus comme « aucune issue `ok` », non comme `reject` (voir la tâche 1).
 
 ### Problèmes de spécification
@@ -835,20 +877,22 @@ Fermés par ce complément :
 
 - la forme de l'énoncé sur la donnée protégée (trois cas, prouvés) ;
 - la capacité de `spawnVal` avant le pas ;
-- le fait « Donnée protégée » du corpus pour les cinq genres restants.
+- le fait « Donnée protégée » du corpus pour les cinq genres restants ;
+- la liste des genres qui tuent des feuilles (`usable_run`, après le complément).
 
 Restent ouverts :
 
 1. L'application de la restriction dans l'interface sûre (Specs 4 et 10).
 2. §78.1 (`MetaRight` de `reset`), que le pas du modèle ne lit pas.
 3. Les parties de l'exhaustivité de l'inventaire établies seulement par relecture.
-4. La liste des genres qui tuent des feuilles : relecture et contrôle sur les traces, sans théorème général.
-5. L'ordre entre les accès du survivant d'un grant abandonné et ceux du contexte qui reprend le mutex (C46).
-6. Les accès physiques (`OB-C20`).
+4. L'ordre entre les accès du survivant d'un grant abandonné et ceux du contexte qui reprend le mutex (C46).
+5. Les accès physiques (`OB-C20`).
 
 ### Audit du complément
 
-- `lake build` (dans `formal/`) réussit : 134 jobs, sans avertissement. Chacun des huit nouveaux modules, passé par `lake env lean`, ne produit aucun avertissement.
+L'audit est refait à `a234683`, après le lemme des genres qui tuent. Le premier tableau ci-dessous est celui de la fin du complément ; le second ajoute `KillKinds`.
+
+- `lake build` (dans `formal/`) réussit : 135 jobs, sans avertissement. Chacun des neuf nouveaux modules, passé par `lake env lean`, ne produit aucun avertissement.
 - Le `grep` d'`AGENTS.md` est vide. Aucun `noncomputable` dans `FullEncap`. Aucune ligne de plus de 100 caractères.
 - Les théorèmes de `Ern.Concurrency` sont recomptés, avec leurs axiomes collectés (`collectAxioms`) :
 
@@ -885,6 +929,44 @@ Nature des 130 ajouts :
 | `_sparseCasesOn` (`GrantOf`) | 1 | internes |
 
 84 + 10 = 94 ; 23 + 12 + 1 = 36 ; 94 + 36 = 130.
+
+**Après `KillKinds` (`a234683`).** Même script (`collectAxioms` sur chaque théorème de `Ern.Concurrency`), même comparaison de noms :
+
+| | Fin du complément | Ajoutés par `KillKinds` | Total |
+|---|---|---|---|
+| Théorèmes | 2796 | 26 | 2822 |
+| Non internes | 1861 | 17 | 1878 |
+| Hors `{propext, Quot.sound}` | 0 | 0 | 0 |
+
+`comm` contre la liste de la fin du complément : 26 noms ajoutés, 0 retiré ni rattaché à un autre module. Les 26 noms ajoutés sont tous attribués au module `FullEncap.KillKinds` :
+
+| Nature | Nombre | Statut |
+|---|---|---|
+| théorèmes écrits (`flat_usable_fwd` … `killOK_run`) | 12 | non internes |
+| `Sweep.killKind.eq_1` à `eq_5` | 5 | non internes |
+| `Sweep.killKind._sparseCasesOn_1/2.else_eq` | 2 | internes |
+| `killKind.match_1.eq_1` à `eq_5` (privés) | 5 | internes |
+| `releaseEff.match_1.eq_1` et `eq_2` (privés) | 2 | internes |
+
+12 + 5 = 17 ; 2 + 5 + 2 = 9 ; 17 + 9 = 26. Les 14 noms générés sont des lemmes d'équation créés à la demande dans `KillKinds` par `simp [killKind]` et `unfold releaseEff`. Ni `killKind` (`ComplementSweep`) ni `releaseEff` (`MemoryModel`) ne sont modifiés.
+
+Répartition par module, tous ajouts du complément : 130 (94) + 26 (17) = 156 (111). Les douze théorèmes écrits sont vérifiés un à un par `#print axioms` : chacun dépend de `propext` seul ou de `propext` et `Quot.sound`.
+
+### Fichiers protégés et fichier mémoire
+
+Le « fichier mémoire » mis à jour en fin de passe est hors du dépôt :
+
+- l'entrée : `/Users/guygouri/.claude/projects/-Users-guygouri-Devlab-ernlang-ern/memory/ern-formal-mm02-exploration.md` ;
+- son index : `/Users/guygouri/.claude/projects/-Users-guygouri-Devlab-ernlang-ern/memory/MEMORY.md`.
+
+Ce n'est ni `CLAUDE.md` ni un autre fichier du dépôt. Sorties, depuis la racine du dépôt, avec `main` = `d0c2d87` (base commune de la branche) et `HEAD` = `a234683` :
+
+```text
+$ git diff --stat main...HEAD -- specs AGENTS.md CLAUDE.md formal/DESIGN.md formal/Ern/MemoryModel
+$ git status --short -- specs AGENTS.md CLAUDE.md formal/DESIGN.md formal/Ern/MemoryModel
+```
+
+Les deux sorties sont vides, comme attendu.
 
 ## Annexe — parcours des prémisses (`ScanRights.lean`, scratchpad)
 
