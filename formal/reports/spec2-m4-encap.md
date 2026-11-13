@@ -530,7 +530,7 @@ Cette section rend compte du complément de la tranche 3 : brief « tranche 3 : 
 - **Spec 1** : relus en entier pour ce complément : §40, §42, §54. Les autres paragraphes cités (§43, §47, §50, §60 à §78, §80) ont été lus à la tranche 3 et ne sont pas relus.
 - **Corpus** v14 : § 2 terdecies en entier ; § 2 duodecies, fait « Donnée protégée » (rédaction v14).
 - **Lemme des genres qui tuent** (demande du propriétaire après le complément) :
-  - Spec 1 : §40 et §63 relus en entier. Les effets de §60 à §78 sont parcourus par recherche des mots *owner*, *owned*, *dead*, *usable* ; les passages trouvés sont lus en entier (§69, §70, §71 et §73, effets ; §72, effet). Les autres paragraphes cités dans les docstrings de `KillKinds` (§60 à §62, §64 à §68, §74 à §78) ne sont pas relus en entier.
+  - Spec 1 : relus en entier : §40, §63, §69 à §75, et l'introduction de la partie XIV (les opérations d'arène dérivées de O1 à O16). Les autres paragraphes cités dans les docstrings de `KillKinds` (§60 à §62, §64 à §68, §76 à §78) ne sont pas relus en entier : ils ont seulement été parcourus par une recherche des mots *owner*, *owned*, *dead* et *usable*, qui n'y a trouvé que des préconditions.
   - WC5.2 : C4 à C8 relus en entier. C2, C3, C13 et C15 à C18, cités dans les docstrings, ont été lus à la tranche 3 et ne sont pas relus.
 - **Décisions du propriétaire** appliquées :
   - la tâche 5 est énoncée en trois cas ;
@@ -689,7 +689,7 @@ La passerelle : un préfixe de `RunFull` est une `Run5R` (`run5R_take`, `:43`), 
 - **Ajouts seulement.** `alloc` ajoute des places ; `enterFrame` et `spawn` ajoutent des places et une frame (`enterC_usable_fwd`, `:56` ; `spawn_usable_fwd`, `:71`, avec `Push.mem`).
 - **Propriétaires changés.** C'est le point qui restait ouvert (§63, effet) : une place possédée par une partie `r` de la source passe à `corr(r)`, partie de la destination.
   - Pour `transfer`, §63.9 (`dstUsableAfter`) donne la destination utilisable après le pas. Une partie de la destination partage son propriétaire et sa marque de mort (§40, `WF3.places`), donc `corr(r)` est utilisable. Le lemme est `transfer_usable_fwd` (Spec 1, `MemoryModel/Access/Lemmas:1246`, existant), transposé au contexte par `transferC_usable_fwd` (`:86`).
-  - Pour `spawnVal`, la vérification finale de C5 point 4 ne sert pas. Chaque phase de transfert part d'une destination utilisable au début de la phase (`ValTransferPre.dstUsable`). Cette destination est une racine fraîche, possédée par la frame de l'enfant (C5 point 2, `spawn_frameOwned`, `TransferPreserve:223`). Un transfert ne change jamais un propriétaire frame (`transfer_usable_frameOwned`, `:211`). La destination reste donc utilisable après la phase, ce qui fournit à chaque phase la prémisse de §63.9. `WF3` passe de phase en phase par `KBase` (`transfer_base`, `:179`). Ces trois lemmes existaient. Le lemme est `transfers_usable_fwd` (`:176`), et la cession ne change que des détenteurs (`spawnVal_usable_fwd`, `:193`).
+  - Pour `spawnVal`, la vérification finale (C5 phase 4, `SpawnValPre.dstUsableAfter`) ne sert pas. Chaque phase de transfert part d'une destination utilisable au début de la phase (`ValTransferPre.dstUsable`). Cette destination est une racine fraîche, possédée par la frame de l'enfant (C5, précondition additionnelle 2 ; `spawn_frameOwned`, `TransferPreserve:223`). Un transfert ne change jamais un propriétaire frame (`transfer_usable_frameOwned`, `:211`). La destination reste donc utilisable après la phase, ce qui fournit à chaque phase la prémisse de §63.9. `WF3` passe de phase en phase par `KBase` (`transfer_base`, `:179`). Ces trois lemmes existaient. Le lemme est `transfers_usable_fwd` (`:176`), et la cession ne change que des détenteurs (`spawnVal_usable_fwd`, `:193`).
 
 Une source laissée `Moved` reste utilisable : `transfer` ne change ni `dead` ni les frames, et l'état d'initialisation n'entre pas dans `Usable`.
 
@@ -966,7 +966,7 @@ $ git diff --stat main...HEAD -- specs AGENTS.md CLAUDE.md formal/DESIGN.md form
 $ git status --short -- specs AGENTS.md CLAUDE.md formal/DESIGN.md formal/Ern/MemoryModel
 ```
 
-Les deux sorties sont vides, comme attendu.
+Les deux sorties sont vides, comme attendu. Elles le restent après les commits du rapport qui suivent `a234683`.
 
 ## Annexe — parcours des prémisses (`ScanRights.lean`, scratchpad)
 
