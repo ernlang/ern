@@ -62,7 +62,7 @@ instance (L : MutexLayout) (st : SC × SyncReg × ArenaReg) (lbl : Label) :
     Decidable (UnlockKept L st lbl) := by
   unfold UnlockKept; split <;> infer_instance
 
-/-- Every step of the trace satisfies `UnlockKept`. -/
+/-- Every step of the trace satisfies `UnlockKept` (brief, « Exécution corrigée »). -/
 def KeptAll (L : MutexLayout) (σ : Nat → SC × SyncReg × ArenaReg) (lbls : List Label) : Prop :=
   ∀ i (h : i < lbls.length), UnlockKept L (σ i) lbls[i]
 

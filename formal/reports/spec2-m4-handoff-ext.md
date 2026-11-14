@@ -464,6 +464,11 @@ Commits : `4747540` (définitions et tâche 1), `75e035c` (tâche 2), `c697587` 
 | `KeptAll L σ lbls` | 66 | Chaque pas de la trace satisfait `UnlockKept` |
 | `RunC17 k L σ lbls` | 76 | Exécution corrigée : `RunFull k L σ lbls ∧ KeptAll L σ lbls` |
 | `unlockCount` (`C17Check.NonReg`) | 168 | Nombre de pas `unlock` d'une trace, pour la table |
+| `reg5` (`C17Check.Observe`) | 408 | Registre d'avant l'indice 7 : `[⟨3, some 5⟩]` |
+| `oA1`, `oA3`, `oA4`, `oA5` | 411–417 | États de la suite A après `terminate`, `acquire`, `release(o1′)`, `unlock` |
+| `obsALbls`, `obsAσ` | 420, 424 | Étiquettes et états nommés de la suite A |
+| `oB1`, `oB2` | 458, 460 | États de la suite B après `derive` et `unlock` |
+| `obsBLbls`, `obsBσ` | 463, 466 | Étiquettes et états nommés de la suite B |
 
 **Obtention de l'état prospectif.** Le grant enregistré `g` est libéré selon O3 :
 
@@ -507,6 +512,10 @@ Commits : `4747540` (définitions et tâche 1), `75e035c` (tâche 2), `c697587` 
 2. `unlock_cap_after` (319) : le droit conservé, transporté au registre résultant par `cap5_same`, donne à `c` une capacité au moins `Observe` sur `l` après le pas.
 3. Le toucher de l'`unlock` exige `Observe`. Il n'est pas mourant (`extPair_first_not_dying`) et ne crée rien, donc il n'est pas exclusif.
 4. Le toucher de `j` est donc de classe D ou de classe E avec `Modify` (le cas C est exclu par `extPair_second_not_created`). Il est incompatible avec toute capacité présente (`touchCompat_excl_none`, `touchCompat_not_modify`).
+
+**Instances.** Les traces W-TR et W-TR-J sont des exécutions corrigées (`nonreg_1`), et leur indice 7 est l'`unlock` de `c1`. Le balayage de la tranche 4 y donne les paires `(7, 9, 2)` et `(7, 11, 2)`, de frontière 8 > 7 : l'énoncé n'est pas vide.
+
+**Existence.** `frontier_gt_unlock` borne toute frontière ; il n'affirme pas qu'elle existe. L'existence reste `frontier_exists`, qui s'applique par `runC17_runFull` avec son instance `[DecidablePred k.SharedMutable]`.
 
 Conséquence, dans le périmètre de la tranche 4 : sur une exécution corrigée, le couple `(unlock, E)` ne donne plus `r = i`. Les autres couples `r = i` de l'inventaire sont inchangés et ne sont pas traités ici.
 
@@ -574,7 +583,7 @@ Les 57 traces `RunFull` du dépôt autres que la trace `(unlock, E)` et son jume
 | témoin `(spawnVal, N)` | 0 | corrigée |
 | préfixe de la construction du brief | 0 | corrigée |
 
-**Bilan.** Aucun `unlock` admis jusqu'ici n'est exclu. La base est étroite : 10 traces seulement contiennent un `unlock`, un chacune, soit 10 pas `unlock` contrôlés. Dans chacun, le contexte qui déverrouille garde un droit sur le contrôleur par une autorité indépendante du grant.
+**Bilan.** Sur ces 57 traces, aucun `unlock` n'est exclu. La base est étroite : 10 traces seulement contiennent un `unlock`, un chacune, soit 10 pas `unlock` contrôlés. Dans chacun, le contexte qui déverrouille garde un droit sur le contrôleur par une autorité indépendante du grant.
 
 ### Tâche 4 — Observation
 
@@ -648,9 +657,12 @@ $ git diff --stat main...HEAD -- specs AGENTS.md CLAUDE.md formal/DESIGN.md form
 $ git status --short
 ```
 
-Les deux sorties sont vides.
+Les deux sorties sont vides. Elles l'étaient aussi à `4e937ff`, avant le commit de correction de ce rapport, et sont relancées après lui.
+
+Rien d'existant n'est modifié : `git diff --stat ebbc311..HEAD` ne touche que trois fichiers, `formal/Ern.lean` (une ligne d'import), `formal/Ern/Concurrency/FullEncap/C17Check.lean` (nouveau) et ce rapport.
 
 ### Ce qui reste ouvert
 
 - La correction n'est contrôlée que sur les traces du dépôt (10 pas `unlock` hors trace `(unlock, E)`) et par l'énoncé de la tâche 3. Aucune propriété générale de non-régression n'est prouvée.
 - Les autres couples `r = i` de la tranche 4 (`spawn`, le `spawn` par valeur, et les couples limites) ne sont pas concernés par cette correction et restent tels qu'écrits.
+- Relus pour ce contrôle : WC5.3 C7, C12, C14, C16 à C19, C22 (début), C28, C43 et C48 ; Spec 1 §43, §60, §62, §68 et §73.
