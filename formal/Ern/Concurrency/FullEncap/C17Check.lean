@@ -283,3 +283,111 @@ theorem nonreg_3 :
     ⟨spawnVal_N_witness.1, by decide⟩, ⟨hint_store_rejected.1, by decide⟩, by decide⟩
 
 end Ern.Concurrency.FullEncap.C17Check.NonReg
+
+/-! ## Task 3: a successful `unlock` is no longer its own frontier -/
+
+namespace Ern.Concurrency.FullEncap.C17Check
+
+open Ern.MemoryModel Ern.MemoryModel.Access Ern.Concurrency Ern.Concurrency.MutexReal
+open Ern.Concurrency.FullEncap Ern.Concurrency.FullEncap.HandoffExt
+
+/-- An `ok` `unlock` keeps the places (Spec 1 §62 `ok` effect; WC5.3 C17 effect). -/
+theorem unlock_P {k : K} {L : MutexLayout} {st st' : SC × SyncReg × ArenaReg} {c n : Nat}
+    (hs : LStep k L (.unlock c n) st st') : st'.1.P = st.1.P := by
+  cases hs with
+  | unlock h =>
+    obtain ⟨-, _, _, -, -, -, -, -, rfl⟩ := h
+    show (releaseEff _ _).P = _
+    unfold releaseEff; split <;> rfl
+
+/-- The leaf touched by an `ok` `unlock` of entry `n` is the controller of the entry (WC5.3 C17
+item 4; the footprint `Touches` of the step): the step creates no place. -/
+theorem unlock_touchL_ctl {k : K} {L : MutexLayout} {st st' : SC × SyncReg × ArenaReg}
+    {c n l : Nat} (hs : LStep k L (.unlock c n) st st') (ht : TouchL L st st' (.unlock c n) l) :
+    (st.2.1[n]?).bind (ControlOf L st.1) = some l := by
+  have hP := unlock_P hs
+  rcases ht with ⟨-, -, h⟩ | ⟨-, -, h⟩ | ⟨⟨h1, h2⟩, -⟩
+  · exact h
+  · exact h
+  · rw [hP] at h2; omega
+
+/-- After an `ok` `unlock` of entry `n` by `c` that satisfies the kept right (proposed C17 item 4,
+not adopted (brief)), from a state whose live contexts have nonempty stacks, `c` keeps a capability
+at least `Observe` on the controller (WC5.3 C43). The kept right is read in the prospective state,
+whose kernel component is that of the resulting state (`UnlockOk`); the resulting registry differs
+only by `grant = none` and has the same `guarded` identities (`cap5_same`). -/
+theorem unlock_cap_after {k : K} {L : MutexLayout} {st st' : SC × SyncReg × ArenaReg}
+    {c n l : Nat} (hF : FramesC st.1) (hw : WF3 st'.1.flat) (hs : LStep k L (.unlock c n) st st')
+    (hk : KeptRight L (st.1, st.2.1) c n)
+    (hctl : (st.2.1[n]?).bind (ControlOf L st.1) = some l) :
+    Allows (cap5 st'.1 st'.2.1 c l) .observe := by
+  cases hs with
+  | @unlock s reg ar c n st₁ h =>
+    obtain ⟨hlv, e, g, hn, -, hg, -, -, rfl⟩ := h
+    change OptP (reg[n]?) (fun e => OptP e.grant
+      (fun g => CtrlRight5 L (prospUnlock (s, reg) c g) e c) False) False at hk
+    rw [hn] at hk hctl
+    change OptP e.grant (fun g => CtrlRight5 L (prospUnlock (s, reg) c g) e c) False at hk
+    rw [hg] at hk
+    change CtrlRight5 L (prospUnlock (s, reg) c g) e c at hk
+    change ControlOf L s e = some l at hctl
+    have hctl' := (controlOf_prospUnlock L (s, reg) c g e).trans hctl
+    have h1 := cap5_of_ctrlRight5 (s := (prospUnlock (s, reg) c g).1) (reg := reg)
+      (show (prospUnlock (s, reg) c g).1.stk c ≠ [] from hF.nonempty c hlv) hk hctl'
+    have hle := cap5_same (s := (prospUnlock (s, reg) c g).1) (reg := reg)
+      (reg' := reg.set n { e with grant := none }) hw rfl rfl rfl (fun e' he' => by
+        rcases List.mem_or_eq_of_mem_set he' with h' | rfl
+        · exact ⟨e', h', rfl⟩
+        · exact ⟨e, List.mem_of_getElem? hn, rfl⟩) c l
+    show Allows (cap5 (prospUnlock (s, reg) c g).1 (reg.set n { e with grant := none }) c l)
+      .observe
+    revert h1 hle
+    generalize cap5 (prospUnlock (s, reg) c g).1 reg c l = o1
+    generalize cap5 (prospUnlock (s, reg) c g).1 (reg.set n { e with grant := none }) c l = o2
+    rcases o1 with _ | _ | _ <;> rcases o2 with _ | _ | _ <;> decide
+
+/-- Brief (C17 check), task 3, **proved**: on a corrected execution from the initial state
+(proposed C17 item 4, not adopted (brief)), the frontier of an extended exclusive pair `(i, j, l)`
+whose first member is an `unlock` is strictly after it. The leaf `l` is then the controller of the
+entry (`unlock_touchL_ctl`). After the `unlock`, its context keeps a capability at least `Observe`
+on `l` (`unlock_cap_after`); the touch of the `unlock` requires `Observe` (WC5.3 C17 item 4), is
+not dying (`extPair_first_not_dying`) and creates nothing, so the touch of `j` is exclusive (class D
+or class E with `Modify`) and incompatible with any present capability (WC5.3 C43). -/
+theorem frontier_gt_unlock {k : K} {L : MutexLayout} {statics : Statics}
+    {σ : Nat → SC × SyncReg × ArenaReg} {lbls : List Label} (hdd : DDSound k)
+    (hstat : StaticsOK statics) (h0 : σ 0 = (SC.ofS3 (S3.init statics), [], []))
+    (h : RunC17 k L σ lbls) {i j l r : Nat} (hp : ExtPair k L σ lbls i j l)
+    (hi : i < lbls.length) {c n : Nat} (hl : lbls[i] = .unlock c n)
+    (hr : IsFrontier k σ lbls i j l r) : i < r := by
+  refine Nat.lt_of_le_of_ne hr.1 fun hir => ?_
+  subst hir
+  have hn := extPair_second_not_created hdd hstat h0 h.1 hp
+  have hnd := extPair_first_not_dying hdd hstat h0 h.1 hp
+  obtain ⟨hij, hj, -, hti, -, hex⟩ := hp.out
+  have e : (lbls[i]'(Nat.lt_trans hij hj)) = .unlock c n := hl
+  rw [e] at hti hex
+  have hfr := (frontAt_iff hi hj i).1 hr.2.2.1
+  have hs := (h.1 i hi).2
+  have hk := h.2 i hi
+  rw [hl] at hs hk hfr
+  rw [show (Label.unlock c n).ctx = c from rfl] at hfr
+  have hcap := unlock_cap_after (runFull_inv hdd hstat h0 h.1 (Nat.le_of_lt hi)).1.1.1.1
+    (runFull_inv hdd hstat h0 h.1 (Nat.succ_le_of_lt hi)).1.1.1.2 hs hk
+    (unlock_touchL_ctl hs hti)
+  have hxj : ClassD (σ j) (σ (j + 1)) l ∨ ClassEm k (σ j) (σ (j + 1)) lbls[j] l .modify := by
+    rcases hex with ⟨-, hD | hC | hEm⟩ | ⟨-, hD | hC | hEm⟩
+    · exact absurd hD hnd
+    · have h2 := hC.1.2
+      rw [unlock_P hs] at h2
+      exact absurd hC.1.1 (Nat.not_le.2 h2)
+    · exact nomatch (hEm.2 : Mode.modify = Mode.observe)
+    · exact .inl hD
+    · exact absurd hC.1 hn
+    · exact .inr hEm
+  revert hcap hfr
+  rcases cap5 (σ (i + 1)).1 (σ (i + 1)).2.1 c l with _ | _ | _
+  · exact fun _ hcap => hcap
+  · exact fun hfr _ => nomatch touchCompat_excl_none hxj hfr
+  · exact fun hfr _ => touchCompat_not_modify hfr
+
+end Ern.Concurrency.FullEncap.C17Check
