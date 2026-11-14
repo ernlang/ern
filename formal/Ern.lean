@@ -77,6 +77,7 @@ import Ern.Concurrency.FullEncap.HandoffExtWitness
 import Ern.Concurrency.FullEncap.HandoffExtClass
 import Ern.Concurrency.FullEncap.HandoffExtFrontier
 import Ern.Concurrency.FullEncap.HandoffExtSweep
+import Ern.Concurrency.FullEncap.HandoffExtSame
 import Ern.Concurrency.FullEncap.Replay
 import Ern.Concurrency.Events
 import Ern.Concurrency.EventsCompose
