@@ -391,3 +391,98 @@ theorem frontier_gt_unlock {k : K} {L : MutexLayout} {statics : Statics}
   · exact fun hfr _ => touchCompat_not_modify hfr
 
 end Ern.Concurrency.FullEncap.C17Check
+
+/-! ## Task 4: observation from the state before the refused `unlock` -/
+
+namespace Ern.Concurrency.FullEncap.C17Check.Observe
+
+open Ern.MemoryModel Ern.MemoryModel.Access Ern.Concurrency Ern.Concurrency.MutexReal
+open Ern.Concurrency.FullEncap Ern.Concurrency.FullEncap.HandoffExt
+open Ern.Concurrency.FullEncap.HandoffExtSame Ern.Concurrency.Corpus
+open Ern.Concurrency.FullEncap.C17Check
+open Ern.Concurrency.FullEncap.Witness (instDecidableEncap5R)
+open Ern.Concurrency.Traces (L0)
+
+/-- The registry before index 7 of `unlock_r_eq_i_no_hb`: entry `e` records grant 5, held by
+`c1`. -/
+def reg5 : SyncReg := [⟨3, some 5⟩]
+
+/-- Suite A (brief (C17 check), task 4), step 1: `c1 : terminate` (WC5.3 C7). -/
+def oA1 : SC := termEffC ul6 1
+/-- Suite A, step 3: `c0 : acquire(e)` (WC5.3 C16): grant 6, held by frame 0. -/
+def oA3 : SC := deriveSyncEff oA1 0 3
+/-- Suite A, step 4: `c0 : release(o1′)` (O3, Spec 1 §62). -/
+def oA4 : SC := oA3.set (releaseEff (oA3.view 0) 4)
+/-- Suite A, step 5: `c0 : unlock(e)` (WC5.3 C17). -/
+def oA5 : SC := oA4.set (releaseEff (oA4.view 0) 6)
+
+/-- The labels of suite A. -/
+def obsALbls : List Label :=
+  [.terminate 1, .resetLock 0 0, .acquire 0 0, .kernel 0 (.release 4), .unlock 0 0]
+
+/-- The named states of suite A, from the state before index 7 of `unlock_r_eq_i_no_hb`. -/
+def obsAσ (i : Nat) : SC × SyncReg × ArenaReg :=
+  [(ul6, reg5, []), (oA1, reg5, []), (oA1, regX, []), (oA3, [⟨3, some 6⟩], []),
+    (oA4, [⟨3, some 6⟩], []), (oA5, regX, [])].getD i (oA5, regX, [])
+
+/-- Brief (C17 check), task 4, suite A, verdicts (an observation; the brief states no expected
+verdict): from the state before index 7 (`c1` holds grant 5, `o1′` is held by `T`), every step is
+`ok` at the kernel (WC5.3 C7, C18, C16; O3; C17), admitted by the complete encapsulation
+(`EncapFull`), and the `unlock` of `c0` satisfies the kept right (proposed C17 item 4, not adopted
+(brief)): the run is a corrected execution from that state. After `terminate`, grant 5 is
+inactive, `o1′` still active and held by `T`. -/
+theorem obsA : obsAσ 0 = ulσ 7 ∧ RunC17 KM L0 obsAσ obsALbls ∧
+    TermStep KM ul6 1 (.ok oA1) ∧ ResetLockOk L0 oA1 reg5 0 0 (oA1, regX) ∧
+    AcquireOk KM L0 oA1 regX 0 0 (oA3, [⟨3, some 6⟩]) ∧
+    opStepC KM (.release 4) 0 oA3 (.ok oA4) ∧ UnlockOk L0 oA4 [⟨3, some 6⟩] 0 0 (oA5, regX) ∧
+    oA1.A[5]?.map (·.active) = some false ∧
+    oA1.A[4]?.map (fun y => (y.active, y.holder)) = some (true, .place 3) := by
+  have t : TermStep KM ul6 1 (.ok oA1) := ⟨by decide, .ok (by decide)⟩
+  have r : ResetLockOk L0 oA1 reg5 0 0 (oA1, regX) :=
+    ⟨by decide, ⟨3, some 5⟩, rfl, by decide, by decide, by decide, rfl⟩
+  have a : AcquireOk KM L0 oA1 regX 0 0 (oA3, [⟨3, some 6⟩]) :=
+    ⟨by decide, ⟨3, none⟩, rfl, by decide, by decide, rfl⟩
+  have rl : opStepC KM (.release 4) 0 oA3 (.ok oA4) := ⟨by decide, _, .ok (by decide), rfl⟩
+  have u : UnlockOk L0 oA4 [⟨3, some 6⟩] 0 0 (oA5, regX) :=
+    ⟨by decide, ⟨3, some 6⟩, 6, rfl, by decide, rfl, by decide, by decide, rfl⟩
+  have h : Steps5R KM L0 [(ul6, reg5, []), (oA1, reg5, []), (oA1, regX, []),
+      (oA3, [⟨3, some 6⟩], []), (oA4, [⟨3, some 6⟩], []), (oA5, regX, [])] obsALbls :=
+    .cons (by decide) (.terminate t) <| .cons (by decide) (.resetLock r) <|
+    .cons (by decide) (.acquire a) <| .cons (by decide) (.kernel rl) <|
+    .cons (by decide) (.unlock u) .nil
+  exact ⟨rfl, ⟨runFull_of_run7 (run7_of_run5R (h.run _) (by decide)) (by decide), by decide⟩,
+    t, r, a, rl, u, by decide, by decide⟩
+
+/-- Suite B (brief (C17 check), task 4), step 1: `c1 : o2 := derive(o1′, Observe, {lock})` (O1,
+Spec 1 §60): authority 6, held by frame 1. -/
+def oB1 : SC := ul6.set (deriveEff (ul6.view 1) 4 [2] .observe)
+/-- Suite B, step 2: `c1 : unlock(e)` (WC5.3 C17). -/
+def oB2 : SC := oB1.set (releaseEff (oB1.view 1) 5)
+
+/-- The labels of suite B. -/
+def obsBLbls : List Label := [.kernel 1 (.derive 4 [2] .observe), .unlock 1 0]
+
+/-- The named states of suite B, from the state before index 7 of `unlock_r_eq_i_no_hb`. -/
+def obsBσ (i : Nat) : SC × SyncReg × ArenaReg :=
+  [(ul6, reg5, []), (oB1, reg5, []), (oB2, regX, [])].getD i (oB2, regX, [])
+
+/-- Brief (C17 check), task 4, suite B, verdicts (an observation; the brief states no expected
+verdict): from the state before index 7, the `derive` of `c1` is `ok` at the kernel (O1, through
+`o1′` held by `T` under grant 5) and admitted by the complete encapsulation; the `unlock` of `c1`
+is then `ok` (WC5.3 C17), admitted, and satisfies the kept right (proposed C17 item 4, not adopted
+(brief)), through `o2`, held by frame 1. After it, `c1` keeps `Observe` on `lock` (WC5.3 C43). -/
+theorem obsB : obsBσ 0 = ulσ 7 ∧ RunC17 KM L0 obsBσ obsBLbls ∧
+    opStepC KM (.derive 4 [2] .observe) 1 ul6 (.ok oB1) ∧ UnlockOk L0 oB1 reg5 1 0 (oB2, regX) ∧
+    oB1.A[6]?.map (fun y => (y.active, y.holder, y.origin, y.mode)) =
+      some (true, .frame 1, some 4, .observe) ∧
+    cap5 oB2 regX 1 2 = some .observe := by
+  have d : opStepC KM (.derive 4 [2] .observe) 1 ul6 (.ok oB1) :=
+    ⟨by decide, _, .ok (by decide), rfl⟩
+  have u : UnlockOk L0 oB1 reg5 1 0 (oB2, regX) :=
+    ⟨by decide, ⟨3, some 5⟩, 5, rfl, by decide, rfl, by decide, by decide, rfl⟩
+  have h : Steps5R KM L0 [(ul6, reg5, []), (oB1, reg5, []), (oB2, regX, [])] obsBLbls :=
+    .cons (by decide) (.kernel d) <| .cons (by decide) (.unlock u) .nil
+  exact ⟨rfl, ⟨runFull_of_run7 (run7_of_run5R (h.run _) (by decide)) (by decide), by decide⟩,
+    d, u, by decide, by decide⟩
+
+end Ern.Concurrency.FullEncap.C17Check.Observe
