@@ -79,6 +79,7 @@ import Ern.Concurrency.FullEncap.HandoffExtFrontier
 import Ern.Concurrency.FullEncap.HandoffExtSweep
 import Ern.Concurrency.FullEncap.HandoffExtSame
 import Ern.Concurrency.FullEncap.OBC28Check
+import Ern.Concurrency.FullEncap.C17Check
 import Ern.Concurrency.FullEncap.Replay
 import Ern.Concurrency.Events
 import Ern.Concurrency.EventsCompose
