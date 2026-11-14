@@ -447,3 +447,210 @@ Les deux sorties sont vides. `git status --short` sur tout le dépôt était vid
 - La table des 28 genres est lue sur les définitions `TouchesF`, `CapReq`, `HasReq` et `ReqMode`, et sur les effets du noyau. Seuls `classN_created`, `cw_spawnVal` et `touchesF_existing` en prouvent le contenu.
 - WC5.3 a été relu en entier pour les clauses C1 à C8, C13 à C23, C26 à C34 et C43 à C53, ainsi que la partie IV. Les clauses C9 à C12, C24, C25 et C35 à C42 ne l'ont pas été.
 - Spec 1 a été relue pour §40 à §44 et §58 à §78. §79 à §90 ne l'ont pas été.
+
+## Contrôle de C17 point 4
+
+Brief « contrôle ciblé de la correction de C17 point 4 ». Branche `formal/spec2-m4`, à la suite de `ebbc311`. Le texte contrôlé est le point 4 proposé pour C17, non adopté ; il est cité ainsi dans les docstrings. WC5.3 n'est pas modifié. Toutes les additions sont dans un module nouveau, `formal/Ern/Concurrency/FullEncap/C17Check.lean`, importé dans `formal/Ern.lean`. Aucune définition existante n'est modifiée.
+
+Commits : `4747540` (définitions et tâche 1), `75e035c` (tâche 2), `c697587` (tâche 3), `7452e6d` (tâche 4), puis ce rapport.
+
+### Définitions ajoutées
+
+| Nom (`C17Check`) | Ligne | Contenu |
+|---|---|---|
+| `prospUnlock st c g` | 37 | État prospectif : `(st.1.set (releaseEff (st.1.view c) g), st.2)` |
+| `KeptRight L st c n` | 46 | Droit conservé : `CtrlRight5 L (prospUnlock st c g) e c`, où `e` est l'entrée `n` et `g` son grant |
+| `UnlockKept L st lbl` | 56 | `KeptRight` pour un `unlock`, `True` pour les autres genres |
+| `KeptAll L σ lbls` | 66 | Chaque pas de la trace satisfait `UnlockKept` |
+| `RunC17 k L σ lbls` | 76 | Exécution corrigée : `RunFull k L σ lbls ∧ KeptAll L σ lbls` |
+| `unlockCount` (`C17Check.NonReg`) | 168 | Nombre de pas `unlock` d'une trace, pour la table |
+
+**Obtention de l'état prospectif.** Le grant enregistré `g` est libéré selon O3 :
+
+- la composante noyau est `releaseEff` sur la vue du contexte agissant, réécrite par `SC.set` ;
+- c'est exactement la composante noyau que `UnlockOk` produit ;
+- le registre de synchronisation est inchangé : l'entrée enregistre toujours `grant = some g`, et l'état logique du contrôleur n'est donc pas modifié.
+
+`controlOf_prospUnlock` (107) prouve que `ControlOf` est le même dans l'état prospectif : la libération garde les détenteurs (`prospUnlock_holder`, 89) et les places.
+
+**Lecture du droit.** `KeptRight` lit le droit dans l'état prospectif, comme le demande le brief, et non dans l'état résultant. La preuve de coïncidence demandée pour l'autre lecture n'est donc pas requise. La tâche 3 utilise seulement l'inégalité `cap5_same` entre les deux registres, qui ne diffèrent que par le champ `grant`.
+
+**Forme du droit.** `CtrlRight5` est la forme que `PremG` lit dans l'état d'avant le pas : `Exer5`, sans `guarded` vivant dans la chaîne. `NotGuarded` ne lit que les identités `guarded` des entrées vivantes, pas le champ `grant`.
+
+**Inclusion.** `runC17_runFull` (81) : une exécution corrigée est une `RunFull`, par projection.
+
+**Choix d'encodage.** Quand l'entrée n'existe pas ou n'enregistre aucun grant, le point 1 de C17 échoue et l'état prospectif est sans objet ; `KeptRight` vaut alors `False`. Aucun pas `unlock` d'une `RunFull` n'est dans ce cas, puisque `UnlockOk` exige `grant = some g`.
+
+### Statuts des tâches 1 à 3
+
+| Tâche | Énoncé | Statut | Théorème (`C17Check`) | Hypothèses |
+|---|---|---|---|---|
+| 1 | trace `unlock_r_eq_i_no_hb` : le préfixe jusqu'à l'indice 6 est une exécution corrigée | vérifié | `ul_kept` (123) | trace |
+| 1 | idem : l'`unlock` de l'indice 7 ne satisfait pas le droit conservé | vérifié, conforme à l'attendu | `ul_kept` (123) | trace |
+| 1 | jumeau sans `resetLock` : les deux mêmes faits | vérifié, conforme à l'attendu | `ulj_kept` (137) | trace |
+| 2 | les 57 autres traces sont des exécutions corrigées | vérifié, conforme à l'attendu | `nonreg_1` (176), `nonreg_2` (212), `nonreg_3` (264) | traces |
+| 3 | sur une exécution corrigée depuis l'état initial, toute paire exclusive étendue `(i, j, l)` dont le pas `i` est un `unlock` a sa frontière `r > i` | **prouvé** | `frontier_gt_unlock` (356) | `DDSound`, `StaticsOK`, état initial, `RunC17` |
+
+**Le fait d'état de la tâche 1.** Dans les deux traces, `ul_kept` et `ulj_kept` établissent les faits suivants :
+
+- l'`unlock` de l'indice 7 est `ok` selon C17 adopté (`UnlockOk`) et admis par `PremG` ;
+- il échoue au seul droit conservé ;
+- dans l'état prospectif, le grant 5 est inactif ;
+- `o1′` (autorité 4) est active et tenue par `T` (place 3) ;
+- `cap5` de `c1` sur `lock` (place 2) vaut `none`.
+
+`c1` n'atteignait `T` que par le grant 5. Le préfixe ne contient aucun `unlock` : il est corrigé dès qu'il est une `RunFull`, et il l'est par `Replay.RunFull.take`.
+
+**La preuve de la tâche 3** suit la piste du brief, mais lit le droit dans l'état prospectif.
+
+1. `unlock_touchL_ctl` (305) : la feuille touchée est le contrôleur de l'entrée, car `unlock` ne crée aucune place (`unlock_P`, 295). « `l` son contrôleur » n'est donc pas une hypothèse : la paire l'impose.
+2. `unlock_cap_after` (319) : le droit conservé, transporté au registre résultant par `cap5_same`, donne à `c` une capacité au moins `Observe` sur `l` après le pas.
+3. Le toucher de l'`unlock` exige `Observe`. Il n'est pas mourant (`extPair_first_not_dying`) et ne crée rien, donc il n'est pas exclusif.
+4. Le toucher de `j` est donc de classe D ou de classe E avec `Modify` (le cas C est exclu par `extPair_second_not_created`). Il est incompatible avec toute capacité présente (`touchCompat_excl_none`, `touchCompat_not_modify`).
+
+Conséquence, dans le périmètre de la tranche 4 : sur une exécution corrigée, le couple `(unlock, E)` ne donne plus `r = i`. Les autres couples `r = i` de l'inventaire sont inchangés et ne sont pas traités ici.
+
+### Table de non-régression
+
+Les 57 traces `RunFull` du dépôt autres que la trace `(unlock, E)` et son jumeau sont celles du balayage de la tranche 4. Chaque ligne est établie par `decide` : verdict par `nonreg_1` à `nonreg_3`, nombre de pas `unlock` par `nonreg_1_count` (198), `nonreg_2_count` (246) et la dernière conjonction de `nonreg_3`. La `RunFull` de chaque trace vient du théorème existant cité dans la preuve.
+
+| Trace | Pas `unlock` | Verdict |
+|---|---|---|
+| W-HO | 0 | corrigée |
+| W-HO′ | 0 | corrigée |
+| W-HO″ | 0 | corrigée |
+| W-HO-J | 0 | corrigée |
+| W-HO″-J | 0 | corrigée |
+| `lc_trace` | 1 | corrigée |
+| W-RL₀ | 1 | corrigée |
+| W-RL | 1 | corrigée |
+| W-RL-J | 1 | corrigée |
+| W-TR | 1 | corrigée |
+| W-TR-J | 1 | corrigée |
+| S11 | 0 | corrigée |
+| `cv` | 0 | corrigée |
+| `ce` | 0 | corrigée |
+| `cr` | 0 | corrigée |
+| jumeau de W-GS | 1 | corrigée |
+| S3 (jusqu'à l'étape 3) | 0 | corrigée |
+| S10 | 0 | corrigée |
+| `ts` | 0 | corrigée |
+| `ti` | 0 | corrigée |
+| `ta` | 0 | corrigée |
+| `tdt` | 0 | corrigée |
+| `am` | 0 | corrigée |
+| `td` | 0 | corrigée |
+| `lv` | 0 | corrigée |
+| W-GI jumeau (`gt`) | 1 | corrigée |
+| W-RX B | 0 | corrigée |
+| `fr` | 0 | corrigée |
+| `ex` | 0 | corrigée |
+| témoin `terminate` (`tm`) | 0 | corrigée |
+| W-AG | 0 | corrigée |
+| W-AG-J | 0 | corrigée |
+| W-AG′ | 0 | corrigée |
+| W-GR suite | 0 | corrigée |
+| W-GC suite | 0 | corrigée |
+| S3 en entier | 1 | corrigée |
+| S4 | 0 | corrigée |
+| S9 | 0 | corrigée |
+| `mt` (`mutex_trace`) | 1 | corrigée |
+| `dt` | 0 | corrigée |
+| `tA` | 0 | corrigée |
+| `tB` | 0 | corrigée |
+| `km` | 0 | corrigée |
+| `ks` | 0 | corrigée |
+| `tb` | 0 | corrigée |
+| `sa` | 0 | corrigée |
+| `Protected.ab` | 0 | corrigée |
+| W-HT | 0 | corrigée |
+| W-HT-J | 0 | corrigée |
+| W-HS | 0 | corrigée |
+| W-HS-J | 0 | corrigée |
+| W-HX | 0 | corrigée |
+| W-HX-J | 0 | corrigée |
+| W-SV | 0 | corrigée |
+| jumeau de W-CR | 0 | corrigée |
+| témoin `(spawnVal, N)` | 0 | corrigée |
+| préfixe de la construction du brief | 0 | corrigée |
+
+**Bilan.** Aucun `unlock` admis jusqu'ici n'est exclu. La base est étroite : 10 traces seulement contiennent un `unlock`, un chacune, soit 10 pas `unlock` contrôlés. Dans chacun, le contexte qui déverrouille garde un droit sur le contrôleur par une autorité indépendante du grant.
+
+### Tâche 4 — Observation
+
+Les deux suites partent de l'état d'avant l'indice 7 : `(ul6, [⟨3, some 5⟩], [])`, égal à `ulσ 7`. `c1` y détient le grant 5, et `o1′` est tenue par `T`. Les pas sont enchaînés, chacun depuis l'état produit par le précédent.
+
+Les théorèmes `obsA` (434) et `obsB` (474) du namespace `C17Check.Observe` établissent :
+
+- le pas `ok` de chaque étape (`TermStep`, `ResetLockOk`, `AcquireOk`, `opStepC`, `UnlockOk`) ;
+- `RunC17` sur chaque suite, c'est-à-dire l'encapsulation complète (`EncapFull`) de chaque pas et le droit conservé de chaque `unlock`.
+
+**Suite A**
+
+| Pas | Noyau | Encapsulation complète | Droit conservé | Clause défaillante |
+|---|---|---|---|---|
+| `c1 : terminate` | `ok` (C7) | admis | — | aucune |
+| `c0 : resetLock(e)` | `ok` (C18) | admis | — | aucune |
+| `c0 : acquire(e)` | `ok` (C16), grant 6 | admis | — | aucune |
+| `c0 : release(o1′)` | `ok` (O3) | admis | — | aucune |
+| `c0 : unlock(e)` | `ok` (C17) | admis | oui | aucune |
+
+Après `terminate`, le grant 5 est inactif et `o1′` est toujours active, tenue par `T`. L'entrée enregistre encore `grant = some 5`.
+
+**Suite B**
+
+| Pas | Noyau | Encapsulation complète | Droit conservé | Clause défaillante |
+|---|---|---|---|---|
+| `c1 : o2 := derive(o1′, Observe, {lock})` | `ok` (O1), autorité 6 tenue par la frame 1 | admis | — | aucune |
+| `c1 : unlock(e)` | `ok` (C17) | admis | oui | aucune |
+
+Après l'`unlock`, `cap5` de `c1` sur `lock` vaut `Observe`.
+
+Aucun pas n'est refusé dans les deux suites. La question de l'état après un refus ne s'est donc pas posée.
+
+### Écarts au brief
+
+- **Aucune hypothèse ajoutée.** La tâche 3 n'utilise que `DDSound`, `StaticsOK`, l'état initial et `RunC17`.
+- **Tâche 3.** « `l` son contrôleur » n'est pas pris en hypothèse : `unlock_touchL_ctl` le déduit de la paire. L'énoncé prouvé vaut donc pour toute paire exclusive étendue dont le premier membre est un `unlock`.
+- **`KeptRight` hors des points 1 à 3.** Il vaut `False` quand l'entrée n'a pas de grant (voir « Choix d'encodage »). C'est sans effet sur les énoncés, tous portés par des `unlock` `ok`.
+- **Tâche 4.** Le brief ne dit pas comment enchaîner après un refus. Aucun refus n'ayant eu lieu, aucune convention n'a été nécessaire.
+
+### Audit des axiomes
+
+Même procédure que pour la tranche 4 : tous les théorèmes du préfixe `Ern.Concurrency`, internes compris, avec `collectAxioms`, et comparaison de la liste des noms avec celle de `212a0e6`.
+
+- Total : 3030 + 24 = 3054 théorèmes, dont 2010 + 16 = 2026 non internes.
+- Aucun ne dépend d'un axiome hors de `{propext, Quot.sound}`. Aucun nom n'a été retiré.
+- Les 24 ajouts sont tous dans `C17Check`.
+- **16 théorèmes écrits** :
+  - définitions et lien avec `RunFull` : `runC17_runFull`, `prospUnlock_holder`, `controlOf_prospUnlock` ;
+  - tâche 1 : `ul_kept`, `ulj_kept` ;
+  - tâche 2 : `nonreg_1`, `nonreg_1_count`, `nonreg_2`, `nonreg_2_count`, `nonreg_3` ;
+  - tâche 3 : `unlock_P`, `unlock_touchL_ctl`, `unlock_cap_after`, `frontier_gt_unlock` ;
+  - tâche 4 : `obsA`, `obsB`.
+
+  Soit 3 + 2 + 5 + 4 + 2 = 16.
+- **8 lemmes internes générés** :
+  - équations de `match` de `UnlockKept` : 2, et `_sparseCasesOn` : 1 ;
+  - preuves de l'instance de décidabilité de `UnlockKept` : 2 ;
+  - équations de `match` de `releaseEff`, générées par `unfold` : 2 ;
+  - lemme auxiliaire `_proof` de `unlock_touchL_ctl` : 1.
+
+  Soit 3 + 2 + 2 + 1 = 8, et 16 + 8 = 24.
+- `lake build` passe (143 jobs, aucun avertissement) et le `grep` d'`AGENTS.md` ne renvoie rien.
+
+### Fichiers protégés
+
+Base : `main` = `d0c2d87`. Commandes lancées à HEAD = `7452e6d`.
+
+```
+$ git diff --stat main...HEAD -- specs AGENTS.md CLAUDE.md formal/DESIGN.md formal/Ern/MemoryModel
+$ git status --short
+```
+
+Les deux sorties sont vides.
+
+### Ce qui reste ouvert
+
+- La correction n'est contrôlée que sur les traces du dépôt (10 pas `unlock` hors trace `(unlock, E)`) et par l'énoncé de la tâche 3. Aucune propriété générale de non-régression n'est prouvée.
+- Les autres couples `r = i` de la tranche 4 (`spawn`, le `spawn` par valeur, et les couples limites) ne sont pas concernés par cette correction et restent tels qu'écrits.
