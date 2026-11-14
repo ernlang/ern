@@ -72,6 +72,8 @@ import Ern.Concurrency.FullEncap.LastAcquire
 import Ern.Concurrency.FullEncap.DyingCap
 import Ern.Concurrency.FullEncap.ComplementSweep
 import Ern.Concurrency.FullEncap.KillKinds
+import Ern.Concurrency.FullEncap.HandoffExt
+import Ern.Concurrency.FullEncap.HandoffExtWitness
 import Ern.Concurrency.FullEncap.Replay
 import Ern.Concurrency.Events
 import Ern.Concurrency.EventsCompose
