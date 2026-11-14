@@ -20,9 +20,11 @@ Branche `formal/spec2-m4`, à la suite du complément de la tranche 3 (`a234683`
 | `7c3040d` | tâche 5, balayage des 55 traces `RunFull` (`HandoffExtSweep`) |
 | `f8362e2` | tâche 4 (`HandoffExtSame`) |
 | `a028efd` | tâche 6 (`OBC28Check`) |
-| commit du rapport | ce fichier |
+| `fe2101d` | première version de ce rapport |
+| `212a0e6` | tâche 4 : réfutation de « `r = i ⇒ hb(i, j)` » par `unlock` ; balayage des traces de `HandoffExtSame` ; clause O7.2 du négatif de W-HX |
+| commit qui suit `212a0e6` | ce rapport, mis à jour |
 
-Sept modules nouveaux sous `formal/Ern/Concurrency/FullEncap/`, tous importés par `formal/Ern.lean`. Les numéros de ligne cités sont ceux de `a028efd`.
+Sept modules nouveaux sous `formal/Ern/Concurrency/FullEncap/`, tous importés par `formal/Ern.lean`. Les numéros de ligne cités sont ceux de `212a0e6`.
 
 ## Définitions ajoutées
 
@@ -67,20 +69,20 @@ Tous les attendus du corpus v15 sont obtenus. Aucun pas attendu `ok` n'est refus
 | W-HS, pas 3 avant le pas 2 | `reject`, §65.2 | `reject` | §65.2, §43.3 | `W_HS_neg` (211) |
 | W-HS-J | `ok`, admis | `ok` ; `RunFull` | C7, C8 | `W_HSJ_run` (232) |
 | W-HX, mise en place de S1a et pas 1 à 3 | `ok`, admis ; `X` meurt | `ok` ; `X` inutilisable après ; `RunFull` | O7.1, O7.2, O7.4, C6 | `W_HX_run` (293) |
-| W-HX, pas 3 avant le pas 2 | `reject`, O7.2 | `reject` | O7.2 | `W_HX_neg` (311) |
-| W-HX-J | `ok`, admis | `ok` ; `RunFull` | C7, C8 | `W_HXJ_run` (331) |
-| W-HT, W-HS, W-HX, graphe | `(1, 3, X)` exclusive étendue ; frontière = pas 2, de `c1` ; aucun `hb` ; course étendue ; pas de passation ordonnée étendue | idem (indices `(2,4)`, `(3,5)`, `(4,6)` ; frontière 3, 4, 5) ; W-HX : classe D au pas 3 | §67.1 ; §63.1 ; §65.2 ; §73 | `W_HT_graph` (124), `W_HS_graph` (255), `W_HX_graph` (350) |
-| idem, jumeaux | même paire et même frontière ; ordonnée par `terminate`, `join` | idem : `po`, `sw`, `po`, `HBS`, passation ordonnée étendue | C32.3, C47 | `W_HTJ_graph` (133), `W_HSJ_graph` (265), `W_HXJ_graph` (360) |
+| W-HX, pas 3 avant le pas 2 | `reject`, O7.2 | `reject` ; `a` survivant sans origine survivante (`firstSurv … = none`) | O7.2, §73.4 | `W_HX_neg` (312) |
+| W-HX-J | `ok`, admis | `ok` ; `RunFull` | C7, C8 | `W_HXJ_run` (334) |
+| W-HT, W-HS, W-HX, graphe | `(1, 3, X)` exclusive étendue ; frontière = pas 2, de `c1` ; aucun `hb` ; course étendue ; pas de passation ordonnée étendue | idem (indices `(2,4)`, `(3,5)`, `(4,6)` ; frontière 3, 4, 5) ; W-HX : classe D au pas 3 | §67.1 ; §63.1 ; §65.2 ; §73 | `W_HT_graph` (124), `W_HS_graph` (255), `W_HX_graph` (353) |
+| idem, jumeaux | même paire et même frontière ; ordonnée par `terminate`, `join` | idem : `po`, `sw`, `po`, `HBS`, passation ordonnée étendue | C32.3, C47 | `W_HTJ_graph` (133), `W_HSJ_graph` (265), `W_HXJ_graph` (363) |
 | ces paires ne sont pas des `ExclPair` | — | non (le pas 3 n'est pas un accès) | — | `W_HT_notExcl` (140), conjonct de `W_HS_graph`, `W_HX_graph` |
-| W-SV, pas 2 ; négatif | pas 2 `ok`, admis ; `read3(v)` `reject` (O9.1) | idem ; feuille `1` de `v` `Moved` ; `RunFull` | O10.1, C5 point 2 ; O9.1 | `W_SV_run` (390) |
-| W-SV, les quatre faits (feuille `4` de `d`) | exclusive étendue ; frontière = pas 1 ; recherche `k > i` = pas 2, ni avant `j` ni de `c0` ; ordonnée par l'arête de création | idem ; classe C ; `cap5(c0, d) = none` après le pas 1 ; `lossStep = some 5` ; `SWS (pas 4) (start 4)` | C5, C32.2 | `W_SV_graph` (411) |
+| W-SV, pas 2 ; négatif | pas 2 `ok`, admis ; `read3(v)` `reject` (O9.1) | idem ; feuille `1` de `v` `Moved` ; `RunFull` | O10.1, C5 point 2 ; O9.1 | `W_SV_run` (393) |
+| W-SV, les quatre faits (feuille `4` de `d`) | exclusive étendue ; frontière = pas 1 ; recherche `k > i` = pas 2, ni avant `j` ni de `c0` ; ordonnée par l'arête de création | idem ; classe C ; `cap5(c0, d) = none` après le pas 1 ; `lossStep = some 5` ; `SWS (pas 4) (start 4)` | C5, C32.2 | `W_SV_graph` (414) |
 | W-SV, arête de création au genre `spawnVal` | à rapporter si absente | **présente** : `SWS` relie `step i` à `start i` quand `Label.creates`, vrai pour `spawnVal` (`Events.lean:266`) | C32.2 | `W_SV_graph` |
-| W-NM | `MX₄` puis `c1 : acquire(e)` `ok` | `RunFull` (préfixe de W-RL₀) | C16 | `W_NM_run` (424) |
-| W-NM, les trois faits | `(newMutex, acquire, lock)` exclusive étendue ; frontière = `derive` de l'étape 4 (Modify → Observe) ; ordonnée | idem (indices `(2,5)`, frontière 3 ; `cap5(c0, lock)` passe de `Modify` à `Observe`) | C13.11, C14.3, §43.4, C32.2 | `W_NM_graph` (434) |
-| W-TR | `(unlock, transfer, lock)`, `(acquire, transfer, lock)` exclusives étendues ; frontière = `release(o1)` ; aucun `hb` | idem (indices `(7,9)`, `(5,9)` ; frontière 8) | C17.4, C14.3, §63.1 | `W_TR_graph` (453) |
-| W-TR-J | même frontière ; ordonnées par le `join` | idem (indices `(7,11)`, `(5,11)`) | C47 | `W_TRJ_graph` (463) |
-| W-CR | depuis `MX₃`, `read3(lock)` via `root_M` `ok` au noyau, exclu par C22.4 | idem. `MX₃` est atteint par une `RunFull` (préfixe de W-RL₀). `PremG` (C22.6), `Encap` et `ChainExcl` valent. Les deux encodages de C22.4 échouent : `CtlExcl` et `CtlRestrF`. | O9 ; C22.4 | `W_CR_excluded` (484) |
-| W-CR, jumeau | avant `newMutex` : `ok`, admis | `RunFull` | O9 | `W_CR_twin` (508) |
+| W-NM | `MX₄` puis `c1 : acquire(e)` `ok` | `RunFull` (préfixe de W-RL₀) | C16 | `W_NM_run` (427) |
+| W-NM, les trois faits | `(newMutex, acquire, lock)` exclusive étendue ; frontière = `derive` de l'étape 4 (Modify → Observe) ; ordonnée | idem (indices `(2,5)`, frontière 3 ; `cap5(c0, lock)` passe de `Modify` à `Observe`) | C13.11, C14.3, §43.4, C32.2 | `W_NM_graph` (437) |
+| W-TR | `(unlock, transfer, lock)`, `(acquire, transfer, lock)` exclusives étendues ; frontière = `release(o1)` ; aucun `hb` | idem (indices `(7,9)`, `(5,9)` ; frontière 8) | C17.4, C14.3, §63.1 | `W_TR_graph` (456) |
+| W-TR-J | même frontière ; ordonnées par le `join` | idem (indices `(7,11)`, `(5,11)`) | C47 | `W_TRJ_graph` (466) |
+| W-CR | depuis `MX₃`, `read3(lock)` via `root_M` `ok` au noyau, exclu par C22.4 | idem. `MX₃` est atteint par une `RunFull` (préfixe de W-RL₀). `PremG` (C22.6), `Encap` et `ChainExcl` valent. Les deux encodages de C22.4 échouent : `CtlExcl` et `CtlRestrF`. | O9 ; C22.4 | `W_CR_excluded` (487) |
+| W-CR, jumeau | avant `newMutex` : `ok`, admis | `RunFull` | O9 | `W_CR_twin` (511) |
 
 Le pas exclu de W-CR est un verdict local : une trace qui le contient n'est pas une `RunFull`.
 
@@ -110,7 +112,7 @@ Les feuilles touchées sont des feuilles de l'état d'avant (existantes) ou d'ap
 | `spawnVal` | — | destinations, `Init` après la phase de transfert (C5 effets) | feuilles des sources (`Modify`, C5 point additionnel 1) | autres locaux de l'enfant, `Uninit` (C5 phase 1) |
 | `issue` | — | — | destination (`Modify`, §77.2) | — |
 
-Les 16 genres à empreinte du brief sont ceux des lignes non vides, plus `endUse` et `free`. Les 12 autres ont une empreinte vide sur les feuilles existantes : seuls `enterFrame` et `spawn` y touchent des feuilles créées.
+Les lignes non vides comptent 18 genres : les 16 genres à empreinte du brief, plus `enterFrame` et `spawn`, qui ne touchent que des feuilles créées. Les 10 autres genres n'ont aucune feuille touchée.
 
 ### Énoncés
 
@@ -120,7 +122,7 @@ Les 16 genres à empreinte du brief sont ceux des lignes non vides, plus `endUse
 |---|---|---|---|
 | Partition : classes disjointes | prouvé | `classes_disjoint` (40) | aucune |
 | Partition : elles couvrent tout toucher | prouvé | `classes_cover` (53) | aucune |
-| La classe N est vide | **réfuté** | `classN_created` (125) ; témoin `classN_witness` (`HandoffExtWitness:523`) | `LStep` (pas `ok`) |
+| La classe N est vide | **réfuté** | `classN_created` (125) ; témoin `classN_witness` (`HandoffExtWitness:526`) | `LStep` (pas `ok`) |
 | Classe C : seul `spawnVal` crée et écrit | prouvé | `cw_spawnVal` (187) ; effets `enterC_fresh_uninit` (167), `spawn_fresh_uninit` (176), `alloc` dans la preuve | `LStep` |
 | Feuilles mortes 1 : un pas qui touche une feuille existante exige qu'elle soit utilisable avant le pas | prouvé | `touch_usable_run` (372) | les quatre |
 | Feuilles mortes 2 : une place qui n'est plus utilisable ne le redevient jamais | prouvé | `unusable_run` (607) ; forme par pas `usable_back_step` (539) | les quatre ; par pas : `KInvCA`, `DDSound`, `LStep` |
@@ -163,7 +165,7 @@ La réfutation tient à la définition du toucher, qui suit `TouchesF`. Elle n'a
 | Contexte propre : `r > i` est un pas du contexte de `i` | prouvé | `frontier_own` (157) | les quatre |
 | Coïncidence : toute `ExclPair` est une paire étendue | prouvé | `exclPair_extPair` (235) | les quatre |
 | Coïncidence : sur une `ExclPair`, la frontière est `lossStep` et `i < r` | prouvé | `exclPair_frontier` (256) | les quatre |
-| La forme stricte ne s'étend pas (W-SV) | prouvé | `W_SV_graph` (`HandoffExtWitness:411`) | trace W-SV |
+| La forme stricte ne s'étend pas (W-SV) | prouvé | `W_SV_graph` (`HandoffExtWitness:414`) | trace W-SV |
 
 **Existence et bornes.** Le second membre touche une feuille de classe D ou E (tâche 2). Dans l'état d'avant le pas `j`, la capacité du contexte de `i` est donc compatible avec ce toucher (`touchCompat_at_j`, 73) :
 
@@ -195,32 +197,39 @@ Le pas `j − 1` est donc candidat, d'où `r ≤ j − 1`. La borne `i ≤ r` es
 | `spawnVal`, N (autre local de l'enfant) | **se produit** | `spawnVal_N_witness` (269), trace nouvelle dérivée de S4, `RunFull` |
 | `enterFrame`, N | limite | but : `cap5(c, l) = some Modify` après le pas, `l` frais. Manque : la capacité d'une racine fraîche tenue par la nouvelle frame (`Attr5.base`, mode effectif d'une racine sans descendant, `NotGuarded` d'une identité fraîche). |
 | `alloc`, N | limite | même but. Manque : le transport du droit du contexte sur le propriétaire à travers `alloc` (`Attr5.held`). |
-| `transfer`, `alloc`, `endUse`, `newMutex`, `acquire`, `unlock`, `resetLock`, `spawnVal` (sources), E | limite | but : `capRank (cap5 (σ (i+1)) c l) ≥` rang du mode exigé. Manque : la conservation de la capacité propre sur les feuilles touchées, genre par genre. C'est l'argument de transport des lemmes par label de `CapDrop`, établi pour les autres contextes. |
+| `unlock`, E (contrôleur) | **se produit** | `unlock_r_eq_i_no_hb` (`HandoffExtSame:399`) : le droit de `c1` sur le contrôleur passe par une autorité rangée dans la donnée protégée, exercée par son grant ; l'`unlock` relâche le grant et `cap5(c1, lock)` passe de `Observe` à none |
+| `transfer`, `alloc`, `endUse`, `newMutex`, `acquire`, `resetLock`, `spawnVal` (sources), E | limite | but : `capRank (cap5 (σ (i+1)) c l) ≥` rang du mode exigé. Manque : la conservation de la capacité propre sur les feuilles touchées, genre par genre. C'est l'argument de transport des lemmes par label de `CapDrop`, établi pour les autres contextes. Le cas `unlock` montre que cette conservation n'est pas acquise d'avance : un pas qui relâche ou déplace une autorité peut couper une chaîne de détenteurs. |
 
-Dans les 55 traces balayées, `r = i` n'apparaît que pour `(spawn, N)` et `(spawnVal, C)`.
+Dans les 59 traces balayées, `r = i` apparaît pour `(spawn, N)`, `(spawnVal, C)`, `(spawnVal, N)` et `(unlock, E)`.
 
 ### Question : quand `r = i`, `hb(i, j)` tient-il toujours ?
 
-**Inachevé.** But, sur `RunFull` depuis l'état initial :
+**Réfuté.** Trace `RunFull` depuis l'état initial (`unlock_r_eq_i_no_hb`, `HandoffExtSame:399` ; étapes `ul_steps`, 377). Les étapes 1 à 3 du bloc MX donnent `MX₃` ; puis :
 
-```
-hp : ExtPair k L σ lbls i j l
-hr : IsFrontier k σ lbls i j l i
-⊢ HBS σ L lbls (.step i) (.step j)
-```
+| Indice | Pas | Fondement |
+|---|---|---|
+| 3 | `c0 : o1′ := derive(root_M, Observe, {lock})` | O1 |
+| 4 | `c0 : spawn c1` cédant `o1′` | C4 |
+| 5 | `c1 : acquire(e)`, grant `g` | C16, C14.3 par `o1′` |
+| 6 | `c1 : store(o1′, T)` | O8 par `g` ; ancre de `o1′` dans `f0`, frame de `T` (§65.4) |
+| 7 | `c1 : unlock(e)` | C17 ; C17.4 par `o1′` tenue par `T`, exercée par `g` (C43, chaîne de détenteurs) |
+| 8 | `c0 : resetLock(e)` | C18.1 par `slot`, que `o1′` ne couvre pas ; C18.4 par `root_M` |
+| 9 | `c0 : acquire(e)`, grant `g′` | C16 |
+| 10 | `c0 : release(o1′)` | O3, §62.2 par `g′` sur `T` |
+| 11 | `c0 : unlock(e)` | C17 |
+| 12 | `c0 : transfer(M, M′)` | O4 ; `lock` est une feuille de la source (§63.1) |
 
-Ce qui est établi :
+Faits obtenus :
 
-1. Le cas `r = i` se réduit aux créations par `spawn` et `spawnVal` (locaux de l'enfant), pour les couples prouvés ci-dessus. Les couples marqués « limite » restent ouverts.
-2. Dans toutes les traces du dépôt où `r = i`, `hb(i, j)` tient par l'arête de création. Ce sont les témoins `terminate`, S3, S3 en entier, W-SV et `spawnVal_N_witness`.
-3. **La piste de contre-exemple du brief échoue au noyau.** Depuis `MX₄`, `c0` crée `c2` avec un local `L` (pas `i`). `c2` dérive `z` sur `L` et prend le mutex : ce préfixe est une `RunFull`. Puis `c2 : store(z, T)` est `reject`, par §65.4 (`AnchorOrder`) : l'ancre effective de `z` est `root_L`, dans la frame initiale de `c2`, qui n'est pas un ancêtre de la frame de `T`. Voir `hint_store_rejected` (317). La trace s'arrête avant le mutex.
+- la paire `(7, 12, lock)` est exclusive étendue (`transfer` exige `Modify`) ;
+- `cap5(c1, lock)` vaut `Observe` avant le pas 7 et none après : la frontière est le pas 7 lui-même ;
+- `resetLock(e)` au pas 8 supprime l'arête stricte du mutex (C49), et aucun chemin `HBS` ne relie le pas 7 au pas 12.
 
-Ce qui manque pour une preuve :
+Le jumeau sans `resetLock` (`unlock_r_eq_i_twin`, 435) a la même paire et la même frontière ; il est ordonné par l'arête stricte de l'`unlock` de `c1` vers l'`acquire` de `c0`. La paire `(5, 12, lock)` est elle aussi une course étendue, de frontière 7.
 
-- (a) les couples « limite » ci-dessus, pour réduire `r = i` aux seules créations ;
-- (b) un invariant d'atteignabilité : tout contexte qui a une capacité sur un local créé par le `spawn` du pas `i` est l'enfant, ou un contexte créé après `i` par une chaîne de `spawn` issue de lui.
+C'est la forme de W-RL, avec un droit sur le contrôleur rangé dans la donnée protégée. Ce fait porte sur le modèle abstrait : dire qu'il relève de C46 demanderait de justifier les événements physiques de l'`unlock` et du `transfer` (C27 à C29).
 
-Pour (b), l'argument passe par `AnchorOrder` et `AnchorOrderHeld` (§54) : les autorités qui couvrent `l` ont leur ancre effective dans la frame initiale de l'enfant, et leurs détenteurs sont des frames ou des places qui en descendent. Il faut aussi la relation d'ancêtre étendue et le reparentage (C3, C6). Enfin, `hb` s'obtient par les arêtes de création et `po`. Je n'ai trouvé aucun contre-exemple et je ne tranche pas.
+La piste du brief, qui passe par une feuille créée au pas `i`, échoue au noyau. Depuis `MX₄`, `c0` crée `c2` avec un local `L`, et `c2` dérive `z` sur `L` puis prend le mutex : ce préfixe est une `RunFull`. Mais `c2 : store(z, T)` est `reject`, par §65.4 (`AnchorOrder`) : l'ancre effective de `z` est dans la frame initiale de `c2`, qui n'est pas un ancêtre de la frame de `T` (`hint_store_rejected`, 317). Dans toutes les traces du dépôt où `r = i` vient d'une création (témoins `terminate`, S3, S3 en entier, W-SV, `spawnVal_N_witness`), `hb(i, j)` tient par l'arête de création. Que `hb(i, j)` tienne toujours quand le premier membre crée `l` n'est pas prouvé : il faudrait un invariant sur les détenteurs des autorités qui couvrent un local de l'enfant (§54, C3, C6). Je n'en tire pas de conclusion générale.
 
 ### Ordre dans le pas, tiré des clauses (entrée du travail sur les événements internes)
 
@@ -238,6 +247,7 @@ Pour (b), l'argument passe par `AnchorOrder` et `AnchorOrderHeld` (§54) : les a
 
   L'écriture de `l` (phase 2) suit sa création (phase 1). Le créateur n'a de capacité sur `l` à aucune phase : C5 point 3 remplace l'exigence d'exercice côté destination par la condition de construction fraîche. Il n'y a donc pas de marqueur de perte, et l'écriture précède la cession. C47 : les événements d'accès des transferts appartiennent au contexte et à la phase qui les produisent, dans l'ordre création, transfert, cession. `start(c)` suit le pas.
 - **`(spawnVal, N)`.** C5, phase 1 : la feuille est créée `Uninit` et jamais écrite par le pas ; ni accès ni perte. Comme pour `spawn`.
+- **`(unlock, E)`.** C17, effet : le grant est relâché selon O3, le registre note `grant = none`, et l'état logique du contrôleur est rendu disponible, en une transition cohérente. C28 point 1 et C48 placent dans `po` le marqueur logique de perte du grant **avant** la publication atomique de l'état disponible du contrôleur, qui est l'accès à `lock`. Dans la trace ci-dessus, la capacité de `c1` sur `lock` tient à ce grant. La clause donne donc l'ordre : perte (marqueur du grant), puis accès (écriture de publication sur `lock`). L'accès physique suit la perte de la capacité qui le justifiait. C'est une entrée pour le travail sur les événements internes (`OB-C20`) ; ce n'est pas un verdict.
 
 ## Tâche 5 — Composition, inclusions, balayage
 
@@ -260,16 +270,16 @@ Aucun ordre interne aux pas n'est invoqué.
 
 ### Balayage
 
-Les 55 traces `RunFull` du dépôt sont :
+Les 59 traces `RunFull` du dépôt sont :
 
 - les 33 traces du balayage du complément de la tranche 3 ;
 - les 13 traces rejouées ;
 - la trace de la réfutation de la tranche 3 (`Protected.ab`) ;
-- les 8 traces nouvelles de cette tranche (W-HT, W-HT-J, W-HS, W-HS-J, W-HX, W-HX-J, W-SV et le jumeau de W-CR).
+- les 12 traces nouvelles de cette tranche : W-HT, W-HT-J, W-HS, W-HS-J, W-HX, W-HX-J, W-SV, le jumeau de W-CR, le témoin `(spawnVal, N)`, le préfixe de la construction du brief, la trace `(unlock, E)` et son jumeau.
 
-Les préfixes W-NM et `MX₃` sont des préfixes de W-RL₀. `spawnVal_N_witness` et le préfixe de `hint_store_rejected` sont vérifiés à part.
+Les préfixes W-NM et `MX₃` sont des préfixes de W-RL₀.
 
-`sweep_ext_1` à `sweep_ext_5` (`HandoffExtSweep:70`, 101, 131, 163, 194) établissent par `decide`, pour chaque trace, la liste complète des paires exclusives étendues. `sweepExt_complete` (55) en garantit la complétude, sous les quatre hypothèses. Pour chaque paire, la table donne sa frontière `r`, `HBS(r, j)` (passation ordonnée étendue) et `HBS(i, j)` (absence de course étendue).
+`sweep_ext_1` à `sweep_ext_5` (`HandoffExtSweep:70`, 101, 131, 163, 194) et `sweep_ext_6` (`HandoffExtSame:456`) établissent par `decide`, pour chaque trace, la liste complète des paires exclusives étendues. `sweepExt_complete` (55) en garantit la complétude, sous les quatre hypothèses. Pour chaque paire, la table donne sa frontière `r`, `HBS(r, j)` (passation ordonnée étendue) et `HBS(i, j)` (absence de course étendue).
 
 Traces sans paire exclusive étendue (30) : `cv`, `ce`, `cr`, le jumeau de W-GS, S10, `ts`, `ti`, `ta`, `tdt`, `am`, `td`, `lv`, W-GI jumeau (`gt`), W-RX B, `fr`, `ex`, W-GR suite, W-GC suite, S4, S9, `mt`, `dt`, `tA`, `tB`, `km`, `ks`, `tb`, `sa`, `Protected.ab`, jumeau de W-CR.
 
@@ -303,8 +313,13 @@ Traces sans paire exclusive étendue (30) : `cv`, `ce`, `cr`, le jumeau de W-GS,
 | | `(4,6,0)` → 5 | non | non |
 | W-HX-J | `(0,4,0)`, `(1,4,0)` → 3 ; `(4,8,0)` → 5 | oui | oui |
 | W-SV | `(4,5,4)` → **4 = i** | oui | oui |
+| témoin `(spawnVal, N)` | `(4,5,5)` → **4 = i** | oui | oui |
+| préfixe de la construction du brief | `(2,8,2)` → 3 | oui | oui |
+| trace `(unlock, E)` | `(2,5,2)`, `(2,7,2)` → 3 | oui | oui |
+| | `(5,12,2)` → 7 ; `(7,12,2)` → **7 = i** | non | non |
+| jumeau sans `resetLock` | `(2,5,2)`, `(2,7,2)` → 3 ; `(5,11,2)` → 7 ; `(7,11,2)` → **7 = i** | oui | oui |
 
-Les faits du corpus v15 (W-HT, W-HS, W-HX et leurs jumeaux, W-SV, W-NM dans W-RL₀, W-TR, W-TR-J) sont obtenus. Les traces jusqu'ici tenues pour ordonnées sont W-HO-J, W-HO″-J, `lc_trace`, W-RL₀, W-RL-J, W-TR-J et W-AG-J. Aucune n'a de course étendue. Les courses étendues sont toutes dans des traces déjà connues pour leurs courses (W-HO, W-HO′, W-HO″, W-RL, W-TR, W-AG) ou dans les nouveaux témoins attendus. Les paires nouvelles de W-TR, `(5,9,2)` et `(7,9,2)`, sont les faits attendus par le corpus. Dans chaque trace, une paire est ordonnée exactement quand elle n'est pas une course.
+Les faits du corpus v15 (W-HT, W-HS, W-HX et leurs jumeaux, W-SV, W-NM dans W-RL₀, W-TR, W-TR-J) sont obtenus. Les traces jusqu'ici tenues pour ordonnées sont W-HO-J, W-HO″-J, `lc_trace`, W-RL₀, W-RL-J, W-TR-J et W-AG-J. Aucune n'a de course étendue. Les courses étendues sont toutes dans des traces déjà connues pour leurs courses (W-HO, W-HO′, W-HO″, W-RL, W-TR, W-AG), dans les nouveaux témoins attendus, ou dans la trace `(unlock, E)` construite pour la tâche 4. Les paires nouvelles de W-TR, `(5,9,2)` et `(7,9,2)`, sont les faits attendus par le corpus. Dans chaque trace, une paire est ordonnée exactement quand elle n'est pas une course.
 
 ## Paires hors de portée (listées, non traitées)
 
@@ -365,14 +380,15 @@ Elle n'établit pas :
 - que les exécutions sûres sont en passation ordonnée étendue ;
 - l'absence de course (C52, `OB-C06`).
 
-La question `r = i ⇒ hb(i, j)` reste ouverte (tâche 4).
+La question `r = i ⇒ hb(i, j)` est réfutée (tâche 4) : la frontière peut être le premier membre sans que `hb(i, j)` tienne.
 
 ## Pas refusés et contre-exemples
 
 - Aucun pas attendu `ok` n'est refusé par le noyau ni exclu par l'encapsulation complète.
-- Aucun contre-exemple de sûreté n'a été trouvé.
-- Une réfutation : « la classe N est vide », par les feuilles créées non écrites. Elle est sans effet sur les paires.
-- La construction suggérée pour la question de la tâche 4 est refusée au noyau par §65.4.
+- Deux réfutations, rapportées sans correction :
+  - « La classe N est vide » est faux : les feuilles créées non écrites sont de classe N. C'est sans effet sur les paires.
+  - « Quand `r = i`, `hb(i, j)` tient » est faux : `unlock_r_eq_i_no_hb` est une `RunFull` depuis l'état initial, de forme W-RL, où l'`unlock` est sa propre frontière et où aucun `hb` ne relie la paire. C'est une course étendue, un fait sur le modèle abstrait, pas un verdict de C46.
+- La construction suggérée par le brief pour cette question est refusée au noyau par §65.4. La réfutation passe par une autre construction.
 
 ## Audit des axiomes
 
@@ -381,7 +397,7 @@ La question `r = i ⇒ hb(i, j)` reste ouverte (tâche 4).
 Décompte des théorèmes `Ern.Concurrency*` (script `scratchpad/Audit8.lean`) :
 
 - **avant cette tranche** (`a234683`) : 2822 théorèmes, dont 1878 non internes ;
-- **après** (`a028efd`) : **3026**, dont **2006** non internes ;
+- **après** (`212a0e6`) : **3030**, dont **2010** non internes ;
 - **dépendances d'axiomes** : aucune hors de `{propext, Quot.sound}` ;
 - **noms retirés** : aucun (comparaison des listes de noms).
 
@@ -392,16 +408,16 @@ Décompte des théorèmes `Ern.Concurrency*` (script `scratchpad/Audit8.lean`) :
 | `HandoffExtClass` | 41 | 34 |
 | `HandoffExtFrontier` | 33 | 19 |
 | `HandoffExtSweep` | 7 | 6 |
-| `HandoffExtSame` | 13 | 11 |
+| `HandoffExtSame` | 17 | 15 |
 | `OBC28Check` | 14 | 12 |
-| **Total** | **204** | **128** |
+| **Total** | **208** | **132** |
 
-Sommes : 69 + 27 + 41 + 33 + 7 + 13 + 14 = 204 et 20 + 26 + 34 + 19 + 6 + 11 + 12 = 128. Ensuite 2822 + 204 = 3026 et 1878 + 128 = 2006.
+Sommes : 69 + 27 + 41 + 33 + 7 + 17 + 14 = 208 et 20 + 26 + 34 + 19 + 6 + 15 + 12 = 132. Ensuite 2822 + 208 = 3030 et 1878 + 132 = 2010.
 
-Nature des 204 ajouts :
+Nature des 208 ajouts :
 
-- **113 théorèmes écrits**, tous non internes ;
-- **15 lemmes d'équation générés** `ReqMode.eq_1` à `eq_15`, non internes : 113 + 15 = 128 ;
+- **117 théorèmes écrits**, tous non internes ;
+- **15 lemmes d'équation générés** `ReqMode.eq_1` à `eq_15`, non internes : 117 + 15 = 132 ;
 - **76 lemmes internes générés** :
   - équations de `match` de `HasReq` et de `ReqMode` : 15 + 15 ;
   - `_sparseCasesOn` : 3 ;
@@ -412,11 +428,11 @@ Nature des 204 ajouts :
 
   Total : 30 + 3 + 20 + 17 + 4 + 2 = 76.
 
-Enfin 128 + 76 = 204. `releaseEff` et `OptP` ne sont pas modifiés : leurs équations sont générées dans les nouveaux modules par `unfold` et `split`.
+Enfin 132 + 76 = 208. `releaseEff` et `OptP` ne sont pas modifiés : leurs équations sont générées dans les nouveaux modules par `unfold` et `split`.
 
 ## Fichiers protégés
 
-Base de comparaison : `main` = `d0c2d87` (base de fusion), HEAD = `a028efd`.
+Base de comparaison : `main` = `d0c2d87` (base de fusion). Commandes lancées à HEAD = `212a0e6`, puis de nouveau après le commit de ce rapport.
 
 ```
 $ git diff --stat main...HEAD -- specs AGENTS.md CLAUDE.md formal/DESIGN.md formal/Ern/MemoryModel
@@ -427,7 +443,7 @@ Les deux sorties sont vides. `git status --short` sur tout le dépôt était vid
 
 ## Limites et points non relus
 
-- Couples « limite » de la tâche 4 : voir l'inventaire. Ils sont ouverts, de même que la question `r = i ⇒ hb(i, j)`.
+- Couples « limite » de la tâche 4 : voir l'inventaire. Ils sont ouverts. Que `hb(i, j)` tienne quand le premier membre crée `l` n'est pas prouvé.
 - La table des 28 genres est lue sur les définitions `TouchesF`, `CapReq`, `HasReq` et `ReqMode`, et sur les effets du noyau. Seuls `classN_created`, `cw_spawnVal` et `touchesF_existing` en prouvent le contenu.
 - WC5.3 a été relu en entier pour les clauses C1 à C8, C13 à C23, C26 à C34 et C43 à C53, ainsi que la partie IV. Les clauses C9 à C12, C24, C25 et C35 à C42 ne l'ont pas été.
 - Spec 1 a été relue pour §40 à §44 et §58 à §78. §79 à §90 ne l'ont pas été.
