@@ -141,6 +141,19 @@ theorem W_HT_notExcl : ¬ ExclPair htLbls 2 4 0 := by
   rintro ⟨-, hj, c, c', m, m', -, -, haj, -⟩
   exact haj
 
+/-- Brief, task 5, "La réciproque est fausse : W-HT": W-HT has no `Race`, on `HB` nor on `HBS`
+(only one of its steps is an access, `Label.accMode`), while it has an extended race
+(`W_HT_graph`). -/
+theorem W_HT_noRace : ¬ Race htσ htLbls ∧ ¬ RaceS htσ L0 htLbls := by
+  have hacc : ∀ n (hn : n < htLbls.length), (htLbls[n]).accMode ≠ none → n = 2 := by decide
+  have key : ∀ i j l, ¬ ExclPair htLbls i j l := by
+    rintro i j l ⟨hij, hj, c, c', m, m', -, hai, haj, -⟩
+    have h1 := hacc i (Nat.lt_trans hij hj)
+      (by rw [(access_ctx_mode hai).2]; exact Option.some_ne_none _)
+    have h2 := hacc j hj (by rw [(access_ctx_mode haj).2]; exact Option.some_ne_none _)
+    omega
+  exact ⟨fun ⟨i, j, l, hp, _⟩ => key i j l hp, fun ⟨i, j, l, hp, _⟩ => key i j l hp⟩
+
 /-! ## W-HS -/
 
 /-- Statics of W-HS (Spec 1 §47): `X` (place 0) and `Z` (place 1), one-leaf locals of the base
