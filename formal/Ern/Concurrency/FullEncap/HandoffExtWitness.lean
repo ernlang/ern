@@ -499,4 +499,16 @@ theorem W_CR_twin : crjσ 0 = (SC.ofS3 (S3.init mxst), [], []) ∧ RunFull KM L0
     .cons (by decide) (.kernel hr) .nil
   exact ⟨rfl, runFull_of_run7 (run7_of_run5R (h.run _) (by decide)) (by decide)⟩
 
+/-! ## Class N is not empty (task 2) -/
+
+open Ern.MemoryModel.Access.Examples (K0) in
+/-- Brief, task 2, "La classe N est vide", refuted on `RunFull` traces from the initial state
+(`W_HX_run`, `W_SV_run`): the local `X` created by `enterFrame f1` (W-HX, index 0; Spec 1 §72
+effect: `Uninit`) and the leaf created by `alloc` (S4 and W-SV, index 3; §71: "its leaves start
+`Uninit`") are touched (`TouchesF` holds of every fresh identity of these kinds) and are of class
+N: created, not written. -/
+theorem classN_witness : ClassN L0 (hxσ 0) (hxσ 1) (.kernel 0 (.enter [] [(none, 0)])) 0 ∧
+    ClassN L0 (svσ 3) (svσ 4) (.kernel 0 (.alloc 2 1 [(none, 0)])) 3 := by
+  decide
+
 end Ern.Concurrency.FullEncap.HandoffExtWitness
