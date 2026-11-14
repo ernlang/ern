@@ -334,4 +334,134 @@ theorem hint_store_rejected : RunFull KM L0 hqσ hqLbls ∧
   exact ⟨runFull_of_run7 (run7_of_run5R ((ClassifyWitness.mx3_steps h).run _) (by decide))
     (by decide), ⟨by decide, .reject (by decide)⟩, by decide⟩
 
+/-! ## `(unlock, E)`: the frontier at the `unlock`, without `hb` -/
+
+/-- From `MX₃`: `c0 : o1′ := derive(root_M, Observe, {lock})`, authority 4 (O1): a
+controller-access right over the controller only. -/
+def ul3 : SC := x2.set (deriveEff (x2.view 0) 0 [2] .observe)
+/-- `spawn c1` yielding `o1′` (WC5.3 C4): context 1, frame 1. -/
+def ul4 : SC := spawnEff ul3 0 [4] []
+/-- `c1 : acquire(e)` (WC5.3 C16, C14.3 through `o1′`): grant 5, held by frame 1. -/
+def ul5 : SC := deriveSyncEff ul4 1 3
+/-- `c1 : store(o1′, T)` (O8, through the grant): `o1′` becomes held by the protected leaf `T`;
+its anchor `root_M` is in frame 0, the frame of `T` (§65.4). -/
+def ul6 : SC := storeEffC ul5 1 4 3
+/-- `c1 : unlock(e)` (WC5.3 C17, C17.4 through `o1′` held by `T` under the grant): the grant is
+released. -/
+def ul7 : SC := ul6.set (releaseEff (ul6.view 1) 5)
+/-- `c0 : acquire(e)`: grant 6, held by frame 0. -/
+def ul8 : SC := deriveSyncEff ul7 0 3
+/-- `c0 : release(o1′)` (O3, §62.2 through the grant over `T`). -/
+def ul9 : SC := ul8.set (releaseEff (ul8.view 0) 4)
+/-- `c0 : unlock(e)`. -/
+def ul10 : SC := ul9.set (releaseEff (ul9.view 0) 6)
+/-- `c0 : transfer(M, M′)` (O4): `lock` is a leaf of the source. -/
+def ul11 : SC := transferEffC ul10 0 0 4
+
+/-- The labels of the trace: `MX₃`, the right `o1′`, `spawn c1`; `c1`: `acquire`, `store(o1′, T)`,
+`unlock`; `c0`: `resetLock`, `acquire`, `release(o1′)`, `unlock`, `transfer(M, M′)`. -/
+def ulLbls : List Label :=
+  [.kernel 0 (.derive 1 [3] .modify), .kernel 0 (.store 3 1), .newMutex 0 3,
+   .kernel 0 (.derive 0 [2] .observe), .spawn 0 [4] [], .acquire 1 0, .kernel 1 (.store 4 3),
+   .unlock 1 0, .resetLock 0 0, .acquire 0 0, .kernel 0 (.release 4), .unlock 0 0,
+   .kernel 0 (.transfer 0 4)]
+
+/-- The named states of the trace. -/
+def ulσ (i : Nat) : SC × SyncReg × ArenaReg :=
+  [(x0, [], []), (x1, [], []), (x2, [], []), (x2, regX, []), (ul3, regX, []), (ul4, regX, []),
+    (ul5, [⟨3, some 5⟩], []), (ul6, [⟨3, some 5⟩], []), (ul7, regX, []), (ul7, regX, []),
+    (ul8, [⟨3, some 6⟩], []), (ul9, [⟨3, some 6⟩], []), (ul10, regX, []), (ul11, regX, [])].getD i
+    (ul11, regX, [])
+
+/-- The steps of the trace are `ok` (O1; WC5.3 C4, C16, C17, C18; O8; O3; O4). -/
+theorem ul_steps : opStepC KM (.derive 0 [2] .observe) 0 x2 (.ok ul3) ∧
+    SpawnStep ul3 0 [4] [] (.ok ul4) ∧ AcquireOk KM L0 ul4 regX 1 0 (ul5, [⟨3, some 5⟩]) ∧
+    opStepC KM (.store 4 3) 1 ul5 (.ok ul6) ∧
+    UnlockOk L0 ul6 [⟨3, some 5⟩] 1 0 (ul7, regX) ∧ ResetLockOk L0 ul7 regX 0 0 (ul7, regX) ∧
+    AcquireOk KM L0 ul7 regX 0 0 (ul8, [⟨3, some 6⟩]) ∧ opStepC KM (.release 4) 0 ul8 (.ok ul9) ∧
+    UnlockOk L0 ul9 [⟨3, some 6⟩] 0 0 (ul10, regX) ∧
+    opStepC KM (.transfer 0 4) 0 ul10 (.ok ul11) :=
+  ⟨⟨by decide, _, .ok (by decide), rfl⟩, ⟨by decide, .ok (by decide)⟩,
+    ⟨by decide, ⟨3, none⟩, rfl, by decide, by decide, rfl⟩, ⟨by decide, .ok (by decide)⟩,
+    ⟨by decide, ⟨3, some 5⟩, 5, rfl, by decide, rfl, by decide, by decide, rfl⟩,
+    ⟨by decide, ⟨3, none⟩, rfl, by decide, by decide, by decide, rfl⟩,
+    ⟨by decide, ⟨3, none⟩, rfl, by decide, by decide, rfl⟩, ⟨by decide, _, .ok (by decide), rfl⟩,
+    ⟨by decide, ⟨3, some 6⟩, 6, rfl, by decide, rfl, by decide, by decide, rfl⟩,
+    ⟨by decide, .ok (by decide)⟩⟩
+
+/-- Brief, task 4, `(unlock, E)` and the question `r = i ⇒ hb(i, j)`, **refuted**: the trace is a
+`RunFull` from the initial state. `c1`'s only capability on `lock` comes from `o1′`, which it
+stored in the protected leaf `T` and exercises through its grant (WC5.3 C43, holder chain). The
+`unlock` of `c1` (index 7) releases the grant and with it `c1`'s capability on `lock`: `Observe`
+before, none after. With `c0 : transfer(M, M′)` (index 12, `Modify` on `lock`, §63.1) it forms an
+extended exclusive pair whose frontier is the `unlock` itself; the `resetLock` of `c0` (index 8)
+removes the strict mutex edge (WC5.3 C49), and no strict `hb` path joins the two steps. -/
+theorem unlock_r_eq_i_no_hb : RunFull KM L0 ulσ ulLbls ∧
+    cap5 ul6 [⟨3, some 5⟩] 1 2 = some .observe ∧ cap5 ul7 regX 1 2 = none ∧
+    ClassEm KM (ulσ 7) (ulσ 8) (.unlock 1 0) 2 .observe ∧
+    ExtPair KM L0 ulσ ulLbls 7 12 2 ∧ IsFrontier KM ulσ ulLbls 7 12 2 7 ∧
+    ¬ HBS ulσ L0 ulLbls (.step 7) (.step 12) ∧ ¬ HandoffOrderedExtAtS KM ulσ L0 ulLbls 7 12 2 := by
+  obtain ⟨d3, s4, a5, st6, u7, r8, a9, rl10, u11, t12⟩ := ul_steps
+  have h : Steps5R KM L0 [(x2, regX, []), (ul3, regX, []), (ul4, regX, []),
+      (ul5, [⟨3, some 5⟩], []), (ul6, [⟨3, some 5⟩], []), (ul7, regX, []), (ul7, regX, []),
+      (ul8, [⟨3, some 6⟩], []), (ul9, [⟨3, some 6⟩], []), (ul10, regX, []), (ul11, regX, [])]
+      [.kernel 0 (.derive 0 [2] .observe), .spawn 0 [4] [], .acquire 1 0, .kernel 1 (.store 4 3),
+        .unlock 1 0, .resetLock 0 0, .acquire 0 0, .kernel 0 (.release 4), .unlock 0 0,
+        .kernel 0 (.transfer 0 4)] :=
+    .cons (by decide) (.kernel d3) <| .cons (by decide) (.spawn s4) <|
+    .cons (by decide) (.acquire a5) <| .cons (by decide) (.kernel st6) <|
+    .cons (by decide) (.unlock u7) <| .cons (by decide) (.resetLock r8) <|
+    .cons (by decide) (.acquire a9) <| .cons (by decide) (.kernel rl10) <|
+    .cons (by decide) (.unlock u11) <| .cons (by decide) (.kernel t12) .nil
+  exact ⟨runFull_of_run7 (run7_of_run5R ((ClassifyWitness.mx3_steps h).run _) (by decide))
+    (by decide), by decide, by decide, by decide, by decide, by decide, by decide, by decide⟩
+
+/-- The labels of the twin, without the `resetLock`. -/
+def uljLbls : List Label :=
+  [.kernel 0 (.derive 1 [3] .modify), .kernel 0 (.store 3 1), .newMutex 0 3,
+   .kernel 0 (.derive 0 [2] .observe), .spawn 0 [4] [], .acquire 1 0, .kernel 1 (.store 4 3),
+   .unlock 1 0, .acquire 0 0, .kernel 0 (.release 4), .unlock 0 0, .kernel 0 (.transfer 0 4)]
+
+/-- The named states of the twin. -/
+def uljσ (i : Nat) : SC × SyncReg × ArenaReg :=
+  [(x0, [], []), (x1, [], []), (x2, [], []), (x2, regX, []), (ul3, regX, []), (ul4, regX, []),
+    (ul5, [⟨3, some 5⟩], []), (ul6, [⟨3, some 5⟩], []), (ul7, regX, []),
+    (ul8, [⟨3, some 6⟩], []), (ul9, [⟨3, some 6⟩], []), (ul10, regX, []), (ul11, regX, [])].getD i
+    (ul11, regX, [])
+
+/-- The twin without the `resetLock`: a `RunFull` from the initial state; the same pair (indices 7
+and 11) has the same frontier and is ordered by the strict mutex edge from the `unlock` of `c1` to
+the `acquire` of `c0`. -/
+theorem unlock_r_eq_i_twin : RunFull KM L0 uljσ uljLbls ∧ ExtPair KM L0 uljσ uljLbls 7 11 2 ∧
+    IsFrontier KM uljσ uljLbls 7 11 2 7 ∧ SWS uljσ L0 uljLbls (.step 7) (.step 8) ∧
+    HBS uljσ L0 uljLbls (.step 7) (.step 11) ∧ HandoffOrderedExtAtS KM uljσ L0 uljLbls 7 11 2 := by
+  obtain ⟨d3, s4, a5, st6, u7, -, a9, rl10, u11, t12⟩ := ul_steps
+  have h : Steps5R KM L0 [(x2, regX, []), (ul3, regX, []), (ul4, regX, []),
+      (ul5, [⟨3, some 5⟩], []), (ul6, [⟨3, some 5⟩], []), (ul7, regX, []),
+      (ul8, [⟨3, some 6⟩], []), (ul9, [⟨3, some 6⟩], []), (ul10, regX, []), (ul11, regX, [])]
+      [.kernel 0 (.derive 0 [2] .observe), .spawn 0 [4] [], .acquire 1 0, .kernel 1 (.store 4 3),
+        .unlock 1 0, .acquire 0 0, .kernel 0 (.release 4), .unlock 0 0,
+        .kernel 0 (.transfer 0 4)] :=
+    .cons (by decide) (.kernel d3) <| .cons (by decide) (.spawn s4) <|
+    .cons (by decide) (.acquire a5) <| .cons (by decide) (.kernel st6) <|
+    .cons (by decide) (.unlock u7) <| .cons (by decide) (.acquire a9) <|
+    .cons (by decide) (.kernel rl10) <| .cons (by decide) (.unlock u11) <|
+    .cons (by decide) (.kernel t12) .nil
+  exact ⟨runFull_of_run7 (run7_of_run5R ((ClassifyWitness.mx3_steps h).run _) (by decide))
+    (by decide), by decide, by decide, by decide, by decide, by decide⟩
+
+/-- Brief, task 5, sweep, on the `RunFull` traces of this module (`SweepExt`): the
+`(spawnVal, N)` witness, the prefix of the suggested construction, and the `(unlock, E)` trace
+with its twin. -/
+theorem sweep_ext_6 :
+    HandoffExtSweep.SweepExt K0 L0 vnσ vnLbls [(4, 5, 5, 4, true, true)] ∧
+    HandoffExtSweep.SweepExt KM L0 hqσ hqLbls [(2, 8, 2, 3, true, true)] ∧
+    HandoffExtSweep.SweepExt KM L0 ulσ ulLbls
+      [(2, 5, 2, 3, true, true), (2, 7, 2, 3, true, true), (5, 12, 2, 7, false, false),
+       (7, 12, 2, 7, false, false)] ∧
+    HandoffExtSweep.SweepExt KM L0 uljσ uljLbls
+      [(2, 5, 2, 3, true, true), (2, 7, 2, 3, true, true), (5, 11, 2, 7, true, true),
+       (7, 11, 2, 7, true, true)] := by
+  refine ⟨?_, ?_, ?_, ?_⟩ <;> decide
+
 end Ern.Concurrency.FullEncap.HandoffExtSame

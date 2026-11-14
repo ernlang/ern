@@ -307,8 +307,11 @@ theorem W_HX_run : opStepC KF (.write 1 [0]) 1 p4 (.ok hx5) ∧
     runFull_of_run7 (run7_of_run5R (h.run _) (by decide)) (by decide)⟩
 
 /-- `corpus-spec2-m3.md` v15 §2 quaterdecies W-HX, negative: step 3 before step 2 is `reject`
-(O7.2: an active authority is attached to the dying local `X`; this is S1a). -/
-theorem W_HX_neg : opStepC KF .exit 0 hx5 .reject := ⟨by decide, .reject (by decide)⟩
+(O7.2: an active authority is attached to the dying local `X`, as in S1a; the surviving `a` has no
+surviving origin, §73.4). -/
+theorem W_HX_neg : opStepC KF .exit 0 hx5 .reject ∧
+    firstSurv (hx5.view 0) (hx5.view 0).F.tail ((hx5.view 0).ancs 1) = none :=
+  ⟨⟨by decide, .reject (by decide)⟩, by decide⟩
 
 /-- W-HX-J, `c1 : terminate` (WC5.3 C7). -/
 def hxj7 : SC := termEffC hx6 1
