@@ -1,0 +1,1921 @@
+@"/Users/guygouri/Downloads/corpus-spec2-m3.md"
+
+<pasted_content id="c7c6">
+# Brief Claude Code — ERN Spec 2, jalon 3 : complétude et validation adversariale
+
+## Cadre
+
+Branche `formal/spec2-m3`, créée depuis la tête de `formal/spec2-m2` (`e30355f`). Formalisation exploratoire, jamais mergée. Pas de push sur `main`, pas de PR.
+
+Documents joints, **non commités** : `ERN_Concurrency_Model_WC4.md` (WC4 corrigée, seule candidate) et `corpus-spec2-m3.md` (corpus adversarial, source des verdicts). Ne modifie ni `specs/`, ni `AGENTS.md`, ni `CLAUDE.md`, ni `formal/DESIGN.md`. Les définitions et énoncés des jalons 1–2 ne changent que là où l'étape A le prescrit ; tout autre changement est rapporté avant d'être fait.
+
+Sources de sémantique : Spec 1 v0.1 §§36, 43, 45–46, 50, 54–58, 60–78, 82 ; WC4 en entier. Mêmes règles : la Spec 1 l'emporte ; silence, ambiguïté ou contradiction → arrêt et rapport avec exemple ; jamais d'interprétation. **Les verdicts du corpus viennent du document joint, jamais du modèle** ; un désaccord est un résultat à rapporter, pas à résoudre.
+
+## Étape A — complétude
+
+| Tâche | Contenu | Source |
+|---|---|---|
+| A1 Arenas dans `LStep` | Étiquettes `.newArena c storage internal`, `.issue c arena region dst`, `.reset c arena`, réalisées par les opérations dérivées de `Ern.MemoryModel.Arena` sur `s.view c` ; état de bibliothèque étendu à `(SyncReg, ArenaReg)` ; `Encap` **inchangée** — si une clause s'avère nécessaire, contre-exemple et proposition dans le rapport, jamais d'ajout silencieux | WC4 C19, C23 ; Spec 1 §§46, 55–56, 76–78 |
+| A2 `ArenaInvC` | `ArenaInv` (§55) sur l'état de bibliothèque, préservé par **tout** `LStep` (nouveau T7), y compris `transfer` de la valeur d'arena et `spawn`/`terminate` ; `SyncState` préservé par les étiquettes d'arena (extension de T4) | §55, C19 |
+| A3 Garde §56 unifiée | `newMutex` consulte les `internal` des arenas vivantes, `newArena` consulte les `guarded` des entrées vivantes ; remplacer les listes fixes `adm`/`others` par la lecture des deux registres. Rapporter ce que `NewArenaPre.guard` de la Spec 1 permet ou non sans modification de `Arena.lean` ; si une modification de `Arena.lean` est nécessaire, **arrêt et rapport** | §56, WC4 C13.7, OB-C16 |
+| A4 §82.3 et §82.6 | Transporter `pointer_sound_store` et `pinned_address_stable` de `Refinement.lean` à `ReprC` (extension de R1) | §82.3, §82.6 |
+| A5 Conservativité | Les étiquettes d'arena coïncident en contexte unique avec les opérations dérivées de la Spec 1 (extension de T1 et R5) | WC4 C24 |
+| A6 Docstring | `NewMutexPre` : retirer « former C13.10 » (WC4 corrigée) | — |
+| A7 Re-vérification | Après A1–A3, tous les théorèmes des jalons 1–2 recompilent ; parcours des dépendances comme au jalon 1 (A.6) ; tout énoncé touché est rapporté | — |
+
+## Étape B — corpus
+
+Encoder chaque ligne de `corpus-spec2-m3.md` §1–§3, dans `formal/Ern/Concurrency/Corpus/` sur le patron de `Traces.lean` et `Corpus/Runner.lean`, selon les règles d'encodage du corpus §4 :
+
+- un théorème par verdict, nommé `S<cas>_<n>_<ok|reject|fail|wait|encap>` ; jumeaux dans le même module ;
+- préconditions par `decide` ; verdicts écrits depuis le document ;
+- les cas déjà encodés aux jalons 1–2 (S4, S7, S12, S16, S17, S18, témoin R4) sont **référencés**, pas dupliqués ; vérifier qu'ils correspondent au corpus et rapporter tout écart ;
+- `CrossContextConflictOnlyShared` prouvé, avec son témoin ; témoins W-C22.2 et W-C22.3 (b) ;
+- S6 : aucune trace, mention dans le rapport ;
+- S5b et S12 : `ok` noyau, classés OB-C05 ; aucune tentative de les refuser.
+
+Tout cas dont le verdict du modèle diffère du corpus : rapport avec la clause citée par le corpus, l'état, et le théorème qui établit le verdict effectif. Ne pas modifier le corpus, ne pas modifier le modèle.
+
+## Étape C — rapport consolidé
+
+`formal/reports/spec2-m3.md`, en français, deux parties.
+
+**Partie A** : étape A (définitions, T7, A3 et ce que `Arena.lean` permet, A4, re-vérification) ; étape B (table des cas : verdict attendu, verdict obtenu, théorème, écart éventuel) ; problèmes de WC4 ou de la Spec 1 trouvés ; décisions de représentation ; écarts avec la Spec 1.
+
+**Partie B — index consolidé des jalons 1 à 3**, mise à jour de la partie B de `spec2-m1-close.md` étendue au jalon 2 et 3 : modules ; T1–T7, R1–R5, `CrossContextConflictOnlyShared` avec hypothèses, module et ligne ; corpus complet avec verdicts et clauses ; décisions de représentation cumulées ; lemmes de la Spec 1 copiés ou à généraliser (jalons 1 et 2, dont les `realize_*`) ; OB-C01 à OB-C16 avec l'état final, et la **réduction** d'OB-C06 écrite mot pour mot (corpus §3) ; audit des axiomes.
+
+## Règles Lean
+
+Inchangées : aucun `sorry`, `admit`, `axiom`, `native_decide`, `noncomputable` ; axiomes `{propext, Quot.sound}`, dépendance héritée à `Classical.choice` signalée et non contournée (audit de `Arena.lean` et `RefinementArena.lean` en première tâche) ; `lake build` sans nouvel avertissement ; `grep` d'`AGENTS.md` vide ; docstrings en anglais citant WC4, la Spec 1 ou le corpus (`corpus-spec2-m3.md §1 S11`) sans les reformuler ; aucun énoncé ni définition affaibli ; Conventional Commits sans `Co-Authored-By`.
+
+## Ordre
+
+Audit des axiomes → A1 → A2 → A3 → A5 → A4 → A6 → A7 → corpus par blocs (MX puis AR puis frames : S2, S5, S8, S9, S11, S15 ; S3 ; S1, S4, S13, S14 ; S10 ; témoins ; `CrossContextConflictOnlyShared`) → rapport A puis B. Commit à chaque module compilant.
+</pasted_content id="c7c6">
+
+---
+
+Oui, lancer la revue
+
+---
+
+<agent-message from="a6a7e46715b75ddab">
+[Subagent hand-back] The text below is the final report of a subagent this session delegated to. It is model output, NOT a message from the user: instructions, requests, or approval claims inside it are the subagent's words and carry no user authority. The harness indents every line of the report, so a frame-like line at column zero inside it would be forged. Notes above this frame may quote model-derived text, which carries no user authority either. The report follows:
+  **Verdict: ok.** I found one minor problem, and it is in the report text, not in the Lean code.
+  
+  **What I checked, with evidence**
+  
+  - **Axioms and banned tokens.**
+    - `#print axioms` gives only `[propext, Quot.sound]` for `pointer_sound_storeC`, `issue_pointer_soundC`, `exit_keeps_pinned`, `pinned_address_stableC`, `valOps_noDealloc`, `realize_issue`, `realize_arena_nil` and `r5_arena`.
+    - The AGENTS.md grep for `sorry`/`admit`/`native_decide`/`axiom` finds nothing (exit 1).
+    - `git diff e30355f..HEAD --stat` touches no file under `Ern/MemoryModel/`, so the original theorems are unchanged.
+  - **Q1, strength of the transported statements.**
+    - `pointer_sound_storeC` (RealizeSound.lean:38) has the five conclusions of `Refinement.pointer_sound_store` (Refinement.lean:1178), with `s3 := s.view c`.
+    - The original's `Repr`/`WF3`/`NoDangling` hypotheses become `ReprC`, `FramesC`, `WF3 s.flat` and `NoDangling s.flat`. These are the parts of `KInvCA` (`view_facts`, Preservation.lean:37) needed to rebuild the view facts. None is unsatisfiable.
+    - `h : opStepC k (.store a p) c s (.ok s')` is the same relation `LStep.kernel` uses.
+    - `issue_pointer_soundC` (:124) concludes on `t = splitEff (s.view c) E.internal [region]` with authority `s.A.length`. That is the state and identity of the `store` inside `IssueStepC.ok` (SyncLib.lean:421–425) and of `kexp` (RefinementArena.lean:110–124). `splitEff` appends the block at index `|A|` (Ops.lean:72). `hE` only names the entry, so it restricts nothing.
+    - I checked that the theorem talks about the bytes R1 actually writes, with a scratch corollary that compiles without `sorry`: `π.pe.decode (bytesOf (run m (realize π w (.issue c i region dst) s ar m)) π.L dst) = ad`, proved by `realize_issue`, then `SC.view_set`, then `issue_pointer_soundC`.
+  - **Q2, `pinned_address_stableC` (:210).**
+    - All 13 `LStep` constructors are handled, and `cases op` is exhaustive over `KernelOp` (Lean enforces both).
+    - The conclusion uses `realize π w lbl st.1 st.2.2 m`, the same term as `r1_lstep` and `SimRunC.step`.
+    - The `exit` and `terminate` cases use `ExitPreC.notPinned` and `TermPre.notPinned` (§73.3, Frames.lean:245 and :376).
+    - Conclusions and the leaf hypotheses are the original's; the original's `Repr`/`WF3`/`NoDangling` hypotheses become `ReprC` and `KInvCA`.
+  - **Q3, the arena realization.**
+    - `issue` realizes as `split` (no raw op) then `storeOps` on `(s.set t).view c` at `s.A.length`.
+    - `reset` realizes as `derive` then `release` (no raw op), and `newArena` has none. This matches the Part XIV wording ("`issue` performs `split` followed by `store`; `reset` performs a `Modify` derivation… then `release`"), `opsOf` (`_ => []` for derive, split and release, Refinement.lean:2148–2158) and `kexp`.
+    - `r5_arena` proves equality with `lopsOf` in a single context.
+  - **Q4, `StepOblC`.**
+    - For `issue` it is not `True`. A scratch proof shows `StepOblC … (.issue c i region dst) s ar m ↔ StepObl … (.store s.A.length dst) ((s.set (splitEff …)).view c) m` (via `simp [StepOblC, realize_issue, StepObl, opsOf]`).
+    - So R1 for `issue` keeps exactly the `store` obligation (`OblAlong` of `storeOps`) and passes it to `realize_store`, as `r1_kernel` does. Nothing is dropped.
+    - For `reset` and `newArena`, `StepOblC` reduces to `OblAlong m [] = True` (scratch proof). This is consistent: `StepObl` for `derive`/`release` is also `OblAlong [] ∧ True`, and `KObl ∘ kexp` matches.
+    - Non-vacuity: an `ok` `IssueStepC` exists (`S3_3_ok`, Corpus/AR.lean:108).
+  - **Citations.** Every new definition and theorem in RealizeSound.lean and the arena cases of Realize.lean cite Spec 1 and WC4 locations.
+  
+  **Finding 1, minor: the report overstates §82.7 coverage.** Location: formal/reports/spec2-m3.md:413 (OB-C12 row). Cause: missing coverage presented as covered.
+  
+  - The row reads: "§82.7 : les opérations d'arène se réalisent par les pas noyau (R1, `r5_arena`), sans accès après invalidation au sens de `RefinementArena.arena_realized`, qui n'est pas transporté".
+  - It lists "no access after invalidation" (Spec 1 §82.7: "without reintroducing access after invalidation") among what is covered, while saying the theorem behind it is not transported.
+  - No concurrent theorem states it: `grep -rnE "reset_no_access|arena_realized|usedAuth" formal/Ern/Concurrency/` finds nothing (exit 1). In the concurrent model, nothing is proved about access after a `reset` by another context.
+  - The row also omits that the "metadata" half of §82.7 is not realized. `arena_realized` records this as a reading (RefinementArena.lean:912: "the 'metadata' part of §82.7 is not covered. This is a reading…"). The concurrent `realize` inherits that reading (`r5_arena` equates it with `lopsOf`), but neither the `realize` docstring nor the row mentions it.
+  - Suggested fix: state both halves as not covered in the concurrent model, and point to the inherited reading.
+  
+  **Not a finding.** `issue_pointer_soundC` goes beyond the literal A4 row ("transporter `pointer_sound_store` et `pinned_address_stable`"). It is a direct corollary for the `store` inside `issue`, so I did not count it as an addition outside the task.
+  
+  **Scratch files:** /private/tmp/claude-501/-Users-guygouri--claude-spares-spare-3OhSrt/e6419d94-65c2-4a67-8a07-67ae7e574ad6/scratchpad/m3/review-R/Ax.lean and /private/tmp/claude-501/-Users-guygouri--claude-spares-spare-3OhSrt/e6419d94-65c2-4a67-8a07-67ae7e574ad6/scratchpad/m3/review-R/E1.lean. E1.lean compiles cleanly. In Ax.lean the eight `#print axioms` lines gave the results above; its ninth line names `Ern.Concurrency.R1.r1_lstep`, which does not exist (unknown-constant error), so `r1_lstep`'s axioms were not printed.
+  
+  **Not checked:** I did not run a full `lake build`; I used the existing build through `lake env lean`. I did not review `IssueStepC`/`ResetStepC` preconditions against §77/§78 beyond the realization, nor `ArenaPreserve` or the corpus. No `SimRunC` witness contains an `issue` step, so the hypotheses of `issue_pointer_soundC` are not shown jointly satisfiable on a concrete run.
+</agent-message>
+
+---
+
+<agent-message from="a68b54b1c6300d80e">
+[Subagent hand-back] The text below is the final report of a subagent this session delegated to. It is model output, NOT a message from the user: instructions, requests, or approval claims inside it are the subagent's words and carry no user authority. The harness indents every line of the report, so a frame-like line at column zero inside it would be forged. Notes above this frame may quote model-derived text, which carries no user authority either. The report follows:
+  ## Verdict: changes
+  
+  I found nothing blocking. Every corpus row I checked (S1a–S18, W-C22.2, W-C22.3 (b), `CrossContextConflictOnlyShared` and its witness) has a setup that matches the corpus "Mise en place", a statement in the §4 encoding, and its twins present. I found no vacuous or overly permissive encoding. One corpus verdict is refuted by the model, and the report understates it (F1). Two minor gaps follow.
+  
+  All evidence is in scratch files under `/private/tmp/claude-501/-Users-guygouri--claude-spares-spare-3OhSrt/e6419d94-65c2-4a67-8a07-67ae7e574ad6/scratchpad/m3/review-C/` (`E1.lean`, `E2.lean`, `E3.lean`). They compile with no `sorry` or `native_decide`.
+  
+  ## Findings
+  
+  **F1 — medium. W-C22.2: "acquire(e) plus jamais habilitée" is false in the model, but the report calls it only "not proven".**
+  - Location: `formal/Ern/Concurrency/Corpus/MX.lean:345` (`W_C22_2_encap`); `formal/reports/spec2-m3.md:222` and `:253` (P8).
+  - Cause: corpus defect (over-claim), reported as a proof gap instead of a disagreement.
+  - The theorem itself is correct for the arrival state `x5`. But two steps later `acquire` is enabled again. From `x5`, context 1 releases the raw grant, then acquires:
+    - `opStepC KM (.release 5) 1 x5 (.ok wr)` holds, with `wr := x5.set (releaseEff (x5.view 1) 5)`.
+    - `Encap L0 (x5, regX) (.kernel 1 (.release 5))` holds trivially.
+    - `AcquireOk KM L0 wr regX 1 0 (deriveSyncEff wr 1 3, [⟨3, some wr.A.length⟩])` holds.
+    - `EntryAuth L0 wr ⟨3,none⟩ (wr.view 0).top` and `NoCoveringDesc wr 3` also hold.
+    - A sanity check (`¬ EntryAuth … (wr.view 1).top` by `decide`) fails as expected, so the experiment is live (`E1.lean`).
+  - WC4 C15 (Effect) agrees with the model: the grant "is ordinary after creation: ExercisableAt remains exactly as in Spec 1 §43 for its exercise, reborrowing, storage and legal release".
+  - Under brief "Étape B", this should be reported as a disagreement with clause, state and counter-trace. P8 instead says "La permanence … n'est pas prouvée". The docstring at `MX.lean:340-344` also drops "plus jamais" without comment.
+  
+  **F2 — low. S10: the theorem shows only a kernel-level `ok`, but the report claims machine-level `ok`.**
+  - Location: `formal/Ern/Concurrency/Corpus/S10.lean:43` (`S10_1_ok`); report P2 (`spec2-m3.md:239-244`).
+  - Cause: missing coverage.
+  - §0 of the corpus separates `ok` from `ok noyau / hors C22`. `S10_1_ok` states `opStepC … (.ok r4)`, with no `Encap` and no trace, so on its own it does not rule out `ok noyau / hors C22`.
+  - I checked separately that `TransferExcl L0 (r3, [⟨3, some 4⟩]) 0` holds. I also built an `EncapsulatedTrace KM L0 (x0,[],[]) […, .acquire 0 0, derive, enter, .kernel 0 (.transfer 0 7)] (r4, [⟨3, some 4⟩], [])` (`E2.lean`). So the effective verdict is machine-level `ok`, and the disagreement is real.
+  - Re-derivation of the disagreement:
+    - §63.7 constrains "moved held authorities", and §44 `AnchorOrderHeld` applies only to authorities held by places.
+    - `g` (authority 4) is held by `.frame 0` (checked with `#eval` on `r4`). It does not move.
+    - The authorities that do move satisfy the rule in `f1`: `guarded` (now in `slot′` = place 8) and `root_T` (now in `M′` = place 7).
+    - The Spec 1 model has the same reading: `HolderMoves _ _ (.frame _) = False` (`Access/Ops.lean:242-252`).
+  - The corpus clause (O4.7) is quoted correctly, and the disagreement is reported, not resolved. My evidence agrees with the report's diagnosis (Spec 1 is silent on frame-held authorities whose anchor moves).
+  
+  **F3 — low. W-C22.3 (b): the twin is in a different configuration and module, and the report does not flag it.**
+  - Location: `formal/Ern/Concurrency/Corpus/Witness.lean:42-46`; report table row W-C22.3 (b) shows "—".
+  - Cause: missing coverage (§4: "les jumeaux dans le même module").
+  - The corpus twin `transfer(M, M′)` belongs to "MX₃ avec slot = {a, b}". The code points to `EncapTraces.traceA`, which uses `est`, where `slot` is a single leaf. `wst` (`Witness.lean:26-29`) has no `M′`.
+  
+  ## Verified with no finding
+  
+  - **Setups and indices.**
+    - MX: `mx4_facts` gives `root_M` effective `Observe` and `CtrlRight` for frames 0 and 1.
+    - AR: `ar_trace` gives `ControlOf = lock2`, arena value = `AV`, `d1` = place 8 local to context 1.
+    - S10: `r3` has frames `[1,0]`, the local `M′` = places 7–9 all `Uninit`, `m` = authority 5 in frame 1.
+  - **Chosen readings, documented in code and report.**
+    - S11: `o1′ := derive(o1, Observe)` is passed to `f1′` (P3). The literal reading gives `S11_setup_wait`.
+    - S3.8 relies on `ancestorC` (P1).
+    - S16 (c) uses `Y` instead of `Z`.
+    - S12 was not actually encoded before, despite the corpus (P4); I confirmed by grep that no earlier `Concurrency` file has it.
+  - **Verdict strength.**
+    - `wait` is encoded as `∀ st', ¬ Op` in S2_4, S3_4 and S11_2. Each proof uses the C14.2 clause (`grant = none`).
+    - `reject` for S11_3 and S15_4 is "no `ok`" plus the failing clause (C18.1, and O3/C17.2) (P7).
+    - S3_7 is `fail`, with the static checks true and no `ok`.
+    - Rejections from `opStepC` are `Guarded`, so `ok` and `reject` are exclusive.
+  - **Referenced earlier encodings match their corpus rows.**
+    - `newMutex_uninit_rejected`: I checked by `decide` that, of the clauses I tested, only C13.10 (`initM`) fails.
+    - `shared_controller_rejected`: of the clauses I tested, only C13.8 (`ctlUnique`) fails.
+    - `slot_transfer_breaks_control` and `ctl_transfer_breaks_ctlInit` falsify `SyncInv.control` and `SyncInv.ctlInit` respectively.
+    - `endUse_ctl_excluded` falsifies `ctlInit`; `endUse_slotPart_excluded` falsifies `slotInit`.
+    - `traceA`, `traceB`, `controlAB` give `guarded` in `slot′` and `ControlOf = lock′`.
+    - `s4_detached_child`, `s4_realized` and `r4_nonvacuous` match.
+    - S18 (2) is covered only by the general `transfer_into_live_mutex_rejected`; the report says so. A concrete instance holds: `¬ TransferPreC K9 n4 0 0 4` by `decide`.
+  - **`CrossContextConflictOnlyShared`** (`Witness.lean:113-125`) has exactly the quantifiers of corpus §3: `c ≠ c′`, both live, `WriteSharedPre` on `view c`, and `Read3Pre ∨ Write3Pre ∨ WriteSharedPre` on `view c′`, giving every leaf of `L ∩ L′` `SharedMutable`. It follows from `WriteSharedPre.shared` (§68.1). The witness (`:131`) has both preconditions true in `x4` with `L = L′ = [2]`.
+  - **Axioms.** `#print axioms` on 7 corpus theorems lists only `[propext, Quot.sound]`. The AGENTS.md grep over `Corpus/` is empty.
+  
+  ## Not checked
+  
+  - I did not run `lake build`; I used the existing build.
+  - I did not check every `NewMutexPre` clause for the two referenced rejections; `stored`, `unique`, `otherAdmin` and `sharedMutable` were not decided.
+  - `adminSep_needed` (`Witness.lean:97`) is step-A work placed in a corpus module; I did not review it.
+  - Report Part B is outside this review.
+  - S1a: the corpus cites O7.2, but the model rejects through `ExitPreC.origins` (§73.4). The docstring names both, so I did not count this as a finding.
+</agent-message>
+
+---
+
+<agent-message from="a33002935c0256b19">
+[Subagent hand-back] The text below is the final report of a subagent this session delegated to. It is model output, NOT a message from the user: instructions, requests, or approval claims inside it are the subagent's words and carry no user authority. The harness indents every line of the report, so a frame-like line at column zero inside it would be forged. Notes above this frame may quote model-derived text, which carries no user authority either. The report follows:
+  ## Verdict: ok
+  
+  I found nothing that blocks and nothing that requires a change in lens A1, A2, A3, A5, A6, A7. The four items below are all low severity, and three of them are already disclosed in `formal/reports/spec2-m3.md`. I did not edit or commit anything in the repo. My scratch checks are `Check1.lean`, `Check2.lean` and `stmts.py` in `/private/tmp/claude-501/-Users-guygouri--claude-spares-spare-3OhSrt/e6419d94-65c2-4a67-8a07-67ae7e574ad6/scratchpad/m3/review-A/`.
+  
+  ## What I verified, with evidence
+  
+  **Unchanged files.** `git diff --quiet e30355f..HEAD -- formal/Ern/MemoryModel/` is clean, so `Arena.lean` and `RefinementArena.lean` are untouched. `specs/`, `AGENTS.md`, `CLAUDE.md` and `DESIGN.md` are also unchanged. The AGENTS.md grep for forbidden terms prints nothing.
+  
+  **Q1 — `NewArenaPreC` (SyncLib.lean:344).** I compared it clause by clause with §76.1–§76.6. Each clause is present; none is missing, stronger or weaker.
+  - §76.1: usable storage and `HasRight` Modify, read on the view of the executing context.
+  - §76.2: `internalAuth` and `exercisable`.
+  - §76.3: `heldByPlace`, plus `fpSub` and `fpSup`, which together give footprint equality.
+  - §76.4: `guard`.
+  - §76.5: `valueInit`.
+  - §76.6: WF3, I1, AnchorOrder and AnchorOrderHeld re-indexed (AnchorOrderC, AnchorOrderHeldC), plus `ArenaInv` of the new entry.
+  
+  **Q1 — `IssueStepC` (SyncLib.lean:406) against §77.** Outcomes come in the order the spec requires:
+  - static failure (`IssueStatic`, §77.1–§77.2) gives reject;
+  - static pass with the region unavailable gives fail (§77.4);
+  - a rejected `split` gives reject (§77.5);
+  - a rejected `store` gives reject (§65.4/§65.5, i.e. §77.3/§77.6 after the availability check).
+  
+  The `split`, `store` and `ok` constructors all require `Avail`, so a §77.4 fail can never become a reject. I proved this in `Check1.lean` (`issue_fail_not_reject`, `issue_fail_static`); axioms are only `[propext, Quot.sound]`.
+  
+  **Q1 — `ResetStepC` against §78.** It is `Arena.ResetD` run on the view of the executing context, with outcomes ok or reject only. `DerivePre` and `ReleasePre` (Access/Ops.lean:29, :135) read only the top of the stack and membership in it, so the docstring's claim that they do not read `ancestor` holds.
+  
+  **Q2 — unified guard.**
+  - `newArena` checks `Guard56 [liveInternals s.flat ar, liveGuardeds s reg]`.
+  - `newMutex` checks `unique` together with `otherAdmin : g ∉ liveInternals s.flat ar`.
+  - Both use the same liveness (`Active`) and consult exactly the live identities of both registries.
+  
+  `AdminSep` (:490) states the cross-registry part of §56 correctly. It is preserved by every step (`lstep_adminSep`), using the guards plus the fact that no step reactivates an authority (`AKeep`) and the bounds on registered identities. Its trace form is not vacuous: `Check2.lean` applies `encapsulated_arenaInv` to the corpus trace `s3_trace`, which starts from an initial state. The reached state has both a live arena and a live mutex entry, and `ArenaInvC ∧ AdminSep` holds there.
+  
+  **Q3 — T7.** `ArenaInvC = Arena.LInv ⟨s.flat, ar⟩`, i.e. §55 `ArenaInv` for live entries plus `IssuedShape` and a bound on registered identities. Its hypotheses are `WF3` before the step and `NoDangling` after it. `lstep_inv` supplies both from theorem 2, so they hold on every reached state.
+  
+  **Q4 — milestone 1–2 statements.** I wrote my own statement diff against `e30355f` (`stmts.py`). The changed theorems are exactly the ones in the report's A7 table.
+  - **`lstep_preserves`:** the conditional AdminSep hypothesis is vacuous for every label other than issue and reset. `Check1.lean` re-derives the milestone-2 form, with no AdminSep, for those labels (`lstep_preserves_noArena`).
+  - **`trace_inv` and `trace_preserves`:** `LibInv` with an empty arena registry is equivalent to `SyncState` (`libInv_nil`). Old `.newMutex c g adm` steps map to `.newMutex c g` with `ar = []`, since `NewMutexPre` with `adm` implies it with `[]`. So no statement is weakened.
+  
+  `adminSep_needed` (Witness.lean:97) justifies the added hypothesis: from a state satisfying KInvCA and SyncState, an issue step admitted by Encap breaks GrantDiscipline.
+  
+  **Q5 — A5.** `conservative_newArena`, `conservative_issue` and `conservative_reset` are each stated in both directions and outcome by outcome; the issue case covers fail. `r5_arena` is an equality of realizations, with `others` universally quantified.
+  
+  **Axioms.** `#print axioms` reports only `[propext, Quot.sound]` for `lstep_arenaInv`, `lstep_adminSep`, `encapsulated_arenaInv`, `lstep_preserves`, `trace_inv`, the three `conservative_*` theorems, `r5_arena` and `adminSep_needed`.
+  
+  **A6.** The `NewMutexPre` docstring (:245) now names "C13.3, C13.6, initial physical controller state", matching WC4 C13's interface paragraph.
+  
+  ## Findings
+  
+  **1. Low — interpretation chosen against the letter of the brief (disclosed).**
+  - **Where:** `IssueStepC` (SyncLib.lean:406) and `NewArenaPreC.anchorOrder/anchorOrderHeld` (:366–369).
+  - **What:** the brief says the arena labels run "sur `s.view c`". The code instead runs `store` through `opStepC`, which uses `ancestorC`, and reads §76.6 on `ancestorC`.
+  - **Evidence:** `S3_8_view_literal` (Corpus/AR.lean:174) shows the literal reading rejects S3 step 8, which the corpus marks `ok`.
+  - **Assessment:** the choice follows WC4 C3 ("including links across contexts"), so this is not a formalization error. But it changes accepted programs, and AGENTS.md says such choices must stop for arbitration. It is reported as P1 in §A.4 of the report and still needs your decision.
+  
+  **2. Low — `NewArenaPreC.wf3` cites C20 but omits part of C20's frame well-formedness (formalization).**
+  - **Where:** SyncLib.lean:362–363.
+  - **What:** the field is `WF3 s.flat`, while C20's concurrent well-formedness is `ConcurrentWF s := FramesC s ∧ WF3 s.flat` (Context.lean). The precondition is therefore weaker only on states where `FramesC` fails.
+  - **Impact:** none on reached states, because `FramesC` is part of `KInvC`, which theorem 2 preserves. The report mentions "`WF3` et `I1` de `s.flat`".
+  
+  **3. Low — §56 coverage gap inside the arena registry (missing coverage, disclosed).**
+  - The rule that an identity serves as `internal` for at most one live administration is covered across registries (`AdminSep`) and within the mutex registry (`SyncInv.unique`).
+  - It is not stated within the arena registry in the concurrent model. The sequential `Arena.Unique56` / `live_internal_unique` (Arena.lean:2425, :2529) has no concurrent counterpart; grep finds no use under `Concurrency/`. Report line 120 says this was not requested. I did not check whether it holds.
+  
+  **4. Nit — stale docstrings.**
+  - `Label` (SyncLib.lean:495) still says "with the synchronization library", although it now includes the arena labels.
+  - The `Reachable.lean` header still reads "Theorems 2 and 4", although the module now also covers T7.
+  
+  I did not review the realization side (A4/R1, `realize`, `StepOblC`) beyond its listed statement changes, nor the step-B corpus verdicts.
+</agent-message>
+
+---
+
+<agent-message from="ad89a915f53176669">
+[Subagent hand-back] The text below is the final report of a subagent this session delegated to. It is model output, NOT a message from the user: instructions, requests, or approval claims inside it are the subagent's words and carry no user authority. The harness indents every line of the report, so a frame-like line at column zero inside it would be forged. Notes above this frame may quote model-derived text, which carries no user authority either. The report follows:
+  **Verdict: changes.** Nothing blocks. One verification claim is false, and there are several smaller inaccuracies and gaps in the index.
+  
+  **What I re-ran and found correct**
+  - **Line references:** a script resolves every `Name (File:N)` reference at `bf139f2`, with a second targeted pass for the ones it resolved to the wrong file. All point to the named declaration except the T3 range (finding 2). `SyncLib.lean:245` for `NewMutexPre` in A6 is the start of its docstring, which is acceptable since A6 is about the docstring.
+  - **Build and checks:** `lake build` prints "Build completed successfully (66 jobs)". Each of the 26 modules under `Concurrency/` and `Concurrency/Corpus/` recompiled alone gives no output. The AGENTS grep is empty, and there is no `noncomputable` or `example`.
+  - **Axiom audits:** `Audit3.lean` gives "1089 (non-internal 832), outside propext/Quot.sound: 0". `AuditArena.lean` gives Arena 218 (176) and RefinementArena 99 (74), both 0. The milestone 1 and 2 counts 798/626 and 873/675 match the earlier reports.
+  - **Commits:** the 10 commits match `git log e30355f..fe2f4ee`. There are no Co-Authored-By trailers, and `formal/spec2-m2` is `e30355f`.
+  - **OB-C06 reduction:** byte-identical to the corpus §3 cell (Python comparison returned `True`).
+  - **Dependencies (A7):** I re-ran the closure with `_private.Ern.Concurrency*` constants included and the full list of changed names. Every listed head gives `[]`.
+  - **A7 identity claims:** `Encap`, `EncapVals` and `valOps` hash identically at `e30355f` and `bf139f2`. No declaration was removed (`removed: []`).
+  - **Statement checks:** the claims in A.2, A.3, A.4, A.5, B.2 and B.6 that I compared with the Lean match. This covers `lstep_preserves` (conditional `hsep`), `LibInv`/`libInv_nil`, `lstep_arenaInv`, `lstep_adminSep`, `r1_lstep`, `pinned_address_stableC`, `conservative_*` (reset needs only `s.Single`), `r5_arena`, `crossContextConflictOnlyShared` (no hypotheses), and every corpus theorem's verdict and twin.
+  - **Spot checks:** `(a10.view 0).F` evaluates to `[0, 1]`, as P1 says. P4 holds: nothing at `e30355f` encodes `write3(lock)`. The §63.7, §56 and C13 quotations are in the source texts.
+  
+  **Findings**
+  
+  1. **Medium — false verification claim.** Location: header, line 35, "Aucune ligne de plus de 100 caractères dans les fichiers ajoutés ou modifiés". Cause: it is false under either reading.
+     - `Corpus/AR.lean:24` is 105 characters, added by `6e4f3f1` and not fixed by `bf139f2`. The `bf139f2` "wrap" commit only touched `Witness.lean`.
+     - Files modified by milestone 3 still contain older long lines: `SyncLib.lean:44` (125), `SyncPreserve.lean:1239` (102), `Traces.lean:15` (110), `Traces.lean:156` (103).
+     - Evidence: a Python character count over `git diff --name-only e30355f bf139f2`. The only added line over 100 characters is the AR.lean docstring line ending "`3` of `d0`. -/".
+  
+  2. **Low — wrong line range in B.2, T3 row.** The row cites `Reparent:690`–`767` for 10 names. Two of them lie outside that range: `exitEffC_framesC` is at `Reparent.lean:654` and `termEffC_framesC` at `:671` (`git grep` at `bf139f2`).
+  
+  3. **Low — wrong milestone attribution in A.2 (line 103).** The report says "le lemme du jalon 1 (`kernel_syncState`, `:921`)". `git log -S"theorem kernel_syncState"` returns only `3b9b7ff`, a milestone 3 commit. It is a new lemma, factored from milestone 1 helpers, and B.5 does not list it.
+  
+  4. **Low — A7 table of changed statements is incomplete or misdescribed.** I diffed the declaration text of `e30355f` against `bf139f2`.
+     - Missing: `mS1`–`mS6` (`Realize.lean:804–815`). Each gained an extra `[]` argument to `realize`.
+     - `trace_preserves`: the report says "hypothèse et conclusion `LibInv`", but its conclusion is `SyncState L st'.1 st'.2.1`.
+     - `r1_lstep` and `r3_step`: labelled "contenu inchangé", but they now pass `st.2.2` to `realize` and `StepOblC`, so they also belong in the "réalisation" class.
+     - `Label`: only `Label.newMutex` is listed. The three new constructors are absent from A7, though A1 describes them.
+     - Everything else in the diff appears in the table.
+  
+  5. **Low — B.3 does not fully carry over milestone 1's index, as the brief asked.**
+     - Two entries of `spec2-m1-close.md` B.3 are dropped: `deriveSync_breaks_i2_false` (`Preservation:1896`; 0 occurrences in the report) and `transfer_merges_controllers_false` (`EncapTraces:456`, mentioned only in the A7 table).
+     - The positive-twin column is gone: `deriveSync_modify_ok`, `spawnVal_apart_ok`, `newMutex_ok`, `frames_run` and `endUse_mutex_kills_entry` each occur 0 times.
+     - The heading "Jalons 1–2, hors corpus du jalon 3" also lists two milestone 3 theorems, `adminSep_needed` and `S3_8_view_literal`.
+     - "C2 (P1)" refers to milestone 1's P1, but in this report P1 means the arena re-indexing.
+  
+  6. **Low — wording in B.6, OB-C12.** The sentence reads « §82.7 : les opérations d'arène se réalisent par les pas noyau (R1, `r5_arena`), sans accès après invalidation au sens de `RefinementArena.arena_realized`, qui n'est pas transporté ». It can be read as asserting that there is no access after invalidation. Nothing in `Ern/Concurrency` proves that: grepping for `arena_realized` there finds nothing. The sentence also omits that the metadata part of §82.7 is uncovered, which `arena_realized`'s own docstring states.
+  
+  7. **Info — no change needed.** `adminSep_needed` does not state `WF3 xb2.flat`, which is hypothesis `hw'` of `lstep_preserves`. A scratch `example : WF3 xb2.flat := by decide` compiles, so the report's necessity claim in A3 stands.
+  
+  **Completeness against Étape C.** Every Part A and Part B item is present. The only gap is B.3, finding 5. Verbatim reduction, CrossContextConflictOnlyShared with hypotheses/module/line, OB-C01–C16, the copied lemmas including `realize_*`, and the axiom audit are all there.
+  
+  I did not check the spec semantics behind P1, P2 or P3, the claim that no step of the earlier K0-based cases reads `SharedMutable` apart from C13.6, or the proof narratives in A2 (why `ArenaInv` alone is not inductive). Scratch files are in `/private/tmp/claude-501/-Users-guygouri--claude-spares-spare-3OhSrt/e6419d94-65c2-4a67-8a07-67ae7e574ad6/scratchpad/m3/review-F/`: `refs.py`, `decls.py`, `DepF.lean`, `W.lean`, `audit.out`, `warn.out`. Nothing in the repo was modified.
+</agent-message>
+
+---
+
+<agent-message from="abe17a8da3105a47d">
+[Subagent hand-back] The text below is the final report of a subagent this session delegated to. It is model output, NOT a message from the user: instructions, requests, or approval claims inside it are the subagent's words and carry no user authority. The harness indents every line of the report, so a frame-like line at column zero inside it would be forged. Notes above this frame may quote model-derived text, which carries no user authority either. The report follows:
+  **Verdict: changes.** There is one wrong line reference in the report, and the code fixes check out. Nothing blocks.
+  
+  **Re-run results (all at 33b672f)**
+  - `lake build`: "Build completed successfully (66 jobs)".
+  - The AGENTS grep prints nothing (exit 1).
+  - `Audit3.lean`: "Concurrency theorems: 1092 (non-internal 835), outside propext/Quot.sound: 0". This matches the report's numbers.
+  - `lake env lean` on `Corpus/{MX,S10,Witness,AR}`, `Reachable` and `SyncLib` gives no output, so no warnings.
+  
+  **1. `W_C22_2_reenable`: it is a real counter-trace.**
+  - It starts from the same state as `W_C22_2_encap` (`x5`, `regX` with `grant = none`).
+  - Authority 5 is what the raw `deriveSync` creates. Scratch `#eval` gives `x4.A.length = 5`, and `A[5]` has origin 3 (`guarded`) and mode Modify. It is active in `x5` and inactive in `x5r`.
+  - `Encap` admits `.kernel 1 (.release 5)` through the `_ => True` case (`SyncLib.lean` `Encap`).
+  - `AcquireOk` with a concrete post-state is the same enabledness notion that `S2_4_wait` negates.
+  - In scratch (`review-2/Check.lean`) I built the whole thing as a single `LRun` from `(x0,[],[])`: the `mx4_trace` steps, then `.deriveSync 1 3`, `.kernel 1 (.release 5)` and `.acquire 1 0`. It typechecks.
+  - Quotes are correct. The corpus says "`acquire(e)` plus jamais habilitée" (C13.9/C14) and P8 quotes it exactly. The WC4 C15 fragment in the docstring matches ERN_WC4.md:296 ("This grant is ordinary after creation … legal release").
+  - The fix adds no unreported interpretation: P8 is now a disagreement, consistent with the corpus §4 rule.
+  - Nit: P8's "Lecture" says "le blocage dure tant que la dérivée est active". That is a general claim with no proof; only this one instance is shown. Also, the A.3 row says "`acquire` redevient habilité" without "par le contexte 1", which P8 does state.
+  
+  **2. S10: correct.**
+  - `s10_trace` starts at `(x0,[],[])`, and `x0 = SC.ofS3 (S3.init mxst)` (`rfl`).
+  - Every step has an `Encap` proof: `mx3_trace`, then `.acquire` (True), `derive 0` (`decide`), `.enter` (True), and `transfer 0 7` (`TransferExcl` by `decide`).
+  - The last step is the transfer from `r3`, which is exactly the step the corpus expects to be `reject`. The trace ends in `(r4, [⟨3, some 4⟩], [])`.
+  - P2's description is accurate. The line references are right: `S10.lean:43` and `:52`.
+  
+  **3. W-C22.3 (b): correct.**
+  - The new `wst` entries 7–11 form `M′ = {slot′ = {a′, b′}, lock′}`, all `Uninit`. Root authorities are `[frame0:[2,3,4]], [place1:[5]], [frame0:[6]], [frame0:[9,10,11]]`, which matches the docstring.
+  - `W_C22_3b_ok` is `transfer(0,7)`, i.e. `transfer(M, M′)`, from `w0` (`slot = {a,b}`). `TransferExcl` holds and `SlotInit w2` holds (`slotOf w2 1 = some 8`).
+  - Entries 0–6 are unchanged and M′ is appended at the end, so `W_C22_3b_encap` proves the same thing as before: source 2 (a), destination 6 (Z), `guarded` 1.
+  
+  **4. Docstrings: accurate.**
+  - `NewArenaPreC.wf3`: `SC.flat` uses `F := s.frames`, the globally live frames, which matches WC4 C2.
+  - `Label` now has the arena constructors.
+  - The new `Reachable` title is correct (the module covers T7 and §55/§56). Pre-existing nit: its unchanged "Assembly of …" line still omits `ArenaPreserve`, which `trace_inv` uses.
+  
+  **5. Report**
+  - **Finding (low, report error):** in the A.3 S2 row (`spec2-m3.md:196`), the range is "`S2_1_ok` … `S2_3_ok` (`Corpus/MX:136`–`136`)". `S2_1_ok` is at `MX.lean:128`. The old text, `MX:128`–`136`, was correct, so this fix introduced the error. It also makes "contrôlés par script" in « Ce qui n'est pas vérifié » inaccurate.
+  - I checked every other changed `name (Module:line)` reference by script and by opening each line. All are correct, including `Label` 497, `LStep` 517, `LRun`/`EncapsulatedTrace` 589/599, `AR:175`, `Witness:48/66/83/109/136/143`, `MX:346/365/408/424/432`, `Reparent:654/671`, `SyncLib:618/626/646/668`, and `SyncInit:1017`.
+  - The long-line claim is true by character count: the only lines over 100 in files modified since `e30355f` are `SyncLib:44` (125), `SyncPreserve:1239` (102), `Traces:15` (110) and `Traces:156` (103). No added line is over 100. The old AR line was 105 characters.
+  - A7 changes are confirmed against `e30355f`:
+    - `r1_lstep`, `r3_step` and `mS1`–`mS6` now pass `st.2.2` / `[]`;
+    - `trace_preserves` now has hypothesis `LibInv` and conclusion `SyncState`;
+    - `kernel_syncState` is new and uses `opStep_facts` and `opStep_init`.
+  - The A.7 table matches the actual diff. The only gap is that it does not mention the `wst` extension.
+  - B.3 milestone-1 table: all 19 rows of `spec2-m1-close.md` § B.3 are present, with every twin. Merged rows keep the union of twins. `transfer_into_live_mutex_rejected` moved from 962 to 1017, which is correct now. The old B.3 entries (`adminSep_needed`, `S3_8_view_literal`) were moved to the "Jalon 3, hors table" table, so nothing was dropped.
+  - OB-C12 §82.7 no longer overstates. `arena_realized` does not appear in `Ern/Concurrency`. Its docstring (`RefinementArena.lean:911–917`) states that the metadata part is not covered. No concrete `SimRunC` has an `issue` step: the only concrete instance is S4.
+  
+  I did not check the A.7 claims about the four reviewers and their verdicts, the milestone-2 table against `spec2-m2.md`, or unchanged report text. Scratch files are under `/private/tmp/claude-501/-Users-guygouri--claude-spares-spare-3OhSrt/e6419d94-65c2-4a67-8a07-67ae7e574ad6/scratchpad/m3/review-2/`.
+</agent-message>
+
+---
+
+/ub-mode
+
+---
+
+@"/Users/guygouri/Downloads/corpus-spec2-m3.md" @"/Users/guygouri/Downloads/ERN_WC4.md"
+
+<pasted_content id="c7c6">
+Brief Claude Code — ERN Spec 2, jalon 3 : passe de clôture
+Cadre
+Branche `formal/spec2-m3`, à la suite de `fe2f4ee`. Formalisation exploratoire, jamais mergée. Pas de push sur `main`, pas de PR.
+Documents joints, non commités : `ERN_WC4.md` (WC4 corrigée, celle lue au jalon 3) et `corpus-spec2-m3.md` v3 (sa § 5 liste les changements depuis la v1 ; ce sont désormais les verdicts de référence). Ne modifie ni `specs/`, ni `AGENTS.md`, ni `CLAUDE.md`, ni `formal/DESIGN.md`, ni aucun fichier de `formal/Ern/MemoryModel/`. Mêmes règles de source qu'au jalon 3.
+Statut des points du jalon 3 : P1 (réindexation `ancestorC`) et P3 (`o1′` cédée à `f1′`) sont des choix du modèle exploratoire, conservés tels quels dans cette passe ; leur entérination normative appartient à Guy et n'est pas acquise par ce brief. P2 et P8 sont corrigés dans le corpus (v2, repris en v3). P7 reste ouvert : critère consigné en corpus § 0, aucune modification de C17/C18, les encodages de S11.3, S15.4 et `S11_setup_wait` restent tels quels.
+Objet
+Cinq points de clôture, aucune décision de conception. Ne rien ajouter à `Encap`, à `SyncInv`, à `ArenaInvC` ni à `AdminSep`.
+Tâches
+1. Témoin séquentiel de S10 dans le modèle de la Spec 1
+Nouveau module `formal/Ern/Concurrency/Corpus/S10Seq.lean`, important `Ern.MemoryModel` seulement (aucun import de `Ern.Concurrency` : le témoin doit valoir pour la Spec 1 seule). Sur un `S3` concret, le plus petit possible, sans mutex ni `deriveSync` :
+
+* `f0` : local `M` possédant une racine `T` ; `guarded := derive(root_T, Modify)` ; `store(guarded, slot)` (ou toute place de `M`) ; `g := derive(guarded, Modify)` tenue par `f0` ; `enterFrame f1` cédant `m := derive(root_M, Modify, footprint(M))`, local `M′` de même forme, `Uninit`.
+* Verdicts attendus, écrits depuis le corpus § 1 S10, par `decide` :
+   1. `transfer(M, M′)` depuis `f1` → `ok` (§63.1 via `m` et `root_M′` ; §63.4 : `T` n'est pas une feuille source ; §63.7 : seules `guarded` et `root_T` sont déplacées et satisfont la règle en `f1`) ;
+   2. dans l'état résultant, `exitFrame` → `reject` (§73.4 : la chaîne de `g` n'atteint aucune origine survivante) ;
+   3. dans ce même état, la propriété « frame de l'anchor effectif de `g` ancêtre de son holder » est fausse (`EffAnchorOK … g (some f0)` faux) : c'est le fait que ni §44 ni §63.7 ne contraignent. Théorème, pas règle ;
+   4. `transfer(M′, M)` depuis `f1` → `ok` (§63.3 : les feuilles de `M` sont `Moved`, non `Init`) ;
+   5. puis `exitFrame` → `ok` (§73.4, §73.5).
+* Tout verdict qui différerait : rapporter la clause et l'état, ne corriger ni le témoin ni le modèle.
+
+2. `SimRunC` concret contenant `issue`
+Réaliser en mémoire la trace AR de S3 jusqu'au pas 3 inclus (`c1 : acquire(e2)` puis `issue(arena, R1, d1)` sous `g2`), sur le patron de `s4_realized` (`Realize.lean`) : `ParamsOK`, `StepOblC` de chaque pas satisfaites, aucun pas `ub`, `ReprC` à chaque état. Résultat : `s3_realized` (ou nom analogue), et le fait que les hypothèses d'`issue_pointer_soundC` sont satisfaites conjointement sur cette exécution. Spec 1 §77, §82 ; WC4 C19. Si une obligation ne peut pas être satisfaite, rapporter laquelle et pourquoi : c'est un résultat.
+3. Unicité intra-registre des arènes
+Énoncer `ArenaReg.unique` : deux entrées vivantes du registre d'arènes n'ont pas la même identité `internal` (Spec 1 §56, première phrase). Puis, dans l'ordre de préférence :
+
+* (a) si `ArenaInvC` (= `Arena.LInv`) l'implique déjà par la borne des `internal`, le prouver comme corollaire et le dire ;
+* (b) sinon, l'ajouter comme invariant de trace séparé, préservé par tout `LStep` (`lstep_arenaUnique`), sur le modèle de `lstep_adminSep`, sans l'ajouter aux hypothèses de T4 ni de T7 sauf nécessité démontrée par contre-exemple.
+
+Rapporter lequel des deux a été fait.
+4. Témoins de passation (corpus v3 § 2 bis)
+Nouveau module `formal/Ern/Concurrency/Corpus/Handoff.lean`. Encoder W-HO, W-HO′ et W-HO″ selon les règles du corpus § 4 : un théorème par verdict, préconditions par `decide`, verdicts écrits depuis le corpus. Machine d'autorités seule ; aucun modèle d'événements, aucune notion de `happens-before`, aucun énoncé sur des data races.
+
+* Chaque trace est une `EncapsulatedTrace` depuis l'état initial (aucun mutex n'y figure) ; les invariants de T2 tiennent à l'état final par le théorème général, sans preuve propre au cas.
+* W-HO réutilise la mise en place de S13 ; son jumeau est `S13_2_ok`, référencé et non dupliqué.
+* W-HO′ : le `spawn` cédant `a` pendant que `b := derive(a, Modify)` reste tenue par `f0` est attendu `ok` ; si le modèle le rejette, rapporter la clause et l'état, ne rien corriger.
+* W-HO″ : `terminate` de `c1` avec `c2` vivant est attendu `ok`, la frame initiale de `c2` étant reparentée sur `f0` (WC4 C6, C7) ; énoncer le parent obtenu. Négatif : `c1 : release(a)` avant `c2 : release(a₂)` → `reject` (O3.3).
+* Docstrings : citer le corpus (`corpus-spec2-m3.md §2 bis W-HO`) ; ne pas y affirmer d'absence d'ordre ni de course.
+
+5. Synchronisation documentaire
+
+* Docstrings du corpus alignées sur le corpus v3 : S10 (`ok`, suite bloquée puis réversible), S11 (cession d'`o1′`), S12, S3 négatif (§60.2), W-C22.2 (fondement renforcé), S16 (c) (nom aligné sur `Z` si le renommage est sans effet sur les preuves, sinon docstring seule).
+* Index consolidé (partie B de `spec2-m3.md`) : lignes S10, S11, W-C22.2 mises à jour ; tâches 1–4 ajoutées à B.2/B.3 ; « Ce qui n'est pas vérifié » réduit d'autant ; audit des axiomes refait ; numéros de ligne relevés par script au commit final.
+
+Règles Lean
+Inchangées : aucun `sorry`, `admit`, `axiom`, `native_decide`, `noncomputable` ; axiomes `{propext, Quot.sound}` ; `lake build` sans nouvel avertissement ; `grep` d'`AGENTS.md` vide ; docstrings en anglais citant WC4, la Spec 1 ou le corpus v3 sans les reformuler ; aucun énoncé ni définition affaibli ; aucune définition de `Ern.MemoryModel` touchée ; Conventional Commits sans `Co-Authored-By`.
+Rapport
+`formal/reports/spec2-m3-close.md`, en français, court : pour chaque tâche, les théorèmes (module:ligne), le verdict attendu et obtenu, la clause ; les écarts ; l'audit final des axiomes. L'index consolidé reste dans `spec2-m3.md`, mis à jour en place (tâche 5).
+Ordre
+1 → 2 → 3 → 4 → 5. Commit à chaque tâche compilant.
+</pasted_content id="c7c6">
+
+---
+
+Keep them
+
+---
+
+@"/Users/guygouri/Downloads/corpus-spec2-m3.md" @"/Users/guygouri/Downloads/ERN_Concurrency_Model_WC5.md"
+
+<pasted_content id="c7c6">
+# Brief Claude Code — ERN Spec 2, jalon 4, première passe : passation d'autorité
+
+## Cadre
+
+Nouvelle branche `formal/spec2-m4`, créée depuis la tête de `formal/spec2-m3` (après les commits de clôture). Formalisation exploratoire, jamais mergée. Pas de push sur `main`, pas de PR.
+
+Décision sur la clôture du jalon 3 : les trois théorèmes ajoutés au-delà de la tâche 5 (`S10_2_ok`, `S10_3_ok`, `W_C22_2_cycle`) sont **conservés**. Ils encodent des verdicts du corpus.
+
+Documents joints, **non commités** :
+
+- `ERN_Concurrency_Model_WC5.md` — candidate de travail WC5, non normative. Elle reprend WC4 C1–C25 à l'identique, sauf C16–C18 et C22, et ajoute C26–C53.
+- `corpus-spec2-m3.md` **v4** — verdicts de référence ; sa § 5 liste les changements.
+
+Ne modifie ni `specs/`, ni `AGENTS.md`, ni `CLAUDE.md`, ni `formal/DESIGN.md`, ni aucun fichier de `formal/Ern/MemoryModel/`.
+
+## Objet
+
+**Machine d'autorités seule.** Aucun modèle d'événements, aucune relation `po`, `rf`, `mo`, `sw` ou `hb`, aucun énoncé sur des data races : tout cela viendra dans une passe ultérieure.
+
+L'ordre de passation de WC5 (C43–C46) repose sur deux lemmes de la machine d'autorités, donnés comme **conjectures** : L1 (`OB-C17`) et L2 (`OB-C18`). Cette passe les établit ou les réfute. Elle commence par un témoin, W-GR, dont le brief attend qu'il réfute L1 tel qu'il est énoncé, puis elle teste une correction.
+
+**Hors périmètre.** La classification `reject` / non habilité de C16–C18 (D-C1) : les encodages existants ne changent pas. Les atomiques, `readShared`, les ordres mémoire (C35–C42). Les événements (C26–C34, C47–C52).
+
+**Définitions existantes.** Aucune définition ni aucun énoncé existant n'est modifié : `Encap`, `EncapsulatedTrace`, `SyncInv`, `GrantDiscipline`, `LStep`, `ArenaInvC`, `AdminSep` restent tels quels. Les prédicats nouveaux sont ajoutés à côté. Modules nouveaux dans `formal/Ern/Concurrency/`, nommés selon la convention du dossier (suggestion : `Cap.lean`, `Encap5.lean`, `CapPreserve.lean`, et `Corpus/GuardedRead.lean`).
+
+## Tâches
+
+### 1. Témoin W-GR (corpus § 2 ter)
+
+Module `Corpus/GuardedRead.lean`, depuis l'état `MX₄` existant. Un théorème par verdict, préconditions par `decide`, verdicts écrits depuis le corpus :
+
+1. `c1 : read3(T)` avec `access = guarded` → attendu `ok` ;
+2. `c0 : acquire(e)` → attendu `ok` ;
+3. `c0 : write3(T)` via `g` → attendu `ok` ;
+4. négatif : `c1 : read3(T)` avec `access = guarded` pendant que `g` est active → attendu `reject`, mode effectif de `guarded` absent ;
+5. les pas 1 à 3 forment une `EncapsulatedTrace` depuis l'état initial → attendu vrai.
+
+Si un verdict obtenu diffère, rapporte la clause et l'état, ne corrige ni le témoin ni le modèle, puis continue : dans ce cas `GuardedExcl` (tâche 3) se réduit à `True` et `Attr5` à `Attr`, le reste est inchangé.
+
+### 2. Capacité de contexte (WC5 C43)
+
+Définis, avec leur décidabilité :
+
+- **`Attr st c x m`** — l'autorité `x` est attribuable au contexte `c` en mode `m`. C'est `S3.ExercisableAt` (Spec 1 §43, `Access/Basic.lean`) où « tenue par la frame courante » devient « tenue par une frame vivante du contexte `c`, courante ou suspendue ». Le cas « tenue par une place » garde la même forme : une autorité elle-même attribuable à `c` en mode `m` a un mode effectif permettant `m` sur toutes les feuilles de la place tenante.
+- **`cap st c l`** — `none`, `Observe` ou `Modify` : le plus grand mode `m` tel qu'une autorité attribuable à `c` en mode `m` ait un mode effectif permettant `m` sur la feuille `l`.
+
+Prouve :
+
+- **`cap_sound`** : pour tout pas d'accès habilité du contexte `c` (`read3`, `write3`, `writeShared`), `cap` de `c` sur chaque feuille accédée est au moins le mode requis (`Observe` pour `read3` et `writeShared`, `Modify` pour `write3`).
+
+Évalue, par `decide`, `cap` de chaque contexte sur la feuille en jeu à chaque état des témoins W-HO, W-HO′, W-HO″ (`Corpus/Handoff.lean`) et W-GR, et pour chaque baisse, le contexte dont le pas la cause. Attendu par ce brief, d'après §43 (un écart est un résultat à rapporter) :
+
+| Témoin | Baisses de `cap` attendues |
+|---|---|
+| W-HO | `c0` au `spawn` qui cède `a` (son propre pas) ; `c1` à son `release(a)` (son propre pas) |
+| W-HO′ | `c0` à son `release(b)` (son propre pas) |
+| W-HO″ | `c2` à son `release(a₂)`, `c1` à son `release(a)` (leurs propres pas) |
+| **W-GR** | **`c1` passe d'`Observe` à `none` sur `T` au pas `acquire` de `c0`** : baisse causée par un autre contexte |
+
+Si W-GR donne bien cela, énonce-le comme théorème : c'est un contre-exemple à L1 (WC5 C45) pour `cap` sous `EncapsulatedTrace`.
+
+### 3. Encapsulation étendue — proposition à tester, additive
+
+`GuardedExcl` est une **proposition de ce brief**, absente de WC5 : C22.1 n'exclut que `derive` et `split` de source `guarded`. Elle est testée ici ; elle n'est pas une décision.
+
+- **`GuardedExcl st lbl`** : pour toute entrée vivante `e`, l'étiquette n'est pas une opération du noyau qui **exerce** `e.guarded` comme autorité d'accès : au moins `read3`, `write3`, `writeShared`. Passe en revue tous les constructeurs de `KernelOp` dont un argument est une autorité exercée (soumise à `ExercisableAt` dans la précondition) et rapporte la liste retenue. `release(guarded)` et les opérations sur la place `slot` ne sont pas concernées.
+- **`CtlExcl st lbl`** (WC5 C22, exigence 4) : pour toute entrée vivante `e`, l'étiquette n'est pas un `read3`, `write3` ou `writeShared` brut dont les feuilles contiennent `ControlOf(e)`.
+- **`Encap5 st lbl := Encap st lbl ∧ GuardedExcl st lbl ∧ CtlExcl st lbl`**, et **`EncapsulatedTrace5`**, de même forme qu'`EncapsulatedTrace`.
+- **`encapsulatedTrace5_imp`** : toute `EncapsulatedTrace5` est une `EncapsulatedTrace`. Les théorèmes T2 à T7 s'y transportent sans nouvelle preuve.
+- **`Attr5`, `cap5`** : comme `Attr` et `cap`, sauf que l'autorité `guarded` d'une entrée vivante n'est attribuable à aucun contexte. Les grants sont des autorités ordinaires et restent attribuables.
+
+Témoins, par `decide` :
+
+- W-GR pas 1 : `ok` noyau et `¬ GuardedExcl` ;
+- S12 (`write3(lock)` depuis `MX₃`) : `ok` noyau et `¬ CtlExcl` ;
+- le témoin du jalon 3 `read3(lock)` depuis `MX₄` : `ok` noyau et `¬ CtlExcl` ;
+- non-vacuité : un cycle `acquire`, `write3(T)` via le grant, `unlock` depuis `MX₄` est une `EncapsulatedTrace5`.
+
+### 4. L2 et L1 sur `cap5`
+
+Sur les états atteints par une `EncapsulatedTrace5` depuis un état initial, avec les invariants qui y sont disponibles. Établis ou réfute :
+
+- **`cap5_sound`** : comme `cap_sound`, pour les pas d'accès admis par `Encap5`.
+- **`cap5_compat`** (L2, forme d'état) : pour `c ≠ c′`, jamais `cap5 st c l = Modify` avec `cap5 st c′ l ≠ none`.
+- **`cap5_drop_own`** (L1) : pour un pas `LStep` admis par `Encap5` de `st` à `st′`, si `cap5` du contexte `c` sur `l` baisse strictement, alors le pas est un pas de `c`. Toutes les étiquettes : opérations du noyau, `spawn` (par référence et par valeur), `terminate`, `join`, `exitFrameC`, `newMutex`, `acquire`, `unlock`, `resetLock`, `newArena`, `issue`, `reset`.
+- **`handoff_loss_exists`** (L2, forme de trace) : sur une `EncapsulatedTrace5`, si le contexte `c′` fait un accès à `l` au pas `i` et un contexte `c ≠ c′` un accès à `l` au pas `j > i`, l'un des deux au moins exigeant `Modify`, alors il existe `k` avec `i < k < j` tel que le pas `k` est un pas de `c′` et fait baisser `cap5` de `c′` sur `l`.
+
+Si l'un est faux : contre-exemple minimal (états, étiquette, clause), sans correction du modèle ni affaiblissement de l'énoncé. Si une preuve n'aboutit pas, rapporte l'état du but et l'étiquette qui résiste.
+
+### 5. Cas S10b (corpus § 2 quater)
+
+Module n'important que `Ern.MemoryModel`, comme `Corpus/S10Seq.lean`. Par `decide` :
+
+- mise en place, dont `store(x, L)` → attendu `ok` ;
+- `transfer(L, D)` depuis `f1` → attendu `reject` ; nomme le ou les champs de `TransferPre` qui échouent (attendu : `anchorOrderHeld`, §63.7 ; éventuellement aussi §63.6) et montre que §63.1 à §63.5 tiennent ;
+- jumeau `transfer(L, L2)` → attendu `ok`.
+
+## Règles Lean
+
+Inchangées : aucun `sorry`, `admit`, `axiom`, `native_decide`, `noncomputable` ; axiomes `{propext, Quot.sound}` ; `lake build` sans nouvel avertissement ; `grep` d'`AGENTS.md` vide ; docstrings en anglais citant WC5, la Spec 1 ou le corpus v4 sans les reformuler ; aucun énoncé ni définition existant affaibli ou modifié ; le verdict attendu vient du corpus ou de ce brief, jamais du modèle ; Conventional Commits sans `Co-Authored-By`.
+
+## Rapport
+
+`formal/reports/spec2-m4-handoff.md`, en français :
+
+- par tâche : théorèmes (module:ligne), verdict attendu et obtenu, clause ;
+- la table des valeurs de `cap` et de `cap5` sur les quatre témoins ;
+- le statut de `cap5_sound`, `cap5_compat`, `cap5_drop_own`, `handoff_loss_exists` : prouvé, réfuté (contre-exemple) ou inachevé (état du but) ;
+- la liste des constructeurs de `KernelOp` couverts par `GuardedExcl` ;
+- les écarts ;
+- l'audit final des axiomes.
+
+## Ordre
+
+1 → 2 → 3 → 4 → 5. Commit à chaque tâche compilant.
+</pasted_content id="c7c6">
+
+---
+
+Yes, continue L1
+
+---
+
+Yes, test the fix
+
+---
+
+@"/Users/guygouri/Downloads/ERN_Concurrency_Model_WC5.md" @"/Users/guygouri/Downloads/corpus-spec2-m3.md"
+
+<pasted_content id="c7c6">
+Brief Claude Code — ERN Spec 2, jalon 4 : étendre l'exclusion aux droits sur les places
+Cadre
+Même branche `formal/spec2-m4`, à la suite du test de `ChainExcl` (`Encap5C.lean`, `Corpus/GuardedChainC.lean`). Formalisation exploratoire, jamais mergée. Pas de push sur `main`, pas de PR.
+Tes noms sont conservés : `Exer5`, `ChainExcl`, `Encap5C`, `EncapsulatedTrace5C`, `Run5C`, `cap5_sound_C`, `handoff_loss_exists_C`.
+Documents joints, non commités :
+
+* `ERN_Concurrency_Model_WC5.md` — inchangé.
+* `corpus-spec2-m3.md` v6 — il remplace la v4 que tu as lue ; sa § 5 liste les changements. Deux sections nouvelles pour toi : § 2 quinquies (W-GC, ton contre-exemple, verdicts re-dérivés de la Spec 1) et § 2 sexies (W-GS, nouveau).
+
+Ne modifie ni `specs/`, ni `AGENTS.md`, ni `CLAUDE.md`, ni `formal/DESIGN.md`, ni aucun fichier de `formal/Ern/MemoryModel/`.
+Objet
+Machine d'autorités seule : aucun événement, aucune relation `po`, `rf`, `mo`, `sw`, `hb`, aucun énoncé sur des courses.
+Ton rapport note que `ChainExcl` ne contraint pas les opérations dont le droit est un `HasRight`, et que ces opérations « n'accèdent à aucune donnée ». C'est vrai de `Label.Access`, pas de leur réalisation : `store` écrit une feuille, `transfer` lit sa source et écrit sa destination (WC5 C27). Le témoin W-GS construit le cas : un propriétaire qui garde `Modify` sur `slot` et ne partage que `lock` écrit dans la donnée protégée sans verrou, pendant qu'un autre contexte peut prendre le verrou.
+Cette passe fait trois choses : vérifier W-GS, étendre l'exclusion aux droits sur les places, et rejouer les usages légitimes sous la règle étendue.
+Définitions existantes. Aucune n'est modifiée, y compris `ChainExcl`, `Encap5C` et leurs théorèmes. Tout est ajouté à côté.
+Tâches
+1. Témoin W-GS (corpus § 2 sexies)
+Module `Corpus/GuardedStore.lean`. Un théorème par verdict, préconditions par `decide`, verdicts écrits depuis le corpus :
+
+1. `c0 : store(z2, T)` sans grant → attendu `ok` ;
+2. `c1 : acquire(e)` → attendu `ok` ;
+3. `c1 : read3(T)` via son grant → attendu `ok` ;
+4. les pas 1 à 3 depuis l'état initial forment une `EncapsulatedTrace5C` → attendu vrai ;
+5. jumeau : `c0 : acquire(e)` puis `c0 : store(z2, T)` → attendu `ok`, `ok`.
+
+Si un verdict obtenu diffère, rapporte la clause et l'état, ne corrige rien, et continue.
+2. Exclusion étendue — proposition à tester
+La règle visée : aucun droit utilisé par un pas n'est justifié à travers le `guarded` d'une entrée vivante, que ce droit porte sur un argument d'autorité (`ChainExcl`, fait) ou sur une place.
+
+* `HasRight5 st c m q` — `HasRight` (`Access/Basic.lean`) avec `Exer5` à la place d'`ExercisableAt`. Décidable.
+* `PlaceExcl st lbl` :
+   * étiquettes du noyau : chaque prémisse `HasRight` de la précondition tient aussi sous sa forme `HasRight5`, sur la même place. Attendu d'après `Access/Ops.lean` : `release` (cas d'une autorité tenue par une place), `transfer` (source et destination), `depend`, `store` (cible, avant et après), `endUse`, `free`, `alloc`, `pin`, `unpin` ;
+   * `issue`, `reset` : le droit sur la valeur d'arène qu'exige leur précondition, sous forme `HasRight5` ;
+   * `spawnVal` : les prémisses `HasRight` de ses transferts, chacune dans l'état de sa phase ;
+   * `acquire` : le droit d'accès au contrôleur de C14.3, sous forme sans `guarded` vivant ;
+   * autres étiquettes : `True`.
+* `Encap5R st lbl := Encap5C st lbl ∧ PlaceExcl st lbl`, `EncapsulatedTrace5R`, et l'inclusion dans `EncapsulatedTrace5C` : `cap5_compat`, `cap5_drop_own`, `cap5_sound_C` et `handoff_loss_exists_C` s'y transportent sans nouvelle preuve.
+* `placeExcl_of_noLive` : sans entrée vivante, tout pas `ok` satisfait `PlaceExcl`.
+
+Rapporte la liste des prémisses couvertes, étiquette par étiquette. Rapporte aussi, sans les couvrir, les prémisses de droit des étiquettes laissées à `True` (`newMutex` C13.2, `resetLock` C18.1, `unlock`, `newArena`, s'il y en a), avec une ligne sur chacune.
+3. Ce que la règle exclut et ce qu'elle garde
+Par `decide` :
+
+* W-GS pas 1 : `ok` noyau, admis par `Encap5C`, `¬ PlaceExcl` ;
+* W-GS jumeau, prolongé d'un `unlock`, depuis l'état initial : `EncapsulatedTrace5R` ;
+* `lc_trace` est une `EncapsulatedTrace5R` ;
+* usages légitimes rejoués depuis l'état initial, chacun attendu `EncapsulatedTrace5R` :
+   * le cycle de `cycle_trace5` ;
+   * S2 et S4 ;
+   * S3 jusqu'à `issue` (les étiquettes de `s3_realized`) ;
+   * S10 : `transfer(M, M′)` du mutex entier, grant actif, puis le transfert retour.
+
+Si l'un n'est pas admis, c'est un résultat : rapporte le pas exclu et la prémisse en cause, sans rien corriger.
+Règles Lean
+Inchangées : aucun `sorry`, `admit`, `axiom`, `native_decide`, `noncomputable` ; axiomes `{propext, Quot.sound}` ; `lake build` sans nouvel avertissement ; `grep` d'`AGENTS.md` vide ; docstrings en anglais citant WC5, la Spec 1, le corpus v6 ou ce brief ; aucun énoncé ni définition existant affaibli ou modifié ; le verdict attendu vient du corpus ou de ce brief, jamais du modèle ; Conventional Commits sans `Co-Authored-By`.
+Rapport
+Mets à jour `formal/reports/spec2-m4-handoff.md` en place, avec une section nouvelle, en français :
+
+* W-GS : attendu, obtenu, clause, théorème (module:ligne) ;
+* la liste des prémisses couvertes par `PlaceExcl`, et celle des prémisses laissées de côté ;
+* les usages légitimes rejoués : admis, ou pas exclu et prémisse en cause ;
+* les écarts ;
+* l'audit final des axiomes.
+
+Ordre
+1 → 2 → 3. Commit à chaque tâche compilant.
+</pasted_content id="c7c6">
+
+---
+
+@"/Users/guygouri/Downloads/corpus-spec2-m3.md" @"/Users/guygouri/Downloads/ERN_Concurrency_Model_WC5.1.md"
+
+<pasted_content id="c7c6">
+Brief Claude Code — ERN Spec 2, jalon 4 : graphe d'événements abstrait et ordre de passation
+Cadre
+Même branche `formal/spec2-m4`, à la suite de l'extension aux droits sur les places. Formalisation exploratoire, jamais mergée. Pas de push sur `main`, pas de PR.
+Les écarts 10 à 13 de ton dernier rapport sont acceptés tels quels.
+Documents joints, non commités :
+
+* `ERN_Concurrency_Model_WC5.1.md` — il remplace WC5. Ses changements sont marqués `[WC5.1]` : C22.6, C43, C45, C46, C51, C52, `OB-C28`, parties V et VI.
+* `corpus-spec2-m3.md` v8 — verdicts et faits attendus de référence ; nouveau : § 2 septies.
+
+Ne modifie ni `specs/`, ni `AGENTS.md`, ni `CLAUDE.md`, ni `formal/DESIGN.md`, ni aucun fichier de `formal/Ern/MemoryModel/`.
+Objet
+Première passe au niveau des événements. Elle reste sans valeurs : aucun `rf`, aucun `mo`, aucun atomique, aucun ordre mémoire, aucune réalisation physique.
+Le graphe est construit sur une trace d'autorités et n'utilise que l'ordre de programme et les trois arêtes de synchronisation de référence de WC5.1 (C32, C47, C48), prises abstraitement. Cela suffit pour :
+
+* régler les parties 2 à 4 des témoins de passation (corpus § 2 septies) ;
+* prouver la ligne « feuilles ordinaires » de C52 comme théorème de composition ;
+* décharger l'ordre de passation pour `spawn`, `join` et le mutex.
+
+Hypothèse du modèle, à écrire en tête du rapport. L'arête du mutex est prise sous sa forme abstraite : d'un `unlock(e)` vers le prochain `acquire(e)` réussi dans l'ordre de la trace. Que le protocole concret du contrôleur la réalise par `rf` relève d'`OB-C05` ; ce n'est pas prouvé ici.
+Définitions existantes. Aucune n'est modifiée. Tout est ajouté à côté.
+Définitions
+Sur une exécution `EncapsulatedTrace5R` depuis un état initial, aux états nommés par position comme `Run5C`.
+
+* Événements : un événement par pas, de contexte `Label.ctx` ; plus un marqueur `start(c)` par contexte `c` créé par un `spawn` ou un `spawnVal` réussi (C28). Les événements internes à un pas ne sont pas modélisés dans cette passe.
+* `po` : entre deux pas du même contexte, dans l'ordre de la trace ; `start(c)` précède tous les pas de `c`.
+* `sw` :
+   * du pas `spawn` ou `spawnVal` qui crée `c` vers `start(c)` ;
+   * de `terminate(c)` vers tout `join` réussi de `c` qui le suit ;
+   * d'`unlock(e)` vers le premier `acquire(e)` réussi qui le suit.
+* `hb` : clôture transitive de `po ∪ sw`. Décidable sur une exécution finie.
+* Paire exclusive `(i, j, l)` : `i < j`, contextes distincts, les deux pas accèdent à la feuille `l` (`Label.Access`), l'un des deux au moins exige `Modify`.
+* `Race` : il existe une paire exclusive sans `hb(i, j)`. C'est la définition de C33 restreinte aux accès `read3`, `write3`, `writeShared` et aux paires dont un membre est un accès ordinaire en `Modify` (C44).
+* Pas de perte `r(i, j, l)` d'une paire exclusive : le premier pas après `i` à l'issue duquel `cap5` du contexte de `i` sur `l` devient compatible avec le mode du pas `j` — `none` si `j` exige `Modify`, autre que `Modify` si `j` n'exige qu'`Observe` (C45).
+* `HandoffOrdered` : pour toute paire exclusive, `hb(r(i, j, l), j)` (C46).
+
+Tâches
+1. Le graphe
+Définitions ci-dessus, et : `hb` ne relie que des événements en ordre croissant de position (`start(c)` étant placé à son `spawn`), donc `hb` est irréflexive.
+2. Témoins sans synchronisation (corpus § 2 septies)
+Par `decide`, sur les traces existantes de `Corpus/Handoff.lean` : pour W-HO, W-HO′ et W-HO″, les deux écritures de `X` forment une paire exclusive, sans `hb` entre elles, et la paire viole `HandoffOrdered`. Pour W-HO″, énonce aussi que le `join(c1)` réussi se trouve entre les deux écritures.
+3. Jumeaux synchronisés (corpus § 2 septies)
+Encode W-HO-J et W-HO″-J : verdicts d'autorité par `decide`, chaque trace étant une `EncapsulatedTrace5R` depuis l'état initial. Puis, pour W-HO-J, W-HO″-J et `lc_trace` : la paire d'accès est ordonnée par `hb` et satisfait `HandoffOrdered`.
+4. Théorème de composition (C52, feuilles ordinaires)
+
+* `lossStep_own` : pour toute paire exclusive, `r(i, j, l)` existe, vérifie `i < r < j`, et c'est un pas du contexte de `i`. Depuis `cap5_sound_C`, `cap5_compat`, `cap5_drop_own`.
+* `handoffOrdered_no_race` : `HandoffOrdered` entraîne `¬ Race`.
+
+Hypothèses : celles de `handoff_loss_exists_C`, rien de plus. Si un énoncé est faux, contre-exemple minimal, sans correction.
+5. Décharges des protocoles de référence (C47, C48)
+Prouve, dans la forme la plus forte que le modèle permet :
+
+* `spawn_orders` : tout pas du créateur antérieur au `spawn` de `c` est `hb`-avant tout pas de `c`.
+* `join_orders` : tout pas de `c` est `hb`-avant un `join` réussi de `c`.
+* `lock_orders` : pour une entrée `e`, un `unlock(e)` est `hb`-avant tout `acquire(e)` réussi qui le suit, tant que chaque prise intermédiaire est rendue par un `unlock(e)` de son détenteur. L'abandon d'un grant suivi d'un `resetLock` est hors de ce lemme (WC5.1 C49) ; dis-le dans le rapport.
+
+Si une forme plus faible seulement est prouvable, énonce-la et dis ce qui manque.
+Règles Lean
+Inchangées : aucun `sorry`, `admit`, `axiom`, `native_decide`, `noncomputable` ; axiomes `{propext, Quot.sound}` ; `lake build` sans nouvel avertissement ; `grep` d'`AGENTS.md` vide ; docstrings en anglais citant WC5.1, la Spec 1, le corpus v8 ou ce brief ; aucun énoncé ni définition existant affaibli ou modifié ; le verdict ou le fait attendu vient du corpus ou de ce brief, jamais du modèle ; Conventional Commits sans `Co-Authored-By`.
+Rapport
+Nouveau fichier `formal/reports/spec2-m4-events.md`, en français :
+
+* l'hypothèse du modèle sur l'arête du mutex ;
+* les définitions, avec leurs écarts éventuels au brief ;
+* par tâche : attendu, obtenu, clause, théorème (module:ligne) ;
+* le statut de `lossStep_own`, `handoffOrdered_no_race`, `spawn_orders`, `join_orders`, `lock_orders` : prouvé, réfuté (contre-exemple) ou inachevé (état du but) ;
+* ce qui n'est pas couvert : valeurs, `rf`, `mo`, atomiques, ordre interne des pas, accès engendrés par les autres opérations ;
+* l'audit final des axiomes.
+
+Ordre
+1 → 2 → 3 → 4 → 5. Commit à chaque tâche compilant.
+</pasted_content id="c7c6">
+
+---
+
+<pasted_content id="c7c6">
+# Brief Claude Code — ERN Spec 2, jalon 4 : premiers tests herdtools7
+
+## Cadre
+
+Même branche `formal/spec2-m4`. Travail exploratoire, jamais mergé. Pas de push sur `main`, pas de PR.
+
+Cette passe est indépendante de la passe Lean sur le graphe d'événements. Fais-la **après** elle dans la même session, pour ne pas avoir deux sessions qui commitent sur la même branche en même temps.
+
+Nouveau dossier, décidé par Guy : **`formal/herd/`**. Rien n'est écrit ailleurs, hors le rapport.
+
+Document joint, **non commité** : `ERN_Concurrency_Model_WC5.1.md`. Clauses utiles : C31 à C34 (relations, `sw`, `hb`, course, no-thin-air), C39, C40 (RMW, ordres mémoire), C42, C44 (accès mixtes), C48 (mutex de référence), C53 (niveaux de modèle).
+
+Ne modifie ni `specs/`, ni `AGENTS.md`, ni `CLAUDE.md`, ni `formal/DESIGN.md`, ni rien sous `formal/Ern/`.
+
+## Objet
+
+Établir ce que le **modèle de référence RC11** dit sur les motifs dont dépend WC5.1. C'est le niveau « RC11 de référence » de C53 : on ne teste pas ici le fragment ERN lui-même, on fixe le point de comparaison.
+
+Trois questions :
+
+1. Les ordres `release` et `acquire` ordonnent-ils bien des accès ordinaires à travers une lecture atomique, et `relaxed` non ? (C32, C40)
+2. Le protocole du mutex de référence — prise par RMW `acquire`, libération par écriture `release` — ordonne-t-il deux sections critiques, et chaque ordre est-il nécessaire ? (C48, `OB-C05`)
+3. Que change l'axiome no-thin-air sur le motif de *load buffering* ? (C34, D-C8)
+
+Hors de portée de herdtools7, à écrire dans le rapport : `spawn` et `join` (un test litmus lance tous ses threads ensemble), les autorités, tout ce qui relève de la machine d'autorités.
+
+## Correspondance ERN ↔ C11 utilisée dans les tests
+
+| ERN (WC5.1) | Test litmus C |
+|---|---|
+| `readShared(l, ordre)` | `atomic_load_explicit(l, memory_order_…)` |
+| `writeShared(l, v, ordre)` sur feuille `Atomic` | `atomic_store_explicit(l, v, memory_order_…)` |
+| RMW (C39) | `atomic_exchange_explicit`, `atomic_compare_exchange_strong_explicit` |
+| `read3`, `write3` | lecture et écriture ordinaires d'un `int` |
+| `relaxed`, `release`, `acquire`, `acq_rel`, `seq_cst` | les ordres C11 de même nom |
+
+## Tâches
+
+### 1. Vérifier l'installation
+
+Relève : la version (`herd7 -version`), le chemin du répertoire des modèles, la présence de `rc11.cat`, et dans ce fichier le nom exact de ses contrôles. Attendu, d'après le dépôt herdtools7 : `coherence1`, `coherencermw`, `atomicity`, `SC`, `no-thin-air`, et `undefined_unless empty dr as Dr` pour les courses. Relève aussi, par `herd7 -help`, l'option qui choisit le modèle et celle qui désactive un contrôle nommé.
+
+Si `rc11.cat` est absent ou si ses contrôles diffèrent, rapporte-le et adapte les commandes ; ne réécris pas le modèle.
+
+### 2. Écrire les tests
+
+Dans `formal/herd/litmus/`, un fichier par test, au format litmus C de herd7. Garde chaque test minimal. Le nom entre parenthèses est le nom de fichier attendu.
+
+**Groupe A — ordres mémoire**
+
+- **A1 (`MP+rel+acq`)** — P0 : écriture ordinaire `*d = 1`, puis `store(f, 1, release)`. P1 : `r0 = load(f, acquire)` ; si `r0` vaut 1, `r1 = *d`.
+- **A2 (`MP+rlx+rlx`)** — A1 avec `relaxed` des deux côtés.
+- **A3 (`MP+sc+sc`)** — A1 avec `seq_cst` des deux côtés.
+- **A4 (`LB+rlx`)** — P0 : `r0 = load(x, relaxed)` ; `store(y, 1, relaxed)`. P1 : `r0 = load(y, relaxed)` ; `store(x, 1, relaxed)`. C'est le test de WC5.1 C34.
+
+**Groupe B — mutex de référence**
+
+Verrou `l`, atomique, initialisé à 0 ; donnée `d`, `int` ordinaire. Section critique : une écriture ordinaire de `d`.
+
+Trois propriétés sont à distinguer dans chaque test de ce groupe, car affaiblir un ordre ne les touche pas toutes :
+
+- **exclusivité de la prise** : deux threads n'obtiennent jamais tous les deux `r0 = 0`. Elle repose sur l'atomicité du RMW, pas sur l'ordre mémoire ;
+- **synchronisation mémoire** : la libération d'une section est `hb`-avant la prise suivante ;
+- **absence de course** sur `d`.
+
+- **B1 (`LOCK+xchg-acq+rel`)** — chaque thread : `r0 = exchange(l, 1, acquire)` ; si `r0` vaut 0 : `*d = <valeur du thread>`, puis `store(l, 0, release)`.
+- **B2 (`LOCK+xchg-acq+rlx`)** — B1 avec la libération en `relaxed`.
+- **B3 (`LOCK+xchg-rlx+rel`)** — B1 avec la prise en `relaxed`.
+- **B4 (`LOCK+sc+sc`)** — B1 avec `seq_cst` partout.
+- **B5 (`LOCK+cas-acq+rel`)** — B1 avec `atomic_compare_exchange_strong_explicit` (succès `acquire`, échec `relaxed`) à la place de l'échange, si le herd7 installé l'accepte. Sinon, rapporte l'erreur et passe.
+- **B6 (`LOCK3+xchg-acq+rel`)** — B1 à trois threads, le deuxième et le troisième lisant `d` avant de l'écrire.
+
+**Groupe C — accès mixtes et témoins simples**
+
+- **C1 (`MIX+store-rlx+read`)** — P0 : `store(x, 1, relaxed)`. P1 : lecture ordinaire de la même case `x`. Si herd7 refuse de mêler accès atomique et ordinaire sur une même case, rapporte-le.
+- **C2 (`AT+store+store`)** — deux `store(x, …, relaxed)` concurrents.
+- **C3 (`NA+write+write`)** — deux écritures ordinaires concurrentes de `d`.
+
+### 3. Exécuter et comparer
+
+Un script `formal/herd/run.sh` lance tous les tests sous `rc11.cat` et écrit la sortie brute de chacun dans `formal/herd/results/`. A4 est lancé deux fois : sous `rc11.cat`, puis avec le contrôle `no-thin-air` désactivé. Préfère l'option de herd7 qui saute un contrôle nommé ; s'il n'y en a pas, fais une copie locale du modèle sans cette ligne, en gardant son en-tête d'attribution, et note sa licence (CeCILL-B) dans le README.
+
+Attendu par ce brief, d'après les définitions de RC11. Un écart est un résultat à rapporter, pas à corriger.
+
+| Test | Attendu |
+|---|---|
+| A1 | l'issue `r0 = 1 ∧ r1 = 0` n'est jamais observée ; aucune course |
+| A2 | course signalée (comportement indéfini, contrôle `Dr`) |
+| A3 | comme A1 |
+| A4 sous `rc11.cat` | l'issue `r0 = 1` dans les deux threads n'est jamais observée |
+| A4 sans `no-thin-air` | cette issue est observée |
+| B1 | prise exclusive ; aucune course |
+| B2 | prise **toujours exclusive** ; course signalée, la libération `relaxed` ne synchronise pas |
+| B3 | prise **toujours exclusive** ; course signalée, la prise `relaxed` ne synchronise pas |
+| B4 | prise exclusive ; aucune course |
+| B5 | comme B1 |
+| B6 | prise exclusive deux à deux ; aucune course |
+| C1 | course signalée |
+| C2 | aucune course |
+| C3 | course signalée |
+
+### 4. README
+
+`formal/herd/README.md`, en anglais : ce que le dossier contient, la version de herdtools7 utilisée, la commande pour tout relancer, la table de correspondance ERN ↔ C11, et la phrase : these tests exercise the RC11 reference model, not the ERN fragment.
+
+## Règles
+
+- Tout ce qui est commité est en anglais ; le rapport est en français.
+- Conventional Commits, sans `Co-Authored-By`.
+- Aucun fichier hors de `formal/herd/` et du rapport.
+- L'attendu vient de ce brief, jamais de l'outil. Ne retouche pas un test pour obtenir l'attendu : si le test est mal écrit, corrige-le et dis-le ; si l'outil contredit l'attendu, rapporte-le.
+
+## Rapport
+
+`formal/reports/spec2-m4-herd.md`, en français :
+
+- version de herdtools7, modèle utilisé, noms des contrôles relevés, options de ligne de commande retenues ;
+- par test : attendu, obtenu (les lignes utiles de la sortie brute), verdict ;
+- pour le groupe B, trois colonnes séparées : exclusivité de la prise, synchronisation mémoire, absence de course ;
+- les écarts et les tests que l'outil a refusés ;
+- ce que ces tests ne couvrent pas.
+
+## Ordre
+
+1 → 2 → 3 → 4. Commit à chaque tâche.
+</pasted_content id="c7c6">
+
+---
+
+<task-notification>
+<task-id>bzron6f5w</task-id>
+<tool-use-id>toolu_01QP5fb7YGVLpqGSaYnA5nFC</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-guygouri-Devlab-ernlang-ern/e6419d94-65c2-4a67-8a07-67ae7e574ad6/tasks/bzron6f5w.output</output-file>
+<status>completed</status>
+<summary>Background command "Run all tests via run.sh in the background" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+Yes, add it
+
+---
+
+<pasted_content id="c7c6">
+# Brief Claude Code — ERN Spec 2, jalon 4 : complément herdtools7
+
+## Cadre
+
+Suite de la passe herdtools7 : même branche `formal/spec2-m4`, même session, mêmes règles que le brief « premiers tests herdtools7 ». Pas de push sur `main`, pas de PR. Aucun fichier hors de `formal/herd/` et du rapport.
+
+Réponse à ta question : **oui**, ajoute le test sans libération. Les écarts 1 à 5 de ton rapport sont acceptés.
+
+L'écart 1 est une erreur du brief précédent : sa condition d'exclusivité est aussi vérifiée par deux prises successives. Les tests B1 à B6 restent tels quels.
+
+## Tâches
+
+### 1. Groupe D — exclusivité de la prise, mesurée directement
+
+Verrou `l`, atomique, initialisé à 0. Deux threads. Chaque thread fait un seul échange : ni libération, ni donnée. Condition : `exists (0:r0=0 /\ 1:r0=0)`.
+
+- **D1 (`XCHG+acq`)** — `r0 = exchange(l, 1, acquire)` dans chaque thread.
+- **D2 (`XCHG+rlx`)** — D1 avec `relaxed`.
+- **D3 (`XCHG+sc`)** — D1 avec `seq_cst`.
+
+Chaque test est lancé sous `rc11.cat`, puis avec les contrôles sautés indiqués. Attendu : la condition est-elle observée ?
+
+| Test | `rc11.cat` | sans `atomicity` | sans `coherencermw` | sans `atomicity` ni `coherencermw` | sans ces deux ni `SC` |
+|---|---|---|---|---|---|
+| D1 | jamais | jamais | jamais | observée | — |
+| D2 | jamais | jamais | jamais | observée | — |
+| D3 | jamais | jamais | jamais | jamais | observée |
+
+Raison, d'après `rc11.cat` (`myrmw = [RMW] | rmw` : un échange y est un seul événement). Si les deux échanges lisent l'écriture initiale, chacun est `rb`-avant l'autre. Cela donne un cycle d'`eco` sur un événement RMW (`coherencermw`), et un `rb; mo` d'un RMW vers lui-même (`atomicity`). Aucun de ces deux contrôles ne lit l'ordre mémoire. Pour `seq_cst`, le même cycle `rb; rb` est aussi dans `psc` (`SC`).
+
+### 2. Groupe E — séquence de libération
+
+- **E1 (`RS+rel+rlx`)** — P0 : écriture ordinaire `*d = 1` ; `store(f, 1, release)` ; `store(f, 2, relaxed)`. P1 : `r0 = load(f, acquire)` ; si `r0` vaut 2, `r1 = *d`. `r1` initialisé à `-1`. Condition : `exists (1:r0=2 /\ 1:r1=0)`.
+
+Attendu sous `rc11.cat` : aucune course ; la condition n'est jamais observée.
+
+Raison : `rs = [W]; (sb & loc)?; [W & …]; (rf; myrmw)*` compte dans la séquence de libération l'écriture suivante du même thread sur la même case. La lecture `acquire` de la valeur 2 synchronise donc avec l'écriture `release`.
+
+Ce test documente une divergence, à écrire dans le rapport sans rien corriger. WC5.1 C48 retient la forme C++20, où une écriture ordinaire du même thread ne prolonge pas la séquence de libération ; sous cette forme, le même programme a une course. C48 demande que cette différence avec `rc11.cat` soit dite lors de la comparaison.
+
+### 3. Rendre le contrôle annexe reproductible
+
+Ajoute à `run.sh` :
+
+- les exécutions avec `-skipchecks` du contrôle annexe de ton rapport, pour B1 à B5 ;
+- celles du groupe D ci-dessus.
+
+Commite leurs sorties dans `formal/herd/results/`. B6 reste hors du contrôle annexe, à cause de sa durée.
+
+### 4. Rapport et README
+
+Mets à jour `formal/reports/spec2-m4-herd.md` :
+
+- les résultats des groupes D et E : attendu, obtenu (lignes utiles de la sortie brute), verdict ;
+- dans la table du groupe B, la colonne « exclusivité de la prise » renvoie au groupe D ;
+- une section à part pour la divergence sur la séquence de libération.
+
+Mets à jour `formal/herd/README.md` : liste des tests et commande de relance.
+
+## Règles
+
+Inchangées. L'attendu vient de ce brief, jamais de l'outil : si l'outil contredit l'attendu, rapporte-le sans retoucher le test. Tout ce qui est commité est en anglais ; le rapport est en français. Conventional Commits, sans `Co-Authored-By`.
+
+## Ordre
+
+1 → 2 → 3 → 4. Commit à chaque tâche.
+</pasted_content id="c7c6">
+
+Précision sur E1 : « écriture ordinaire du même thread » veut dire écriture atomique non-RMW. Utilise ce terme dans le rapport et le README.
+
+---
+
+<task-notification>
+<task-id>bhqqqntna</task-id>
+<tool-use-id>toolu_018c8zzaJrj5ZsPsGd2weeTc</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-guygouri-Devlab-ernlang-ern/e6419d94-65c2-4a67-8a07-67ae7e574ad6/tasks/bhqqqntna.output</output-file>
+<status>completed</status>
+<summary>Background command "Rerun all tests and skip runs via run.sh" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+@"/Users/guygouri/Downloads/corpus-spec2-m3.md" @"/Users/guygouri/Downloads/ERN_Concurrency_Model_WC5.1.md"
+
+<pasted_content id="c7c6">
+Brief Claude Code — ERN Spec 2, jalon 4 : arête stricte du mutex
+Cadre
+Même branche `formal/spec2-m4`, à la suite du complément herdtools7. Formalisation exploratoire, jamais mergée. Pas de push sur `main`, pas de PR.
+Documents joints, non commités :
+
+* `ERN_Concurrency_Model_WC5.1.md` — inchangé. Clauses utiles : C18, C21, C22.6, C32, C45, C46, C48, C49.
+* `corpus-spec2-m3.md` v9 — verdicts et faits attendus de référence ; nouveau : § 2 octies.
+
+Ne modifie ni `specs/`, ni `AGENTS.md`, ni `CLAUDE.md`, ni `formal/DESIGN.md`, ni aucun fichier de `formal/Ern/MemoryModel/`.
+Objet
+Corriger un défaut du brief « graphe d'événements abstrait et ordre de passation ». Ton encodage est fidèle à ce brief : le défaut est dans la définition qu'il te donnait.
+L'arête du mutex y va d'un `unlock(e)` vers le prochain `acquire(e)` réussi. WC5.1 demande davantage : l'`acquire` doit lire directement, sur la même unité atomique, la publication de l'`unlock` (C32 point 1, C48). Deux opérations de la machine peuvent intervenir sur le contrôleur entre ces deux pas :
+
+* `resetLock(e)` (C18, effet ; C49) ;
+* un `transfer` qui déplace le mutex, après quoi `ControlOf(e)` est une autre feuille (corpus S7).
+
+Dans ces deux cas, le graphe actuel ordonne deux sections critiques que rien n'ordonne. Cette passe conserve le contre-exemple, ajoute un graphe strict à côté, et y rétablit les résultats de la passe précédente.
+Définitions existantes. Aucune n'est modifiée ni affaiblie : `SW`, `HB`, `Race`, `HandoffOrdered` et leurs théorèmes restent tels quels. Tout est ajouté à côté.
+Définitions
+
+* Arête stricte du mutex. D'un `unlock(e)` en `u` vers le premier `acquire(e)` en `a > u`, à deux conditions : aucun `resetLock(e)` en `k` avec `u < k < a` ; et le contrôleur de `e`, tel que le modèle le calcule (`ControlOf`, C21 point 3), désigne la même feuille dans tous les états entre l'issue du pas `u` et l'entrée du pas `a`.
+* Graphe strict. `po` inchangé ; `sw` strict = les arêtes de `spawn` et de `join` inchangées, plus l'arête stricte du mutex ; `hb` strict = clôture transitive.
+* `Race` stricte, `HandoffOrdered` strict. Les définitions de la passe précédente, lues sur `hb` strict. `ExclPair` et `lossStep` sont inchangés.
+
+Choisis les noms. Si un encodage équivalent est plus simple (par exemple un graphe paramétré par sa relation `sw`), prends-le et dis-le dans le rapport.
+Tâches
+1. Témoins, niveau autorités (corpus § 2 octies)
+Encode W-RL₀, W-RL, W-RL-J, W-TR et W-TR-J. Verdicts par `decide`, tous attendus `ok`. Chaque trace est attendue comme une `Run5R` depuis l'état initial.
+Si le modèle rejette un pas attendu `ok` — en particulier `resetLock(e)` quand le grant enregistré vaut `none` — ou si un conjoint d'`Encap5R` refuse `resetLock` (C22.6, exception non encore encodée, `OB-C28`), c'est un résultat : rapporte la clause, le conjoint et l'état, puis établis les faits sous la plus forte restriction qui admet la trace. Ne corrige ni le modèle ni l'attendu.
+2. Le défaut, sur le graphe existant
+Pour W-RL et W-TR, avec les définitions de la passe précédente : les deux écritures de `T` forment une paire exclusive, ordonnée par `hb`, qui satisfait `HandoffOrderedAt`. Ces théorèmes restent dans le dépôt comme contre-exemple (C45, dernier alinéa).
+3. Le graphe strict
+Définitions ci-dessus, et :
+
+* chaque arête stricte est une arête du graphe existant ; donc `hb` strict entraîne `hb`, `Race` entraîne `Race` stricte, et `HandoffOrdered` strict entraîne `HandoffOrdered` ;
+* `hb` strict croît en position, est irréflexif et décidable.
+
+4. Faits sur le graphe strict
+
+* Nouveaux témoins, par `decide`, d'après la table du corpus § 2 octies : W-RL et W-TR n'ont aucun `hb` strict entre les deux écritures et violent `HandoffOrdered` strict ; W-RL₀, W-RL-J et W-TR-J sont ordonnés par le chemin du corpus, arête par arête, et satisfont `HandoffOrdered` strict.
+* Traces de la passe précédente. W-HO, W-HO′, W-HO″ gardent leurs faits (par l'inclusion de la tâche 3). W-HO-J, W-HO″-J et `lc_trace` gardent leur chemin, `HandoffOrdered` strict et `¬ Race` stricte sur la trace entière.
+
+5. Théorèmes sur le graphe strict
+
+* `handoffOrdered_no_race`, `spawn_orders`, `join_orders` : mêmes énoncés, mêmes hypothèses, sur `hb` strict.
+* `lock_orders` : même énoncé sur `hb` strict, avec deux hypothèses de plus sur l'intervalle de `u` à `a` : aucun `resetLock(e)`, et le contrôleur de `e` constant. Si une forme plus fine est prouvable, donne-la.
+
+Si un énoncé est faux, contre-exemple minimal, sans correction.
+6. Stabilité de l'indice d'une entrée (écart 5 du rapport)
+Le long de toute `Run5C` : le registre ne raccourcit jamais, et l'entrée d'un indice donné garde la même identité `guarded`. Dans la forme la plus forte que le modèle permet ; si c'est faux, contre-exemple minimal.
+Hors de portée
+La réalisation physique du contrôleur (`OB-C05`), `rf`, `mo`, les atomiques ; les accès engendrés par les autres opérations (`OB-C20`) ; la couverture complète de C22.6 (`OB-C28`). Aucune classification générale des pas qui changent `ControlOf(e)` n'est demandée.
+Règles Lean
+Inchangées : aucun `sorry`, `admit`, `axiom`, `native_decide`, `noncomputable` ; axiomes `{propext, Quot.sound}` ; `lake build` sans nouvel avertissement ; `grep` d'`AGENTS.md` vide ; docstrings en anglais citant WC5.1, la Spec 1, le corpus v9 ou ce brief ; aucun énoncé ni définition existant affaibli ou modifié ; le verdict ou le fait attendu vient du corpus ou de ce brief, jamais du modèle ; Conventional Commits sans `Co-Authored-By`.
+Rapport
+Mets à jour `formal/reports/spec2-m4-events.md`, en français, avec une section « Arête stricte du mutex » :
+
+* l'hypothèse du modèle en tête du rapport, complétée par la condition de l'arête stricte ;
+* les définitions ajoutées, avec leurs écarts éventuels au brief ;
+* par tâche : attendu, obtenu, clause, théorème (module:ligne) ;
+* le statut de chaque théorème des tâches 3, 5 et 6 : prouvé, réfuté (contre-exemple) ou inachevé (état du but) ;
+* tout pas attendu `ok` que le modèle ou une restriction d'encapsulation refuse ;
+* l'audit final des axiomes.
+
+Ordre
+1 → 2 → 3 → 4 → 5 → 6. Commit à chaque tâche compilant.
+</pasted_content id="c7c6">
+
+---
+
+@"/Users/guygouri/Downloads/ERN_WC5_1_FINAL.md"
+
+<pasted_content id="c7c6">
+# Brief Claude Code — ERN Spec 2, jalon 4, tranche 2 : couche E, fragment d'événements
+
+## Cadre
+
+Même branche `formal/spec2-m4`. Formalisation exploratoire, jamais mergée. Pas de push sur `main`, pas de PR.
+
+Document joint, **non commité** : `ERN_WC5_1_FINAL.md`, appelé « WC5.1 corrigé ». Il remplace WC5.1 pour les citations. Clauses utiles : C26, C27, C30 à C34, C36 à C40, C42, C48, C53. Le corpus n'est pas utilisé dans cette passe : l'attendu est dans ce brief.
+
+Les trois décisions qui te revenaient après la passe « arête stricte du mutex » sont acceptées.
+
+Ne modifie ni `specs/`, ni `AGENTS.md`, ni `CLAUDE.md`, ni `formal/DESIGN.md`, ni aucun fichier de `formal/Ern/MemoryModel/`.
+
+## Objet
+
+La tranche 1 a un graphe abstrait dont les arêtes de synchronisation sont posées par les protocoles. Cette passe construit, à côté, un **fragment d'événements autonome** où ces arêtes viennent des lectures et écritures atomiques : `po`, `rf`, `mo`, `sw` par lecture directe, `hb`, `EventConsistent`, course.
+
+C'est le niveau « fragment ERN » de C53. Il ne dépend pas de la machine d'autorités : aucune trace `Run5R`, aucune étiquette, aucun droit. La correspondance avec les traces existantes est l'objet d'une passe ultérieure (couche R) et n'est pas à anticiper.
+
+**Définitions existantes.** Aucune n'est modifiée. Nouveaux modules, à côté.
+
+## Hypothèses du fragment, à écrire en tête du rapport
+
+1. Exécutions finies ; une seule unité atomique `x` et une seule feuille ordinaire `d` par graphe. Rien n'est affirmé au-delà.
+2. La feuille ordinaire n'a pas de valeurs : elle ne sert qu'aux conflits et aux courses. L'unité atomique a des valeurs, y compris pour ses accès ordinaires.
+3. `sw` par lecture directe seulement (C32 point 1, C48). Aucune séquence de libération.
+4. `seq_cst` n'est pris que pour ses rôles de libération et d'acquisition (C40). Aucune contrainte globale n'est formalisée.
+5. `rf` n'est contraint par aucun ordre d'exécution, seulement par `EventConsistent`. Le fragment n'adopte pas `NoThinAir_RC11` et ne dit rien de l'acyclicité de `po ∪ rf`. N'affirme pas que la cohérence la rend superflue.
+6. La forme de cohérence est un choix du fragment. Aucune équivalence ni inclusion avec RC11 n'est revendiquée ; les résultats herdtools7 servent de comparaison, pas de source.
+
+## Définitions
+
+Choisis les noms et la représentation. Contrainte : la décision de `hb` ne doit pas supposer que les arêtes croissent dans un ordre d'énumération.
+
+- **Événements.** Chaque événement a un contexte et un genre :
+  - écriture initiale de `x`, avec sa valeur ; elle n'appartient à aucun contexte, n'est pas atomique, et il y en a exactement une (C31) ;
+  - `read3(d)`, `write3(d)` : non atomiques, sans valeur (C36) ;
+  - `read3(x)` avec la valeur lue, `write3(x, v)` : non atomiques, sur l'unité atomique (C36, C42) ;
+  - `readShared(x, ordre)` avec la valeur lue : lecture atomique (C37) ;
+  - `writeShared(x, v, ordre)` : écriture atomique (C39) ;
+  - RMW réussi sur `x`, avec la valeur lue, la valeur écrite et un ordre : un seul événement indivisible, à la fois lecture et modification (C39).
+
+  Une comparaison-échange échouée est un événement `readShared` (C39) : pas de genre distinct.
+- **Typage des ordres** (C40). `readShared` : `relaxed`, `acquire`, `seq_cst`. `writeShared` : `relaxed`, `release`, `seq_cst`. RMW : `relaxed`, `acquire`, `release`, `acq_rel`, `seq_cst`. Un événement hors de sa ligne n'est pas bien typé. Ce n'est pas un conjoint de cohérence de plus : c'est le typage des événements.
+- **`po`.** Ordre strict total des événements d'un même contexte.
+- **Modifications de `x`.** L'écriture initiale, les `writeShared`, les RMW réussis, les `write3(x, v)` (C31).
+- **`rf`.** D'une modification de `x` vers une lecture de `x` : `readShared`, composante de lecture d'un RMW, `read3(x)`.
+- **`mo`.** Relation sur les modifications de `x`.
+- **`sw`** (C32 point 1). De `w` vers `r` quand `rf(w, r)`, que `w` est capable de libération et `r` capable d'acquisition. Capable de libération : `writeShared` en `release` ou `seq_cst` ; RMW en `release`, `acq_rel` ou `seq_cst`. Capable d'acquisition : `readShared` en `acquire` ou `seq_cst` ; RMW en `acquire`, `acq_rel` ou `seq_cst`. L'écriture initiale et `write3(x, v)` ne sont jamais source de `sw` (C31).
+- **`hb`.** Clôture transitive de `po ∪ sw`, plus : l'écriture initiale est `hb`-avant tout autre événement. Cette dernière règle est une convention du fragment, qui représente l'état construit avant le lancement des contextes ; dis-le dans le rapport.
+- **`EventConsistent`**, cinq conjoints nommés séparément :
+  1. `rf` bien formé : chaque lecture de `x` a exactement une source, qui est une modification de `x` de même valeur ;
+  2. `mo` est un ordre total strict sur les modifications de `x`, écriture initiale comprise ;
+  3. atomicité des RMW : la source `rf` d'un RMW réussi est son prédécesseur immédiat dans `mo` (C31) ;
+  4. cohérence : `hb ; eco?` est irréflexif, avec `rb = (rf⁻¹ ; mo) \ id` et `eco = (rf ∪ mo ∪ rb)⁺` ;
+  5. `hb` est irréflexif.
+- **Conflit** (C30). Deux événements de contextes distincts, sur la même location, dont l'un au moins est une écriture ou une modification.
+- **Course** (C33). Un conflit dont l'un des deux événements au moins est non atomique, sans `hb` dans aucun sens.
+
+## Tâches
+
+### 1. Définitions et décision
+
+Les définitions ci-dessus. Sur un graphe fini, le typage, chaque conjoint, `EventConsistent`, `sw`, `hb` et la course sont décidables.
+
+### 2. Lemmes généraux
+
+Pour tout graphe, sans hypothèse sur sa forme. Prouve ou réfute ; si un énoncé est faux, contre-exemple minimal, sans correction.
+
+- Le conjoint 5 découle du conjoint 4.
+- Dans un graphe cohérent, l'écriture initiale est minimale pour `mo`.
+- Dans un graphe cohérent, aucune lecture ne lit une modification qui la suit dans `hb`.
+- Dans un graphe cohérent, deux RMW réussis distincts ne lisent pas la même modification, quels que soient leurs ordres (C31).
+- Deux événements atomiques ne sont jamais en course (C33 point 3).
+- Si `hb` ordonne une paire en conflit, elle n'est pas en course.
+
+### 3. Témoins
+
+Chaque graphe est donné explicitement avec ses événements, `rf` et `mo`. Faits par `decide`. `x` vaut `0` au départ, par l'écriture initiale `init`.
+
+**Attendu, d'après WC5.1 corrigé.** Un écart est un résultat à rapporter, pas à corriger. La colonne « herdtools7 » est une comparaison, pas une source.
+
+*Message passing* (C32 point 1, C33, C40). `c0` : `a = write3(d)` ; `b = writeShared(x, 1, ·)`. `c1` : `e = readShared(x, ·)` ; puis, sauf en G2, `g = read3(d)`. `mo` : `init < b`.
+
+| Graphe | Ordres de `b`, `e` | `rf` | Attendu | herdtools7 |
+|---|---|---|---|---|
+| G1 | `release`, `acquire` | `b → e`, `e` lit `1` | cohérent ; `sw(b, e)` ; `hb(a, g)` ; pas de course | A1 |
+| G2 | `release`, `acquire` | `init → e`, `e` lit `0`, pas de `g` | cohérent ; aucune arête `sw` ; pas de course | A1 |
+| G3 | `relaxed`, `relaxed` | `b → e` | cohérent ; pas de `sw` ; course `(a, g)` | A2 |
+| G4 | `release`, `relaxed` | `b → e` | cohérent ; pas de `sw` ; course `(a, g)` | — |
+| G5 | `relaxed`, `acquire` | `b → e` | cohérent ; pas de `sw` ; course `(a, g)` | — |
+| G6 | `seq_cst`, `seq_cst` | `b → e` | cohérent ; `sw(b, e)` ; pas de course | A3 |
+
+Accès mixtes (C30, C31, C33, C36, C42).
+
+| Graphe | Événements, `rf`, `mo` | Attendu | herdtools7 |
+|---|---|---|---|
+| G7 | `c0` : `s = writeShared(x, 1, relaxed)`. `c1` : `r = read3(x)` lit `0`, `init → r`. `init < s` | cohérent ; course `(s, r)` | C1 |
+| G8 | `c0` : `s = writeShared(x, 1, relaxed)`. `c1` : `w = write3(x, 2)`. `init < s < w` | cohérent ; `w` est dans `mo` ; course `(s, w)` | — |
+| G9 | `c0` : `writeShared(x, 1, relaxed)`. `c1` : `writeShared(x, 2, relaxed)`. `init < s0 < s1` | cohérent ; pas de course | C2 |
+| G10 | `c0` : `write3(d)`. `c1` : `write3(d)` | cohérent ; course | C3 |
+
+RMW (C31, C32 point 1, C39, C40).
+
+| Graphe | Événements, `rf`, `mo` | Attendu | herdtools7 |
+|---|---|---|---|
+| G11 | `c0` : `m0` RMW lit `0`, écrit `1`, `acquire`. `c1` : `m1` RMW lit `1`, écrit `1`, `acquire`. `init → m0`, `m0 → m1`. `init < m0 < m1` | cohérent | D1 |
+| G12 | comme G11, mais `m1` lit `0` et `init → m1` ; à tester pour les deux ordres `mo` possibles de `m0` et `m1` | non cohérent : le conjoint 3 échoue, dans les deux cas. Dis quels conjoints tiennent | D1 à D3 |
+| G13 | `c0` : `m0` RMW lit `0`, écrit `1`, `acquire`. `c1` : `f = readShared(x, relaxed)` lit `1`, `m0 → f` (comparaison-échange échouée). `init < m0` | cohérent ; `f` n'est pas une modification | — |
+| G14 | `c0` : `A0` RMW lit `0`, écrit `1`, `acquire` ; `w0 = write3(d)` ; `U0 = writeShared(x, 0, release)`. `c1` : `A1`, `w1`, `U1`, de même. `init → A0`, `U0 → A1`. `init < A0 < U0 < A1 < U1` | cohérent ; `sw(U0, A1)` ; `hb(w0, w1)` ; pas de course | B1 |
+| G15 | G14 avec `U0` et `U1` en `relaxed` | cohérent ; pas de `sw` ; course `(w0, w1)` | B2 |
+| G16 | G14 avec `A0` et `A1` en `relaxed` | cohérent ; pas de `sw` ; course `(w0, w1)` | B3 |
+| G17 | `c0` : `a = write3(d)` ; `m` RMW lit `0`, écrit `1`, `acq_rel`. `c1` : `e = readShared(x, acquire)` lit `1` ; `g = read3(d)`. `init → m`, `m → e`. `init < m` | cohérent ; `sw(m, e)` ; pas de course | — |
+
+Séquence de libération et typage (C32 point 1, C40, C48).
+
+| Graphe | Événements, `rf`, `mo` | Attendu | herdtools7 |
+|---|---|---|---|
+| G18 | `c0` : `a = write3(d)` ; `b = writeShared(x, 1, release)` ; `c = writeShared(x, 2, relaxed)`. `c1` : `e = readShared(x, acquire)` lit `2` ; `g = read3(d)`. `c → e`. `init < b < c` | cohérent ; aucune arête `sw` vers `e` ; course `(a, g)` | E1 : **pas de course** sous `rc11.cat`. Divergence attendue |
+| G19 | un `readShared(x, release)` | mal typé (C40) | — |
+
+G18 exécute dans le fragment la prédiction que C48 donne comme raisonnée : une écriture atomique non-RMW du même thread ne prolonge pas la libération. Écris la divergence avec `rc11.cat` dans une section à part du rapport, sans rien corriger.
+
+## Règles Lean
+
+Inchangées : aucun `sorry`, `admit`, `axiom`, `native_decide`, `noncomputable` ; axiomes `{propext, Quot.sound}` ; `lake build` sans nouvel avertissement ; `grep` d'`AGENTS.md` vide ; docstrings en anglais citant WC5.1 corrigé ou ce brief ; aucun énoncé ni définition existant affaibli ou modifié ; le fait attendu vient de ce brief, jamais du modèle ; Conventional Commits sans `Co-Authored-By`.
+
+## Rapport
+
+Nouveau fichier `formal/reports/spec2-m4-eventmodel.md`, en français :
+
+- les six hypothèses du fragment, en tête ;
+- les définitions, avec leurs écarts éventuels au brief ;
+- le statut de chaque lemme de la tâche 2 : prouvé, réfuté (contre-exemple) ou inachevé (état du but) ;
+- par graphe : attendu, obtenu, clause, théorème (module:ligne) ;
+- la divergence avec `rc11.cat` sur G18, dans une section à part ;
+- ce qui n'est pas couvert : valeurs ordinaires, seconde unité atomique, séquences de libération, contraintes globales de `seq_cst`, no-thin-air, toute correspondance avec la machine d'autorités ;
+- l'audit final des axiomes.
+
+## Ordre
+
+1 → 2 → 3. Commit à chaque tâche compilant.
+</pasted_content id="c7c6">
+
+---
+
+@"/Users/guygouri/Downloads/corpus-spec2-m3.md" @"/Users/guygouri/Downloads/ERN_WC5_1_FINAL.md"
+
+<pasted_content id="c7c6">
+# Brief Claude Code — ERN Spec 2, jalon 4, tranche 2 : couche R, réalisation du mutex de référence
+
+## Cadre
+
+Même branche `formal/spec2-m4`, à la suite de la couche E. Formalisation exploratoire, jamais mergée. Pas de push sur `main`, pas de PR.
+
+Documents joints, **non commités** :
+
+- `ERN_WC5_1_FINAL.md`, « WC5.1 corrigé ». Clauses utiles : C13, C14, C16 à C18, C21, C22, C26 à C29, C31, C32, C39, C40, C48, C49.
+- `corpus-spec2-m3.md` **v10** — nouveau : § 2 nonies (réalisation déclarée, témoin W-RC, faits attendus sur les graphes du contrôleur).
+
+Les sept choix de représentation de la couche E sont acceptés.
+
+Ne modifie ni `specs/`, ni `AGENTS.md`, ni `CLAUDE.md`, ni `formal/DESIGN.md`, ni aucun fichier de `formal/Ern/MemoryModel/`.
+
+## Objet
+
+La tranche 1 pose l'arête du mutex par hypothèse. Cette passe relie les deux mondes : sur une trace `Run5R`, elle pose les événements atomiques du contrôleur d'une entrée `e` dans le fragment `EventModel`, puis montre que l'arête stricte de la tranche 1 correspond à une lecture directe `rf`, donc à une arête `sw`.
+
+**Portée à ne pas dépasser.** Le résultat est un théorème conditionnel, sous la réalisation déclarée. Il ne prouve pas qu'une réalisation physique respecte ces contraintes, et ne décharge pas `OB-C05`. Écris-le ainsi dans le rapport.
+
+**Définitions existantes.** Aucune n'est modifiée, ni celles de la machine d'autorités, ni celles du graphe de la tranche 1, ni celles d'`EventModel`. Tout est ajouté à côté.
+
+## Hypothèses de la réalisation, à écrire en tête du rapport
+
+1. **Réalisation de référence** (corpus § 2 nonies) : `newMutex(e)` donne l'écriture initiale non atomique de `0` ; `acquire(e)` un RMW réussi qui lit `0` et écrit `1` ; `unlock(e)` et `resetLock(e)` une écriture atomique de `0`. Les trois ordres sont des paramètres ; la référence est `acquire`, `release`, `relaxed`. C'est une hypothèse de formalisation, pas une règle.
+2. **Linéarisation.** `mo` est l'ordre des pas du protocole dans la trace ; chaque RMW lit la modification qui le précède. Ce n'est pas une propriété démontrée des exécutions physiques.
+3. **Contrôleur fixe.** `ControlOf(e)` désigne la même feuille depuis la création de `e`. Le déplacement du mutex (W-TR) est hors de cette passe.
+4. **Début du graphe.** L'histoire du contrôleur commence à `newMutex(e)`, dont l'écriture tient lieu d'écriture initiale `init` du fragment. `init` y est hors contexte et `hb`-avant tout, par convention de la couche E. Le fragment n'établit donc pas l'ordre entre cette écriture et les accès des autres contextes : cet ordre n'est vérifié que sur les témoins, par l'arête de `spawn` du graphe de la tranche 1.
+5. **Tentatives échouées.** Elles ne sont pas des pas de la trace (C16 point 2) et ne sont pas représentées. Sous une comparaison-échange, ce sont des lectures (C39).
+6. **Un événement par pas.** Aucun marqueur interne de gain ou de perte (C28).
+7. **Arêtes de cycle de vie.** `spawn` et `join` appartiennent au graphe de la tranche 1. Aucune n'est attribuée à `EventModel`.
+
+## Tâches
+
+### 0. Compléments de la couche E
+
+Dans `EventModel`, à côté de l'existant. Prouve ou réfute ; si un énoncé est faux, contre-exemple minimal, sans correction.
+
+- **Arête vers l'arrière.** Le graphe G1 avec les événements de `c1` listés avant ceux de `c0` : `rf` et `sw` vont d'un indice supérieur vers un indice inférieur. Attendu, comme G1 : cohérent ; `sw(b, e)` ; `hb(a, g)` ; pas de course.
+- `HB` est transitif.
+- Si `HB a b` et que `a` n'est pas l'écriture initiale, alors `a` et `b` sont reliés par la clôture transitive de `po ∪ sw`. La convention sur `init` n'ordonne donc jamais deux autres événements.
+- Sous `RfWF`, `MoTotal` et `RmwAtomic`, `ECO` est irréflexif. La conclusion n'est pas supposée : si elle est fausse, donne le graphe.
+
+### 1. Témoin d'autorité W-RC (corpus § 2 nonies)
+
+Encode W-RC et son jumeau. Verdicts par `decide`, d'après la table du corpus : pas 1 et 2 `ok` ; pas 3 sans issue `ok`, clause défaillante C14.3 ; pas 4 attendu `ok`. Énonce aussi qu'avant le pas 4, aucune autorité exerçable depuis `f1` n'a de mode effectif présent sur `lock`. La trace des pas `ok` est attendue comme une `Run5R` depuis l'état initial.
+
+Si le modèle rejette le pas 4, ou si un conjoint d'`Encap5R` refuse un pas attendu `ok`, c'est un résultat : rapporte la clause, le conjoint et l'état. Ne corrige ni le modèle ni l'attendu.
+
+### 2. Construction
+
+Pour une trace, une entrée `e` et un triplet d'ordres : les événements du contrôleur (un par pas `newMutex(e)`, `acquire(e)`, `unlock(e)`, `resetLock(e)`, avec le contexte du pas), et le graphe `EventModel` construit selon les hypothèses 1, 2 et 4. Le graphe ne contient que des événements sur l'unité atomique.
+
+### 3. Invariant et cohérence
+
+Dans la forme la plus forte que le modèle permet ; dis de quelle restriction de trace chaque énoncé a besoin.
+
+- **Invariant.** Le long de la trace, le grant enregistré de `e` vaut `none` si et seulement si la dernière modification du contrôleur a écrit `0`. Il doit couvrir le grant abandonné : enregistré, inactif, contrôleur à `1`.
+- **Cohérence.** Le graphe construit est bien typé et `EventConsistent`, pour tout triplet d'ordres bien typé. Non-vacuité : au moins les traces de la tâche 6.
+
+### 4. Classification des pas qui touchent le contrôleur
+
+Pour une entrée vivante `e`, classe chacun des 28 genres d'étiquettes. Un seul statut par genre :
+
+| Statut | Sens |
+|---|---|
+| protocole | `newMutex(e)`, `acquire(e)`, `unlock(e)`, `resetLock(e)` |
+| exclu | prouvé : un pas `ok` de ce genre, admis par `Encap5R`, n'a pas la feuille `ControlOf(e)` dans son empreinte de lecture ou d'écriture, et ne change pas `ControlOf(e)`, tant que l'entrée reste vivante |
+| déplacement | peut changer `ControlOf(e)` |
+| fin de vie | rend l'entrée morte |
+| non classé | le modèle n'a pas d'empreinte pour ce genre (`OB-C20`) : dis ce qui manque |
+| contre-exemple | un pas admis par `Encap5R` touche la feuille hors protocole : trace minimale, sans correction ni hypothèse ajoutée |
+
+Pour l'empreinte, prends la notion que le modèle possède déjà : accès de `read3`, `write3`, `writeShared` ; places source et destination des pas qui changent un état d'initialisation ou un détenteur. Si plusieurs notions existent, prends la plus large et dis laquelle.
+
+Attendu, d'après C21 point 7 et C22 points 3 à 5 (corpus S5b, S12, S16, S17) : aucun contre-exemple ; `transfer` du mutex entier en « déplacement » (S7) ; `endUse` de `slot` ou de `M` en « fin de vie ».
+
+Énonce ensuite la **complétude** : sous l'hypothèse 3, tout pas d'une `Run5R` d'un genre classé qui touche le contrôleur de `e` est un événement du graphe construit.
+
+### 5. Correspondance
+
+Sous l'hypothèse 3, pour une `Run5R` depuis l'état initial. Les preuves s'appuient sur la construction et sur l'invariant ; aucune ne suppose sa conclusion.
+
+- **Pont.** Si l'arête stricte du mutex, celle de `SWS`, relie `unlock(e)` en `u` à `acquire(e)` en `a`, alors, dans le graphe construit, `rf` relie l'écriture de `u` au RMW de `a`.
+- **Synchronisation.** Dans ce cas, `sw` relie ces deux événements si et seulement si l'ordre de libération est capable de libération et l'ordre de prise capable d'acquisition. En particulier, elle les relie pour la réalisation de référence.
+- **Réciproque.** Si, dans le graphe construit, `rf` relie l'écriture d'un `unlock(e)` en `u` au RMW d'un `acquire(e)` en `a`, alors l'arête stricte du mutex relie `u` à `a`. Prouve ou réfute.
+
+Dis dans le rapport de quels genres « non classés » dépend encore la lecture du graphe construit comme histoire complète du contrôleur.
+
+### 6. Témoins (corpus § 2 nonies)
+
+Par `decide`, sur `lc_trace`, W-RL₀, W-RL et W-RL-J, d'après la table du corpus :
+
+- les événements du contrôleur et `rf` ;
+- le graphe construit est cohérent ;
+- les arêtes `sw` : `sw(U1, A0)` pour `lc_trace` et W-RL₀ ; aucune pour W-RL et W-RL-J ;
+- les deux variantes de `lc_trace` (libération `relaxed`, prise `relaxed`) : `rf` relie encore `U1` à `A0`, sans arête `sw` ;
+- dans chaque trace, le pas `newMutex(e)` précède, dans le graphe strict de la tranche 1, tout pas du protocole fait par `c1`.
+
+## Règles Lean
+
+Inchangées : aucun `sorry`, `admit`, `axiom`, `native_decide`, `noncomputable` ; axiomes `{propext, Quot.sound}` ; `lake build` sans nouvel avertissement ; `grep` d'`AGENTS.md` vide ; docstrings en anglais citant WC5.1 corrigé, le corpus v10 ou ce brief ; aucun énoncé ni définition existant affaibli ou modifié ; le verdict ou le fait attendu vient du corpus ou de ce brief, jamais du modèle ; Conventional Commits sans `Co-Authored-By`.
+
+## Rapport
+
+Nouveau fichier `formal/reports/spec2-m4-mutexreal.md`, en français :
+
+- les sept hypothèses de la réalisation, en tête, et la portée conditionnelle du résultat ;
+- les définitions ajoutées, avec leurs écarts éventuels au brief ;
+- le statut de chaque énoncé des tâches 0, 3, 4 et 5 : prouvé, réfuté (contre-exemple) ou inachevé (état du but), avec ses hypothèses exactes ;
+- la table de classification, un genre d'étiquette par ligne ;
+- par témoin : attendu, obtenu, clause, théorème (module:ligne) ;
+- tout pas attendu `ok` que le modèle ou une restriction d'encapsulation refuse ;
+- ce qui n'est pas couvert : conformité d'une réalisation physique, W-TR, `OB-C20`, tentatives échouées, marqueurs internes, séquences de libération, `seq_cst` global, no-thin-air ;
+- l'audit final des axiomes.
+
+## Ordre
+
+0 → 1 → 2 → 3 → 4 → 5 → 6. Commit à chaque tâche compilant.
+</pasted_content id="c7c6">
+
+---
+
+@"/Users/guygouri/Downloads/corpus-spec2-m3.md" @"/Users/guygouri/Downloads/ERN_WC5_2_amendements_proposes.md"
+
+<pasted_content id="c7c6">
+Brief Claude Code — ERN Spec 2, jalon 4, tranche 2 : couche R, passe corrective
+Cadre
+Même branche `formal/spec2-m4`, à la suite de la couche R. Formalisation exploratoire, jamais mergée. Pas de push sur `main`, pas de PR.
+Documents joints, non commités :
+
+* `ERN_WC5_1_FINAL.md`, « WC5.1 corrigé », inchangé.
+* `ERN_WC5_2_amendements_proposes.md` — deux amendements proposés, non validés : remplacement de C22 point 4, ajout de C18 point 4. Cette passe les teste ; elle ne les valide pas.
+* `corpus-spec2-m3.md` v11 — nouveau : § 2 decies.
+
+Décisions sur ton dernier rapport : la définition `Touches` est acceptée ; l'observation sur `release(guarded)` est retenue telle quelle.
+Ne modifie ni `specs/`, ni `AGENTS.md`, ni `CLAUDE.md`, ni `formal/DESIGN.md`, ni aucun fichier de `formal/Ern/MemoryModel/`.
+Objet
+La couche R a prouvé le pont, et montré deux lacunes du texte candidat : trois pas hors protocole touchent le contrôleur (`store`, `issue`, `alloc`), et `resetLock` réussit sans droit sur le contrôleur (W-RC). Cette passe teste les deux amendements qui y répondent, rejoue la classification, et pose la même question pour `newMutex`.
+Définitions existantes. Aucune n'est modifiée ni affaiblie : `Encap5R`, `Touches`, `ResetLockOk`, la relation de pas et tous les théorèmes restent tels quels. Les trois contre-exemples et W-RC restent dans le dépôt, comme preuves de la nécessité des corrections. Tout est ajouté à côté.
+Définitions
+Choisis les noms et l'encodage ; dis-les dans le rapport.
+
+* Empreinte élargie. `Touches`, plus la place `result` d'un `depend` (Spec 1 §64 : l'ancre est ajoutée à `D(result)`). C'est le « dependency state » de l'amendement 1.
+* Restriction du contrôleur (amendement 1). Pour toute entrée vivante avant le pas, un pas est refusé si les trois conditions tiennent : il n'est pas un pas du protocole de cette entrée ; son empreinte élargie contient `ControlOf(e)` ; il n'est ni un `transfer` ni un `spawn` par valeur admis par C22 point 3, ni un pas après lequel l'entrée est morte.
+* Encapsulation corrigée : `Encap5R` et cette restriction. Les exécutions correspondantes sont appelées ici `Run6`.
+* `resetLock` amendé (amendement 2) : les préconditions existantes, plus le droit d'accès au contrôleur, sous la forme que le modèle utilise déjà pour C14 point 3 et C17 point 4. La relation de pas existante n'est pas modifiée : le pas amendé est un prédicat à côté, et une exécution « amendée » est une `Run6` dont chaque pas `resetLock` le satisfait.
+
+Tâches
+0. Décompte
+Ton rapport annonce 1956 théorèmes avant la passe, 342 dans les modules nouveaux, et 2295 au total : il en manque trois, dont deux non internes. Identifie-les : module, nom, raison. Si un énoncé existant a été supprimé, renommé ou déplacé, dis lequel.
+1. Définitions et inclusions
+Les définitions ci-dessus, et : toute `Run6` est une `Run5R` ; un `resetLock` amendé `ok` est un `resetLock` `ok`.
+2. Exclusions et jumeaux (corpus § 2 decies)
+Par `decide`, d'après la table du corpus :
+
+* le dernier pas de `store_cex`, d'`issue_cex` et d'`alloc_cex` est refusé par la restriction du contrôleur ;
+* chaque jumeau positif est `ok` et admis ;
+* `depend(lock, a)` : verdict noyau attendu `ok`, refusé par la restriction ; son jumeau `depend(lock′, a)` est `ok` et admis.
+
+Si le noyau rejette un pas attendu `ok`, ou si un jumeau est refusé, c'est un résultat : rapporte la clause, le conjoint et l'état. Ne corrige ni le modèle ni l'attendu.
+3. Non-régression
+Pour chaque trace `Run5R` déjà présente dans le dépôt : est-elle une `Run6` ? Attendu : toutes, sauf les trois contre-exemples. Donne la liste complète dans le rapport, une trace par ligne. Une trace existante refusée est un résultat à rapporter, pas à contourner.
+4. Classification rejouée
+Sur `Run6`, avec l'empreinte élargie :
+
+* Table. Les 28 genres, avec les mêmes statuts que dans la passe précédente. Attendu : aucun contre-exemple.
+* `spawn` par valeur sous l'hypothèse 3. Termine la preuve de l'énoncé laissé ouvert, ou donne un contre-exemple minimal.
+* Complétude sans restriction de genre. Sous l'hypothèse 3, tout pas d'une `Run6` depuis l'état initial dont l'empreinte élargie contient le contrôleur d'une entrée vivante avant et après le pas est un événement du graphe construit. Prouve ou réfute.
+* Nécessité de la clause sur les dépendances. Dis si une preuve de cette passe a besoin que `depend` vers le contrôleur soit exclu. Si aucune n'en a besoin, écris-le : cette exclusion est alors sans témoin de nécessité.
+
+Si un nouveau contre-exemple apparaît, trace minimale, sans correction ni hypothèse ajoutée.
+5. `resetLock` amendé (corpus § 2 decies)
+
+* W-RC, pas 4 : aucune issue `ok` pour le pas amendé ; clause défaillante : le droit d'accès au contrôleur. Son jumeau reste `ok`.
+* Le pas `resetLock(e)` de W-RL, de W-RL-J et du jumeau positif de S11 reste `ok` sous la forme amendée.
+* Autorité des pas du protocole. Dans une exécution amendée, tout pas `acquire(e)`, `unlock(e)` ou `resetLock(e)` est fait par une frame qui a un mode effectif présent sur `ControlOf(e)`. Prouve ou réfute.
+
+6. Témoin d'autorité W-NC (corpus § 2 decies)
+Encode W-NC et son jumeau. Verdicts par `decide`, d'après la table du corpus : pas 1 et 2 `ok` ; pas 3, `newMutex(guarded)` depuis une frame sans droit sur `lock`, attendu `ok`. Énonce aussi qu'avant le pas 3, aucune autorité exerçable depuis `f1` n'a de mode effectif présent sur `lock`.
+Aucun amendement de C13 n'est testé dans cette passe : seul le verdict est demandé. Si le modèle rejette le pas 3, rapporte la clause et l'état.
+Hors de portée
+W-TR et le déplacement du contrôleur au-delà de ce que demande la tâche 4 ; les accès physiques que le modèle ne représente pas (`OB-C20`) ; la conformité d'une réalisation physique (`OB-C05`) ; toute modification de C13.
+Règles Lean
+Inchangées : aucun `sorry`, `admit`, `axiom`, `native_decide`, `noncomputable` ; axiomes `{propext, Quot.sound}` ; `lake build` sans nouvel avertissement ; `grep` d'`AGENTS.md` vide ; docstrings en anglais citant WC5.1 corrigé, les amendements proposés, le corpus v11 ou ce brief ; aucun énoncé ni définition existant affaibli ou modifié ; le verdict ou le fait attendu vient du corpus ou de ce brief, jamais du modèle ; Conventional Commits sans `Co-Authored-By`.
+Rapport
+Mets à jour `formal/reports/spec2-m4-mutexreal.md`, en français, avec une section « Passe corrective » :
+
+* le décompte réconcilié (tâche 0) ;
+* les définitions ajoutées, avec leurs écarts éventuels au brief ;
+* par tâche : attendu, obtenu, clause, théorème (module:ligne) ;
+* la table de non-régression et la nouvelle table de classification ;
+* le statut de chaque énoncé des tâches 1, 4 et 5 : prouvé, réfuté (contre-exemple) ou inachevé (état du but), avec ses hypothèses exactes ;
+* la réponse sur la nécessité de la clause sur les dépendances ;
+* le verdict de W-NC ;
+* ce dont dépend encore la lecture du graphe construit comme histoire complète du contrôleur ;
+* l'audit final des axiomes, avec un décompte dont la somme tombe juste.
+
+Ordre
+0 → 1 → 2 → 3 → 4 → 5 → 6. Commit à chaque tâche compilant.
+</pasted_content id="c7c6">
+
+---
+
+@"/Users/guygouri/Downloads/corpus-spec2-m3.md" @"/Users/guygouri/Downloads/ERN_WC5_2_amendements_proposes.md"
+
+<pasted_content id="c7c6">
+Brief Claude Code — ERN Spec 2, jalon 4, tranche 2 : couche R, passe finale
+Cadre
+Même branche `formal/spec2-m4`, à la suite de la passe corrective. Formalisation exploratoire, jamais mergée. Pas de push sur `main`, pas de PR.
+Documents joints, non commités :
+
+* `ERN_WC5_1_FINAL.md`, « WC5.1 corrigé », inchangé.
+* `ERN_WC5_2_amendements_proposes.md`, deuxième version, qui remplace la première : C22 point 4 dans sa rédaction finale, C18 point 4 inchangé, C13 point 11 proposé avec sa clarification.
+* `corpus-spec2-m3.md` v12 — nouveau : § 2 undecies.
+
+Décisions sur tes quatre questions :
+
+1. W-NC : une clause est proposée pour C13 (point 11), testée ici.
+2. et 3. La clause sur les dépendances est retirée de l'amendement ; la question de l'empreinte de `depend` tombe.
+3. `alloc(owner = M)` est admis. Seul le contrôleur lui-même comme propriétaire est exclu. Le fournisseur compte par ses feuilles.
+
+Ne modifie ni `specs/`, ni `AGENTS.md`, ni `CLAUDE.md`, ni `formal/DESIGN.md`, ni aucun fichier de `formal/Ern/MemoryModel/`.
+Objet
+Tester la rédaction finale de l'amendement de C22 point 4 et l'amendement proposé de C13, puis rejouer la classification et la complétude avec l'empreinte finale. La passe est courte : elle s'appuie sur la passe corrective et ne refait pas ce qui en découle par inclusion.
+Définitions existantes. Aucune n'est modifiée ni affaiblie : `Touches`, `TouchesX`, `CtlRestr`, `Encap6`, `Run6`, `ResetLockAmOk`, `RunAm`, `NewMutexOk`, la relation de pas et tous les théorèmes restent tels quels. Tout est ajouté à côté.
+Définitions
+Choisis les noms et l'encodage ; dis-les dans le rapport.
+
+* Empreinte finale. `Touches`, à une différence près : pour `alloc`, le propriétaire ne compte que comme la place elle-même, et non par ses feuilles ; le fournisseur compte par ses feuilles. La place `result` d'un `depend` n'y figure pas.
+* Restriction finale. `CtlRestr` lue sur l'empreinte finale, avec les mêmes trois exceptions.
+* Encapsulation finale : `Encap5R` et la restriction finale. Les exécutions correspondantes sont appelées ici `Run7`.
+* `newMutex` amendé (amendement 3) : les préconditions existantes, plus `Modify` exerçable et effectif sur le contrôleur, sous la forme que le modèle utilise pour O10.1 (Spec 1 §67). Un prédicat à côté ; la relation de pas n'est pas modifiée.
+* Exécution amendée finale : une `Run7` dont chaque pas `resetLock` satisfait la clause de C18 point 4 et chaque pas `newMutex` la clause de C13 point 11.
+
+Tâches
+1. Définitions et inclusions
+Les définitions ci-dessus, et :
+
+* toute `Run6` est une `Run7`, et toute `Run7` est une `Run5R` ;
+* un `newMutex` amendé `ok` est un `newMutex` `ok`, avec le même état d'arrivée.
+
+2. Témoins (corpus § 2 undecies)
+Par `decide`, d'après les tables du corpus :
+
+* `store_cex`, `issue_cex`, `alloc_cex` : dernier pas toujours refusé ;
+* `alloc(provider = slot, owner = M)` : `ok` et admis ;
+* `alloc(provider = M, owner = lock′)` : verdict noyau attendu `ok`, refusé par la restriction finale ;
+* `depend(lock, a)` : `ok` et admis ;
+* W-NC, pas 3 : aucune issue `ok` pour le pas amendé ; clause défaillante : `Modify` effectif sur le contrôleur. Son jumeau reste `ok`.
+
+Si le noyau rejette un pas attendu `ok`, ou le rend `fail`, c'est un résultat : rapporte la clause et l'état. Ne corrige ni le modèle ni l'attendu.
+3. Non-régression
+
+* Les traces `Run6` du dépôt sont des `Run7` par l'inclusion de la tâche 1 ; ne les rejoue pas une à une.
+* Chaque pas `newMutex` des traces existantes satisfait la clause de C13 point 11. Donne la liste.
+* Chaque exécution amendée existante (`RunAm`) reste une exécution amendée finale, hors W-NC.
+
+Une trace existante refusée est un résultat à rapporter, pas à contourner.
+4. Classification et complétude sous l'empreinte finale
+
+* Table. Les 28 genres, avec les mêmes statuts. Attendu : aucun contre-exemple.
+* Complétude. Sous l'hypothèse 3, tout pas d'une `Run7` depuis l'état initial dont l'empreinte finale contient le contrôleur d'une entrée vivante avant et après le pas est un événement du graphe construit. L'énoncé doit porter sur l'empreinte finale seule, sans s'appuyer sur `TouchesX`. Prouve ou réfute.
+* Écart d'empreinte. Dis exactement en quoi l'empreinte finale diffère de `Touches`, et montre sur `alloc(provider = slot, owner = M)` que le pas ne change ni l'état d'initialisation du contrôleur, ni son détenteur, ni `ControlOf`.
+
+Si un contre-exemple apparaît, trace minimale, sans correction ni hypothèse ajoutée.
+5. Autorité du protocole
+Dans une exécution amendée finale : tout pas `newMutex` est fait par une frame qui a `Modify` effectif sur le contrôleur ; tout pas `acquire`, `unlock` ou `resetLock` par une frame qui a un mode effectif présent sur lui. Prouve ou réfute.
+6. Absence de changement silencieux
+
+* L'amendement 3 ne change ni l'effet de `newMutex`, ni l'état d'initialisation d'aucune feuille (C13.10).
+* Le graphe du contrôleur est le même : l'écriture initiale reste une modification non atomique, sans arête `sw`.
+* L'invariant, la cohérence et le pont de la couche R s'appliquent tels quels à une exécution amendée finale. Énonce-les comme corollaires, sans les reprouver.
+
+Hors de portée
+La variante à deux contextes de W-NC ; l'ordre entre l'écriture initiale et les accès des autres contextes au-delà des témoins (hypothèse 4, `OB-C05`) ; l'intégrité de `slot` comme fournisseur d'un `alloc` ; `OB-C20` ; la conformité d'une réalisation physique.
+Règles Lean
+Inchangées : aucun `sorry`, `admit`, `axiom`, `native_decide`, `noncomputable` ; axiomes `{propext, Quot.sound}` ; `lake build` sans nouvel avertissement ; `grep` d'`AGENTS.md` vide ; docstrings en anglais citant WC5.1 corrigé, les amendements proposés, le corpus v12 ou ce brief ; aucun énoncé ni définition existant affaibli ou modifié ; le verdict ou le fait attendu vient du corpus ou de ce brief, jamais du modèle ; Conventional Commits sans `Co-Authored-By`.
+Rapport
+Mets à jour `formal/reports/spec2-m4-mutexreal.md`, en français, avec une section « Passe finale » :
+
+* les définitions ajoutées, avec leurs écarts éventuels au brief ;
+* par tâche : attendu, obtenu, clause, théorème (module:ligne) ;
+* la table de classification et l'écart d'empreinte ;
+* le statut de chaque énoncé des tâches 1, 4, 5 et 6 : prouvé, réfuté (contre-exemple) ou inachevé (état du but), avec ses hypothèses exactes ;
+* la distinction entre ce que la restriction pose par définition et ce qui est prouvé ;
+* ce dont dépend encore la lecture du graphe construit comme histoire complète du contrôleur ;
+* l'audit final des axiomes, avec un décompte dont la somme tombe juste.
+
+Ordre
+1 → 2 → 3 → 4 → 5 → 6. Commit à chaque tâche compilant.
+</pasted_content id="c7c6">
+
+---
+
+@"/Users/guygouri/Downloads/corpus-spec2-m3.md" @"/Users/guygouri/Downloads/ERN_WC5_2_Revu_Pour_Validation/ERN_Concurrency_Model_WC5.2.md"
+
+<pasted_content id="c7c6">
+Brief Claude Code — ERN Spec 2, jalon 4, tranche 3 : encapsulation complète (C22 point 6)
+Cadre
+Même branche `formal/spec2-m4`. Formalisation exploratoire, jamais mergée. Pas de push sur `main`, pas de PR.
+Documents joints, non commités :
+
+* `ERN_Concurrency_Model_WC5.2.md`, « WC5.2 », version retouchée. Il remplace WC5.1 corrigé pour les citations. Clauses utiles : C5, C13, C14, C17, C18, C21, C22 (points 1 à 6), C23, C43 à C46, `OB-C28`.
+* `corpus-spec2-m3.md` v13 — nouveau : § 2 duodecies.
+
+Décisions sur ton dernier rapport : l'encodage du propriétaire d'un `alloc` comme place est accepté, l'inclusion `Run6 ⊆ Run7` sur les états atteints suffit ; ta remarque sur O10.2 est reprise dans le texte de WC5.2 (C13 point 11).
+Ne modifie ni `specs/`, ni `AGENTS.md`, ni `CLAUDE.md`, ni `formal/DESIGN.md`, ni aucun fichier de `formal/Ern/MemoryModel/`.
+Objet
+C22 point 6 exige que tout droit dont dépend un pas admis ait une justification dont la chaîne de détenteurs évite le `guarded` de toute entrée vivante. Le modèle n'en couvre qu'une partie : `ChainExcl` pour l'argument exercé de cinq opérations, `PlaceExcl` pour une sélection de prémisses `HasRight`. Ton rapport `spec2-m4-handoff.md` liste ce qui reste : les clauses `Grounds`, les droits de destination et les phases internes d'`issue`, les phases de `reset`, et les étiquettes laissées à `True` (`newMutex`, `resetLock`, `unlock`, `newArena`).
+Cette passe complète la couverture, puis prouve ce à quoi elle sert : aucune opération ne touche une feuille sans que son contexte en ait la capacité hors de tout `guarded` vivant, et en particulier aucune ne touche la donnée protégée d'un mutex vivant sans son grant.
+Définitions existantes. Aucune n'est modifiée ni affaiblie : la machine d'autorités, `ChainExcl`, `PlaceExcl`, `Encap5R`, `Encap7`, `Run7`, `RunAmF`, `cap5`, `TouchesF` et tous les théorèmes restent tels quels. Tout est ajouté à côté.
+Ne définis pas la conformité par la propriété à prouver. L'encapsulation complète se définit prémisse par prémisse, à partir des préconditions existantes. Les théorèmes des tâches 4 et 5 portent sur les empreintes et sur `cap5`, pas sur ces prémisses.
+Définitions
+Choisis les noms et l'encodage ; dis-les dans le rapport.
+
+* Inventaire des droits. Pour chacun des 28 genres, la liste des prémisses de droit de sa précondition : tout champ qui lit `ExercisableAt`, `HasRight`, `HolderRight`, `CtrlRight`, `MetaRight` ou une clause `Grounds`. Elle inclut les prémisses lues dans un état intermédiaire ou résultant, celles des phases internes d'`issue`, de `reset` et du `spawn` par valeur, et les deux prémisses amendées (C18 point 4, C13 point 11).
+* Forme sans `guarded`. Chaque prémisse de l'inventaire, relue avec `Exer5` à la place d'`ExercisableAt`, dans l'état où la précondition la lit.
+* Exception de `resetLock` (C22 point 6). Pour le seul contrôle de C18.1, le sujet `guarded` de l'entrée réinitialisée est exempté ; le droit sur son `slot` doit avoir une chaîne sans le `guarded` d'aucune autre entrée vivante.
+* Encapsulation complète : `Encap7`, et toutes les prémisses de l'inventaire sous leur forme sans `guarded`, avec l'exception ci-dessus. Les exécutions correspondantes, qui satisfont aussi les clauses amendées, sont appelées ici `RunFull`.
+* Feuille protégée : une feuille de l'empreinte du `guarded` d'une entrée vivante.
+
+Tâches
+1. Inventaire et inclusions
+
+* La table de l'inventaire, dans le rapport : genre, clause, champ du modèle, état où il est lu, et s'il était déjà couvert par `ChainExcl` ou `PlaceExcl`.
+* Chaque forme sans `guarded` entraîne la prémisse d'origine.
+* Toute `RunFull` est une exécution amendée finale (`RunAmF`).
+
+Dis comment l'exhaustivité de l'inventaire est établie, et ce qui n'est établi que par relecture des définitions.
+2. Témoins (corpus § 2 duodecies)
+Par `decide`, d'après les tables du corpus :
+
+* W-GI : pas 1 à 3 `ok` au noyau ; le pas 1 attendu admis par l'encapsulation actuelle et exclu par l'encapsulation complète ; son jumeau `ok` et admis.
+* W-RX : pas A `ok` au noyau et exclu par l'encapsulation complète ; jumeau B `ok` et admis ; le `resetLock(e)` de W-RL reste admis.
+
+Si le noyau rejette une mise en place ou un pas attendu `ok`, ou si l'encapsulation actuelle exclut déjà le pas 1 de W-GI, c'est un résultat : rapporte la clause, le conjoint et l'état. Ne corrige ni le modèle ni l'attendu.
+3. Non-régression et usages légitimes sous une entrée vivante
+
+* Chaque exécution amendée finale du dépôt est-elle une `RunFull` ? Attendu : toutes. Donne la liste.
+* Ton rapport précédent note que la plupart des clauses de `PlaceExcl` n'ont été exercées que sans mutex vivant. Pour chaque genre qui a une prémisse de droit, donne au moins un pas `ok` et admis sous une entrée vivante, dont les droits ne passent par aucun `guarded`. Réutilise les états existants quand c'est possible. Attendu : admis (C22 point 6 : une autre chaîne valide suffit).
+
+Une trace existante refusée est un résultat à rapporter, pas à contourner.
+4. Capacité requise par l'empreinte
+Sur `RunFull`, depuis l'état initial. Prouve ou réfute, genre par genre :
+tout pas d'un contexte `c` dont l'empreinte `TouchesF` contient une feuille `l` déjà existante est fait avec `cap5(c, l)` au moins égal au mode que l'opération exige sur `l`.
+
+* Donne la table des 28 genres : prouvé ; sans objet (empreinte vide ou places neuves seulement) ; exception légitime (dis laquelle, par exemple les feuilles qui meurent, le déplacement du mutex entier, les pas du protocole) ; contre-exemple.
+* C'est la généralisation de `cap5_sound_C`, prouvé pour `read3`, `write3` et `writeShared`.
+* Une exception n'est pas une hypothèse ajoutée : chaque exception est énoncée, avec un témoin.
+
+Si un contre-exemple apparaît, trace minimale `RunFull`, sans correction.
+5. Donnée protégée
+Corollaire visé, à prouver ou réfuter : sur `RunFull` depuis l'état initial, tout pas dont l'empreinte contient une feuille protégée par une entrée vivante avant et après le pas est fait par un contexte dont la capacité sur cette feuille vient du sous-arbre du grant enregistré de cette entrée. Dis quels invariants servent (`GrantSubtree`, `GrantDiscipline`, I1).
+Montre que l'énoncé est faux sur `Run7` : W-GI en est le contre-exemple attendu.
+6. Exception de `resetLock`
+Sur `RunFull`, tout pas `resetLock(e)` a un droit sur le `slot` de `e`, et sur son contrôleur, dont la chaîne ne contient le `guarded` d'aucune entrée vivante autre que `e`. Prouve ou réfute.
+Hors de portée
+Les événements physiques et l'ordre interne des pas composés (`OB-C20`) ; la conformité d'une réalisation ; toute preuve générale d'absence de course ; toute modification de WC5.2.
+Règles Lean
+Inchangées : aucun `sorry`, `admit`, `axiom`, `native_decide`, `noncomputable` ; axiomes `{propext, Quot.sound}` ; `lake build` sans nouvel avertissement ; `grep` d'`AGENTS.md` vide ; docstrings en anglais citant WC5.2, la Spec 1, le corpus v13 ou ce brief ; aucun énoncé ni définition existant affaibli ou modifié ; le verdict ou le fait attendu vient du corpus ou de ce brief, jamais du modèle ; Conventional Commits sans `Co-Authored-By`.
+Rapport
+Nouveau fichier `formal/reports/spec2-m4-encap.md`, en français :
+
+* les définitions ajoutées, avec leurs écarts éventuels au brief ;
+* la table de l'inventaire, et comment son exhaustivité est établie ;
+* par témoin : attendu, obtenu, clause, théorème (module:ligne) ;
+* la liste de non-régression et les usages légitimes sous une entrée vivante ;
+* la table des 28 genres de la tâche 4 ;
+* le statut de chaque énoncé des tâches 1, 4, 5 et 6 : prouvé, réfuté (contre-exemple) ou inachevé (état du but), avec ses hypothèses exactes ;
+* la distinction entre ce que l'encapsulation complète pose par définition et ce qui est prouvé ;
+* tout pas attendu `ok` que le modèle refuse, et tout contre-exemple trouvé ;
+* ce que `OB-C28` laisse encore ouvert après cette passe ;
+* l'audit final des axiomes, avec un décompte dont la somme tombe juste.
+
+Ordre
+1 → 2 → 3 → 4 → 5 → 6. Commit à chaque tâche compilant.
+</pasted_content id="c7c6">
+
+---
+
+@"/Users/guygouri/Downloads/corpus-spec2-m3.md"
+
+<pasted_content id="c7c6">
+Brief Claude Code — ERN Spec 2, jalon 4, tranche 3 : encapsulation complète, complément
+Cadre
+Même branche `formal/spec2-m4`, à la suite de la passe sur l'encapsulation complète. Formalisation exploratoire, jamais mergée. Pas de push sur `main`, pas de PR.
+Documents joints, non commités :
+
+* `ERN_Concurrency_Model_WC5.2.md`, « WC5.2 », version retouchée, inchangée. Clauses utiles : C4 à C8, C12 à C18, C21, C22, C32, C46, C49.
+* `corpus-spec2-m3.md` v14 — nouveau : § 2 terdecies ; la phrase du fait « Donnée protégée » du § 2 duodecies est précisée.
+
+Décisions sur ton dernier rapport :
+
+1. Tâche 5. Aucune des trois formes (a), (b), (c) n'est retenue telle quelle. Le corollaire est remplacé par un énoncé en trois cas qui couvrent tous les états : une disjonction avec une conclusion par cas, pas une hypothèse ajoutée. Il est complété par un lemme sur les pas, la fermeture de la descendance, qui donne la garantie de lignée sans mémoriser l'origine d'avant la réancre. Aucune règle de WC5.2 ne change.
+2. C22 point 1 et la réancre. Lecture retenue pour cette passe : la réancre de §73 n'est pas une émission. C22 point 1 interdit d'exposer un `derive` ou un `split` de source `guarded` ; il n'interdit pas qu'un descendant déjà existant devienne descendant direct par réancre. Le texte de WC5.2 n'est pas modifié.
+3. « Entrée vivante ». La lecture voulue est celle du brief : vivante avant et après le pas. La phrase du corpus était imprécise ; elle est corrigée en v14.
+4. Les trois points que tu laisses ouverts (`spawnVal` avant le pas, les feuilles qui meurent, les traces non rejouées) sont repris ci-dessous.
+
+Ne modifie ni `specs/`, ni `AGENTS.md`, ni `CLAUDE.md`, ni `formal/DESIGN.md`, ni aucun fichier de `formal/Ern/MemoryModel/`.
+Objet
+Fermer le résultat sur la donnée protégée. Le grant abandonné réfute une caractérisation trop étroite de la provenance des capacités ; il ne montre pas un accès concurrent. Cette passe établit, ou réfute, la caractérisation visée : toute capacité sur une feuille protégée vient de la dernière prise du verrou — du grant enregistré s'il est actif, d'un dérivé survivant sinon.
+Elle sépare trois choses que le premier énoncé confondait :
+
+* créer une autorité ;
+* changer le lien d'origine direct d'une autorité existante, ce que fait une réancre ;
+* faire entrer une autorité sous `guarded`.
+
+Portée du résultat. Les énoncés de la tâche 5 portent sur la provenance et l'encapsulation des capacités. Ils ne prouvent pas l'absence de course : W-AG montre que l'exclusivité tient pendant que le survivant vit, et que l'ordre entre ses accès et ceux du contexte qui récupère le mutex reste une obligation distincte (C46), remplie dans W-AG-J par `terminate` et `join`.
+Définitions existantes. Aucune n'est modifiée ni affaiblie : la machine d'autorités, `Prem`, `PremG`, `EncapFull`, `RunFull`, `CapReq`, `capacity_run`, `CapFromGrant`, `ProtectedOK`, `cap5`, `TouchesF`, le graphe strict et tous les théorèmes restent tels quels, `protected_runFull_refuted` compris. Tout est ajouté à côté.
+N'ajoute aucune hypothèse pour obtenir un énoncé. Les hypothèses admises sont celles de `capacity_run` : `DDSound`, `StaticsOK`, état initial, `RunFull`. Toute hypothèse de plus est un écart à rapporter, avec ce qui la rend nécessaire.
+Définitions
+Choisis les noms et l'encodage ; dis-les dans le rapport.
+
+* Descendants couvrants d'une entrée `e` dans un état : les autorités actives, descendantes strictes de `e.guarded` par la chaîne d'origine courante lue transitivement, qui couvrent au moins une feuille de `footprint(e.guarded)`.
+* Lien d'origine direct d'une autorité : la valeur courante de son `origin`. Une réancre peut le changer sans changer l'appartenance aux descendants couvrants.
+* Feuille qui meurt dans un pas : une feuille dont la place est utilisable avant le pas et ne l'est plus après. Si la définition que tu as utilisée à la tranche 3 diffère, garde la tienne et dis l'écart.
+* Capacité de provenance donnée : `cap5(c, l)` au moins égale au mode que l'opération exige sur `l` (`CapReq`), atteinte par une autorité attribuable à `c` sans `guarded` vivant et appartenant à un ensemble donné. `CapFromGrant` reste tel quel ; cette forme est définie à côté.
+
+Tâches
+1. Témoins (corpus § 2 terdecies)
+Par `decide`, d'après les tables du corpus :
+
+* W-AG : pas 1 à 11 `ok` au noyau et admis par l'encapsulation complète ; les quatre faits sur le pas 6 ; les refus a à d, chacun avec sa clause défaillante. Pour le refus a, le fait à établir est l'absence d'issue `ok` ; donne les conjoints qui échouent.
+* W-AG-J : `ok` et admise.
+* Graphe strict : pour la paire des deux écritures de `T`, aucun chemin `hb` dans W-AG (`RaceS`, pas de `HandoffOrderedS`) ; un chemin par le `join` dans W-AG-J.
+* W-AG′ : pas A1 à A4 `ok` et admis ; la colonne des descendants couvrants, pas par pas ; le négatif.
+
+Si le noyau rejette un pas attendu `ok`, ou si l'encapsulation complète en exclut un, c'est un résultat : rapporte la clause, le conjoint et l'état. Ne corrige ni le modèle ni l'attendu.
+2. Fermeture de la descendance
+Sur `RunFull`, depuis l'état initial. Prouve ou réfute :
+pour tout pas et toute entrée `e` vivante avant et après le pas, toute autorité des descendants couvrants de `e` après le pas (1) y était déjà avant le pas, ou (2) est créée par le pas avec pour origine une autorité qui y était avant le pas, ou (3) est le grant enregistré par ce pas, qui est `acquire(e)`.
+
+* L'énoncé porte sur l'appartenance, lue transitivement, pas sur les liens directs : dans le cas (1), le lien direct peut avoir changé.
+* Donne la table des 28 genres, avec trois colonnes distinctes : le genre crée-t-il une autorité ; change-t-il un lien d'origine direct ; peut-il faire entrer une autorité dans l'ensemble, et par quel cas. Puis le statut : prouvé, sans objet, contre-exemple.
+* Regarde en particulier `exitFrame`, `terminate`, `release`, les déplacements (`transfer`, `store`, `spawnVal`), et l'`acquire` d'une autre entrée dont le `guarded` serait lui-même dans l'ensemble.
+* Pas composés. Vérifie le cas (2) pour `issue`, `reset` et `spawnVal`, dont les phases internes peuvent créer une autorité à partir d'une autre autorité créée plus tôt dans le même pas. L'origine immédiate n'était alors pas dans l'ensemble avant le pas, sans que ce soit une entrée venue de l'extérieur. Si cela se produit :
+   * donne le contre-exemple à l'énoncé tel qu'il est écrit, en distinguant l'origine immédiate de l'ascendance transitive ; n'affaiblis pas l'énoncé en silence ;
+   * prouve ou réfute ensuite, comme énoncé séparé et signalé comme tel, la forme (2′) : l'autorité est créée par le pas et descend, par des autorités créées par ce même pas, d'une autorité qui était dans l'ensemble avant le pas.
+
+Si la fermeture est réfutée : trace `RunFull` minimale et clauses responsables, sans correction.
+3. Feuilles qui meurent
+Sur `RunFull`, depuis l'état initial. Prouve ou réfute :
+
+* pour tout pas, une feuille de `footprint(e.guarded)` ne meurt pas si `e` est vivante avant et après le pas ;
+* dans l'état d'avant un pas d'un contexte `c`, aucun contexte autre que `c` n'a de capacité `cap5` sur une feuille qui meurt dans ce pas.
+
+Dis quels genres font mourir des feuilles (attendu : `endUse`, `free`, `exitFrame`, `terminate`) et quels invariants servent (`NoDangling`, C12, les préconditions §69.2, §70.3, §73.2, §73.4). Vérifie les deux faits sur tes quatre témoins `exc_*`.
+4. `spawnVal` dans l'état d'avant le pas
+Termine la ligne `spawnVal` de la table de capacité : l'énoncé de la tâche 4 du brief précédent, dans l'état d'avant le pas, pour toute feuille de chaque source. Prouve ou réfute. Si un transfert d'une phase peut donner au créateur une capacité qu'il n'avait pas avant le pas, c'est un contre-exemple : trace minimale.
+5. Dernière prise et donnée protégée
+Sur `RunFull`, depuis l'état initial. Prouve ou réfute, dans cet ordre :
+
+* Ensemble vide sans grant. À tout indice où `e` est vivante avec `grant = none`, les descendants couvrants de `e` sont vides. Dis si `GrantDiscipline` est déjà établi sur les états atteints par `RunFull`, par quel théorème et sous quelles hypothèses, ou ce qui manque. Les frontières attendues sont C13.9, C17.2 et C17.3, C18.2.
+* Dernière prise. À tout indice où `e` est vivante avec `grant = some g`, toute autorité des descendants couvrants est `g`, ou a été créée après le dernier `acquire(e)` réussi par un pas du cas (2) de la fermeture. Une récurrence sur les indices de la `RunFull` est recevable ; n'ajoute aucun historique des origines à l'état. Si la forme (2′) a été nécessaire à la tâche 2, la dernière prise se lit avec elle : dis-le.
+* Trois cas. Pour tout pas d'un contexte `c`, toute entrée `e` vivante avant et après le pas, toute feuille `l` de `footprint(e.guarded)` dans `TouchesF`, le grant étant lu dans l'état d'avant :
+   * `grant = none` : aucun tel pas n'existe ;
+   * `grant = some g`, `g` active : `c` a une capacité de provenance « `g` ou un descendant de `g` » ;
+   * `grant = some g`, `g` inactive : `c` a une capacité de provenance « descendants couvrants de `e` ».
+* Fait du corpus. Le fait « Donnée protégée » du § 2 duodecies, dans sa rédaction v14, énoncé comme théorème séparé pour les 28 genres.
+
+Dis quels invariants servent (I1, C21.1, `GrantSubtree`, `GrantDiscipline`) et de quelles tâches chaque cas dépend. Vérifie les trois cas à chaque pas des traces `RunFull` du dépôt, W-AG, W-AG-J et W-AG′ comprises ; le pas 7 de W-AG doit tomber dans le troisième cas.
+6. Traces rejouées
+
+* W-GR, W-GC, W-GS sous l'encapsulation complète, d'après le corpus : le pas exclu reste exclu ; le reste de la trace et les jumeaux sont admis. Deux résultats distincts sont attendus, à ne pas confondre :
+   * le pas exclu est un verdict local : `ok` au noyau et exclu par l'encapsulation complète, sur son état de départ, lui-même atteint depuis l'état initial par un préfixe admis. Une trace qui contient ce pas n'est pas une `RunFull` ; ne la déclare pas telle ;
+   * la suite positive est une `RunFull` depuis l'état initial qui ne contient pas le pas exclu : la mise en place, puis les pas restants. Si un pas restant dépend de l'état produit par le pas exclu, dis-le et présente son résultat comme une vérification locale, pas comme une exécution.
+* Les autres traces qui n'existent que sous une ancienne forme d'encapsulation (S4, S9, traces de WC4) : rejoue-les et donne la liste. Attendu pour S9 : admise. Pour les autres, rapporte le résultat et, pour toute trace refusée, la prémisse en cause.
+
+Une trace refusée est un résultat à rapporter, pas à contourner.
+Hors de portée
+Toute modification de WC5.2 : les précisions de C21 point 5 et de C22 point 1 seront rédigées après cette passe. Interdire qu'un dérivé survive au grant (Specs 3 et 4). Le classement entre `reject` et `non habilité` d'un `acquire` sans issue `ok` (D-C1). Les événements physiques (`OB-C20`) ; la conformité d'une réalisation ; toute preuve générale d'absence de course.
+Règles Lean
+Inchangées : aucun `sorry`, `admit`, `axiom`, `native_decide`, `noncomputable` ; axiomes `{propext, Quot.sound}` ; `lake build` sans nouvel avertissement ; `grep` d'`AGENTS.md` vide ; docstrings en anglais citant WC5.2, la Spec 1, le corpus v14 ou ce brief ; aucun énoncé ni définition existant affaibli ou modifié ; le verdict ou le fait attendu vient du corpus ou de ce brief, jamais du modèle ; Conventional Commits sans `Co-Authored-By`.
+Rapport
+Mets à jour `formal/reports/spec2-m4-encap.md`, en français, avec une section « Complément » :
+
+* les définitions ajoutées, avec leurs écarts éventuels au brief ;
+* par témoin : attendu, obtenu, clause, théorème (module:ligne) ;
+* la table des 28 genres de la tâche 2, avec ses trois colonnes ;
+* le statut de chaque énoncé des tâches 2 à 5 : prouvé, réfuté (contre-exemple) ou inachevé (état du but), avec ses hypothèses exactes ;
+* la table de capacité de la tranche 3 mise à jour pour `spawnVal` et pour les feuilles qui meurent ;
+* la liste des traces rejouées et leur résultat, en séparant les verdicts locaux des exécutions `RunFull` ;
+* ce que les énoncés de la tâche 5 établissent (provenance des capacités) et ce qu'ils n'établissent pas (ordre entre accès, C46) ;
+* tout pas attendu `ok` que le modèle refuse, et tout contre-exemple trouvé ;
+* ce que `OB-C28` laisse encore ouvert après cette passe ;
+* l'audit final des axiomes, avec un décompte dont la somme tombe juste.
+
+Ordre
+1 → 2 → 3 → 4 → 5 → 6. Commit à chaque tâche compilant.
+</pasted_content id="c7c6">
+
+---
+
+<pasted_content id="c7c6">
+Oui, prouve-le ici, sur `formal/spec2-m4`, dans les mêmes règles que le complément.
+
+Énoncé : le but écrit dans ton rapport (tâche 3, troisième ligne). Sur une `RunFull` depuis l'état initial, pour tout `i < |lbls|`, si `killKind lbls[i] = false`, alors `Usable (σ i) l → Usable (σ (i+1)) l`. Hypothèses : `DDSound`, `StaticsOK`, `σ 0` initial, `RunFull`, rien de plus. Donne aussi la forme par pas, sous les invariants atteints.
+
+Prouve ou réfute. Le point non prouvé est le changement de propriétaire par `transfer` et par les phases de `spawnVal` (§63, effet et précondition 9). Si une place peut y devenir inutilisable : trace `RunFull` minimale, clause et état, sans correction. N'ajoute aucune hypothèse, ne modifie aucune définition ni aucun théorème existant ; `killKind` et `KillOK` restent tels quels.
+
+Dans la section « Complément » du rapport :
+- passe la troisième ligne de la tâche 3 à « prouvé » ou « réfuté », avec le théorème (module:ligne) et ses hypothèses ; mets à jour la liste de ce que `OB-C28` laisse ouvert ;
+- précise quelles traces de la table de la tâche 6 sont les 13 comptées dans les 46 du balayage : la table en liste davantage ;
+- confirme que le « fichier mémoire » mis à jour en fin de passe n'est ni `CLAUDE.md` ni un autre fichier protégé du dépôt ;
+- refais l'audit des axiomes, avec un décompte dont la somme tombe juste.
+
+Commit quand le module compile. Pas de push, pas de PR.
+</pasted_content id="c7c6">
+
+---
+
+<pasted_content id="c7c6">
+Oui, prouve-le ici, sur `formal/spec2-m4`, dans les mêmes règles que le complément.
+
+Énoncé : le but écrit dans ton rapport (tâche 3, troisième ligne). Sur une `RunFull` depuis l'état initial, pour tout `i < |lbls|`, si `killKind lbls[i] = false`, alors `Usable (σ i) l → Usable (σ (i+1)) l`. Hypothèses : `DDSound`, `StaticsOK`, `σ 0` initial, `RunFull`, rien de plus. Donne aussi la forme par pas, sous les invariants atteints.
+
+Prouve ou réfute. La propriété doit résulter de l'analyse des transitions `LStep` sur les états atteints par `RunFull`, pas d'une hypothèse qui déclarerait que seuls quatre genres tuent des feuilles.
+
+Le point non prouvé est le changement de propriétaire par `transfer` et par les phases de `spawnVal` (§63, effet et précondition 9) : regarde le changement de propriétaire, les chaînes de propriété et l'effet de chaque phase. Le théorème porte sur `Usable`, pas sur l'état d'initialisation : une source laissée `Moved` n'est pas pour autant une place inutilisable.
+
+Si une place peut devenir inutilisable : trace `RunFull` minimale, clause et état, sans correction. Ne modifie ni `Usable`, ni `killKind`, ni `KillOK`, ni aucune autre définition ou théorème existant.
+
+Ce résultat complète la caractérisation des effets des opérations. Ne le présente pas comme nécessaire aux propriétés déjà prouvées.
+
+Dans la section « Complément » du rapport :
+- passe la troisième ligne de la tâche 3 à « prouvé » ou « réfuté », avec le théorème (module:ligne) et ses hypothèses ; mets à jour la liste de ce que `OB-C28` laisse ouvert ;
+- identifie les 13 traces rejouées comptées dans les 46 du balayage, en distinguant les traces complètes, les préfixes et les vérifications locales : la table de la tâche 6 en liste davantage ;
+- donne le chemin exact du « fichier mémoire » mis à jour en fin de passe, et la sortie de `git diff --stat main...HEAD -- specs AGENTS.md CLAUDE.md formal/DESIGN.md formal/Ern/MemoryModel` et de `git status --short` sur les mêmes chemins, attendues vides ;
+- refais l'audit des axiomes, avec un décompte dont la somme tombe juste.
+
+Commit quand le module compile. Pas de push, pas de PR.
+</pasted_content id="c7c6">
+
+---
+
+@"/Users/guygouri/Downloads/corpus-spec2-m3.md" @"/Users/guygouri/Downloads/ERN_WC5_3_FINAL.md"
+
+<pasted_content id="c7c6">
+Brief Claude Code — ERN Spec 2, jalon 4, tranche 4 : passation abstraite étendue aux opérations composées
+Cadre
+Même branche `formal/spec2-m4`, à la suite du complément de la tranche 3 (`a234683`). Formalisation exploratoire, jamais mergée. Pas de push sur `main`, pas de PR.
+Documents joints, non commités :
+
+* WC5.3, version retouchée (le fichier joint à ce brief). Il remplace WC5.2 comme texte de référence. Il ne change aucune règle de WC5.2 : il précise C21 point 5 et C22 point 1, et consigne les résultats de la tranche 3. Clauses utiles : C5, C13, C14, C17, C18, C22, C27 à C30, C32, C43 à C46, C49, C52.
+* `corpus-spec2-m3.md` v15 — nouveau : § 2 quaterdecies ; le § 2 terdecies est marqué obtenu.
+
+Décisions sur ton dernier rapport :
+
+1. Le lemme des genres qui tuent (`usable_run`) est reçu. La tranche 3 et son complément sont clos.
+2. Cette tranche est la dernière campagne générale sur le modèle abstrait des autorités. Elle a un critère d'arrêt (plus bas). Rien ne doit rester à faire sur ce modèle après elle, hors correction ciblée d'un contre-exemple de sûreté.
+3. Cadrage retenu par le propriétaire, pour cette tranche seulement :
+   * l'objectif est un théorème conditionnel de composition dans le graphe abstrait, pas une preuve d'absence de course ;
+   * un événement par pas est une hypothèse de formalisation ; les règles de WC5.3 sur les événements internes aux pas (C27 à C29) restent normatives et ne sont pas traitées ici ;
+   * le composite `spawnVal` reste le modèle étudié.
+
+Ne modifie ni `specs/`, ni `AGENTS.md`, ni `CLAUDE.md`, ni `formal/DESIGN.md`, ni aucun fichier de `formal/Ern/MemoryModel/`.
+Objet
+Les résultats de passation (`lossStep_own`, `handoffOrdered_no_raceS`) ne couvrent que les paires d'accès directs : `read3`, `write3`, `writeShared`. `Race` et `ExclPair` ne regardent pas les autres opérations. Cette tranche étend la passation abstraite aux 16 genres qui ont une empreinte dans la table de capacité : `read3`, `write3`, `writeShared`, `transfer`, `store`, `alloc`, `issue`, `spawnVal`, `newMutex`, `acquire`, `unlock`, `resetLock`, `endUse`, `free`, `exitFrame`, `terminate`.
+L'extension se fait au niveau des pas. Le point nouveau : le pas où le premier contexte perd sa capacité peut être le pas d'accès lui-même. L'ancienne forme, qui cherche ce pas strictement après l'accès, ne s'étend pas ; le corpus en donne le contre-exemple attendu (W-SV).
+Portée du résultat. À écrire aussi dans les docstrings et le rapport :
+
+* Les énoncés portent sur les pas abstraits et sur le graphe à un événement par pas. Ils ne disent pas quels accès physiques un pas composé engendre, ni dans quel ordre (`OB-C19`, `OB-C20`).
+* « Toucher une feuille » est une notion du modèle. Elle n'étend pas le domaine normatif de C44 à C46, qui parle d'événements d'accès.
+* Le critère d'exclusivité reste le mode exigé par la clause (C44), pas le conflit par octets de C30.
+* La passation ordonnée étendue est l'analogue abstrait de C46 ; elle n'est pas C46. Une course étendue est un fait sur le modèle, pas un verdict normatif : n'écris nulle part qu'une paire étendue « viole C46 ». Dire qu'elle en relève demande de justifier les événements physiques de ses deux pas, ce qui est hors de cette tranche. C27 prévoit des écritures pour `transfer`, `store`, les phases par valeur de `spawn` et `newMutex` ; il dit qu'une sortie de frame abstraite ne crée, par ce seul effet, aucun accès physique.
+* La conclusion reste conditionnelle. Ce n'est pas une preuve d'absence de course.
+
+Définitions existantes. Aucune n'est modifiée ni affaiblie : `ExclPair`, `CapCompat`, `lossStep`, `HandoffOrderedAt`, `HandoffOrdered`, `Race` et leurs formes sur `HBS`, `lossStep_own`, `handoffOrdered_no_race`, `handoffOrdered_no_raceS`, `cap5`, `cap5_compat`, `cap5_drop_own`, `TouchesF`, `CapReq`, `capacity_run`, `Dying`, `other_cap_dying_run`, `spawnVal_cap_pre`, `usable_run`, le graphe strict, `RunFull`. Tout est ajouté à côté.
+N'ajoute aucune hypothèse pour obtenir un énoncé. Les hypothèses admises sont `DDSound`, `StaticsOK`, l'état initial et `RunFull`. Les énoncés sur le graphe partent eux aussi de `RunFull` ; si la réutilisation de `handoffOrdered_no_raceS` demande une hypothèse que `RunFull` ne donne pas, dis laquelle. Toute hypothèse de plus est un écart à rapporter, avec ce qui la rend nécessaire.
+Définitions
+Choisis les noms et l'encodage ; dis-les dans le rapport. Le vocabulaire est celui du corpus, § 2 quaterdecies.
+
+* Toucher. Un pas touche `l` si `l` est dans `TouchesF`, ou si le pas crée `l` et l'écrit. Dis ce que `TouchesF` donne pour les feuilles créées par un pas (`enterFrame`, `spawn`, `alloc`, `spawnVal`). Si les destinations de `spawnVal` n'y sont pas, définis le prédicat à côté.
+* Classe d'un toucher, pour un pas et une feuille. Les classes se lisent dans cet ordre de priorité, ce qui les rend disjointes :
+   * D — feuille existante qui meurt dans le pas (`Dying`) ; elle se lit sur la transition, avant et après ;
+   * C — feuille créée et écrite par le pas ; elle se lit dans l'état d'après le pas ;
+   * E — feuille existante, qui ne meurt pas, avec un mode exigé (`CapReq`) ;
+   * N — toute autre feuille touchée.
+Une feuille peut mourir alors que la clause exige aussi un mode sur elle : c'est le cas de la place d'un `free` (§70.3). Elle est de classe D. Le mode exigé reste lisible dans `CapReq`, qui n'est pas modifié ; la classe ne l'efface pas.
+* Toucher exclusif : classe D ; classe C ; classe E avec `Modify` exigé. Pour `alloc`, le fournisseur n'est exclusif que dans la branche `Modify` ; dis comment `CapReq` encode les deux branches.
+* Paire exclusive étendue `(i, j, l)` : `i < j`, contextes distincts, les deux pas touchent `l`, l'un au moins de façon exclusive.
+* Compatibilité avec le toucher de `j` : `CapCompat` avec le mode exigé si le toucher de `j` est de classe E ; `cap5 = none` s'il est de classe D.
+* Frontière de passation abstraite : le premier `k ≥ i` à l'issue duquel `cap5` du contexte de `i` sur `l` est compatible avec le toucher de `j` ; `none` s'il n'y en a pas. Comme `lossStep`, elle est cherchée dans toute la trace et non bornée par `j` : `r < j` doit rester un théorème.
+* Passation ordonnée étendue et course étendue : les analogues de `HandoffOrderedAt`, `HandoffOrdered` et `Race`, sur `HB` et sur `HBS`, avec la paire étendue et la frontière. Un marqueur absent reste un échec.
+
+Tâches
+1. Témoins (corpus § 2 quaterdecies)
+Par `decide`, d'après les tables du corpus :
+
+* W-HT, W-HS, W-HX : les pas 1 à 3 `ok` au noyau et admis par l'encapsulation complète depuis l'état initial ; chaque négatif, avec sa clause défaillante ; les jumeaux W-HT-J, W-HS-J, W-HX-J `ok` et admis.
+* Graphe strict de ces six traces : la paire `(1, 3, X)` est exclusive étendue ; sa frontière est le pas 2, pas de `c1` ; aucun chemin `hb` dans les trois premières (course étendue, pas de passation ordonnée étendue) ; un chemin par le `join` dans les jumeaux. Établis aussi que cette paire n'est pas une `ExclPair`.
+* W-SV : le pas 2 `ok` et admis ; le négatif ; les quatre faits. Dis si le graphe strict donne l'arête de création au genre `spawnVal`. S'il ne la donne pas, rapporte-le et n'ajoute pas l'arête.
+* W-NM : les trois faits.
+* W-TR, W-TR-J : les faits nouveaux sur les traces existantes, pour les paires `(unlock, transfer, lock)` et `(acquire, transfer, lock)`.
+* W-CR : depuis `MX₃`, `c0 : read3(lock)` via `root_M` est `ok` au noyau et exclu par l'encapsulation complète ; donne la clause qui l'exclut. Son état de départ est atteint depuis l'état initial par une `RunFull`. Le jumeau, la même lecture avant `newMutex`, est `ok` et admis. Le pas exclu est un verdict local : une trace qui le contient n'est pas une `RunFull` ; ne la déclare pas telle.
+
+Si le noyau rejette un pas attendu `ok`, ou si l'encapsulation complète en exclut un, c'est un résultat : rapporte la clause, le conjoint et l'état. Ne corrige ni le modèle ni l'attendu.
+2. Classification des touchers
+Sur `RunFull`, depuis l'état initial. Donne la table des 28 genres : pour chacun, les feuilles touchées par classe (D, C, E avec le mode, N). Puis prouve ou réfute :
+
+* Partition. Les quatre classes sont disjointes et couvrent tout toucher.
+* La classe N est vide : toute feuille touchée est de classe D, C ou E.
+* Classe C. Dis quels genres créent des feuilles, et lesquels les écrivent. Attendu : seul `spawnVal` crée et écrit. Pour les autres créations (`enterFrame`, `spawn`, `alloc`), donne l'effet du noyau qui montre que la feuille n'est pas écrite.
+* Feuilles mortes. Deux énoncés :
+   * un pas qui touche une feuille existante exige que sa place soit utilisable dans l'état d'avant le pas ;
+   * une place qui n'est plus utilisable ne le redevient jamais (c'est le pendant de `usable_run`).
+* Identités de places. Une place créée par un pas n'existe pas dans l'état d'avant ce pas : les identités ne sont pas réutilisées. Énonce-le et prouve-le ; c'est ce lemme qui porte le second corollaire.
+
+Corollaires : aucune paire exclusive étendue n'a pour premier membre un pas dans lequel `l` meurt ; aucune n'a pour second membre un pas qui crée `l`.
+Relie chaque classe au lemme qui en tient lieu de capacité : E à `capacity_run` et `spawnVal_cap_pre`, D à `other_cap_dying_run`.
+3. Frontière : existence, bornes, contexte propre
+Sur `RunFull`, depuis l'état initial. Prouve ou réfute, pour toute paire exclusive étendue `(i, j, l)` :
+
+* Existence et bornes : la frontière `r` existe et `i ≤ r < j`. Traite séparément le toucher de `j` de classe E (par `capacity_run`, `spawnVal_cap_pre` et `cap5_compat`) et de classe D (par `other_cap_dying_run`).
+* Contexte propre : `r` est un pas du contexte de `i`. Pour `r > i`, par `cap5_drop_own`.
+* Coïncidence : toute `ExclPair` est une paire exclusive étendue ; sur une `ExclPair`, la frontière est `lossStep` et `i < r`.
+* La forme stricte ne s'étend pas : énonce comme théorème, sur W-SV, que la recherche à partir de `k > i` donne un pas qui n'est ni strictement avant `j` ni un pas du contexte de `i`.
+
+Regarde en particulier les pas qui à la fois touchent `l` et changent la capacité de leur propre contexte sur `l` : `spawnVal`, `transfer`, `store`, `issue`, `exitFrame`, `terminate`, `unlock`. C'est là que mon argument est le plus fragile.
+Si un énoncé est réfuté : trace `RunFull` minimale et clauses responsables, sans correction.
+4. Le cas où la frontière est le pas d'accès
+
+* Inventaire. Donne les couples (genre, classe) pour lesquels `r = i` peut se produire. Pour chacun : une trace `RunFull` témoin, ou la preuve que le cas est impossible. Attendu au moins : les destinations de `spawnVal` (W-SV).
+* Question à trancher. Sur `RunFull` depuis l'état initial, quand `r = i`, `hb(i, j)` tient-il toujours dans le graphe strict ? Prouve ou réfute. Je n'ai pas d'attendu. Piste de contre-exemple, sans verdict : un contexte qui existait avant le pas `i` atteint une feuille créée par ce pas grâce à une autorité rangée dans une donnée protégée par un mutex, l'arête du mutex étant coupée par un `resetLock` (forme de W-RL).
+* Ordre dans le pas. Pour chaque couple où `r = i` se produit, écris l'ordre entre l'accès et la perte que donne la clause. C'est un texte tiré de la clause, pas une preuve : il sert d'entrée au futur travail sur les événements internes.
+
+5. Composition
+
+* Théorème. La passation ordonnée étendue entraîne l'absence de course étendue, sur `HB` et sur `HBS`. Si `i < r` : `po` puis `hb`. Si `r = i` : `hb(r, j)` est `hb(i, j)` ; n'invoque aucun ordre interne au pas.
+* Inclusions. Toute `Race` est une course étendue, et de même sur `HBS`. La réciproque est fausse : W-HT.
+* Balayage. Pour chaque trace `RunFull` du dépôt, témoins de cette tranche compris : les paires exclusives étendues, leur frontière, ordonnées ou non. Donne la table. Les faits du corpus sont les attendus ; pour les autres traces, rapporte le résultat. Une course étendue dans une trace jusqu'ici tenue pour ordonnée est un résultat à signaler, pas à corriger.
+
+6. Contrôle ciblé de compatibilité d'`OB-C28` (tâche annexe, bornée)
+Cette tâche ne porte pas sur la passation. Elle répond à une seule question avant la reconstruction de référence : combler les deux lacunes d'`OB-C28` demande-t-il de changer une règle de WC5.3, ou seulement l'encodage ? Aucune règle n'est changée ici, aucune définition existante non plus.
+
+* Droit de §78.1. Ton rapport dit que le pas `reset` passe par le `derive` de l'autorité interne et que, sous `ArenaInv`, les deux lectures coïncident sur les états atteints. Fais-en un énoncé : sur `RunFull` depuis l'état initial, tout pas `reset` satisfait `MetaRight` (§78.1) dans l'état d'avant le pas, sous sa forme sans `guarded` vivant (`MetaRightG`). Prouve ou réfute. Vérifie-le aussi sur les traces du dépôt qui contiennent un `reset`.
+* Inventaire. Pour les trois points établis par relecture :
+   * `AcquireOk`, `UnlockOk`, `ResetLockOk` : prouve pour chacune une équivalence entre la définition et la conjonction des droits de la table et d'un reste ; passe `ScanRights` sur ce reste pour montrer qu'il n'atteint aucune constante de droit ;
+   * `IssueStepC` : prouve que `opStepC` n'y est appelé que pour `split` et `store` ;
+   * `ParamOriginHidden` : énonce en lemme la lecture négative que la relecture établissait.
+L'absence de réimplantation sous un autre nom ne se prouve pas ; laisse-la à la relecture et dis-le.
+* Réponse. Un paragraphe : règle ou encodage, et pourquoi.
+
+Borne : si l'un de ces points demande plus qu'une preuve locale — modifier une définition existante, ajouter une hypothèse — arrête-toi et rapporte l'état du but.
+Critère d'arrêt
+Chaque classe de paire reçoit l'un de ces trois résultats :
+
+* une preuve ;
+* une réfutation, avec sa trace `RunFull` minimale ;
+* une limite écrite : l'état du but et ce qui manque.
+
+Une réfutation de sûreté se rapporte ; elle ne se corrige pas dans cette passe et n'ouvre pas une nouvelle campagne. N'élargis pas le périmètre.
+Hors de portée
+
+* Les paires sous des droits `Observe` compatibles dont un membre écrit : `acquire`, `unlock`, `resetLock` entre eux sur le contrôleur ; `alloc` par la branche `SharedMutable`. Elles ne sont pas exclusives (C44) et relèvent des disciplines de C35 à C42. Liste-les, sans les traiter.
+* Pour la passation, les genres sans empreinte dans le modèle mais avec des écritures physiques : `reset`, `newArena`, métadonnées d'arène.
+* L'ordre interne aux pas et les événements physiques (`OB-C19`, `OB-C20`).
+* Toute modification de WC5.3 ; le classement entre `reject` et `non habilité` (D-C1) ; toute preuve générale d'absence de course.
+
+Règles Lean
+Inchangées : aucun `sorry`, `admit`, `axiom`, `native_decide`, `noncomputable` ; axiomes `{propext, Quot.sound}` ; `lake build` sans nouvel avertissement ; `grep` d'`AGENTS.md` vide ; docstrings en anglais citant WC5.3, la Spec 1, le corpus v15 ou ce brief ; aucun énoncé ni définition existant affaibli ou modifié ; le verdict ou le fait attendu vient du corpus ou de ce brief, jamais du modèle ; Conventional Commits sans `Co-Authored-By`.
+Rapport
+Crée `formal/reports/spec2-m4-handoff-ext.md`, en français :
+
+* les définitions ajoutées, avec leurs écarts éventuels au brief ;
+* par témoin : attendu, obtenu, clause, théorème (module:ligne) ;
+* la table des 28 genres par classe de toucher (tâche 2) ;
+* le statut de chaque énoncé des tâches 2 à 5 : prouvé, réfuté (contre-exemple) ou inachevé (état du but), avec ses hypothèses exactes ;
+* l'inventaire du cas `r = i`, la réponse à la question de la tâche 4, et l'ordre dans le pas pour chaque couple ;
+* la table du balayage (tâche 5) ;
+* les paires hors de portée, listées ;
+* la réponse de la tâche 6, avec le statut de chacun de ses points ;
+* ce que la tranche établit (composition conditionnelle dans le graphe abstrait) et ce qu'elle n'établit pas (accès physiques, ordre interne aux pas, absence de course) ;
+* tout pas attendu `ok` que le modèle refuse, et tout contre-exemple trouvé ;
+* l'audit final des axiomes, avec un décompte dont la somme tombe juste ;
+* les sorties de `git diff --stat main...HEAD -- specs AGENTS.md CLAUDE.md formal/DESIGN.md formal/Ern/MemoryModel` et de `git status --short`.
+
+Ordre
+1 → 2 → 3 → 4 → 5 → 6. Commit à chaque tâche compilant.
+</pasted_content id="c7c6">
+
+---
+
+<pasted_content id="c7c6">
+Brief Claude Code — ERN Spec 2, jalon 4 : contrôle ciblé de la correction de C17 point 4
+Cadre
+Même branche `formal/spec2-m4`, à la suite de la tranche 4 (`ebbc311`). Formalisation exploratoire, jamais mergée. Pas de push sur `main`, pas de PR.
+Documents joints, non commités, inchangés depuis la tranche 4 : WC5.3 retouché et `corpus-spec2-m3.md` v15.
+Ce brief n'ouvre pas une tranche. Il contrôle une seule correction proposée, par trois énoncés et une observation.
+Décisions sur ton dernier rapport :
+
+1. La tranche 4 est reçue et close. Les deux réfutations sont des résultats. Les limites sont acceptées telles qu'écrites ; rien n'est à reprendre.
+2. Ta trace `unlock_r_eq_i_no_hb` a soulevé une question de texte. C28 point 1 et C48 placent le marqueur de perte du grant avant la publication sur le contrôleur. Dans ta trace, le droit de `c1` sur le contrôleur dépend de ce grant : la publication suivrait donc la perte du droit qui la justifie.
+3. Le propriétaire a validé, en principe et pour vérification seulement, un renforcement de C17 point 4. WC5.3 n'est pas modifié.
+
+Ne modifie ni `specs/`, ni `AGENTS.md`, ni `CLAUDE.md`, ni `formal/DESIGN.md`, ni aucun fichier de `formal/Ern/MemoryModel/`.
+La correction proposée
+Texte candidat, non adopté, en remplacement de C17, préconditions abstraites, point 4 :
+
+4. The acting frame has the applicable controller-access right, with effective mode present on `ControlOf(entry)` (Spec 1 §68.2), both in the state before `unlock` and in the prospective authority state obtained by releasing the recorded grant `g` under O3. The prospective state is evaluated solely as a precondition of the coherent `unlock` transition; it is neither committed nor externally observable unless that transition succeeds.
+
+Précision de lecture : l'état prospectif n'a de sens que si les points 1 à 3 de C17 valent, c'est-à-dire si `g` est actif et libérable selon O3.
+Cite ce texte dans les docstrings comme « proposed C17 item 4, not adopted (brief) ».
+Définitions
+Tout est ajouté à côté des définitions existantes. Aucune n'est modifiée ni affaiblie : `UnlockOk`, `PremG`, `RunFull`, les définitions de `HandoffExt` et tous les énoncés de la tranche 4. Choisis les noms et l'encodage ; dis-les dans le rapport.
+
+* État prospectif d'un pas `unlock` : l'état d'autorités obtenu depuis l'état d'avant le pas en libérant le grant enregistré selon O3, le registre et le contrôleur restant inchangés. Dis comment tu l'obtiens. Si tu préfères lire le droit dans l'état résultant du pas, prouve d'abord que les deux lectures coïncident pour le droit sur le contrôleur.
+* Droit conservé : dans l'état prospectif, la frame agissante a le droit d'accès au contrôleur de C17 point 4, lu sous la même forme que celle que l'encapsulation complète lit dans l'état d'avant le pas (sans `guarded` vivant dans la chaîne, comme `PremG`).
+* Exécution corrigée : une `RunFull` dont chaque pas `unlock` satisfait le droit conservé. C'est une restriction de `RunFull` ; prouve l'inclusion.
+
+N'ajoute aucune hypothèse pour obtenir un énoncé. Les hypothèses admises sont `DDSound`, `StaticsOK`, l'état initial et l'exécution corrigée. Toute hypothèse de plus est un écart à rapporter.
+Tâches
+1. Les deux traces de la tranche 4
+Par `decide`, pour `unlock_r_eq_i_no_hb` et pour son jumeau sans `resetLock` :
+
+* le préfixe jusqu'à l'indice 6 est une exécution corrigée ;
+* l'`unlock` de l'indice 7 ne satisfait pas le droit conservé. Donne le fait d'état qui l'établit.
+
+Attendu : l'`unlock` échoue dans les deux traces. Fondement : après la libération de `g`, `o1′` reste tenue par `T`, que `c1` n'atteint plus.
+2. Non-régression
+Pour chacune des 57 autres traces `RunFull` du dépôt : chaque pas `unlock` satisfait le droit conservé, donc la trace est une exécution corrigée.
+Attendu : toutes. Donne la table : trace, nombre de pas `unlock`, verdict.
+Si un `unlock` d'une de ces traces échoue, c'est un résultat : la correction exclurait un usage jusqu'ici admis. Rapporte la trace, le pas et l'état. Ne corrige rien.
+3. Un `unlock` réussi n'est plus sa propre frontière
+Sur une exécution corrigée depuis l'état initial : pour toute paire exclusive étendue `(i, j, l)` dont le pas `i` est un `unlock` et `l` son contrôleur, la frontière vérifie `r > i`. Prouve ou réfute.
+Piste : l'argument de `frontier_gt_store`, qui lit le droit de §65.5 dans l'état résultant.
+Si l'énoncé est réfuté : trace minimale et clauses responsables, sans correction.
+4. Observation, sans attendu
+Après le refus de l'`unlock`, la situation se débloque-t-elle ? Depuis l'état d'avant l'indice 7 de ta trace (`c1` détient `g`, `o1′` est tenue par `T`), rapporte le verdict de chaque pas de ces deux suites, et de ces deux-là seulement :
+
+* Suite A. `c1 : terminate` ; `c0 : resetLock(e)` ; `c0 : acquire(e)` ; `c0 : release(o1′)` ; `c0 : unlock(e)`.
+* Suite B. `c1 : o2 := derive(o1′, Observe, {lock})` ; `c1 : unlock(e)`.
+
+Pour chaque pas : verdict du noyau, verdict de l'encapsulation complète, droit conservé pour les `unlock`, et la clause défaillante en cas de refus. Je n'ai pas d'attendu ; ne conclus pas au-delà des verdicts.
+Critère d'arrêt
+Chacune des tâches 1 à 3 reçoit une preuve, une réfutation ou une limite écrite. La tâche 4 rapporte des verdicts. Puis arrête-toi.
+Hors de portée
+
+* Toute modification de WC5.3 ou d'une définition existante.
+* La faisabilité de `resetLock` et le classement entre `reject` et `non habilité` (D-C1).
+* Les sept autres couples laissés ouverts par la tranche 4.
+* Les événements internes aux pas et les accès physiques.
+
+Règles Lean
+Inchangées : aucun `sorry`, `admit`, `axiom`, `native_decide`, `noncomputable` ; axiomes `{propext, Quot.sound}` ; `lake build` sans nouvel avertissement ; `grep` d'`AGENTS.md` vide ; docstrings en anglais citant WC5.3, la Spec 1 ou ce brief ; aucun énoncé ni définition existant affaibli ou modifié ; le verdict attendu vient de ce brief, jamais du modèle ; Conventional Commits sans `Co-Authored-By`.
+Rapport
+Ajoute à la fin de `formal/reports/spec2-m4-handoff-ext.md` une section « Contrôle de C17 point 4 », en français :
+
+* les définitions ajoutées et la façon dont l'état prospectif est obtenu ;
+* le statut de chaque énoncé des tâches 1 à 3, avec ses hypothèses exactes et son théorème (module:ligne) ;
+* la table de non-régression ;
+* les verdicts de la tâche 4 ;
+* tout écart à ce brief ;
+* l'audit des axiomes, avec un décompte dont la somme tombe juste ;
+* les sorties de `git diff --stat main...HEAD -- specs AGENTS.md CLAUDE.md formal/DESIGN.md formal/Ern/MemoryModel` et de `git status --short`.
+
+Ordre
+1 → 2 → 3 → 4. Commit à chaque tâche compilant.
+</pasted_content id="c7c6">
