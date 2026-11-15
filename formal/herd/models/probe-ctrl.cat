@@ -1,0 +1,4 @@
+"Probe of the ctrl relation computed by herd7 (PPC): flags only, no constraint"
+
+flag ~empty (ctrl & (R * W)) as CtrlToWrite
+flag ~empty (((R * W) & po) \ ctrl) as ReadWriteWithoutCtrl

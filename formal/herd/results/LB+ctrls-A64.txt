@@ -1,0 +1,13 @@
+Test LB+ctrls-A64 Allowed
+States 3
+0:X0=0; 1:X0=0;
+0:X0=0; 1:X0=1;
+0:X0=1; 1:X0=0;
+No
+Witnesses
+Positive: 0 Negative: 3
+Condition exists (0:X0=1 /\ 1:X0=1)
+Observation LB+ctrls-A64 Never 0 3
+Time LB+ctrls-A64 0.01
+Hash=cab4add64ade84f1022096178b28a3bd
+

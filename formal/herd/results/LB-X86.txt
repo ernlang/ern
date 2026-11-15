@@ -1,0 +1,13 @@
+Test LB-X86 Allowed
+States 3
+0:rax=0; 1:rax=0;
+0:rax=0; 1:rax=1;
+0:rax=1; 1:rax=0;
+No
+Witnesses
+Positive: 0 Negative: 3
+Condition exists (0:rax=1 /\ 1:rax=1)
+Observation LB-X86 Never 0 3
+Time LB-X86 0.00
+Hash=d9014e654c6952eeb8d7cb771af7bbda
+

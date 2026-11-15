@@ -1,0 +1,10 @@
+"Probe of the ctrl relation of aarch64.cat (aarch64deps.cat): flags only, no constraint"
+
+(* As in aarch64.cat, catdep must be in the main model file: without it herd7 computes no
+   register-level dependency and the ctrl of aarch64deps.cat is empty. *)
+catdep
+
+include "aarch64deps.cat"
+
+flag ~empty (ctrl & (R * W)) as CtrlToWrite
+flag ~empty (((R * W) & po) \ ctrl) as ReadWriteWithoutCtrl

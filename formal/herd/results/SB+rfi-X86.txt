@@ -1,0 +1,14 @@
+Test SB+rfi-X86 Allowed
+States 4
+0:rax=1; 0:rbx=0; 1:rax=1; 1:rbx=0;
+0:rax=1; 0:rbx=0; 1:rax=1; 1:rbx=1;
+0:rax=1; 0:rbx=1; 1:rax=1; 1:rbx=0;
+0:rax=1; 0:rbx=1; 1:rax=1; 1:rbx=1;
+Ok
+Witnesses
+Positive: 1 Negative: 3
+Condition exists (0:rax=1 /\ 0:rbx=0 /\ 1:rax=1 /\ 1:rbx=0)
+Observation SB+rfi-X86 Sometimes 1 3
+Time SB+rfi-X86 0.00
+Hash=6a5f6be4a586febeedf62b214657bddf
+

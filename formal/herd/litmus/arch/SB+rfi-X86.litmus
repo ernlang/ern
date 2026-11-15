@@ -1,0 +1,7 @@
+X86_64 SB+rfi-X86
+{ x=0; y=0; }
+ P0            | P1            ;
+ movl $1,(x)   | movl $1,(y)   ;
+ movl (x),%eax | movl (y),%eax ;
+ movl (y),%ebx | movl (x),%ebx ;
+exists (0:rax=1 /\ 0:rbx=0 /\ 1:rax=1 /\ 1:rbx=0)

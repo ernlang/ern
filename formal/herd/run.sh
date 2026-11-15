@@ -3,7 +3,9 @@
 # in results/. LB+rlx is run a second time with the no-thin-air check skipped, SB+rfi+sc+sc with
 # the SC check skipped. The lock tests B1 to B5 and the group D tests are also run with RMW checks
 # skipped, one result file per run. Every litmus test is then run once under models/rc11-rs20.cat
-# (rc11.cat with the C++20-form release sequence), its result file suffixed +rs20.
+# (rc11.cat with the C++20-form release sequence), its result file suffixed +rs20. The architecture
+# tests of litmus/arch/ are run under the default herd7 model of their architecture, passed
+# explicitly, and the AArch64 and PPC ones also under a ctrl probe (suffix +probe-ctrl).
 # Set HERD7 to the herd7 binary if it is not on PATH.
 set -u
 HERD7=${HERD7:-herd7}
@@ -55,6 +57,25 @@ skip XCHG+sc atomicity,coherencermw,SC
 # Every test under rc11-rs20.cat, no check skipped
 for t in *.litmus; do
   run "${t%.litmus}+rs20" -model "$here/models/rc11-rs20.cat" "$t"
+done
+
+# Architecture tests: aarch64.cat, ppc.cat and x86tso-mixed.cat are the herd7 defaults
+arch() {
+  run "$1" -model "$2" "arch/$1.litmus"
+}
+arch LB-A64 aarch64.cat
+arch LB+ctrls-A64 aarch64.cat
+arch LB-PPC ppc.cat
+arch LB+ctrls-PPC ppc.cat
+arch LB-X86 x86tso-mixed.cat
+arch SB+rfi-X86 x86tso-mixed.cat
+
+# The ctrl relation herd7 sees from the read to the write (flags only, no constraint)
+for t in LB-A64 LB+ctrls-A64; do
+  run "$t+probe-ctrl" -model "$here/models/probe-ctrl-a64.cat" "arch/$t.litmus"
+done
+for t in LB-PPC LB+ctrls-PPC; do
+  run "$t+probe-ctrl" -model "$here/models/probe-ctrl.cat" "arch/$t.litmus"
 done
 
 exit $status
