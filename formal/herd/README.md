@@ -16,6 +16,7 @@ They fix the reference point that WC5.1 C53 calls the "complete external RC11 re
   - `LB+rlx` with the `no-thin-air` check skipped (`results/LB+rlx+skip-no-thin-air.txt`);
   - the lock tests `LOCK+xchg-acq+rel` to `LOCK+cas-acq+rel` and the group D tests with RMW checks skipped, as `results/<test>+skip-<checks>.txt`, the checks being joined by `-`. `LOCK3+xchg-acq+rel` is not run with checks skipped: one run takes minutes.
 - `results/`: the raw outputs.
+- `models/rc11-rs20.cat`: a copy of the installed `rc11.cat` with the C++20-form release sequence of ERN WC6.2 C48. The only change to the model is the removal of the factor `(sb & loc)?;` from `rs`; a one-line comment at the top says so. `results/rc11-rs20.diff` is the diff against the installed `rc11.cat`. `rc11.cat` is part of herdtools7 and is distributed under the CeCILL-B license (herdtools7 `LICENSE.txt`); its attribution header is kept unchanged.
 
 ## Tool
 
