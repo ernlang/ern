@@ -1,7 +1,7 @@
 "Probe of the ctrl relation of aarch64.cat (aarch64deps.cat): flags only, no constraint"
 
-(* As in aarch64.cat, catdep must be in the main model file: without it herd7 computes no
-   register-level dependency and the ctrl of aarch64deps.cat is empty. *)
+(* As in aarch64.cat, catdep is in the main model file: with catdep only in the included file,
+   the ctrl of aarch64deps.cat was observed empty on LB+ctrls-A64. *)
 catdep
 
 include "aarch64deps.cat"

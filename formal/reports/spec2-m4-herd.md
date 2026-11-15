@@ -17,7 +17,7 @@ Ces tests portent sur le modèle de référence RC11, pas sur le fragment ERN : 
   - courses : `undefined_unless empty dr as Dr`.
 - **Options retenues.**
   - `-model rc11.cat` choisit le modèle. Il faut le donner : le modèle C par défaut de herd7 est `c11_partialSC.cat`.
-  - `-skipcheck <nom>` saute un contrôle nommé (`-skipchecks` pour une liste). Aucune copie locale du modèle n'est faite.
+  - `-skipcheck <nom>` saute un contrôle nommé (`-skipchecks` pour une liste). Aucune copie locale du modèle n'est faite. **Mise à jour :** les contrôles ciblés ajoutent une copie modifiée, `formal/herd/models/rc11-rs20.cat`, voir « Contrôles ciblés avant validation ».
 - **Signal de course.** herd7 signale une exécution indéfinie par une ligne `Undef` et une ligne `Flag *undef*`, et sinon par `Ok` ou `No`. Pour vérifier que c'est le contrôle `Dr`, `MP+rlx+rlx` a été relancé avec `-skipcheck Dr` : `Undef` devient `Ok`, l'observation reste `Sometimes 1 2`.
 
 La tâche 1 ne produit aucun fichier : rien n'a été commité pour elle.
@@ -169,7 +169,7 @@ Aucun travail Lean. Aucun fichier hors de `formal/herd/` et de ce rapport n'est 
  
 ```
 
-`scb`, `psc` et les contrôles sont inchangés. Le chargement a été vérifié par `herd7 -debug files -model formal/herd/models/rc11-rs20.cat …` :
+`scb`, `psc` et les contrôles sont inchangés. Le chargement a été vérifié par `herd7 -debug files -model formal/herd/models/rc11-rs20.cat …` (extrait, chemins abrégés en `~`) :
 
 ```
 Found and opened: './formal/herd/models/rc11-rs20.cat'
@@ -183,7 +183,7 @@ Found and opened: '~/.opam/default/share/herdtools7/herd/cos.cat'
 
 ### Tests en C sous les deux modèles
 
-Les sorties sont celles de `formal/herd/results/` : `<test>.txt` sous `rc11.cat`, `<test>+rs20.txt` sous `rc11-rs20.cat`. Pour les 16 tests des groupes A à D, les deux sorties sont identiques ligne à ligne, ligne `Time` exceptée (vérifié par `diff` en excluant cette ligne). La ligne d'état est `Ok`, `No` ou `Undef` ; une course ajoute `Flag *undef*`.
+Les sorties sont celles de `formal/herd/results/` : `<test>.txt` sous `rc11.cat`, `<test>+rs20.txt` sous `rc11-rs20.cat`. Pour les 16 tests des groupes A à D, les deux sorties sont identiques ligne à ligne, ligne `Time` exceptée (vérifié par `diff` sur les 16 tests, cette ligne exclue). La ligne d'état est `Ok`, `No` ou `Undef` ; une course ajoute `Flag *undef*`.
 
 | Test | `rc11.cat` : attendu | `rc11.cat` : obtenu | `rc11-rs20.cat` : attendu | `rc11-rs20.cat` : obtenu | Verdict |
 |---|---|---|---|---|---|
@@ -247,7 +247,7 @@ Le brief donnait de mémoire trois raisons. Elles existent sous la forme dite, a
 Il en faut deux, un par architecture :
 
 - **`probe-ctrl.cat`, pour PPC.** `ppc.cat` lit la relation `ctrl` que calcule herd7, sans la redéfinir (seule occurrence : `ppc.cat:28`).
-- **`probe-ctrl-a64.cat`, pour AArch64.** `aarch64.cat` commence par `catdep` (« the cat file computes dependencies ») et définit sa propre relation : `aarch64deps.cat:70` `let ctrl = [Exp & R]; basic-dep; [BCC]; po`. La sonde inclut ce fichier et commence elle aussi par `catdep`.
+- **`probe-ctrl-a64.cat`, pour AArch64.** `aarch64.cat` commence par `catdep` (« the cat file computes dependencies ») et définit sa propre relation : `aarch64deps.cat:70` `let ctrl = [Exp & R]; basic-dep; [BCC]; po`. La sonde inclut ce fichier et commence elle aussi par `catdep` (voir « Première forme » ci-dessous).
 
 Dans chaque test, chaque thread a une lecture mémoire et une écriture mémoire qui la suit en `po`. `ReadWriteWithoutCtrl` jamais levé veut donc dire que la paire de **chaque** thread est en `ctrl`, dans toutes les exécutions.
 
@@ -260,7 +260,7 @@ Dans chaque test, chaque thread a une lecture mémoire et une écriture mémoire
 
 La dépendance est constatée dans les deux tests `LB+ctrls`. Leurs verdicts comptent donc.
 
-**Première forme de la sonde AArch64, refusée.** Elle n'avait `catdep` que dans le fichier inclus. Sur `LB+ctrls-A64`, elle levait `ReadWriteWithoutCtrl` et jamais `CtrlToWrite` : la relation `ctrl` était vide. Le défaut venait de la sonde, pas du test. herd7 ne calcule les dépendances au niveau des registres que si `catdep` figure dans le fichier de modèle principal. Une sonde qui inclut `aarch64.cat` tout entier depuis un autre fichier perd de même l'interdiction : `LB+ctrls-A64` y devient `Sometimes 1 3`. Ces sondes de diagnostic sont restées hors dépôt. Les tests n'ont pas été modifiés.
+**Première forme de la sonde AArch64, refusée.** Elle n'avait `catdep` que dans le fichier inclus. Sur `LB+ctrls-A64`, elle levait `ReadWriteWithoutCtrl` et jamais `CtrlToWrite` : la relation `ctrl` était vide. Le défaut venait de la sonde, pas du test. Ce qui est observé : sur `LB+ctrls-A64`, la relation `ctrl` d'`aarch64deps.cat` est vide tant que `catdep` ne figure pas dans le fichier de modèle principal. Les relations `rf-reg` et `basic-dep` y étaient pourtant non vides ; seul le chemin vers l'événement de branchement (`[BCC]`) manquait. La cause interne à herd7 n'est pas établie. Une sonde qui inclut `aarch64.cat` tout entier depuis un autre fichier perd de même l'interdiction : `LB+ctrls-A64` y devient `Sometimes 1 3`. Ces sondes de diagnostic sont restées hors dépôt. Les tests n'ont pas été modifiés.
 
 ### Conséquence pour `OB-C22` et `OB-C27`
 
