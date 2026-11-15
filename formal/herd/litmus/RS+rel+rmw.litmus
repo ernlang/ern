@@ -1,0 +1,22 @@
+C RS+rel+rmw
+
+{ d = 0; f = 0; }
+
+P0 (int* d, atomic_int* f) {
+  *d = 1;
+  atomic_store_explicit(f, 1, memory_order_release);
+}
+
+P1 (atomic_int* f) {
+  atomic_fetch_add_explicit(f, 1, memory_order_relaxed);
+}
+
+P2 (int* d, atomic_int* f) {
+  int r1 = -1;
+  int r0 = atomic_load_explicit(f, memory_order_acquire);
+  if (r0 == 2) {
+    r1 = *d;
+  }
+}
+
+exists (2:r0=2 /\ 2:r1=0)
