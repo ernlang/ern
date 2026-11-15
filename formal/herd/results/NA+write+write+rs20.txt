@@ -1,0 +1,13 @@
+Test NA+write+write Allowed
+States 2
+[d]=1;
+[d]=2;
+Undef
+Witnesses
+Positive: 1 Negative: 1
+Flag *undef*
+Condition exists ([d]=1)
+Observation NA+write+write Sometimes 1 1
+Time NA+write+write 0.00
+Hash=0f9e6152c0eee416dfc5d2fb8466045a
+

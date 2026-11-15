@@ -1,0 +1,14 @@
+Test MP+rlx+rlx Allowed
+States 3
+1:r0=0; 1:r1=-1;
+1:r0=1; 1:r1=0;
+1:r0=1; 1:r1=1;
+Undef
+Witnesses
+Positive: 1 Negative: 2
+Flag *undef*
+Condition exists (1:r0=1 /\ 1:r1=0)
+Observation MP+rlx+rlx Sometimes 1 2
+Time MP+rlx+rlx 0.00
+Hash=e6f39ab411fb1195c42080dfa43ddf8b
+

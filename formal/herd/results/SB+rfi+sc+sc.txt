@@ -1,0 +1,13 @@
+Test SB+rfi+sc+sc Allowed
+States 3
+0:r1=1; 0:r2=0; 1:r1=1; 1:r2=1;
+0:r1=1; 0:r2=1; 1:r1=1; 1:r2=0;
+0:r1=1; 0:r2=1; 1:r1=1; 1:r2=1;
+No
+Witnesses
+Positive: 0 Negative: 3
+Condition exists (0:r1=1 /\ 0:r2=0 /\ 1:r1=1 /\ 1:r2=0)
+Observation SB+rfi+sc+sc Never 0 3
+Time SB+rfi+sc+sc 0.00
+Hash=d6febf9c6ee93ccbc8779d142f4a0283
+

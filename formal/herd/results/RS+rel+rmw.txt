@@ -1,0 +1,13 @@
+Test RS+rel+rmw Allowed
+States 3
+2:r0=0; 2:r1=-1;
+2:r0=1; 2:r1=-1;
+2:r0=2; 2:r1=1;
+No
+Witnesses
+Positive: 0 Negative: 6
+Condition exists (2:r0=2 /\ 2:r1=0)
+Observation RS+rel+rmw Never 0 6
+Time RS+rel+rmw 0.00
+Hash=3162eca012a7ba559a93ed29baa54a24
+

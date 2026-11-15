@@ -1,7 +1,9 @@
 #!/bin/sh
 # Run every litmus test under the RC11 reference model (rc11.cat) and keep the raw herd7 output
-# in results/. LB+rlx is run a second time with the no-thin-air check skipped. The lock tests B1 to
-# B5 and the group D tests are also run with RMW checks skipped, one result file per run.
+# in results/. LB+rlx is run a second time with the no-thin-air check skipped, SB+rfi+sc+sc with
+# the SC check skipped. The lock tests B1 to B5 and the group D tests are also run with RMW checks
+# skipped, one result file per run. Every litmus test is then run once under models/rc11-rs20.cat
+# (rc11.cat with the C++20-form release sequence), its result file suffixed +rs20.
 # Set HERD7 to the herd7 binary if it is not on PATH.
 set -u
 HERD7=${HERD7:-herd7}
@@ -30,6 +32,7 @@ for t in *.litmus; do
   run "${t%.litmus}" -model rc11.cat "$t"
 done
 run "LB+rlx+skip-no-thin-air" -model rc11.cat -skipcheck no-thin-air LB+rlx.litmus
+run "SB+rfi+sc+sc+skip-SC" -model rc11.cat -skipcheck SC SB+rfi+sc+sc.litmus
 
 # Exclusive acquisition in the lock tests (LOCK3+xchg-acq+rel is left out: one run takes minutes)
 for c in atomicity coherencermw atomicity,coherencermw; do
@@ -48,5 +51,10 @@ for c in atomicity coherencermw atomicity,coherencermw; do
   skip XCHG+sc "$c"
 done
 skip XCHG+sc atomicity,coherencermw,SC
+
+# Every test under rc11-rs20.cat, no check skipped
+for t in *.litmus; do
+  run "${t%.litmus}+rs20" -model "$here/models/rc11-rs20.cat" "$t"
+done
 
 exit $status
