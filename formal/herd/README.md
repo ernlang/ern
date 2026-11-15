@@ -1,8 +1,8 @@
 # herd7 tests of the RC11 reference model
 
-These tests exercise the RC11 reference model, not the ERN fragment.
+These tests exercise the RC11 reference model, a copy of it with the C++20-form release sequence, and three architecture models. No ERN model is executed.
 
-They fix the reference point that WC5.1 C53 calls the "complete external RC11 reference". They check what RC11 says about the patterns WC5.1 relies on: release/acquire message passing, the reference mutex, exclusive acquisition by an RMW, release sequences, load buffering and mixed atomic/non-atomic accesses. Exploratory work, never merged.
+They fix the reference point that WC5.1 C53 calls the "complete external RC11 reference". They check what RC11 says about the patterns WC5.1 relies on: release/acquire message passing, the reference mutex, exclusive acquisition by an RMW, release sequences, load buffering and mixed atomic/non-atomic accesses. The targeted checks before validation of WC6.2 add: the release sequence of WC6.2 C48 (`rc11-rs20.cat`), store buffering with re-reads under the `psc` rule of WC6.2 C34, and load buffering on the AArch64, PPC and x86 models. Exploratory work, never merged.
 
 ## Contents
 
@@ -11,19 +11,28 @@ They fix the reference point that WC5.1 C53 calls the "complete external RC11 re
   - Group B, reference mutex: `LOCK+xchg-acq+rel`, `LOCK+xchg-acq+rlx`, `LOCK+xchg-rlx+rel`, `LOCK+sc+sc`, `LOCK+cas-acq+rel`, `LOCK3+xchg-acq+rel`.
   - Group C, mixed accesses: `MIX+store-rlx+read`, `AT+store+store`, `NA+write+write`.
   - Group D, exclusive acquisition: `XCHG+acq`, `XCHG+rlx`, `XCHG+sc`. Two threads, one exchange each, with no release and no data.
-  - Group E, release sequence: `RS+rel+rlx`. A release store followed in the same thread by a non-RMW atomic write to the same location, read by an acquire load.
-- `run.sh`: runs every test under `rc11.cat` and writes the raw herd7 output to `results/<test>.txt`. It also runs:
-  - `LB+rlx` with the `no-thin-air` check skipped (`results/LB+rlx+skip-no-thin-air.txt`);
-  - the lock tests `LOCK+xchg-acq+rel` to `LOCK+cas-acq+rel` and the group D tests with RMW checks skipped, as `results/<test>+skip-<checks>.txt`, the checks being joined by `-`. `LOCK3+xchg-acq+rel` is not run with checks skipped: one run takes minutes.
+  - Group E, release sequence: `RS+rel+rlx` (E1), a release store followed in the same thread by a non-RMW atomic write to the same location, read by an acquire load; `RS+rel+rmw` (E2), a release store extended by a relaxed `fetch_add` of another thread, read by an acquire load.
+  - Group F, store buffering with re-reads: `SB+rfi+sc+sc` (F1), all accesses `seq_cst`; `SB+rfi+rel+sc` (F2), the two stores `release`, the loads `seq_cst` (the example of LWG issue 3941).
+- `litmus/arch/`: architecture tests in the herd7 assembly syntax of each architecture.
+  - `LB-A64`, `LB+ctrls-A64` (AArch64), `LB-PPC`, `LB+ctrls-PPC` (PPC): load buffering without and with a control dependency from the read to the write of each thread. The branch is artificial: it goes to the next instruction, and the PPC comparison compares a register with itself.
+  - `LB-X86`, `SB+rfi-X86` (X86_64, AT&T syntax): load buffering, and store buffering with each thread re-reading its own write.
+- `run.sh`: runs every C test under `rc11.cat` and writes the raw herd7 output to `results/<test>.txt`. It also runs:
+  - `LB+rlx` with the `no-thin-air` check skipped (`results/LB+rlx+skip-no-thin-air.txt`), and `SB+rfi+sc+sc` with the `SC` check skipped (`results/SB+rfi+sc+sc+skip-SC.txt`);
+  - the lock tests `LOCK+xchg-acq+rel` to `LOCK+cas-acq+rel` and the group D tests with RMW checks skipped, as `results/<test>+skip-<checks>.txt`, the checks being joined by `-`. `LOCK3+xchg-acq+rel` is not run with checks skipped: one run takes minutes;
+  - every C test once under `models/rc11-rs20.cat`, with no check skipped, as `results/<test>+rs20.txt`;
+  - every architecture test under the default herd7 model of its architecture, passed explicitly, as `results/<test>.txt`;
+  - the four AArch64 and PPC tests under a `ctrl` probe, as `results/<test>+probe-ctrl.txt`.
 - `results/`: the raw outputs.
 - `models/rc11-rs20.cat`: a copy of the installed `rc11.cat` with the C++20-form release sequence of ERN WC6.2 C48. The only change to the model is the removal of the factor `(sb & loc)?;` from `rs`; a one-line comment at the top says so. `results/rc11-rs20.diff` is the diff against the installed `rc11.cat`. `rc11.cat` is part of herdtools7 and is distributed under the CeCILL-B license (herdtools7 `LICENSE.txt`); its attribution header is kept unchanged.
+- `models/probe-ctrl.cat` (PPC) and `models/probe-ctrl-a64.cat` (AArch64): models made of two flags and no constraint. `CtrlToWrite` is raised when some memory read is `ctrl`-before a memory write; `ReadWriteWithoutCtrl` when some memory read is `po`-before a memory write without `ctrl`. The PPC probe reads the `ctrl` relation that herd7 computes. The AArch64 probe reads the `ctrl` of `aarch64deps.cat`, the definition `aarch64.cat` uses; like `aarch64.cat`, it starts with `catdep`, without which herd7 computes no register-level dependency and that `ctrl` is empty.
 
 ## Tool
 
 - herdtools7 7.58, installed with opam. `rc11.cat` is the model shipped with it, in the directory printed by `herd7 -libdir`.
 - Its checks are `coherence1`, `coherencermw`, `atomicity`, `SC` and `no-thin-air`. Data races are `undefined_unless empty dr as Dr`, which herd7 reports as `Undef` and `Flag *undef*`.
 - The model is selected with `-model rc11.cat`; the default C model of herd7 is `c11_partialSC.cat`.
-- A named check is skipped with `-skipcheck <name>`, a list with `-skipchecks <name,..,name>`. No local copy of the model is made.
+- A named check is skipped with `-skipcheck <name>`, a list with `-skipchecks <name,..,name>`. `rc11.cat` itself is used from the installation; the only local model derived from it is `models/rc11-rs20.cat`.
+- Architecture models: the defaults printed by `herd7 -help` and confirmed with `-debug files`, passed explicitly with `-model`: `aarch64.cat` for AArch64, `ppc.cat` for PPC, `x86tso-mixed.cat` for X86_64.
 
 ## Rerun
 
@@ -31,7 +40,7 @@ They fix the reference point that WC5.1 C53 calls the "complete external RC11 re
 HERD7=/path/to/herd7 formal/herd/run.sh
 ```
 
-`HERD7` defaults to `herd7` on `PATH`. The script exits with status 1 if an output has no `Observation` line, which is the case when herd7 rejects a test. A full run takes about 6.5 minutes, almost all of it for the three-thread `LOCK3+xchg-acq+rel`.
+`HERD7` defaults to `herd7` on `PATH`. The script exits with status 1 if an output has no `Observation` line, which is the case when herd7 rejects a test. A full run takes about 13 minutes, almost all of it for the two runs of the three-thread `LOCK3+xchg-acq+rel`.
 
 ## Correspondence ERN ↔ C11
 
@@ -39,14 +48,16 @@ HERD7=/path/to/herd7 formal/herd/run.sh
 |---|---|
 | `readShared(l, order)` | `atomic_load_explicit(l, memory_order_…)` |
 | `writeShared(l, v, order)` on an `Atomic` leaf | `atomic_store_explicit(l, v, memory_order_…)` |
-| RMW (C39) | `atomic_exchange_explicit`, `atomic_compare_exchange_strong_explicit` |
+| RMW (C39) | `atomic_exchange_explicit`, `atomic_compare_exchange_strong_explicit`, `atomic_fetch_add_explicit` |
 | `read3`, `write3` | ordinary read and write of an `int` |
 | `relaxed`, `release`, `acquire`, `acq_rel`, `seq_cst` | the C11 orders of the same name |
 
 ## Notes on the tests
 
 - In the herd7 C dialect, `*x` is a non-atomic access whatever the declared type, and only the `atomic_*` calls produce atomic events.
-- `MP+*`, `LOCK3+xchg-acq+rel` and `RS+rel+rlx` initialise `r1` to `-1`, so that `r1` has a value when the guarded read does not run.
+- `MP+*`, `LOCK3+xchg-acq+rel`, `RS+rel+rlx` and `RS+rel+rmw` initialise `r1` to `-1`, so that `r1` has a value when the guarded read does not run.
 - In the `LOCK+*` tests, the `exists` clause asks whether both threads take the lock (`r0 = 0` for the exchange tests, `r0 = 1` for the compare-exchange test). A lock that is released can be taken again, so this outcome also covers two successive acquisitions. The group D tests have no release, so there the same outcome means two overlapping acquisitions.
 - herd7 rejects `&e` for a local `e` as the expected-value argument of `atomic_compare_exchange_strong_explicit`. `LOCK+cas-acq+rel` passes instead a pointer to a per-thread non-atomic location (`e0`, `e1`), and `r0` is the boolean result of the compare-exchange.
-- In `RS+rel+rlx`, the release sequence of `rc11.cat` includes the later non-RMW atomic write of the same thread to the same location. WC5.1 C48 takes the C++20 form instead, where only RMWs extend a release sequence; the tests do not run that form.
+- In `RS+rel+rlx`, the release sequence of `rc11.cat` includes the later non-RMW atomic write of the same thread to the same location. WC6.2 C48 takes the C++20 form instead, where only RMWs extend a release sequence; `rc11-rs20.cat` runs that form.
+- In `RS+rel+rmw`, `f` can hold `2` only if the `fetch_add` of `P1` read the release store of `P0`.
+- Translation assumed by the architecture tests (the usual mapping, not an ERN decision): a `relaxed` or `release` read or write becomes a plain machine read or write; on x86, a `seq_cst` read becomes a plain read.
