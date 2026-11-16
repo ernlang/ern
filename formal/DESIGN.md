@@ -43,7 +43,39 @@ architecture requires an explicit revision of this document.
 - **Observable behaviors** are defined explicitly: termination with its observable result, trap, undefined behavior, divergence. Refinement compares concrete behaviors projected onto abstract observations.
 - **Abstract safety.** A program accepted by the static rules has no undefined behavior in the abstract model.
 - **Refinement.** For every layout satisfying the interface: if each unsafe region satisfies its contract, every observable behavior of an accepted program in the concrete model projects to a behavior of the abstract model. Concrete safety follows from abstract safety.
-- **Unsafe contracts.** A contract is an entry condition and an exit condition relating the two models. From any state satisfying the entry condition, no execution of the region reaches undefined behavior, and every non-trap exit satisfies the exit condition. A trap is terminal: it runs no cleanup and is compared as an observable behavior. The relation between the models implies the entry condition of any region reachable from safe code; a stronger entry condition must be established by the unsafe code that enters the region. Intermediate states may break the relation, since in sequential execution no other code observes them. Under concurrency, shared state is observable during the region; the contract form for that case is decided before milestone 4.
+- **Unsafe contracts.** A contract is an entry condition and an exit condition relating the two models. From any state satisfying the entry condition, no execution of the region reaches undefined behavior, and every non-trap exit satisfies the exit condition. A trap is terminal: it runs no cleanup and is compared as an observable behavior. The relation between the models implies the entry condition of any region reachable from safe code; a stronger entry condition must be established by the unsafe code that enters the region. Intermediate states may break the relation, since in sequential execution no other code observes them. Under concurrency, other contexts observe shared state during the region, and the form above is not enough. A concurrent contract has five parts:
+
+  - Entry condition. As above, including the authorities the region needs.
+  - Rely. The interference the region tolerates from other contexts. It never
+    assumes that another context stops running.
+  - Guarantee. At every intermediate state, the invariants and the relation
+    between the models on which other contexts may rely remain valid for
+    every part of the state they can observe. A temporary departure from the
+    relation is permitted only for storage for which the region establishes
+    exclusive authority and physical non-observability by other contexts
+    throughout the departure, under its rely and event conditions. The
+    relation and the invariants are restored before that storage is
+    published, transferred, made externally accessible, or ceases to be
+    exclusively controlled. No temporary departure invalidates a global
+    invariant on which another context relies.
+  - Event condition. The accesses, memory orders, synchronizations and
+    storage-validity events of the region satisfy the event rules of the
+    concurrency spec.
+  - Exit condition. As above, on every exit the contract announces, defined
+    failures included.
+
+  Non-observability is a property of events, not of one state. The departure
+  and the restoration are represented by events, or by explicitly mapped cuts
+  of the event graph, before their order is stated: every access of another
+  context to that storage is ordered by `hb` before the departure or after the
+  restoration. An abstract state transition or an exclusive authority alone is
+  not evidence of that order.
+
+  A safe abstraction establishes these parts itself, for every interference its
+  environment may produce. It never passes them on to its safe callers. The
+  contract is a proof method: it adds no rule to any spec. What a trap in one
+  context means for the other contexts belongs to the control flow spec; no
+  theorem of milestone 4 depends on it.
 - **Scope.** Every theorem states the language fragment it covers. A theorem on a fragment supports no claim about the whole language; sequential safety implies nothing about concurrent safety.
 
 ## Construction order
@@ -54,7 +86,159 @@ architecture requires an explicit revision of this document.
 4. Concurrency model: extends both models and the refinement.
 5. IR dialect, once its dependencies are formalized.
 
-The semantic style of milestones 4 and 5 and their target theorems are decided here before they start.
+The semantic style and target theorems of milestone 4 are set out below. The
+style and target theorems of milestone 5 must be decided through an explicit
+revision of this document before milestone 5 begins.
+
+## Milestone 4: concurrency model
+
+Source: the concurrency model specification in `specs/`. Clause numbers and
+obligation labels below are its own.
+
+### Semantic style
+
+- **Three objects stay distinct**: the abstract step relation, the execution
+  events with their relations, and the correspondence between the two. None is
+  obtained from another by convention.
+- **Place in the architecture.** The step relation extends the abstract model.
+  Its realization extends the concrete model. The event graph is a third,
+  declarative object, added to the architecture by this section.
+- **Abstract steps.** A labelled step relation over the concurrent state and
+  the library states, interleaved nondeterministically. Library states stay
+  outside the concurrent kernel state (C2, C12). Outcomes are those of the
+  memory model (§58), unchanged. A legal request that is not enabled has no
+  outcome (C8, C16): enabledness is a separate predicate, never an added
+  outcome.
+- **Events.** An axiomatic graph: events with `po`, `rf`, `mo` and `sw`, and
+  `hb` derived from them (C26–C33). The consistency predicate is the
+  conjunction defined by C34. Definitions hold for any number of contexts and
+  of atomic units.
+- **Correspondence.** A successful step corresponds to one or more events. An
+  event may correspond to no successful step: an attempt that is rejected or
+  not enabled may still perform physical accesses (C8, C16, C26, C39). The
+  absence of an `ok` step never implies the absence of events.
+- **One event per step** is a proof fragment, never the semantics of C26–C29.
+  Every theorem that relies on it carries it as a hypothesis.
+
+### Scope of proofs
+
+- Scope (Main theorems) applies in full. A property proven for one atomic
+  unit, for one event per step or for runs from the initial state keeps that
+  restriction in its statement.
+- Witness traces and witness graphs establish non-vacuity. They never replace
+  a general proof.
+- Results of external bounded tools are evidence kept in reports, outside the
+  formalization.
+- The memory model formalization is extended, not modified. It does not
+  represent the discipline condition of the shared write (memory model
+  §68.3). A theorem relative to that formalization alone does not discharge
+  directional conservativity against §68.3. The missing correspondence
+  between the two shared-discipline contracts is recorded as an outstanding
+  obligation; a statement that needs it carries it as an explicit premise.
+  No change to the frozen specification or to its formalization is
+  authorized by this milestone.
+
+### Target theorems
+
+Each is proven on its declared fragment.
+
+1. Sequential conservativity (C24).
+2. Preservation of concurrent well-formedness and of the synchronization
+   invariants by every transition, by-value `spawn` included (C5, C20–C23).
+3. Frame ancestry under reparenting (C3, C6, C7).
+4. Soundness of the synchronization contract and exclusivity of grants
+   (C14, C21, C25).
+5. Synchronized administration and the uniqueness guard on administration
+   identities (C13, C19).
+6. Coverage of the rights read under encapsulation (C22).
+7. Outcomes: rejection and enabledness of `join` and `acquire`; rejection of
+   `unlock` and of recovery (C8, C16–C18).
+8. Atomic operations as step cases, with preservation extended to them
+   (C37, C39).
+9. Refinement at the grain of abstract steps: the memory model refinement
+   extended to the concurrent machine (C50). The correspondence of physical
+   events is not part of it.
+10. General lemmas of the event model; the pure-authority-marker `po`/`hb`
+    erasure property under its explicit premises (C29); non-vacuity of each
+    conjunct of the consistency predicate (C30–C34). On the explicitly
+    stated common fence-free atomic-event fragment, the inclusion of
+    RC11-consistent executions in ERN-admissible executions is proven or
+    refuted (C34, `OB-C23`, `OB-C26`). The statement gives the event mapping
+    and the alignment of `rf`, `mo`, initial writes, RMW and failed-CAS
+    events, and memory orders. No inclusion or equivalence is assumed as an
+    axiom.
+11. Legality of shared-discipline operations and of memory orders;
+    directional conservativity of shared writes (C35–C42).
+12. Handoff: L1 and L2 as stated by C45, the position of the loss marker in
+    the abstract trace, and exclusion of a race by an ordered handoff
+    (C43–C46).
+13. Reference protocols: ordering by `spawn`, completion and `join`; lock
+    order, with its conditions on intervening acquisitions, on recovery and
+    on the stability of the controller leaf stated in the theorem;
+    correspondence with the reference controller graph (C47–C49).
+14. Lifetime ordering and the conditional composition theorem, proven by
+    cases on the conflicting pair: ordinary storage; two atomic accesses;
+    atomic storage with an ordinary access; confined storage; synchronized
+    storage with an exclusive writer; synchronized storage under shared
+    observation, where the order is a premise of the safe trace; distinct
+    storage identities reusing bytes (C51, C52).
+
+### Exported obligations
+
+Not proven in this milestone. Each is stated as a contract that cites its
+clause and its label, and stays recorded as open:
+
+- physical realization of the reference mutex: controller accesses, failed
+  attempts, recovery publication (`OB-C05`);
+- typing of transferable and shareable values, enforcement of the safe
+  interfaces, by-value passing conventions, external contexts (`OB-C07` to
+  `OB-C10`);
+- concrete realization under the memory model's representation obligations,
+  beyond the grain of abstract steps (`OB-C12`);
+- physical classification of pure-authority markers, projection of
+  storage-validity events, and complete physical-access/event
+  correspondence; the abstract erasure property itself is an internal proof
+  target (C29, `OB-C19`, `OB-C20`);
+- target compilation, the no-thin-air requirement included (`OB-C22`,
+  `OB-C27`);
+- soundness of safe programs (`OB-C24`);
+- enforcement by the safe interfaces of the authority premises inventoried
+  by theorem 6, and physical coverage of recovery (`OB-C28`);
+- layout and ABI.
+
+### Obligation labels
+
+| Theorem | Labels |
+|---|---|
+| 2 | `OB-C14` |
+| 3 | `OB-C13` |
+| 4 | `OB-C15` |
+| 5 | `OB-C16` |
+| 6 | `OB-C28`, abstract part |
+| 8 | `OB-C03` |
+| 9 | `OB-C12`, abstract part |
+| 10 | `OB-C01`, `OB-C02`, `OB-C19` abstract part, `OB-C23`, `OB-C26` |
+| 11 | `OB-C03`, `OB-C21` |
+| 12 | `OB-C17`, `OB-C18`, `OB-C25` |
+| 13 | `OB-C04`, `OB-C05` abstract part, `OB-C11` |
+| 14 | `OB-C06` |
+| exported | `OB-C05`, `OB-C07` to `OB-C10`, `OB-C12`, `OB-C19`, `OB-C20`, `OB-C22`, `OB-C24`, `OB-C27`, `OB-C28` |
+
+Theorems 1 and 7 carry no label: their statements are clauses of the spec.
+Theorem 11 discharges `OB-C21` only relative to the present memory model
+formalization; its bridge to §68.3 stays outstanding (Scope of proofs).
+
+### Completion
+
+Milestone 4 is complete when:
+
+- every target theorem is proven on its declared fragment;
+- every exported obligation is stated as a contract citing its clause;
+- every limit is listed in the report;
+- the adversarial corpus is replayed against the reconstructed modules.
+
+A rule that cannot be formalized or proven as written stops the work and is
+reported (Goal). It is never worked around.
 
 ## Representation
 
