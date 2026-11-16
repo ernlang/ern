@@ -3,11 +3,13 @@
 import Ern.ConcurrencyModel.Ancestry
 import Ern.ConcurrencyModel.ArenaPreserve
 import Ern.ConcurrencyModel.Atomic
+import Ern.ConcurrencyModel.AtomicCases
 import Ern.ConcurrencyModel.Conservativity
 import Ern.ConcurrencyModel.Contract
 import Ern.ConcurrencyModel.DeriveSync
 import Ern.ConcurrencyModel.FrameAncestry
 import Ern.ConcurrencyModel.Library
+import Ern.ConcurrencyModel.Outcomes
 import Ern.ConcurrencyModel.Preservation
 import Ern.ConcurrencyModel.Reachable
 import Ern.ConcurrencyModel.SequentialConservativity
