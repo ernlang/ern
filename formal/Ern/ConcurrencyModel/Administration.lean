@@ -59,16 +59,21 @@ theorem ctlRight_exclusive_of_i1 {s : SC} {c a ctl : Nat} (h1 : I1 s.flat)
   fun _ _ hb => effective_exclusive h1 (Ne.symm hb) ha
 
 /-- **Theorem 5**, C13.11 on reached states: on every state reached from the initial state of
-Spec 1 §47 by a trace satisfying the restrictions of C23, the O10.2 exclusivity of C13.11 follows
-from the effective `Modify` of the constructing frame's authority over the controller leaf. Under
-`DDSound` (Spec 1 §80) and well-formed statics (Spec 1 §47). -/
+Spec 1 §47 by a run of labelled steps, with no trace restriction, the O10.2 exclusivity of C13.11
+follows from the effective `Modify` of an authority over the controller leaf (`I1` holds there by
+`lstep_kInvCA`). Under `DDSound` (Spec 1 §80) and well-formed statics (Spec 1 §47). -/
 theorem ctlRight_exclusive_reached {ks : KShared} {L : MutexLayout} {statics : Statics}
     {lbls : List Label} {st' : SC × SyncReg × ArenaReg} (hdd : DDSound ks.toK)
-    (hst : StaticsOK statics)
-    (h : RestrictedTrace ks L (SC.ofS3 (S3.init statics), [], []) lbls st') {c a ctl : Nat}
-    (ha : effective (st'.1.view c) a ctl = some .modify) :
-    ∀ b ∈ List.range st'.1.A.length, b ≠ a → effective (st'.1.view c) b ctl = none :=
-  ctlRight_exclusive_of_i1 (restricted_inv hdd hst h).1.2.1.1.1 ha
+    (hst : StaticsOK statics) (h : LRun ks L (SC.ofS3 (S3.init statics), [], []) lbls st')
+    {c a ctl : Nat} (ha : effective (st'.1.view c) a ctl = some .modify) :
+    ∀ b ∈ List.range st'.1.A.length, b ≠ a → effective (st'.1.view c) b ctl = none := by
+  have key : ∀ {st st₂ : SC × SyncReg × ArenaReg} {ls : List Label},
+      LRun ks L st ls st₂ → KInvCA st.1 → KInvCA st₂.1 := by
+    intro st st₂ ls h hk
+    induction h with
+    | nil => exact hk
+    | cons hs _ ih => exact ih (lstep_kInvCA hdd hs hk)
+  exact ctlRight_exclusive_of_i1 (key h (init_inv hdd hst L).1).1.2.1.1.1 ha
 
 /-! ## The guard on administration identities (C13.7, Spec 1 §56; `OB-C16`) -/
 
