@@ -1,5 +1,12 @@
 -- This module serves as the root of the `Ern` library.
 -- Import modules here that should be built as part of the library.
+import Ern.ConcurrencyModel.Atomic
+import Ern.ConcurrencyModel.Contract
+import Ern.ConcurrencyModel.DeriveSync
+import Ern.ConcurrencyModel.Library
+import Ern.ConcurrencyModel.SpawnValue
+import Ern.ConcurrencyModel.State
+import Ern.ConcurrencyModel.Steps
 import Ern.Corpus.DataStack
 import Ern.Corpus.Lib
 import Ern.Corpus.LibRunner
