@@ -206,4 +206,31 @@ def CasStep (ks : KShared) (s : SC) (c a leaf : Nat) (succ fail : MemOrder) (br 
       | .success v => WriteSharedCRel ks s c a [leaf] (some succ) (.rmw v) o
       | .failure _ => ReadSharedRel ks s c a leaf fail o))
 
+/-! ## The atomic cases are O11 or state-preserving steps (C37, C39) -/
+
+/-- C37 `ok` effect: a successful `readShared` leaves the state unchanged. -/
+theorem readShared_ok_eq {ks : KShared} {s s' : SC} {c a l : Nat} {order : MemOrder}
+    (h : ReadSharedRel ks s c a l order (.ok s')) : s' = s :=
+  (Guarded.ok_iff.1 h).2
+
+/-- C39, C35: a successful concurrent `writeShared` is a successful O11 step executed by the same
+context (Spec 1 §68, unchanged), with the same effect. -/
+theorem writeSharedC_ok_kernel {ks : KShared} {s s' : SC} {c a : Nat} {region : List Nat}
+    {ord : Option MemOrder} {kind : WriteKind} (hl : s.Live c)
+    (h : WriteSharedCRel ks s c a region ord kind (.ok s')) :
+    opStepC ks.toK (.writeShared a region) c s (.ok s') := by
+  obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
+  exact ⟨hl, .ok (write3Eff (s.view c) region), .ok hpre.o11, rfl⟩
+
+/-- C39: a successful compare-and-exchange is either a successful O11 step on the single leaf
+(success) or leaves the state unchanged (failure, a `readShared` observation). -/
+theorem cas_ok_cases {ks : KShared} {s s' : SC} {c a l : Nat} {succ fail : MemOrder}
+    {br : CasBranch} (h : CasStep ks s c a l succ fail br (.ok s')) :
+    opStepC ks.toK (.writeShared a [l]) c s (.ok s') ∨ s' = s := by
+  obtain ⟨hl, (⟨-, h⟩ | ⟨-, h⟩)⟩ := h
+  · cases h
+  · cases br with
+    | success v => exact .inl (writeSharedC_ok_kernel hl h)
+    | failure v => exact .inr (readShared_ok_eq h)
+
 end Ern.ConcurrencyModel

@@ -338,7 +338,7 @@ def AcquireOk (ks : KShared) (L : MutexLayout) (s : SC) (reg : SyncReg) (c i : N
 legally releasing the recorded grant `g` under O3 (Spec 1 §62 `ok` effect) on the view of the
 executing context `c`; the registry is not an argument. It is evaluated solely for checking C17.4
 and is committed only when `unlock` succeeds (C17.4). -/
-def prospectiveUnlock (s : SC) (c g : Nat) : SC := s.set (releaseEff (s.view c) g)
+abbrev prospectiveUnlock (s : SC) (c g : Nat) : SC := s.set (releaseEff (s.view c) g)
 
 /-- `unlock` of entry `i` executed by `c` (C17.1–C17.4): O3 releases the grant and the registry
 records `grant = none` (C17 effect). C17.2 and C17.3 are the preconditions of O3 (Spec 1 §62);
