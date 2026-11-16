@@ -173,12 +173,6 @@ theorem witness_2d : opStepC kMutex.toK (.enter [] []) 0 m5 (.ok m5f) ∧
   ⟨⟨by decide, .ok (by decide)⟩, by decide, by decide, by unfold AcquireIndependent; decide, hr,
     .reject hr⟩
 
-/-- **Row 2e** (C16.1, `reject`): `acquire` of an absent entry (index 1 of a one-entry registry).
-Positive twin: row 2a. -/
-theorem witness_2e : regFree[1]? = none ∧ AcquireReject mutexLayout m4 regFree 1 1 ∧
-    AcquireOutcome kMutex mutexLayout m4 regFree 1 1 .reject :=
-  ⟨rfl, ⟨by decide, .inl rfl⟩, .reject ⟨by decide, .inl rfl⟩⟩
-
 /-! ## Rows 3a–3d: `unlock` (C17) -/
 
 /-- **Row 3a** (C17, C17.4, `ok`): `unlock(e)` by context 1, holder of the active grant 4:
@@ -320,6 +314,30 @@ theorem witness_4d : opStepC kMutex.toK (.derive 0 [1] .modify) 0 m2 (.ok mR1) �
     ⟨by decide, ⟨2, none⟩, rfl, by decide, by decide, by decide, by decide⟩,
     .resetLock (st' := (mT2, regFree)) ⟨by decide, ⟨2, none⟩, rfl, by decide, by decide, by decide,
       by decide, rfl⟩⟩
+
+/-! ## Row 2e: `acquire` of an absent or dead entry (C16.1)
+
+The dead entry is built from the abandoned grant of row 4a. -/
+
+/-- `release(guarded)` by context 0 after the grant 4 was abandoned (O3): the entry dies, the
+registry still recording `grant = some 4`. -/
+def mD : SC := mA.set (releaseEff (mA.view 0) 2)
+
+/-- **Row 2e** (C16.1, `reject`): `acquire` of an absent entry (index 1 of a one-entry registry),
+then of a dead entry (`guarded` released, `grant = some 4` still recorded). Single cause for the
+dead entry: C14.1 fails; the controller-access right (C14.3) and the conditions of
+`AcquireIndependent` hold, and the recorded grant puts the grant-sensitive conditions out of
+`reject` (C16.1). Positive twin: row 2a. -/
+theorem witness_2e : regFree[1]? = none ∧ AcquireReject mutexLayout m4 regFree 1 1 ∧
+    AcquireOutcome kMutex mutexLayout m4 regFree 1 1 .reject ∧
+    opStepC kMutex.toK (.release 2) 0 mA (.ok mD) ∧ ¬ (⟨2, some 4⟩ : SyncEntry).Live mD ∧
+    CtrlRight mutexLayout mD ⟨2, some 4⟩ (mD.view 0).top ∧ AcquireIndependent mD 0 2 ∧
+    AcquireReject mutexLayout mD regTaken 0 0 ∧
+    AcquireOutcome kMutex mutexLayout mD regTaken 0 0 .reject :=
+  have hd : AcquireReject mutexLayout mD regTaken 0 0 :=
+    ⟨by decide, .inr ⟨⟨2, some 4⟩, rfl, .inl (by decide)⟩⟩
+  ⟨rfl, ⟨by decide, .inl rfl⟩, .reject ⟨by decide, .inl rfl⟩, ⟨by decide, _, .ok (by decide), rfl⟩,
+    by decide, by decide, by unfold AcquireIndependent; decide, hd, .reject hd⟩
 
 /-! ## Rows 5a–5d: `newMutex` (C13)
 
