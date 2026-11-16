@@ -11,7 +11,7 @@ Theorem 4 of `formal/DESIGN.md`, Milestone 4, target theorems:
   (`realizability`); `SyncAuthorized` is defined by those facts only (`LibSyncAuthorized`);
 * on states reached by a trace satisfying the restrictions of C23, `SyncInv` and
   `GrantDiscipline` hold (`synchronization_reached`); the form for `EncapsulatedTrace` (C51.1),
-  which implies those restrictions, is in `Encapsulation`;
+  which implies those restrictions, is `synchronization_encapsulated` in `Inventory`;
 * exclusivity: while the recorded grant is active, every active descendant of `guarded` covering a
   protected leaf is that grant or one of its descendants (C21.5); with `grant = none`, there is none
   (C22); two distinct full grants of the same `guarded` cannot coexist (`grants_exclusive`).
