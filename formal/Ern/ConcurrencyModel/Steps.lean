@@ -299,8 +299,8 @@ instance (k : K) [DecidablePred k.Pinned] (s : SC) (c : Nat) : Decidable (ExitPr
 
 /-- Outcome relation of a kernel operation O1–O16 executed by context `c` (Spec 1 §60–§75
 re-indexed, C2). Operations reading `ancestor` or changing the stack have their re-indexed
-preconditions and effects; the others run on the view of `c`. A context that is not live executes
-nothing. -/
+preconditions and effects; the others run on the view of `c`. A context that is not live has no
+current frame (C2): the precondition fails and the outcome is `reject` (`dead_requests_reject`). -/
 def opStepC (k : K) : KernelOp → Nat → SC → Outcome3 SC → Prop
   | .transfer src dst, c, s, o =>
     Guarded (TransferPreC k s c src dst) (transferEffC s c src dst) o
@@ -392,7 +392,8 @@ instance (s : SC) (c : Nat) (ps : List Nat) (ls : LocalShape) :
     AnchorOrderHeldC (spawnEff s c ps ls))
     ⟨fun ⟨a, b, c, d, e⟩ => ⟨a, b, c, d, e⟩, fun ⟨a, b, c, d, e⟩ => ⟨a, b, c, d, e⟩⟩
 
-/-- `spawn` executed by `c` (C4): `ok` or `reject`; no outcome if `c` is not live. -/
+/-- `spawn` executed by `c` (C4): `ok` or `reject`; a creating context that is not live fails C4.1:
+`reject`. -/
 def SpawnStep (s : SC) (c : Nat) (ps : List Nat) (ls : LocalShape) (o : Outcome3 SC) : Prop :=
   Guarded (SpawnPre s c ps ls) (spawnEff s c ps ls) o
 
@@ -451,7 +452,8 @@ instance (k : K) [DecidablePred k.Pinned] (s : SC) (c : Nat) : Decidable (TermPr
     ⟨fun ⟨a, b, c, d, e, f, g⟩ => ⟨a, b, c, d, e, f, g⟩,
      fun ⟨a, b, c, d, e, f, g⟩ => ⟨a, b, c, d, e, f, g⟩⟩
 
-/-- `terminate` executed by `c` (C7): `ok` or `reject`; no outcome if `c` is not live. -/
+/-- `terminate` executed by `c` (C7): `ok` or `reject`; a context that is not live has no initial
+frame on its local stack: `reject`. -/
 def TermStep (k : K) (s : SC) (c : Nat) (o : Outcome3 SC) : Prop :=
   Guarded (TermPre k s c) (termEffC s c) o
 

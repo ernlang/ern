@@ -3,7 +3,7 @@ import Ern.ConcurrencyModel.Contract
 /-!
 # The concurrent transition `deriveSync` (C15)
 
-`deriveSync` executed by a live context: O1 (Spec 1 §60) on `source = guarded`,
+`deriveSync` executed by a context: O1 (Spec 1 §60) on `source = guarded`,
 `region = footprint(guarded)`, `mode = Modify`, authorized only by `K_C.SyncAuthorized` (C15.3).
 -/
 

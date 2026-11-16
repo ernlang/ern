@@ -116,6 +116,12 @@ instance (L : MutexLayout) (reg : SyncReg) (s : SC) (g f : Nat) :
     Decidable (LibSyncAuthorized L reg s g f) := by
   unfold LibSyncAuthorized; infer_instance
 
+/-- C2, C14.3: the library instantiation of `SyncAuthorized` never holds for the current frame of
+a context that is not live (it has no controller-access right). -/
+theorem SC.dead_not_libSyncAuthorized {L : MutexLayout} {reg : SyncReg} {s : SC} {g c : Nat}
+    (h : ¬ s.Live c) : ¬ LibSyncAuthorized L reg s g (s.view c).top :=
+  fun ⟨_, _, _, _, _, hcr⟩ => SC.dead_not_ctrlRight h hcr
+
 /-- The contract `K_C` instantiated by the library (C14, C25), the registry type being
 `SyncReg` (C2). -/
 def libKC (ks : KShared) (L : MutexLayout) : KC SyncReg :=

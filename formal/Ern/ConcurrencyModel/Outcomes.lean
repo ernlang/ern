@@ -415,4 +415,43 @@ theorem dead_requests_reject {ks : KShared} {L : MutexLayout} {s : SC} {reg : Sy
       | failure v => exact .reject fun hp => hx hp.read.exercisable
     · exact .inl ⟨ho, rfl⟩
 
+/-- C2, Spec 1 §58: a request of a context that is not live has no outcome other than `reject`:
+no `ok` (each `ok` step requires a live requester, `opStepC_live`) and no `fail` (the `fail` of
+`alloc` and of `issue` requires their static preconditions, which read a right of the current
+frame: Spec 1 §71.3, §77.1). Fragment: every state. -/
+theorem dead_only_reject {ks : KShared} {s : SC} {ar : ArenaReg} {c : Nat} (hc : ¬ s.Live c) :
+    (∀ op o, opStepC ks.toK op c s o → o = .reject) ∧
+      (∀ i region dst o, IssueStepC ks.toK s ar c i region dst o → o = .reject) := by
+  refine ⟨fun op o h => ?_, fun i region dst o h => ?_⟩
+  · cases o with
+    | ok s' => exact absurd (opStepC_live h) hc
+    | reject => rfl
+    | fail =>
+      cases op with
+      | transfer | depend | store | enter | exit => cases h
+      | alloc pr ow ls =>
+        obtain ⟨o₃, hR, ho⟩ := h
+        cases o₃ with
+        | ok => cases ho
+        | reject => cases ho
+        | fail =>
+          cases hR with
+          | fail hst _ => exact absurd hst.ownerRight (SC.dead_not_hasRight hc)
+      | _ =>
+        obtain ⟨o₃, hR, ho⟩ := h
+        cases o₃ with
+        | ok => cases ho
+        | reject => cases ho
+        | fail => cases hR
+  · cases o with
+    | ok st' => cases h with | ok _ _ _ hsp _ => exact absurd (opStepC_live hsp) hc
+    | reject => rfl
+    | fail =>
+      cases h with
+      | fail _ hst _ =>
+        have h := hst.metaRight
+        unfold Ern.MemoryModel.Arena.MetaRight OptP at h; split at h
+        · exact absurd h (SC.dead_not_hasRight hc)
+        · exact h.elim
+
 end Ern.ConcurrencyModel
