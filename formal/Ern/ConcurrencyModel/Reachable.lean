@@ -39,15 +39,15 @@ theorem lstep_kInvCA {ks : KShared} {L : MutexLayout} {lbl : Label}
   | terminate h => exact terminate_preserves hk.1 hk.2.1 hk.2.2 h
   | join h => exact join_preservesC hk h
   | deriveSync h => exact deriveSync_preservesC hk h
-  | newMutex h => obtain ⟨-, -, rfl⟩ := h; exact hk
+  | newMutex h => obtain ⟨-, rfl⟩ := h; exact hk
   | acquire h =>
-    obtain ⟨hc, e, -, -, hpre, rfl⟩ := h
-    exact deriveSync_preservesC (r := _) hk ⟨hc, .ok hpre⟩
+    obtain ⟨e, -, -, hpre, rfl⟩ := h
+    exact deriveSync_preservesC (r := _) hk (.ok hpre)
   | unlock h =>
-    obtain ⟨hc, e, g, -, -, -, hrel, -, -, rfl⟩ := h
+    obtain ⟨e, g, -, -, -, hrel, -, -, rfl⟩ := h
     exact opStepC_preservesC (op := .release g) hdd hk (fun e => by cases e)
-      ⟨hc, _, .ok hrel, rfl⟩
-  | resetLock h => obtain ⟨-, -, -, -, -, -, -, rfl⟩ := h; exact hk
+      ⟨_, .ok hrel, rfl⟩
+  | resetLock h => obtain ⟨-, -, -, -, -, -, rfl⟩ := h; exact hk
   | newArena h => obtain ⟨-, -, rfl⟩ := newArenaStepC_ok h; exact hk
   | issue h =>
     obtain ⟨E, s₁, -, -, -, hsp, hsto, -⟩ := issueStepC_ok h
@@ -59,7 +59,7 @@ theorem lstep_kInvCA {ks : KShared} {L : MutexLayout} {lbl : Label}
       (fun e => by cases e) hrl
   | readShared h => exact hk
   | writeShared h =>
-    exact opStepC_preservesC hdd hk (fun e => by cases e) (writeSharedC_ok_kernel h.1 h.2)
+    exact opStepC_preservesC hdd hk (fun e => by cases e) (writeSharedC_ok_kernel h)
   | cas h =>
     rcases cas_ok_cases h with hk' | rfl
     · exact opStepC_preservesC hdd hk (fun e => by cases e) hk'

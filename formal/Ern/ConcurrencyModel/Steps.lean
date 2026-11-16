@@ -31,10 +31,44 @@ def omap {σ τ : Type} (f : σ → τ) : Outcome3 σ → Outcome3 τ
 /-! ## Operations that do not read `ancestor` (Spec 1 §60–§62, §66–§71, §74, §75; C2) -/
 
 /-- An operation of Spec 1 that reads neither `ancestor` nor the stack beyond its top and its
-membership, run by context `c` on its view and written back (C2). The context must be live;
-otherwise the operation has no outcome. -/
+membership, run by context `c` on its view and written back (C2). A context that is not live has
+no current frame (C2): its view reads no right, so the precondition of the operation fails and
+the outcome is `reject` (`viewOp_live`). -/
 def ViewStep (R : S3 → Outcome3 S3 → Prop) (c : Nat) (s : SC) (o : Outcome3 SC) : Prop :=
-  s.Live c ∧ ∃ o₃, R (s.view c) o₃ ∧ o = omap s.set o₃
+  ∃ o₃, R (s.view c) o₃ ∧ o = omap s.set o₃
+
+/-- C2: an `ok` inherited operation other than O4–O8, run on the view of `c`, reads a right of the
+current frame of `c` (Spec 1 §60.1, §61.1, §62.2, §66–§71, §74, §75), so `c` is live: a context
+that is not live has no current frame. -/
+theorem viewOp_live {k : K} {op : KernelOp} {s : SC} {c : Nat} {t : S3}
+    (hop : op.Step k (s.view c) (.ok t)) (hnx : op ≠ .exit) (hne : ∀ ps ls, op ≠ .enter ps ls)
+    (hnt : ∀ a b, op ≠ .transfer a b) (hnd : ∀ q x, op ≠ .depend q x)
+    (hns : ∀ a p, op ≠ .store a p) : s.Live c := by
+  cases op with
+  | exit => exact absurd rfl hnx
+  | enter => exact absurd rfl (hne _ _)
+  | transfer => exact absurd rfl (hnt _ _)
+  | depend => exact absurd rfl (hnd _ _)
+  | store => exact absurd rfl (hns _ _)
+  | derive => exact SC.live_of_exercisable (Guarded.ok_iff.1 hop).1.exercisable
+  | split => exact SC.live_of_exercisable (Guarded.ok_iff.1 hop).1.exercisable
+  | read => exact SC.live_of_exercisable (Guarded.ok_iff.1 hop).1.exercisable
+  | write => exact SC.live_of_exercisable (Guarded.ok_iff.1 hop).1.exercisable
+  | writeShared => exact SC.live_of_exercisable (Guarded.ok_iff.1 hop).1.exercisable
+  | release a =>
+    have h := (Guarded.ok_iff.1 hop).1.holderRight
+    unfold OptP at h; split at h
+    · rename_i y hy; exact SC.live_of_holderRight hy h
+    · exact h.elim
+  | pin => exact SC.live_of_hasRight (Guarded.ok_iff.1 hop).1.right
+  | unpin o =>
+    have h := (Guarded.ok_iff.1 hop).1.right
+    unfold OptP at h; split at h
+    · exact SC.live_of_hasRight h
+    · exact h.elim
+  | endUse => exact SC.live_of_hasRight (Guarded.ok_iff.1 hop).1.right
+  | free => exact SC.live_of_hasRight (Guarded.ok_iff.1 hop).1.right
+  | alloc => cases hop with | ok hst _ => exact SC.live_of_hasRight hst.ownerRight
 
 /-! ## O4 `transfer` re-indexed (Spec 1 §63) -/
 
@@ -269,19 +303,37 @@ preconditions and effects; the others run on the view of `c`. A context that is 
 nothing. -/
 def opStepC (k : K) : KernelOp → Nat → SC → Outcome3 SC → Prop
   | .transfer src dst, c, s, o =>
-    s.Live c ∧ Guarded (TransferPreC k s c src dst) (transferEffC s c src dst) o
-  | .depend q x, c, s, o => s.Live c ∧ Guarded (DependPreC s c q x) (dependEffC s c q x) o
-  | .store a p, c, s, o => s.Live c ∧ Guarded (StorePreC s c a p) (storeEffC s c a p) o
+    Guarded (TransferPreC k s c src dst) (transferEffC s c src dst) o
+  | .depend q x, c, s, o => Guarded (DependPreC s c q x) (dependEffC s c q x) o
+  | .store a p, c, s, o => Guarded (StorePreC s c a p) (storeEffC s c a p) o
   | .enter ps ls, c, s, o =>
-    s.Live c ∧ Guarded (EnterPreC s c ps ls) (enterEffC s c ps ls) o
-  | .exit, c, s, o => s.Live c ∧ Guarded (ExitPreC k s c) (exitEffC s c) o
+    Guarded (EnterPreC s c ps ls) (enterEffC s c ps ls) o
+  | .exit, c, s, o => Guarded (ExitPreC k s c) (exitEffC s c) o
   | op, c, s, o => ViewStep (op.Step k) c s o
+
+/-- An `ok` inherited operation executed by `c` requires `c` to be live (C2: the current frame of
+`c` is the top of its live local stack). -/
+theorem opStepC_live {k : K} {op : KernelOp} {c : Nat} {s s' : SC}
+    (h : opStepC k op c s (.ok s')) : s.Live c := by
+  cases op with
+  | transfer => exact SC.live_of_hasRight (Guarded.ok_iff.1 h).1.srcRight
+  | depend => exact SC.live_of_hasRight (Guarded.ok_iff.1 h).1.right
+  | store => exact SC.live_of_hasRight (Guarded.ok_iff.1 h).1.right
+  | enter => exact SC.live_of_stk (Guarded.ok_iff.1 h).1.callerLive
+  | exit =>
+    exact SC.live_of_stk fun e => (Guarded.ok_iff.1 h).1.hasCaller (by rw [e]; rfl)
+  | _ =>
+    obtain ⟨o₃, hR, ho⟩ := h
+    cases o₃ with
+    | ok t => exact viewOp_live hR (by simp) (by simp) (by simp) (by simp) (by simp)
+    | reject => cases ho
+    | fail => cases ho
 
 /-- C2: the `K.Satisfiable` obligation of `alloc` (Spec 1 §71) executed by `c`
 is evaluated on the view of `c`: an `ok` outcome entails it. -/
 theorem alloc_ok_satisfiable {k : K} {c pr ow : Nat} {ls : LocalShape} {s s' : SC}
     (h : opStepC k (.alloc pr ow ls) c s (.ok s')) : k.Satisfiable pr ls (s.view c) := by
-  obtain ⟨-, o₃, hR, ho⟩ := h
+  obtain ⟨o₃, hR, ho⟩ := h
   change AllocStep k pr ow ls (s.view c) o₃ at hR
   cases hR with
   | ok _ hsat => exact hsat
@@ -292,7 +344,7 @@ theorem alloc_ok_satisfiable {k : K} {c pr ow : Nat} {ls : LocalShape} {s s' : S
 `K.Satisfiable` fails on the view of `c`. -/
 theorem alloc_fail_unsatisfiable {k : K} {c pr ow : Nat} {ls : LocalShape} {s : SC}
     (h : opStepC k (.alloc pr ow ls) c s .fail) : ¬ k.Satisfiable pr ls (s.view c) := by
-  obtain ⟨-, o₃, hR, ho⟩ := h
+  obtain ⟨o₃, hR, ho⟩ := h
   change AllocStep k pr ow ls (s.view c) o₃ at hR
   cases hR with
   | ok => cases ho
@@ -342,7 +394,12 @@ instance (s : SC) (c : Nat) (ps : List Nat) (ls : LocalShape) :
 
 /-- `spawn` executed by `c` (C4): `ok` or `reject`; no outcome if `c` is not live. -/
 def SpawnStep (s : SC) (c : Nat) (ps : List Nat) (ls : LocalShape) (o : Outcome3 SC) : Prop :=
-  s.Live c ∧ Guarded (SpawnPre s c ps ls) (spawnEff s c ps ls) o
+  Guarded (SpawnPre s c ps ls) (spawnEff s c ps ls) o
+
+/-- An `ok` `spawn` requires the creating context to be live (C4.1). -/
+theorem spawnStep_live {s s' : SC} {c : Nat} {ps : List Nat} {ls : LocalShape}
+    (h : SpawnStep s c ps ls (.ok s')) : s.Live c :=
+  SC.live_of_stk (Guarded.ok_iff.1 h).1.creatorLive
 
 /-! ## `terminate` (C7, on Spec 1 §73) -/
 
@@ -396,7 +453,12 @@ instance (k : K) [DecidablePred k.Pinned] (s : SC) (c : Nat) : Decidable (TermPr
 
 /-- `terminate` executed by `c` (C7): `ok` or `reject`; no outcome if `c` is not live. -/
 def TermStep (k : K) (s : SC) (c : Nat) (o : Outcome3 SC) : Prop :=
-  s.Live c ∧ Guarded (TermPre k s c) (termEffC s c) o
+  Guarded (TermPre k s c) (termEffC s c) o
+
+/-- An `ok` `terminate` requires the terminating context to be live (C7: its initial frame is the
+only frame of its local stack). -/
+theorem termStep_live {k : K} {s s' : SC} {c : Nat} (h : TermStep k s c (.ok s')) : s.Live c :=
+  SC.live_of_stk fun e => by have := (Guarded.ok_iff.1 h).1.initialOnly; rw [e] at this; cases this
 
 /-! ## `join` (C8) -/
 
@@ -405,8 +467,8 @@ has identity `d`, identities being the indices of `C`); `ok` with the state unch
 the completed lifecycle state; no outcome while `d` is live (C8: awaiting completion is not an
 `Outcome3` result). -/
 inductive JoinStep (s : SC) (c d : Nat) : Outcome3 SC → Prop where
-  | ok : s.Live c → OptP (s.C[d]?) (fun x => x.life = .done) False → JoinStep s c d (.ok s)
-  | reject : s.Live c → s.C[d]? = none → JoinStep s c d .reject
+  | ok : OptP (s.C[d]?) (fun x => x.life = .done) False → JoinStep s c d (.ok s)
+  | reject : s.C[d]? = none → JoinStep s c d .reject
 
 /-! ## Concurrent kernel steps -/
 

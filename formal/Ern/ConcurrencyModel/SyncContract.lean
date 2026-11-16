@@ -108,7 +108,8 @@ theorem realizability {ks : KShared} {L : MutexLayout} {reg : SyncReg} {ar : Are
         rw [hym] at this; cases this.1
     · trivial
   · obtain ⟨f, rest, hf⟩ := List.exists_cons_of_ne_nil hc
-    simp [SC.view, S3.top, hf]
+    rw [SC.view_top hf]
+    exact SC.mem_frames_of (by rw [hf]; exact List.mem_cons_self ..)
 
 
 /-- **Theorem 4** (C21, C22, C23): every state reached from the initial state of Spec 1 §47 by a

@@ -35,12 +35,12 @@ theorem heldAnchored_mem_congr {t : S3} {F' : Frames} (h : HeldAnchored t)
 
 /-- The kernel facts of Spec 1 on the view of a context, from the re-indexed invariant (
 C2). -/
-theorem view_facts {s : SC} (hk : KInvCA s) (c : Nat) :
+theorem view_facts {s : SC} (hk : KInvCA s) {c : Nat} (hcl : s.Live c) :
     WF3 (s.view c) ∧ Inv3base (s.view c) ∧ NoDangling (s.view c) ∧ RootHeldConv (s.view c) ∧
       HeldAnchored (s.view c) := by
   obtain ⟨⟨⟨hfr, hw⟩, ⟨⟨h1, h2, h3, -⟩, -, hnd⟩, -, -⟩, hc, hh⟩ := hk
-  have hF : ∀ f, f ∈ (s.view c).F ↔ f ∈ s.flat.F := fun f => SC.mem_view_F
-  exact ⟨SC.wf3_view hfr hw, ⟨h1, h2, i3_mem_congr h3 hF, i4_always _⟩,
+  have hF : ∀ f, f ∈ (s.view c).F ↔ f ∈ s.flat.F := fun f => SC.mem_view_F hcl
+  exact ⟨SC.wf3_view hfr hw hcl, ⟨h1, h2, i3_mem_congr h3 hF, i4_always _⟩,
     noDangling_mem_congr hnd hF, hc, heldAnchored_mem_congr hh hF⟩
 
 /-- The flat state of `s'` is `t` with the globally live frames of `s'` (C2); the kernel
@@ -203,7 +203,9 @@ theorem set_preserves {s : SC} {c : Nat} {t : S3} (hk : KInvCA s) (hF : t.F = (s
     (hn : t.nF = s.nF) (hsk : SkelV s t) (hw : WF3 t) (hb : Inv3base t) (hd : NoDangling t)
     (hc : RootHeldConv t) (hh : HeldAnchored t) : KInvCA (s.set t) := by
   have hfr := hk.1.1.1
-  have hmem : ∀ f, f ∈ t.F ↔ f ∈ s.frames := fun f => by rw [hF]; exact SC.mem_view_F
+  have hcl : s.Live c := SC.live_of_view_bound fun f hf => by
+    rw [← hn]; exact hw.frames.2.2 f (by rw [hF]; exact hf)
+  have hmem : ∀ f, f ∈ t.F ↔ f ∈ s.frames := fun f => by rw [hF]; exact SC.mem_view_F hcl
   exact kInvCA_of (framesC_set hfr hn)
     (flat_facts rfl hmem hfr.nodup (frames_ne (s := s) hfr) hw hb hd hc hh)
     (hsk.anchorOrderC hmem hk.1.2.1.1.2.2.1 hk.1.2.1.2.1)
@@ -213,14 +215,14 @@ theorem set_preserves {s : SC} {c : Nat} {t : S3} (hk : KInvCA s) (hF : t.F = (s
 
 /-- Usability after a step on the view that keeps places and only adds death markers (Spec 1
 §40; C2). -/
-theorem usable_back {s : SC} {c : Nat} {t : S3} {q : Nat} (h : t.Usable q) (hP : t.P = s.P)
-    (hF : t.F = (s.view c).F) (hd : ∀ q, t.dead q = false → s.dead q = false) :
+theorem usable_back {s : SC} {c : Nat} {t : S3} {q : Nat} (hcl : s.Live c) (h : t.Usable q)
+    (hP : t.P = s.P) (hF : t.F = (s.view c).F) (hd : ∀ q, t.dead q = false → s.dead q = false) :
     s.flat.Usable q :=
-  S3.Usable.mono (s' := t) (s := s.flat) hP (fun _ hf => SC.mem_view_F.1 (hF ▸ hf)) hd h
+  S3.Usable.mono (s' := t) (s := s.flat) hP (fun _ hf => (SC.mem_view_F hcl).1 (hF ▸ hf)) hd h
 
 /-- Skeleton of a step on the view appending frame-held authorities (Spec 1 §60, §61 `ok`
 effects; C15). -/
-theorem skelV_append {s : SC} {c : Nat} {E : List Authority}
+theorem skelV_append {s : SC} {c : Nat} {E : List Authority} (hcl : s.Live c)
     (hE : ∀ y ∈ E, ∃ f, y.holder = .frame f) :
     SkelV s { s.view c with A := (s.view c).A ++ E } where
   P := rfl
@@ -231,31 +233,32 @@ theorem skelV_append {s : SC} {c : Nat} {E : List Authority}
   new := fun x y' hy' hx => hE y' (by
     have : (s.view c).A.length ≤ x := hx
     rw [List.getElem?_append_right this] at hy'; exact List.mem_of_getElem? hy')
-  usable := fun _ h => usable_back (c := c) h rfl rfl (fun _ h => h)
+  usable := fun _ h => usable_back hcl h rfl rfl (fun _ h => h)
   D := fun _ _ _ h => h
 
 /-- Skeleton of a step on the view keeping authorities and anchors (Spec 1 §66–§68, §74, §75 `ok`
 effects). -/
-theorem skelV_same {s : SC} {c : Nat} {t : S3} (hP : t.P = s.P) (hF : t.F = (s.view c).F)
+theorem skelV_same {s : SC} {c : Nat} {t : S3} (hcl : s.Live c) (hP : t.P = s.P)
+    (hF : t.F = (s.view c).F)
     (hA : t.A = s.A) (hD : t.D = s.D) (hd : t.dead = s.dead) : SkelV s t where
   P := hP
   len := by rw [hA]; exact Nat.le_refl _
   old := fun x y' hy' _ => ⟨y', by rw [← hA]; exact hy', rfl, rfl, id⟩
   new := fun x y' hy' hx => absurd (lt_of_getElem? hy') (by rw [hA]; omega)
-  usable := fun _ h => usable_back h hP hF (fun q h' => by rw [← hd]; exact h')
+  usable := fun _ h => usable_back hcl h hP hF (fun q h' => by rw [← hd]; exact h')
   D := fun _ _ x hx => by rw [← hD]; exact hx
 
 /-- Skeleton of `release` on the view (Spec 1 §62 `ok` effect). -/
-theorem skelV_release {s : SC} {c a : Nat} : SkelV s (releaseEff (s.view c) a) := by
+theorem skelV_release {s : SC} {c a : Nat} (hcl : s.Live c) : SkelV s (releaseEff (s.view c) a) := by
   cases hx₀ : (s.view c).A[a]? with
   | none =>
     simp only [releaseEff, hx₀]
-    exact skelV_same rfl rfl rfl rfl rfl
+    exact skelV_same hcl rfl rfl rfl rfl rfl
   | some x₀ =>
     rw [releaseEff_eq hx₀]
     have ha : a < (s.view c).A.length := lt_of_getElem? hx₀
     refine ⟨rfl, by simp [SC.view, SC.flat], fun x y' hy' _ => ?_, fun x y' hy' hx => ?_,
-      fun _ h => usable_back (c := c) h rfl rfl (fun _ h => h), fun q _ x hx => ?_⟩
+      fun _ h => usable_back hcl h rfl rfl (fun _ h => h), fun q _ x hx => ?_⟩
     · simp only [set_get ha] at hy'
       split at hy'
       · rename_i e; subst e; cases hy'
@@ -463,8 +466,8 @@ section AllocC
 variable {k : K} {s : SC} {c pr ow : Nat} {ls : LocalShape}
 
 /-- Usability on the view is usability on the flat state (C2). -/
-theorem view_usable_flat {q : Nat} (h : (s.view c).Usable q) : s.flat.Usable q :=
-  (usable_mem_congr (t := s.flat) (F' := (s.view c).F) (fun _ => SC.mem_view_F)).1 h
+theorem view_usable_flat {q : Nat} (hcl : s.Live c) (h : (s.view c).Usable q) : s.flat.Usable q :=
+  (usable_mem_congr (t := s.flat) (F' := (s.view c).F) (fun _ => SC.mem_view_F hcl)).1 h
 
 /-- The anchor-order condition of an existing authority carries over `alloc` on the extended
 ancestry (Spec 1 §44, §71 `ok`; mirrors `Alloc.effAnchorOK_old`). -/
@@ -518,14 +521,14 @@ theorem alloc_effAnchorOKC_new (hst : AllocStatic k (s.view c) pr ow ls) (hw : W
     (s.view c).A.length]?) _ False
   rw [he, hA]
   simp only [OptP, S3.hframe, hpf]
-  exact ⟨SC.mem_view_F.1 hfF, .inl rfl⟩
+  exact ⟨(SC.mem_view_F (SC.live_of_wf3_view hw)).1 hfF, .inl rfl⟩
 
 /-- `alloc` preserves `AnchorOrderC` (Spec 1 §44, §71 `ok`; mirrors `Alloc.anchorOrder`). -/
 theorem alloc_anchorOrderC (hst : AllocStatic k (s.view c) pr ow ls) (hw : WF3 (s.view c))
     (hao : AnchorOrderC s) : AnchorOrderC (s.set (allocEff (s.view c) ow ls)) := by
   intro q hq x hx
   have hq' : (allocEff (s.view c) ow ls).Usable q :=
-    (set_usable (t := allocEff (s.view c) ow ls) (fun _ => SC.mem_view_F)).1 hq
+    (set_usable (t := allocEff (s.view c) ow ls) (fun _ => SC.mem_view_F (SC.live_of_wf3_view hw))).1 hq
   change x ∈ (if (s.view c).P.length ≤ q then [] else (s.view c).D q) at hx
   by_cases hql : q < (s.view c).P.length
   · have hq0 := Alloc.usable_back hw hq' hql
@@ -533,7 +536,7 @@ theorem alloc_anchorOrderC (hst : AllocStatic k (s.view c) pr ow ls) (hw : WF3 (
     rw [S3.pframe_congr (s' := (s.set (allocEff (s.view c) ow ls)).flat)
       (s := allocEff (s.view c) ow ls) rfl q, Alloc.pframe_old hw hql,
       S3.pframe_congr (s' := s.view c) (s := s.flat) rfl q]
-    exact alloc_effAnchorOKC_old hst hw (hao q (view_usable_flat hq0) x hx)
+    exact alloc_effAnchorOKC_old hst hw (hao q (view_usable_flat (SC.live_of_wf3_view hw) hq0) x hx)
   · simp only [show (s.view c).P.length ≤ q from Nat.le_of_not_lt hql, ↓reduceIte] at hx
     cases hx
 
@@ -548,7 +551,7 @@ theorem alloc_anchorOrderHeldC (hst : AllocStatic k (s.view c) pr ow ls) (hw : W
     rw [S3.pframe_congr (s' := (s.set (allocEff (s.view c) ow ls)).flat)
       (s := allocEff (s.view c) ow ls) rfl q, Alloc.pframe_old hw hq0.lt,
       S3.pframe_congr (s' := s.view c) (s := s.flat) rfl q]
-    exact alloc_effAnchorOKC_old hst hw (haoh q (view_usable_flat hq0) x y hx' ya hh)
+    exact alloc_effAnchorOKC_old hst hw (haoh q (view_usable_flat (SC.live_of_wf3_view hw) hq0) x y hx' ya hh)
   · cases hh
     exact alloc_effAnchorOKC_new hst hw
 
@@ -563,7 +566,8 @@ theorem viewOp_preserves {k : K} {s : SC} {c : Nat} {op : KernelOp} {t : S3} (hd
     (hk : KInvCA s) (hop : op.Step k (s.view c) (.ok t)) (hnx : op ≠ .exit)
     (hne : ∀ ps ls, op ≠ .enter ps ls) (hnt : ∀ a b, op ≠ .transfer a b)
     (hnd : ∀ q x, op ≠ .depend q x) (hns : ∀ a p, op ≠ .store a p) : KInvCA (s.set t) := by
-  obtain ⟨hw, hb, hd, hc, hh⟩ := view_facts hk c
+  have hcl := viewOp_live hop hnx hne hnt hnd hns
+  obtain ⟨hw, hb, hd, hc, hh⟩ := view_facts hk hcl
   obtain ⟨hF, hn⟩ := viewOp_FnF hop hnx hne
   have hh' := op_preserves_heldAnchored hw hh hop
   cases op with
@@ -576,7 +580,7 @@ theorem viewOp_preserves {k : K} {s : SC} {c : Nat} {op : KernelOp} {t : S3} (hd
     have h := hop
     obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hop
     exact set_preserves hk hF hn
-      (skelV_append fun y hy => by rw [List.mem_singleton.1 hy]; exact ⟨_, rfl⟩)
+      (skelV_append hcl fun y hy => by rw [List.mem_singleton.1 hy]; exact ⟨_, rfl⟩)
       (derive_preserves_wf3 hw h)
       ⟨derive_preserves_exclusivity hb.1 h, derive_preserves_i2 hb.2.1 h,
         derive_preserves_i3 hb.2.2.1 h, i4_always _⟩
@@ -585,7 +589,7 @@ theorem viewOp_preserves {k : K} {s : SC} {c : Nat} {op : KernelOp} {t : S3} (hd
     have h := hop
     obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hop
     exact set_preserves hk hF hn
-      (skelV_append fun y hy => by obtain ⟨r, -, rfl⟩ := List.mem_map.1 hy; exact ⟨_, rfl⟩)
+      (skelV_append hcl fun y hy => by obtain ⟨r, -, rfl⟩ := List.mem_map.1 hy; exact ⟨_, rfl⟩)
       (split_preserves_wf3 hw h)
       ⟨split_preserves_exclusivity hdd hb.1 h, split_preserves_i2 hb.2.1 h,
         split_preserves_i3 hb.2.2.1 h, i4_always _⟩
@@ -593,32 +597,32 @@ theorem viewOp_preserves {k : K} {s : SC} {c : Nat} {op : KernelOp} {t : S3} (hd
   | release a =>
     have h := hop
     obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hop
-    exact set_preserves hk hF hn skelV_release (release_preserves_wf3 hw h)
+    exact set_preserves hk hF hn (skelV_release hcl) (release_preserves_wf3 hw h)
       ⟨release_preserves_exclusivity hb.1 h, release_preserves_i2 hw hb.2.1 h,
         release_preserves_i3 hb.2.2.1 h, i4_always _⟩
       (release_preserves_noDangling hd h) (release_preserves_rootHeldConv hc h) hh'
   | read =>
     obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hop
-    exact set_preserves hk hF hn (skelV_same rfl rfl rfl rfl rfl) hw hb hd hc hh'
+    exact set_preserves hk hF hn (skelV_same hcl rfl rfl rfl rfl rfl) hw hb hd hc hh'
   | write a ls =>
     obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hop
     obtain ⟨hw', hb'⟩ := write3Eff_preserves_base ls hw hb
-    exact set_preserves hk hF hn (skelV_same rfl rfl rfl rfl rfl) hw' hb'
+    exact set_preserves hk hF hn (skelV_same hcl rfl rfl rfl rfl rfl) hw' hb'
       (write3Eff_preserves_noDangling ls hd) (write3Eff_preserves_rootHeldConv ls hc) hh'
   | writeShared a ls =>
     obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hop
     obtain ⟨hw', hb'⟩ := write3Eff_preserves_base ls hw hb
-    exact set_preserves hk hF hn (skelV_same rfl rfl rfl rfl rfl) hw' hb'
+    exact set_preserves hk hF hn (skelV_same hcl rfl rfl rfl rfl rfl) hw' hb'
       (write3Eff_preserves_noDangling ls hd) (write3Eff_preserves_rootHeldConv ls hc) hh'
   | pin p =>
     obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hop
     obtain ⟨hw', hb'⟩ := pinEff_preserves_base p hw hb
-    exact set_preserves hk hF hn (skelV_same rfl rfl rfl rfl rfl) hw' hb'
+    exact set_preserves hk hF hn (skelV_same hcl rfl rfl rfl rfl rfl) hw' hb'
       (pinEff_preserves_noDangling p hd) (pinEff_preserves_rootHeldConv p hc) hh'
   | unpin o =>
     obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hop
     obtain ⟨hw', hb'⟩ := unpinEff_preserves_base o hw hb
-    exact set_preserves hk hF hn (skelV_same rfl rfl rfl rfl rfl) hw' hb'
+    exact set_preserves hk hF hn (skelV_same hcl rfl rfl rfl rfl rfl) hw' hb'
       (unpinEff_preserves_noDangling o hd) (unpinEff_preserves_rootHeldConv o hc) hh'
   | endUse p =>
     have h := hop
@@ -627,7 +631,7 @@ theorem viewOp_preserves {k : K} {s : SC} {c : Nat} {op : KernelOp} {t : S3} (hd
     obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hop
     refine set_preserves hk hF hn (skelV_releases
       ((EndFree.endUseS_releases _ p).trans (EndFree.cleanup_releases _)) rfl
-      (fun q hq => view_usable_flat (EndFree.endUseS_usable ((EndFree.cleanup_usable _ q).1 hq)))
+      (fun q hq => view_usable_flat hcl (EndFree.endUseS_usable ((EndFree.cleanup_usable _ q).1 hq)))
       (fun q _ x hx => ?_)) hw' hb' hd' hc' hh'
     change x ∈ (if partOf (s.view c).P q p then [] else (s.view c).D q) at hx
     split at hx
@@ -640,14 +644,14 @@ theorem viewOp_preserves {k : K} {s : SC} {c : Nat} {op : KernelOp} {t : S3} (hd
     obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hop
     exact set_preserves hk hF hn (skelV_releases
       ((EndFree.freeS_releases _ p).trans (EndFree.cleanup_releases _)) rfl
-      (fun q hq => view_usable_flat (EndFree.freeS_usable ((EndFree.cleanup_usable _ q).1 hq)))
+      (fun q hq => view_usable_flat hcl (EndFree.freeS_usable ((EndFree.cleanup_usable _ q).1 hq)))
       (fun q _ x hx => hx)) hw' hb' hd' hc' hh'
   | alloc pr ow ls =>
     cases hop with
     | ok hst _ =>
       have hfr := hk.1.1.1
       have hmem : ∀ f, f ∈ (allocEff (s.view c) ow ls).F ↔ f ∈ s.frames :=
-        fun _ => SC.mem_view_F
+        fun _ => SC.mem_view_F hcl
       exact kInvCA_of (framesC_set hfr hn)
         (flat_facts rfl hmem hfr.nodup (frames_ne (s := s) hfr) (Alloc.wf3 hst hw)
           ⟨Alloc.i1 hst hw hb.1, Alloc.i2 hst hb.2.1, Alloc.i3 hw hb.2.2.1, i4_always _⟩
@@ -758,7 +762,8 @@ C20): only anchors change; the new anchor is active (§64.2) and satisfies §64.
 `ancestorC`. -/
 theorem depend_preserves {s : SC} {c q x : Nat} (hk : KInvCA s) (hpre : DependPreC s c q x) :
     KInvCA (dependEffC s c q x) := by
-  obtain ⟨hw, hb, hd, hc, hh⟩ := view_facts hk c
+  have hcl := SC.live_of_hasRight hpre.right
+  obtain ⟨hw, hb, hd, hc, hh⟩ := view_facts hk hcl
   have hfr := hk.1.1.1
   have hD : ∀ r y, y ∈ (dependEff (s.view c) q x).D r → y ∈ s.D r ∨ (r = q ∧ y = x) := by
     intro r y hy
@@ -783,7 +788,7 @@ theorem depend_preserves {s : SC} {c q x : Nat} (hk : KInvCA s) (hpre : DependPr
       split
       · rename_i e; subst e; exact List.mem_append_left _ hx
       · exact hx⟩
-  have hmem : ∀ f, f ∈ (dependEff (s.view c) q x).F ↔ f ∈ s.frames := fun _ => SC.mem_view_F
+  have hmem : ∀ f, f ∈ (dependEff (s.view c) q x).F ↔ f ∈ s.frames := fun _ => SC.mem_view_F hcl
   refine kInvCA_of (framesC_set hfr rfl)
     (flat_facts rfl hmem hfr.nodup (frames_ne (s := s) hfr) hw' hb'
       (noDangling_skel hd (skel_of_A rfl) rfl rfl rfl) (rootHeldConv_of hc rfl fun _ _ _ h => h)
@@ -860,7 +865,8 @@ C20): the stored authority is derived and keeps its skeleton; §65.4 and §65.5 
 `ancestorC`. -/
 theorem store_preserves {s : SC} {c a p : Nat} (hk : KInvCA s) (hpre : StorePreC s c a p) :
     KInvCA (storeEffC s c a p) := by
-  obtain ⟨hw, hb, hd, hc, hh⟩ := view_facts hk c
+  have hcl := SC.live_of_hasRight hpre.right
+  obtain ⟨hw, hb, hd, hc, hh⟩ := view_facts hk hcl
   have hfr := hk.1.1.1
   obtain ⟨y, hy, ya, ho, -⟩ : ∃ y, (s.view c).A[a]? = some y ∧ y.active = true ∧
       y.origin ≠ none ∧ y.holder = .frame (s.view c).top := by
@@ -897,7 +903,7 @@ theorem store_preserves {s : SC} {c a p : Nat} (hk : KInvCA s) (hpre : StorePreC
       · rename_i e; subst e; exact List.mem_append_left _ hx
       · exact hx
   have hmem : ∀ f, f ∈ (storeEff (s.view c) a p).F ↔ f ∈ s.frames := fun f => by
-    rw [hF]; exact SC.mem_view_F
+    rw [hF]; exact SC.mem_view_F hcl
   have sk' : SameSkel s.flat (storeEff (s.view c) a p) := sk
   refine kInvCA_of (framesC_set hfr hn)
     (flat_facts rfl hmem hfr.nodup (frames_ne (s := s) hfr) hw' hb'
@@ -919,7 +925,8 @@ theorem store_preserves {s : SC} {c a p : Nat} (hk : KInvCA s) (hpre : StorePreC
 of `guarded` is the clause C15.1 of `DeriveSyncPre`. -/
 theorem deriveSync_preserves {R : Type} {kc : KC R} {r : R} {s : SC} {c g : Nat} (hk : KInvCA s)
     (hpre : DeriveSyncPre kc r s c g) : KInvCA (deriveSyncEff s c g) := by
-  obtain ⟨hw, hb, hd, hc, hh⟩ := view_facts hk c
+  have hcl := SC.live_of_top_mem hpre.frameLive
+  obtain ⟨hw, hb, hd, hc, hh⟩ := view_facts hk hcl
   obtain ⟨x, hx, xa⟩ := hpre.active
   have hxm : Mode.modify.le x.mode := by
     have hm := hpre.mode
@@ -927,7 +934,7 @@ theorem deriveSync_preserves {R : Type} {kc : KC R} {r : R} {s : SC} {c g : Nat}
   have hafp : (s.view c).afp g = x.footprint := by simp [S3.afp, hx]
   have hbase := addAuth_preserves hw hb hx xa hxm
     (fun p hp => by rw [← hafp]; exact hp) hpre.modeOK
-    (hd := .frame (s.view c).top) hpre.frameLive
+    (hd := .frame (s.view c).top) ((SC.mem_view_F hcl).2 hpre.frameLive)
   have hd' : NoDangling (deriveEff (s.view c) g ((s.view c).afp g) .modify) := by
     intro j z hz za q hq l hl hlz
     have hU := S3.Usable.congr (q := q) (s := s.view c)
@@ -947,7 +954,7 @@ theorem deriveSync_preserves {R : Type} {kc : KC R} {r : R} {s : SC} {c g : Nat}
       · exact .inr ⟨y, hy, ya, ho, hhq, fun _ h => h⟩
       · cases hhq
   exact set_preserves hk rfl rfl
-    (skelV_append fun y hy => by rw [List.mem_singleton.1 hy]; exact ⟨_, rfl⟩)
+    (skelV_append hcl fun y hy => by rw [List.mem_singleton.1 hy]; exact ⟨_, rfl⟩)
     hbase.1 hbase.2 hd' hc' hh'
 
 /-! ## The effect of O6 on kernel components (Spec 1 §72), shared by `enterFrame` and `spawn` -/
@@ -1169,18 +1176,18 @@ auxiliaries come from the Spec 1 effect; `AnchorOrderC` from the unchanged ances
 frames (mirrors `Frames.enter_anchorOrder`); `AnchorOrderHeldC` is a hypothesis (§72.4, 
 C4.5). -/
 theorem push_preserves {s : SC} {c top : Nat} {ps : List Nat} {ls : LocalShape}
-    {C' : List Ctx} (hk : KInvCA s) (hpar : ParamsOK (s.view c) ps)
+    {C' : List Ctx} (hk : KInvCA s) (hcl : s.Live c) (hpar : ParamsOK (s.view c) ps)
     (hsh : ShapeOK s.P.length ls.toShape)
     (hpush : Push s { s.set (enterEff (s.view c) ps ls) with C := C' } top)
     (haoh : AnchorOrderHeldC { s.set (enterEff (s.view c) ps ls) with C := C' }) :
     KInvCA { s.set (enterEff (s.view c) ps ls) with C := C' } := by
-  obtain ⟨hw, hb, hd, hc, hh⟩ := view_facts hk c
+  obtain ⟨hw, hb, hd, hc, hh⟩ := view_facts hk hcl
   have hfr := hk.1.1.1
   have hmem : ∀ f, f ∈ (enterEff (s.view c) ps ls).F ↔
       f ∈ ({ s.set (enterEff (s.view c) ps ls) with C := C' } : SC).frames := fun f => by
     rw [hpush.mem]
     show f ∈ s.nF :: (s.view c).F ↔ _
-    rw [List.mem_cons, SC.mem_view_F]
+    rw [List.mem_cons, SC.mem_view_F hcl]
   have hne : ({ s.set (enterEff (s.view c) ps ls) with C := C' } : SC).frames ≠ [] := fun he => by
     have := (hpush.mem s.nF).2 (.inl rfl); rw [he] at this; cases this
   refine kInvCA_of (hpush.framesC hfr)
@@ -1194,7 +1201,7 @@ theorem push_preserves {s : SC} {c top : Nat} {ps : List Nat} {ls : LocalShape}
   by_cases hlt : q < (s.view c).P.length
   · simp only [show ¬ (s.view c).P.length ≤ q from Nat.not_le.2 hlt, ↓reduceIte] at hx
     have hq0 := Frames.enter_usable_back hw hqt hlt
-    have hqf := view_usable_flat hq0
+    have hqf := view_usable_flat hcl hq0
     have hok := hk.1.2.1.2.1 q hqf x hx
     have hxl : x < (s.view c).A.length := by
       obtain ⟨y, hy, -⟩ := hk.1.2.1.1.2.2.1 q hqf x hx; exact lt_of_getElem? hy
@@ -1748,14 +1755,15 @@ from `AnchorOrderC` and `HeldAnchored` for unmoved derived ones, and from the fr
 holder for unmoved root authorities (mirrors the private `transfer_anchorOrderHeld`). -/
 theorem transfer_preserves {k : K} {s : SC} {c src dst : Nat} (hk : KInvCA s)
     (hpre : TransferPreC k s c src dst) : KInvCA (transferEffC s c src dst) := by
-  obtain ⟨hw, hb, hd, hc, hh⟩ := view_facts hk c
+  have hcl := SC.live_of_hasRight hpre.srcRight
+  obtain ⟨hw, hb, hd, hc, hh⟩ := view_facts hk hcl
   have hfr := hk.1.1.1
   have hw' := transfer_wf3' hw hpre.srcUsable hpre.dstUsable hpre.dstUsableAfter
   obtain ⟨hb', hd'⟩ := transfer_base' hw hb hd hpre.srcUsable hpre.depsValid hpre.dstUsableAfter
   have hh' := transfer_heldAnchored' hw hh hpre.srcUsable hpre.dstUsable hpre.sameShape
     hpre.disjoint
   have hmem : ∀ f, f ∈ (transferEff (s.view c) src dst).F ↔ f ∈ s.frames := fun _ =>
-    SC.mem_view_F
+    SC.mem_view_F hcl
   refine kInvCA_of (framesC_set hfr rfl)
     (flat_facts rfl hmem hfr.nodup (frames_ne (s := s) hfr) hw' hb' hd'
       (transfer_rootHeldConv' hc) hh') hpre.anchorOrder ?_
@@ -1818,20 +1826,21 @@ theorem opStepC_preservesC {k : K} (hdd : DDSound k) {s s' : SC} {c : Nat} {op :
   cases op with
   | exit => exact absurd rfl hnx
   | transfer src dst =>
-    obtain ⟨-, h⟩ := h; obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
+    obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
     exact transfer_preserves hk hpre
   | depend q x =>
-    obtain ⟨-, h⟩ := h; obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
+    obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
     exact depend_preserves hk hpre
   | store a p =>
-    obtain ⟨-, h⟩ := h; obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
+    obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
     exact store_preserves hk hpre
   | enter ps ls =>
-    obtain ⟨-, h⟩ := h; obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
-    exact push_preserves hk hpre.params hpre.localsOK (enter_push hk.1.1.1 hpre.callerLive)
+    obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
+    exact push_preserves hk (SC.live_of_stk hpre.callerLive) hpre.params hpre.localsOK
+      (enter_push hk.1.1.1 hpre.callerLive)
       hpre.anchorOrderHeld
   | derive | split | release | read | write | writeShared | pin | unpin | endUse | free | alloc =>
-    obtain ⟨-, o₃, hR, ho⟩ := h
+    obtain ⟨o₃, hR, ho⟩ := h
     cases o₃ with
     | ok t =>
       cases ho
@@ -1844,8 +1853,9 @@ with the auxiliaries on the flat state: the new context has the fresh frame `nF`
 creating frame; the kernel effect is that of Spec 1 §72. -/
 theorem spawn_preservesC {s s' : SC} {c : Nat} {ps : List Nat} {ls : LocalShape}
     (hk : KInvCA s) (h : SpawnStep s c ps ls (.ok s')) : KInvCA s' := by
-  obtain ⟨-, h⟩ := h; obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
-  exact push_preserves hk hpre.params hpre.localsOK (spawn_push hk.1.1.1 hpre.creatorLive)
+  obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
+  exact push_preserves hk (SC.live_of_stk hpre.creatorLive) hpre.params hpre.localsOK
+    (spawn_push hk.1.1.1 hpre.creatorLive)
     hpre.anchorOrderHeld
 
 /-- Theorem 2 (C8, C20): `join` leaves the state unchanged, hence preserves the invariant. -/
@@ -1857,7 +1867,7 @@ theorem join_preservesC {s s' : SC} {c d : Nat} (hk : KInvCA s) (h : JoinStep s 
 own mode of `guarded` is the clause C15.1 of `DeriveSyncPre`. -/
 theorem deriveSync_preservesC {R : Type} {kc : KC R} {r : R} {s s' : SC} {c g : Nat}
     (hk : KInvCA s) (h : DeriveSyncStep kc r s c g (.ok s')) : KInvCA s' := by
-  obtain ⟨-, h⟩ := h; obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
+  obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
   exact deriveSync_preserves hk hpre
 
 end Ern.ConcurrencyModel

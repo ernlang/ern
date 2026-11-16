@@ -41,8 +41,9 @@ structure DeriveSyncPre {R : Type} (kc : KC R) (r : R) (s : SC) (c g : Nat) : Pr
   exclusive : ∀ b ∈ List.range s.A.length, OptP (s.A[b]?) (fun y => y.active = true →
     b ∉ g :: (s.view c).ancs g → (∃ l ∈ (s.view c).afp g, l ∈ y.footprint) →
       y.mode = .observe ∧ Mode.modify = .observe) True
-  /-- C15.6, Spec 1 §60.4: the new holding frame is the live current frame. -/
-  frameLive : (s.view c).top ∈ (s.view c).F
+  /-- C15.6, Spec 1 §60.4: the new holding frame is the live current frame; its liveness ranges
+  over the globally live frames (C2). -/
+  frameLive : (s.view c).top ∈ s.frames
 
 /-- Decidability of the preconditions of `deriveSync` (C15). -/
 instance {R : Type} (kc : KC R) (r : R) (s : SC) (c g : Nat)
@@ -57,14 +58,19 @@ instance {R : Type} (kc : KC R) (r : R) (s : SC) (c g : Nat)
     (∀ b ∈ List.range s.A.length, OptP (s.A[b]?) (fun y => y.active = true →
       b ∉ g :: (s.view c).ancs g → (∃ l ∈ (s.view c).afp g, l ∈ y.footprint) →
         y.mode = .observe ∧ Mode.modify = .observe) True) ∧
-    (s.view c).top ∈ (s.view c).F)
+    (s.view c).top ∈ s.frames)
     ⟨fun ⟨a, b, c, d, e, f, g, h, i⟩ => ⟨a, b, c, d, e, f, g, h, i⟩,
      fun ⟨a, b, c, d, e, f, g, h, i⟩ => ⟨a, b, c, d, e, f, g, h, i⟩⟩
 
-/-- `deriveSync(guarded)` executed by `c` with the registry `r` (C15): `ok` or `reject`; no
-outcome if `c` is not live. -/
+/-- `deriveSync(guarded)` executed by `c` with the registry `r` (C15): `ok` or `reject`. A context
+that is not live has no current frame (C2), so C15.6 fails: `reject`. -/
 def DeriveSyncStep {R : Type} (kc : KC R) (r : R) (s : SC) (c g : Nat) (o : Outcome3 SC) : Prop :=
-  s.Live c ∧ Guarded (DeriveSyncPre kc r s c g) (deriveSyncEff s c g) o
+  Guarded (DeriveSyncPre kc r s c g) (deriveSyncEff s c g) o
+
+/-- An `ok` `deriveSync` requires the executing context to be live (C15.6, C2). -/
+theorem deriveSyncStep_live {R : Type} {kc : KC R} {r : R} {s s' : SC} {c g : Nat}
+    (h : DeriveSyncStep kc r s c g (.ok s')) : s.Live c :=
+  SC.live_of_top_mem (Guarded.ok_iff.1 h).1.frameLive
 
 /-- C15 effect: the authority created by `deriveSync` is an ordinary authority of mode `Modify`,
 origin `guarded`, footprint `footprint(guarded)`, held by the current frame, active, of fresh
@@ -72,7 +78,6 @@ identity `|A|`. -/
 theorem deriveSync_created {R : Type} {kc : KC R} {r : R} {s s' : SC} {c g : Nat}
     (h : DeriveSyncStep kc r s c g (.ok s')) :
     s'.A = s.A ++ [⟨.modify, some g, (s.view c).afp g, .frame (s.view c).top, true⟩] := by
-  obtain ⟨-, h⟩ := h
   obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
   rfl
 

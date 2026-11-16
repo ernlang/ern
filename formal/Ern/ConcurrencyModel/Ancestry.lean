@@ -168,6 +168,10 @@ structure Pop (s s' : SC) (c f p : Nat) : Prop where
 
 section Pop
 
+/-- The context whose frame a `Pop` removes is live (C2). -/
+theorem Pop.cLive {s s' : SC} {c f p : Nat} (h : Pop s s' c f p) : s.Live c :=
+  SC.live_of_stk fun e => by have := h.head; rw [e] at this; cases this
+
 variable {s s' : SC} {c f p : Nat}
 
 /-- The stack of `c` starts with `f` (C6). -/
@@ -322,8 +326,7 @@ theorem Pop.view_tail (hnd : s.frames.Nodup) (h : Pop s s' c f p) {y : Nat} :
   have hft : f ∉ (s.stk c).tail := by
     have := SC.stk_nodup hnd c; rw [hc] at this; exact (List.nodup_cons.1 this).1
   have hF : (s.view c).F.tail = (s.stk c).tail ++ s.frames.filter fun g => decide (g ∉ s.stk c) := by
-    show (s.stk c ++ _).tail = _
-    rw [hc]; rfl
+    rw [SC.view_F_live h.cLive, hc]; rfl
   rw [hF, List.mem_append, List.mem_filter, decide_eq_true_eq]
   constructor
   · rintro (hy | ⟨hy, hyc⟩)
@@ -395,7 +398,7 @@ theorem Pop.anchorOrderC (hfr : FramesC s) (hw : WF3 s.flat) (hao : AnchorOrderC
       ({ s.view c with F := (s.view c).F.tail } : S3).Usable q →
       ∀ x ∈ s.D q, firstSurv (s.view c) (s.view c).F.tail (x :: (s.view c).ancs x) ≠ none)
     (h3 : Frames.OriginsSurvive (s.view c)) : AnchorOrderC s' := by
-  have hwt := SC.wf3_view hfr hw (c := c)
+  have hwt := SC.wf3_view hfr hw h.cLive
   have hP : s'.P = s.P := congrArg S3.P hflat
   have hD : s'.D = (exitEff (s.view c)).D := congrArg S3.D hflat
   intro q hq x' hx'
@@ -406,7 +409,7 @@ theorem Pop.anchorOrderC (hfr : FramesC s) (hw : WF3 s.flat) (hao : AnchorOrderC
       (fun y hy => (h.view_tail hfr.nodup).2 hy) (fun _ h => h) hq
   have hq₀ : (s.view c).Usable q := Frames.usable_of_tail hq₁
   have hqf : s.flat.Usable q :=
-    (usable_mem_congr (t := s.flat) (F' := (s.view c).F) fun y => SC.mem_view_F).1 hq₀
+    (usable_mem_congr (t := s.flat) (F' := (s.view c).F) fun y => SC.mem_view_F h.cLive).1 hq₀
   rw [hD] at hx'
   simp only [exitEff, List.mem_map] at hx'
   obtain ⟨x, hx, rfl⟩ := hx'
@@ -471,7 +474,7 @@ theorem Pop.kInvC (hk : KInvC s) (h : Pop s s' c f p) (hfr' : FramesC s')
       ∀ x ∈ s.D q, firstSurv (s.view c) (s.view c).F.tail (x :: (s.view c).ancs x) ≠ none)
     (h3 : Frames.OriginsSurvive (s.view c)) (haoh : AnchorOrderHeldC s') : KInvC s' := by
   obtain ⟨⟨hfr, hw⟩, ⟨⟨i1, i2, i3, -⟩, hao, hnd⟩, -, -⟩ := hk
-  have hwt := SC.wf3_view hfr hw (c := c)
+  have hwt := SC.wf3_view hfr hw h.cLive
   have hmem : ∀ y, y ∈ s'.frames ↔ y ∈ (exitEff (s.view c)).F :=
     fun y => (h.view_tail hfr.nodup).symm
   have hne' : s'.frames ≠ [] := frames_ne hfr'
@@ -483,10 +486,10 @@ theorem Pop.kInvC (hk : KInvC s) (h : Pop s s' c f p) (hfr' : FramesC s')
   have hwf' : WF3 s'.flat := by
     rw [hflat]; exact wf3_mem_congr hw' hmem (h.nodup hfr.nodup) hne'
   have i3t : I3 (s.view c) := by
-    rw [SC.view_eq]; exact i3_mem_congr i3 fun y => SC.mem_view_F
+    rw [SC.view_eq]; exact i3_mem_congr i3 fun y => SC.mem_view_F h.cLive
   have hb' := Frames.exit_inv3base (s := s.view c) ⟨i1, i2, i3t, i4_always _⟩ hR1
   have hndt : NoDangling (s.view c) := by
-    rw [SC.view_eq]; exact noDangling_mem_congr hnd fun y => SC.mem_view_F
+    rw [SC.view_eq]; exact noDangling_mem_congr hnd fun y => SC.mem_view_F h.cLive
   have hnd' := Frames.exit_noDangling hwt i1 hndt h3
   refine ⟨⟨hfr', hwf'⟩, ⟨⟨?_, ?_, ?_, fun _ => i4_always _⟩,
     h.anchorOrderC hfr hw hao hflat hR1 h3, ?_⟩, haoh, noOrphan_of_wf3 hwf'⟩
@@ -518,7 +521,7 @@ theorem Pop.aux (hfr : FramesC s) (haux : RootHeldConv s.flat) (hh : HeldAnchore
       (s := { s.view c with F := (s.view c).F.tail }) rfl
       (fun y hy => (h.view_tail hfr.nodup).2 hy) (fun _ h => h) hu
   have hu₀ : s.flat.Usable q :=
-    (usable_mem_congr (t := s.flat) (F' := (s.view c).F) fun y => SC.mem_view_F).1
+    (usable_mem_congr (t := s.flat) (F' := (s.view c).F) fun y => SC.mem_view_F h.cLive).1
       (Frames.usable_of_tail hq₁)
   have hx := hh x y₀ q hy₀ ya₀ ho₀ hh0 hu₀
   show x ∈ (exitEff (s.view c)).D q
@@ -758,8 +761,7 @@ initial frames. Fragment: states with the frame structure `FramesC`, `WF3` and `
 on the live frames. -/
 theorem exitFrameC_anchorOrder (hfr : FramesC s) (hw : WF3 s.flat) (hao : AnchorOrderC s)
     (h : opStepC k .exit c s (.ok s')) : AnchorOrderC s' ∧ AnchorOrderHeldC s' := by
-  obtain ⟨-, hg⟩ := h
-  obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 hg
+  obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
   exact ⟨(exitEffC_pop hfr.nodup hpre.hasCaller).anchorOrderC hfr hw hao rfl hpre.anchors
     hpre.origins, hpre.anchorOrderHeld⟩
 
@@ -768,8 +770,7 @@ theorem exitFrameC_anchorOrder (hfr : FramesC s) (hw : WF3 s.flat) (hao : Anchor
 Fragment: as `exitFrameC_anchorOrder`. -/
 theorem terminate_anchorOrder (hfr : FramesC s) (hw : WF3 s.flat) (hao : AnchorOrderC s)
     (h : TermStep k s c (.ok s')) : AnchorOrderC s' ∧ AnchorOrderHeldC s' := by
-  obtain ⟨-, hg⟩ := h
-  obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 hg
+  obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
   have hpar : s.ctxParent c ≠ none := fun e => by
     have := hpre.hasParent; rw [e] at this; exact this
   exact ⟨(termEffC_pop hfr.nodup hpre.initialOnly hpar).anchorOrderC hfr hw hao rfl
@@ -781,8 +782,7 @@ of §57) on the live frames. Fragment: O7 re-indexed. -/
 theorem exitFrameC_preserves (hk : KInvC s) (haux : RootHeldConv s.flat)
     (hh : HeldAnchored s.flat) (h : opStepC k .exit c s (.ok s')) :
     KInvC s' ∧ RootHeldConv s'.flat ∧ HeldAnchored s'.flat := by
-  obtain ⟨-, hg⟩ := h
-  obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 hg
+  obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
   have hfr := hk.1.1
   have hp := exitEffC_pop hfr.nodup hpre.hasCaller
   exact ⟨hp.kInvC hk (exitEffC_framesC hfr hpre.hasCaller) rfl hpre.anchors hpre.origins
@@ -794,8 +794,7 @@ frames. -/
 theorem terminate_preserves (hk : KInvC s) (haux : RootHeldConv s.flat)
     (hh : HeldAnchored s.flat) (h : TermStep k s c (.ok s')) :
     KInvC s' ∧ RootHeldConv s'.flat ∧ HeldAnchored s'.flat := by
-  obtain ⟨-, hg⟩ := h
-  obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 hg
+  obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
   have hfr := hk.1.1
   have hpar : s.ctxParent c ≠ none := fun e => by
     have := hpre.hasParent; rw [e] at this; exact this

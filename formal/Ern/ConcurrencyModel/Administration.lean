@@ -39,7 +39,7 @@ theorem newMutex_establishes {ks : KShared} {L : MutexLayout} {st st' : SC × Sy
   refine ⟨hs, hgd, ?_⟩
   cases h with
   | newMutex h =>
-    obtain ⟨-, hpre, rfl⟩ := h
+    obtain ⟨hpre, rfl⟩ := h
     refine ⟨List.mem_append_right _ (List.mem_singleton_self _), ?_⟩
     have hg := hpre.guarded
     unfold OptP at hg; split at hg
@@ -165,7 +165,7 @@ theorem reset_metaRight {k : K} {s : SC} {ar : ArenaReg} {c i : Nat} {st' : SC �
     ∃ E, ar[i]? = some E ∧ Arena.MetaRight (s.view c) E := by
   obtain ⟨E, s₁, hE, hd, -, -, -⟩ := resetStepC_ok (k := k) h
   refine ⟨E, hE, ?_⟩
-  obtain ⟨-, o₃, hR, ho⟩ := hd
+  obtain ⟨o₃, hR, ho⟩ := hd
   cases o₃ with
   | reject => cases ho
   | fail => cases ho

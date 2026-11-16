@@ -147,12 +147,12 @@ def KBase (s : SC) : Prop :=
     KAux s.flat ∧ HeldAnchored s.flat)
 
 /-- The kernel facts of Spec 1 on the view of a context, from `KBase` (C2). -/
-theorem view_facts_base {s : SC} (hk : KBase s) (c : Nat) :
+theorem view_facts_base {s : SC} (hk : KBase s) {c : Nat} (hcl : s.Live c) :
     WF3 (s.view c) ∧ Inv3base (s.view c) ∧ NoDangling (s.view c) ∧ RootHeldConv (s.view c) ∧
       HeldAnchored (s.view c) := by
   obtain ⟨hfr, hw, h1, h2, h3, hnd, hc, hh⟩ := hk
-  have hF : ∀ f, f ∈ (s.view c).F ↔ f ∈ s.flat.F := fun f => SC.mem_view_F
-  exact ⟨SC.wf3_view hfr hw, ⟨h1, h2, i3_mem_congr h3 hF, i4_always _⟩,
+  have hF : ∀ f, f ∈ (s.view c).F ↔ f ∈ s.flat.F := fun f => SC.mem_view_F hcl
+  exact ⟨SC.wf3_view hfr hw hcl, ⟨h1, h2, i3_mem_congr h3 hF, i4_always _⟩,
     noDangling_mem_congr hnd hF, hc, heldAnchored_mem_congr hh hF⟩
 
 /-- `spawn` (C4 effect) establishes `KBase` from `KInvCA`, without the resulting-state
@@ -160,14 +160,14 @@ condition §72.4 (C4.5), which the composite checks on its final state. -/
 theorem spawn_base {s : SC} {c : Nat} {ps : List Nat} {ls : LocalShape} (hk : KInvCA s)
     (hc : s.stk c ≠ []) (hpar : ParamsOK (s.view c) ps) (hsh : ShapeOK s.P.length ls.toShape) :
     KBase (spawnEff s c ps ls) := by
-  obtain ⟨hw, hb, hd, hrc, hh⟩ := view_facts hk c
+  obtain ⟨hw, hb, hd, hrc, hh⟩ := view_facts hk (SC.live_of_stk hc)
   have hfr := hk.1.1.1
   have hpush := spawn_push (ps := ps) (ls := ls) hfr hc
   have hmem : ∀ f, f ∈ (enterEff (s.view c) ps ls).F ↔ f ∈ (spawnEff s c ps ls).frames :=
     fun f => by
       rw [hpush.mem]
       show f ∈ s.nF :: (s.view c).F ↔ _
-      rw [List.mem_cons, SC.mem_view_F]
+      rw [List.mem_cons, SC.mem_view_F (SC.live_of_stk hc)]
   have hne : (spawnEff s c ps ls).frames ≠ [] := fun he => by
     have := (hpush.mem s.nF).2 (.inl rfl); rw [he] at this; cases this
   exact ⟨hpush.framesC hfr, flat_facts rfl hmem hpush.nodup hne (enter_wf' hw hpar hsh)
@@ -176,16 +176,17 @@ theorem spawn_base {s : SC} {c : Nat} {ps : List Nat} {ls : LocalShape} (hk : KI
 
 /-- One transfer (Spec 1 §63 effect) keeps `KBase`, from §63.1 usability, §63.2, §63.3
 disjointness, §63.6 first half and the usability of the destination after the step. -/
-theorem transfer_base {t : SC} {c src dst : Nat} (hk : KBase t) (hsrc : (t.view c).Usable src)
+theorem transfer_base {t : SC} {c src dst : Nat} (hk : KBase t) (hcl : t.Live c)
+    (hsrc : (t.view c).Usable src)
     (hdst : (t.view c).Usable dst) (hdeps : ∀ x ∈ movedDeps (t.view c) src, (t.view c).Active x)
     (hsh : SameShape (t.view c).P src dst) (hdis : ¬ overlap (t.view c).P src dst)
     (hd' : (transferEff (t.view c) src dst).Usable dst) : KBase (transferEffC t c src dst) := by
-  obtain ⟨hw, hb, hd, hc, hh⟩ := view_facts_base hk c
+  obtain ⟨hw, hb, hd, hc, hh⟩ := view_facts_base hk hcl
   have hw' := transfer_wf3' hw hsrc hdst hd'
   obtain ⟨hb', hd''⟩ := transfer_base' hw hb hd hsrc hdeps hd'
   have hh' := transfer_heldAnchored' hw hh hsrc hdst hsh hdis
   have hmem : ∀ f, f ∈ (transferEff (t.view c) src dst).F ↔ f ∈ t.frames := fun _ =>
-    SC.mem_view_F
+    SC.mem_view_F hcl
   exact ⟨framesC_set hk.1 rfl, flat_facts rfl hmem hk.1.nodup (frames_ne (s := t) hk.1) hw' hb' hd''
     (transfer_rootHeldConv' hc) hh'⟩
 
@@ -237,8 +238,10 @@ theorem spawn_frameOwned {s : SC} {c : Nat} {ps : List Nat} {ls : LocalShape} {d
 
 /-- The clauses of `ValTransferPre` read by `transfer_base` hold on the state where the
 parameters are already yielded: they read neither holders nor exercise. -/
-theorem yield_view {t : SC} {ps : List Nat} {f c : Nat} :
-    (yieldEff t ps f).view c = { t.view c with A := mapI (yieldF ps f) 0 t.A } := rfl
+theorem yield_view {t : SC} {ps : List Nat} {f c : Nat} (hc : t.Live c) :
+    (yieldEff t ps f).view c = { t.view c with A := mapI (yieldF ps f) 0 t.A } := by
+  have hc' : (yieldEff t ps f).Live c := hc
+  simp only [SC.view, hc, hc', ite_true]; rfl
 
 /-- `Active` is unchanged by the yield (C5.3). -/
 theorem yield_active {v : S3} {ps : List Nat} {f x : Nat} :
@@ -267,18 +270,19 @@ theorem transfers_base {k : K} {fin : S3} {c f : Nat} {ps : List Nat} :
   | _, [], _, hk, _, _ => hk
   | t, v :: vs, ⟨hpre, hrest⟩, hk, hown, hp => by
     simp only [transfersEff]
+    have hcl : t.Live c := SC.live_of_hasRight hpre.srcRight
     have hu : ∀ q, ((yieldEff t ps f).view c).Usable q ↔ (t.view c).Usable q := fun q =>
-      S3.Usable.congr (s' := (yieldEff t ps f).view c) (s := t.view c) rfl rfl rfl
+      S3.Usable.congr (s' := (yieldEff t ps f).view c) (s := t.view c) rfl
+        (by rw [yield_view hcl]) rfl
     have hdeps : ∀ x ∈ movedDeps ((yieldEff t ps f).view c) v.1,
         ((yieldEff t ps f).view c).Active x := by
       intro x hx
       have hmd : movedDeps ((yieldEff t ps f).view c) v.1 = movedDeps (t.view c) v.1 := by
-        unfold movedDeps
-        congr 1
+        rw [yield_view hcl]; rfl
       rw [hmd] at hx
       exact (yield_active (v := t.view c) (ps := ps) (f := f)).2 (hpre.depsValid x hx)
     have hown₀ : FrameOwned ((yieldEff t ps f).view c).P v.2 := hown v (List.mem_cons_self ..)
-    have hk₁ := transfer_base hk ((hu _).2 hpre.srcUsable) ((hu _).2 hpre.dstUsable) hdeps
+    have hk₁ := transfer_base hk hcl ((hu _).2 hpre.srcUsable) ((hu _).2 hpre.dstUsable) hdeps
       hpre.sameShape hpre.disjoint
       (transfer_usable_frameOwned ((hu _).2 hpre.dstUsable) hown₀)
     rw [yield_transfer hp] at hk₁
@@ -299,7 +303,7 @@ the composite give `KInvCA` after it. The anchor orders are the final checks of 
 theorem spawnVal_preservesC {k : K} {s s' : SC} {c : Nat} {ps : List Nat} {ls : LocalShape}
     {vs : List (Nat × Nat)} (hk : KInvCA s) (h : SpawnValStep k s c ps ls vs (.ok s')) :
     KInvCA s' := by
-  obtain ⟨-, h⟩ := h; obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
+  obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
   have hpar : ParamsOK (s.view c) ps := hpre.params
   have hlt : ∀ a ∈ ps, a < s.A.length := fun a ha => by
     have := hpre.params a ha

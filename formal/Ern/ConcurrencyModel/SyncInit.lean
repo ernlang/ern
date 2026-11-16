@@ -205,9 +205,9 @@ theorem opStep_init {k : K} {c : Nat} {op : KernelOp} {s s' : SC}
   | transfer src dst => exact absurd rfl (hnt src dst)
   | endUse p => exact absurd rfl (hne p)
   | depend q x =>
-    obtain ⟨-, h⟩ := h; obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h; exact initFacts_same rfl rfl
+    obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h; exact initFacts_same rfl rfl
   | store a p =>
-    obtain ⟨-, h⟩ := h; obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
+    obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
     have hd := hpre.derivedHeld
     unfold OptP at hd; split at hd
     · rename_i y hy
@@ -223,14 +223,14 @@ theorem opStep_init {k : K} {c : Nat} {op : KernelOp} {s s' : SC}
       · exact hl
     · exact hd.elim
   | enter ps ls =>
-    obtain ⟨-, h⟩ := h; obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
+    obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
     refine ⟨fun q hq l => Ern.MemoryModel.Arena.footprint_shapeP hpre.localsOK hq l,
       fun l hl hi => ?_⟩
     show (if (s.view c).P.length ≤ l then InitSt.uninit else s.I l) = .init
     have hn : ¬ (s.view c).P.length ≤ l := Nat.not_le.2 hl
     simp only [hn, ↓reduceIte]; exact hi
   | exit =>
-    obtain ⟨-, h⟩ := h; obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h; exact initFacts_same rfl rfl
+    obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h; exact initFacts_same rfl rfl
   | derive src region m =>
     obtain ⟨t, hR, rfl⟩ := viewStep_ok h
     refine ⟨fun q hq l => view_fp hR hq l, fun l _ hl => ?_⟩
@@ -716,7 +716,7 @@ theorem newMutex_syncState {k : K} {L : MutexLayout} {ar : ArenaReg} {s : SC} {r
   obtain ⟨hc, hu, hsi, hci⟩ := hs
   have hcore := newMutex_preserves h hc
   have hcu := newMutex_ctlUnique h hu
-  obtain ⟨-, hpre, rfl⟩ := h
+  obtain ⟨hpre, rfl⟩ := h
   have h1 := hpre.control
   cases hco : ControlOf L s ⟨g, none⟩ with
   | none => rw [hco] at h1; exact h1.elim
@@ -757,7 +757,7 @@ theorem acquire_syncState {ks : KShared} {L : MutexLayout} {s : SC} {reg : SyncR
   obtain ⟨hc, hu, hsi, hci⟩ := hs
   have hcore := acquire_preserves h hw hw' hc
   have hcu := acquire_ctlUnique h hw hc hu
-  obtain ⟨-, e, hi, -, hpre, rfl⟩ := h
+  obtain ⟨e, hi, -, hpre, rfl⟩ := h
   have hA : (deriveSyncEff s c e.guarded).A = s.A ++ [⟨.modify, some e.guarded,
       (s.view c).afp e.guarded, .frame (s.view c).top, true⟩] := rfl
   obtain ⟨hsk, hh⟩ := skel_append hA rfl (fun j y' hy' => ⟨y', hy', Same.refl _⟩) fun z hz => by
@@ -775,7 +775,7 @@ theorem unlock_syncState {L : MutexLayout} {s : SC} {reg : SyncReg} {c i : Nat}
   obtain ⟨hc, hu, hsi, hci⟩ := hs
   have hcore := unlock_preserves h hw hw' hc
   have hcu := unlock_ctlUnique h hw hc hu
-  obtain ⟨-, e, g₀, hi, -, -, hpre, -, -, rfl⟩ := h
+  obtain ⟨e, g₀, hi, -, -, hpre, -, -, rfl⟩ := h
   obtain ⟨x, hx, -⟩ := hpre.active
   have hx' : s.A[g₀]? = some x := hx
   have hA : (s.set (releaseEff (s.view c) g₀)).A = s.A.set g₀ { x with active := false } := by
@@ -797,7 +797,7 @@ theorem resetLock_syncState {L : MutexLayout} {s : SC} {reg : SyncReg} {c i : Na
   obtain ⟨hc, hu, hsi, hci⟩ := hs
   have hcore := resetLock_preserves h hc
   have hcu := resetLock_ctlUnique h hu
-  obtain ⟨-, e, hi, -, -, -, -, rfl⟩ := h
+  obtain ⟨e, hi, -, -, -, -, rfl⟩ := h
   obtain ⟨hsi', hci'⟩ := init_set (e' := { e with grant := none }) hi rfl hsi hci
   exact ⟨hcore, hcu, hsi', hci'⟩
 
@@ -884,7 +884,7 @@ theorem spawnVal_syncState {k : K} {L : MutexLayout} {reg : SyncReg} {s s' : SC}
     {ps : List Nat} {ls : LocalShape} {vs : List (Nat × Nat)} (hk : KInvCA s)
     (h : SpawnValStep k s c ps ls vs (.ok s')) (he : EncapVals L reg c (spawnCreate s c ls) vs)
     (hs : SyncPart L s reg) : SyncPart L s' reg := by
-  obtain ⟨-, h⟩ := h; obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
+  obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
   have hpar : ParamsOK (s.view c) ps := hpre.params
   have hlt : ∀ a ∈ ps, a < s.A.length := fun a ha => by
     have := hpre.params a ha
@@ -929,12 +929,12 @@ theorem kernel_syncState {k : K} {L : MutexLayout} {reg : SyncReg} {ar : ArenaRe
 /-- `WF3` of the globally live frames after an operation run on the view of `c` that keeps the
 stack (C2). -/
 theorem wf3_after_view {k : K} {op : KernelOp} {c : Nat} {s s' : SC} (hfr : FramesC s)
-    (h : ViewStep (op.Step k) c s (.ok s'))
+    (hcl : s.Live c) (h : ViewStep (op.Step k) c s (.ok s'))
     (hW : ∀ t', op.Step k (s.view c) (.ok t') → WF3 t' ∧ t'.F = (s.view c).F) :
     WF3 s'.flat := by
   obtain ⟨t', hR, rfl⟩ := SyncPreserveAux.viewStep_ok h
   obtain ⟨hwt, hF⟩ := hW t' hR
-  have hv : (s.set t').view c = t' := SC.view_set hF
+  have hv : (s.set t').view c = t' := SC.view_set hcl hF
   exact SC.wf3_flat_of_view (c := c) (by rw [hv]; exact hwt) hfr.nodup
 
 /-- Theorem 2, synchronization part (C21, C22, C23) on one labelled step: every labelled step
@@ -952,19 +952,19 @@ theorem lstep_preserves {ks : KShared} {L : MutexLayout} {lbl : Label}
   | @kernel s s' reg ar c op h =>
     cases op
     case transfer src dst =>
-      obtain ⟨-, h'⟩ := h; obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h'
+      obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
       exact transfer_syncState hpre.sameShape hpre.dstNotInit hpre.dstUsable.lt he hw hw' hs
     case endUse p => exact endUse_syncState h he hw hw' hs
     all_goals
       exact facts_syncState (opStep_facts (reg := reg) h he (fun _ _ h => by cases h) hw)
         (opStep_init h (fun _ _ h => by cases h) (fun _ h => by cases h)) hw hw' hs
   | @spawn s s' reg ar c ps ls h =>
-    obtain ⟨-, h'⟩ := h; obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h'
+    obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
     exact facts_syncState (spawnEff_facts hpre.params hpre.localsOK) (spawn_init hpre.localsOK)
       hw hw' hs
   | @terminate s s' reg ar c h =>
     have hf := term_facts (reg := reg) hw h
-    obtain ⟨-, h'⟩ := h; obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h'
+    obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
     exact facts_syncState hf (initFacts_same rfl rfl) hw hw' hs
   | @join s s' reg ar c d h =>
     have hf := join_facts (reg := reg) h
@@ -981,11 +981,11 @@ theorem lstep_preserves {ks : KShared} {L : MutexLayout} {lbl : Label}
     obtain ⟨E, s₁, hE, -, -, hsp, hsto, -⟩ := issueStepC_ok h
     have hsep' : ∀ e ∈ reg, e.Live s → E.internal ≠ e.guarded := by
       have := he; simp only [RestrictedStep, hE, OptP] at this; exact this
-    have hw₁ : WF3 s₁.flat := wf3_after_view hk.1.1.1
+    have hw₁ : WF3 s₁.flat := wf3_after_view hk.1.1.1 (opStepC_live hsp)
       (show ViewStep ((KernelOp.split E.internal [region]).Step ks.toK) c s (.ok s₁) from hsp)
       fun t' hR => by
         have hR' : SplitStep ks.toK E.internal [region] (s.view c) (.ok t') := hR
-        refine ⟨split_preserves_wf3 (SC.wf3_view hk.1.1.1 hw) hR', ?_⟩
+        refine ⟨split_preserves_wf3 (SC.wf3_view hk.1.1.1 hw (opStepC_live hsp)) hR', ?_⟩
         obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hR'; rfl
     exact kernel_syncState (ar := ar) hsto trivial (fun _ _ e => by cases e)
       (fun _ e => by cases e) hw₁ hw'
@@ -995,12 +995,12 @@ theorem lstep_preserves {ks : KShared} {L : MutexLayout} {lbl : Label}
     obtain ⟨E, s₁, hE, hd, hrl, -, -⟩ := resetStepC_ok (k := ks.toK) h
     have hsep' : ∀ e ∈ reg, e.Live s → E.internal ≠ e.guarded := by
       have := he; simp only [RestrictedStep, hE, OptP] at this; exact this
-    have hw₁ : WF3 s₁.flat := wf3_after_view hk.1.1.1
+    have hw₁ : WF3 s₁.flat := wf3_after_view hk.1.1.1 (opStepC_live hd)
       (show ViewStep ((KernelOp.derive E.internal (footprint s.P E.storage) .modify).Step ks.toK)
         c s (.ok s₁) from hd)
       fun t' hR => by
         have hR' : DeriveStep E.internal (footprint s.P E.storage) .modify (s.view c) (.ok t') := hR
-        refine ⟨derive_preserves_wf3 (SC.wf3_view hk.1.1.1 hw) hR', ?_⟩
+        refine ⟨derive_preserves_wf3 (SC.wf3_view hk.1.1.1 hw (opStepC_live hd)) hR', ?_⟩
         obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hR'; rfl
     exact kernel_syncState (ar := ar) hrl trivial (fun _ _ e => by cases e)
       (fun _ e => by cases e) hw₁ hw'
@@ -1009,7 +1009,7 @@ theorem lstep_preserves {ks : KShared} {L : MutexLayout} {lbl : Label}
   | @readShared s reg ar c a l v order h =>
     exact hs
   | @writeShared s s' reg ar c a region order kind h =>
-    have hk' := writeSharedC_ok_kernel h.1 h.2
+    have hk' := writeSharedC_ok_kernel h
     exact facts_syncState (opStep_facts (L := L) (reg := reg) (ar := ar) hk' trivial
       (fun _ _ h => by cases h) hw)
       (opStep_init hk' (fun _ _ h => by cases h) (fun _ h => by cases h)) hw hw' hs

@@ -114,7 +114,7 @@ theorem registry_external (ks : KShared) (L : MutexLayout) (reg : SyncReg) (s : 
 executed under the library instantiation has no `ok` outcome. -/
 theorem registry_none_no_deriveSync {ks : KShared} {L : MutexLayout} {reg : SyncReg} {s : SC}
     (hnone : ∀ e ∈ reg, ¬ e.Live s) (c g : Nat) (s' : SC) :
-    ¬ DeriveSyncStep (libKC ks L) reg s c g (.ok s') := fun ⟨_, h⟩ => by
+    ¬ DeriveSyncStep (libKC ks L) reg s c g (.ok s') := fun h => by
   obtain ⟨e, he, -, hl⟩ := libKC_sound ks L reg s g _ (Guarded.ok_iff.1 h).1.authorized
   exact hnone e he hl
 

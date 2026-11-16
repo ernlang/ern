@@ -117,7 +117,8 @@ theorem single_flat (hs : s.Single) : s.flat = s.toS3 := by
 
 /-- The view of the context of a single-context state is its projection (C2, C24). -/
 theorem single_view (hs : s.Single) : s.view 0 = s.toS3 := by
-  simp only [SC.view, single_flat hs, single_frames hs, SC.toS3]
+  have h0 : s.Live 0 := by obtain ⟨_, hC⟩ := hs; simp [SC.Live, hC, OptP]
+  simp only [SC.view, h0, ite_true, single_flat hs, single_frames hs, SC.toS3]
   congr 1
   have : (s.stk 0).filter (fun f => decide (f ∉ s.stk 0)) = [] :=
     filter_nil_of (fun f hf => by simpa using hf)
@@ -278,23 +279,22 @@ theorem viewStep_single {R : S3 → Outcome3 S3 → Prop} (hs : s.Single)
     | ok t => exact congrArg Outcome3.ok (toS3_set (hF t hR))
     | reject => rfl
     | fail => rfl
-  refine ⟨fun o ⟨_, o₃, hR, ho⟩ => ?_, fun o₃ hR => ⟨_, ⟨single_live hs, o₃, hv ▸ hR, rfl⟩,
-    back o₃ hR⟩⟩
+  refine ⟨fun o ⟨o₃, hR, ho⟩ => ?_, fun o₃ hR => ⟨_, ⟨o₃, hv ▸ hR, rfl⟩, back o₃ hR⟩⟩
   rw [hv] at hR; rw [ho, back o₃ hR]; exact hR
 
 /-- A guarded operation of the single context has the outcomes of Spec 1 on the projection when
 its precondition is equivalent and its effect projects to the Spec 1 effect (C24). -/
-theorem guarded_single {Pre Pre₃ : Prop} {e : SC} {e₃ : S3} (hs : s.Single) (hp : Pre ↔ Pre₃)
+theorem guarded_single {Pre Pre₃ : Prop} {e : SC} {e₃ : S3} (hp : Pre ↔ Pre₃)
     (he : e.toS3 = e₃) :
-    (∀ o, s.Live 0 ∧ Guarded Pre e o → Guarded Pre₃ e₃ (omap SC.toS3 o)) ∧
-    (∀ o₃, Guarded Pre₃ e₃ o₃ → ∃ o, (s.Live 0 ∧ Guarded Pre e o) ∧ omap SC.toS3 o = o₃) := by
-  refine ⟨fun o ⟨_, h⟩ => ?_, fun o₃ h => ?_⟩
+    (∀ o, Guarded Pre e o → Guarded Pre₃ e₃ (omap SC.toS3 o)) ∧
+    (∀ o₃, Guarded Pre₃ e₃ o₃ → ∃ o, Guarded Pre e o ∧ omap SC.toS3 o = o₃) := by
+  refine ⟨fun o h => ?_, fun o₃ h => ?_⟩
   · cases h with
     | ok hpre => rw [omap, he]; exact .ok (hp.1 hpre)
     | reject hn => exact .reject fun h => hn (hp.2 h)
   · cases h with
-    | ok hpre => exact ⟨_, ⟨single_live hs, .ok (hp.2 hpre)⟩, by rw [omap, he]⟩
-    | reject hn => exact ⟨_, ⟨single_live hs, .reject fun h => hn (hp.1 h)⟩, rfl⟩
+    | ok hpre => exact ⟨_, .ok (hp.2 hpre), by rw [omap, he]⟩
+    | reject hn => exact ⟨_, .reject fun h => hn (hp.1 h), rfl⟩
 
 /-- The `ok` outcomes of the operations that do not read `ancestor` keep the stack (Spec 1
 §60–§62, §66–§71, §74, §75 effects). -/
@@ -463,16 +463,16 @@ theorem conservative_op (hs : s.Single) (hfr : FramesC s) (op : KernelOp) :
   have hv := single_view hs
   cases op with
   | transfer src dst =>
-    exact guarded_single hs (transferPreC_single hs hd)
+    exact guarded_single (transferPreC_single hs hd)
       (by unfold transferEffC; rw [hv]; exact toS3_set rfl)
   | depend q x =>
-    exact guarded_single hs (dependPreC_single hs hd)
+    exact guarded_single (dependPreC_single hs hd)
       (by unfold dependEffC; rw [hv]; exact toS3_set rfl)
   | store a p =>
-    exact guarded_single hs (storePreC_single hs hd)
+    exact guarded_single (storePreC_single hs hd)
       (by unfold storeEffC; rw [hv]; refine toS3_set ?_; unfold storeEff; split <;> rfl)
-  | enter ps ls => exact guarded_single hs (enterPreC_single hs hfr) (toS3_enterEffC hs ps ls)
-  | exit => exact guarded_single hs (exitPreC_single hs hd) (toS3_exitEffC hs)
+  | enter ps ls => exact guarded_single (enterPreC_single hs hfr) (toS3_enterEffC hs ps ls)
+  | exit => exact guarded_single (exitPreC_single hs hd) (toS3_exitEffC hs)
   | derive => exact viewStep_single hs fun t' h => viewOp_F h (by simp) (by simp) (by simp) (by simp) (by simp)
   | split => exact viewStep_single hs fun t' h => viewOp_F h (by simp) (by simp) (by simp) (by simp) (by simp)
   | release => exact viewStep_single hs fun t' h => viewOp_F h (by simp) (by simp) (by simp) (by simp) (by simp)
@@ -492,13 +492,13 @@ theorem conservative_ok (hs : s.Single) (hfr : FramesC s) {op : KernelOp} {s' : 
     (h : opStepC k op 0 s (.ok s')) : s'.Single ∧ op.Step k s.toS3 (.ok s'.toS3) := by
   refine ⟨?_, (conservative_op hs hfr op).1 _ h⟩
   cases op with
-  | transfer => obtain ⟨-, h⟩ := h; obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h; exact hs
-  | depend => obtain ⟨-, h⟩ := h; obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h; exact hs
-  | store => obtain ⟨-, h⟩ := h; obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h; exact hs
-  | enter => obtain ⟨-, h⟩ := h; obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h; exact (single_enterEffC hs _ _).1
-  | exit => obtain ⟨-, h⟩ := h; obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h; exact (single_exitEffC hs).1
+  | transfer => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h; exact hs
+  | depend => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h; exact hs
+  | store => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h; exact hs
+  | enter => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h; exact (single_enterEffC hs _ _).1
+  | exit => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h; exact (single_exitEffC hs).1
   | derive | split | release | read | write | writeShared | pin | unpin | endUse | free | alloc =>
-    obtain ⟨-, o₃, -, ho⟩ := h
+    obtain ⟨o₃, -, ho⟩ := h
     cases o₃ with
     | ok t => cases ho; exact hs
     | reject => cases ho

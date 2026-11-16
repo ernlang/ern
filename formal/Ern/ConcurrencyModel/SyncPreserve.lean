@@ -639,7 +639,7 @@ theorem src_roots {reg : SyncReg} {s s' : SC} {B N : List Authority} (hA : s'.A 
 /-- An `ok` outcome of an operation run on a view (C2). -/
 theorem viewStep_ok {R : S3 → Outcome3 S3 → Prop} {c : Nat} {s s' : SC}
     (h : ViewStep R c s (.ok s')) : ∃ t, R (s.view c) (.ok t) ∧ s' = s.set t := by
-  obtain ⟨-, o₃, hR, ho⟩ := h
+  obtain ⟨o₃, hR, ho⟩ := h
   cases o₃ with
   | ok t => cases ho; exact ⟨t, hR, rfl⟩
   | reject => cases ho
@@ -680,10 +680,10 @@ theorem opStep_facts {k : K} {L : MutexLayout} {reg : SyncReg} {ar : ArenaReg} {
   cases op with
   | transfer src dst => exact absurd rfl (hnt src dst)
   | depend q x =>
-    obtain ⟨-, h⟩ := h; obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
+    obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
     exact .of (skel_sameA rfl) (pskel_refl _) (src_none rfl)
   | store a p =>
-    obtain ⟨-, h⟩ := h; obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
+    obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
     have hd := hpre.derivedHeld
     unfold OptP at hd; split at hd
     · rename_i y hy
@@ -697,12 +697,12 @@ theorem opStep_facts {k : K} {L : MutexLayout} {reg : SyncReg} {ar : ArenaReg} {
       rw [hd.2.2] at hq; cases hq
     · exact hd.elim
   | enter ps ls =>
-    obtain ⟨-, h⟩ := h; obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
+    obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
     exact .of (skel_enter rfl hpre.params) (pskel_shapeP hpre.localsOK)
       (src_roots rfl (length_mapI _ _ _) fun z hz => by
         obtain ⟨i, -, rfl⟩ := List.mem_map.1 hz; rfl)
   | exit =>
-    obtain ⟨-, h⟩ := h; obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
+    obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
     exact .of (skel_exit hw rfl) (pskel_refl _) (src_none (by
       show (exitEff (s.view c)).A.length = _; simp [exitEff, length_mapI]; rfl))
   | derive src region m =>
@@ -947,14 +947,14 @@ theorem holder_ne_of_excl {L : MutexLayout} {reg : SyncReg} {s : SC} {src : Nat}
 /-- Facts of a `spawn` step (C4 effect, Spec 1 §72 effect). -/
 theorem spawn_facts {reg : SyncReg} {s s' : SC} {c : Nat} {ps : List Nat} {ls : LocalShape}
     (h : SpawnStep s c ps ls (.ok s')) : StepFacts reg s s' := by
-  obtain ⟨-, h⟩ := h; obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
+  obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
   exact .of (skel_enter rfl hpre.params) (pskel_shapeP hpre.localsOK)
     (src_roots rfl (length_mapI _ _ _) fun z hz => by obtain ⟨i, -, rfl⟩ := List.mem_map.1 hz; rfl)
 
 /-- Facts of a `terminate` step (C7 effect, Spec 1 §73 effect). -/
 theorem term_facts {k : K} {reg : SyncReg} {s s' : SC} {c : Nat} (hw : WF3 s.flat)
     (h : TermStep k s c (.ok s')) : StepFacts reg s s' := by
-  obtain ⟨-, h⟩ := h; obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
+  obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
   exact .of (skel_exit hw rfl) (pskel_refl _) (src_none (by
     show (exitEff (s.view c)).A.length = _; simp [exitEff, length_mapI]; rfl))
 
@@ -1067,7 +1067,7 @@ theorem uniq_append {s : SC} {reg : SyncReg} {e' : SyncEntry} (hu : Uniq s reg)
 theorem newMutex_preserves {k : K} {L : MutexLayout} {ar : ArenaReg} {s : SC} {reg : SyncReg}
     {c g : Nat} {st' : SC × SyncReg} (h : NewMutexOk k L ar s reg c g st')
     (hs : SyncCore L s reg) : SyncCore L st'.1 st'.2 := by
-  obtain ⟨-, hpre, rfl⟩ := h
+  obtain ⟨hpre, rfl⟩ := h
   obtain ⟨hes, hu⟩ := hs
   have hg := hpre.guarded
   unfold OptP at hg; split at hg
@@ -1090,7 +1090,7 @@ theorem newMutex_preserves {k : K} {L : MutexLayout} {ar : ArenaReg} {s : SC} {r
 theorem acquire_preserves {ks : KShared} {L : MutexLayout} {s : SC} {reg : SyncReg} {c i : Nat}
     {st' : SC × SyncReg} (h : AcquireOk ks L s reg c i st') (hw : WF3 s.flat)
     (hw' : WF3 st'.1.flat) (hs : SyncCore L s reg) : SyncCore L st'.1 st'.2 := by
-  obtain ⟨-, e, hi, ⟨hl, hn, -⟩, hpre, rfl⟩ := h
+  obtain ⟨e, hi, ⟨hl, hn, -⟩, hpre, rfl⟩ := h
   obtain ⟨hes, hu⟩ := hs
   have heo := hes e (List.mem_of_getElem? hi)
   have hA : (deriveSyncEff s c e.guarded).A = s.A ++ [⟨.modify, some e.guarded,
@@ -1135,7 +1135,7 @@ theorem acquire_preserves {ks : KShared} {L : MutexLayout} {s : SC} {reg : SyncR
 theorem unlock_preserves {L : MutexLayout} {s : SC} {reg : SyncReg} {c i : Nat}
     {st' : SC × SyncReg} (h : UnlockOk L s reg c i st') (hw : WF3 s.flat)
     (hw' : WF3 st'.1.flat) (hs : SyncCore L s reg) : SyncCore L st'.1 st'.2 := by
-  obtain ⟨-, e, g₀, hi, hl, hg₀, hpre, -, -, rfl⟩ := h
+  obtain ⟨e, g₀, hi, hl, hg₀, hpre, -, -, rfl⟩ := h
   obtain ⟨hes, hu⟩ := hs
   have heo := hes e (List.mem_of_getElem? hi)
   obtain ⟨x, hx, xa⟩ := hpre.active
@@ -1169,7 +1169,7 @@ theorem unlock_preserves {L : MutexLayout} {s : SC} {reg : SyncReg} {c i : Nat}
 theorem resetLock_preserves {L : MutexLayout} {s : SC} {reg : SyncReg} {c i : Nat}
     {st' : SC × SyncReg} (h : ResetLockOk L s reg c i st') (hs : SyncCore L s reg) :
     SyncCore L st'.1 st'.2 := by
-  obtain ⟨-, e, hi, -, hnc, -, -, rfl⟩ := h
+  obtain ⟨e, hi, -, hnc, -, -, rfl⟩ := h
   obtain ⟨hes, hu⟩ := hs
   have heo := hes e (List.mem_of_getElem? hi)
   refine ⟨fun y hy => ?_, uniq_set hi rfl hu⟩
@@ -1184,7 +1184,7 @@ theorem deriveSync_excluded {ks : KShared} {L : MutexLayout} {reg : SyncReg} {ar
     {s s' : SC} {c g : Nat} (h : DeriveSyncStep (libKC ks L) reg s c g (.ok s'))
     (he : RestrictedStep L (s, reg, ar) (.deriveSync c g)) :
     False := by
-  obtain ⟨-, h⟩ := h; obtain ⟨hpre, -⟩ := Guarded.ok_iff.1 h
+  obtain ⟨hpre, -⟩ := Guarded.ok_iff.1 h
   obtain ⟨e, hm, hg, hl, -⟩ := hpre.authorized
   exact he e hm hl hg.symm
 
@@ -1262,7 +1262,7 @@ theorem ctlUnique_append {L : MutexLayout} {s : SC} {reg : SyncReg} {e' : SyncEn
 theorem newMutex_ctlUnique {k : K} {L : MutexLayout} {ar : ArenaReg} {s : SC} {reg : SyncReg}
     {c g : Nat} {st' : SC × SyncReg} (h : NewMutexOk k L ar s reg c g st')
     (hu : CtlUnique L s reg) : CtlUnique L st'.1 st'.2 := by
-  obtain ⟨-, hpre, rfl⟩ := h
+  obtain ⟨hpre, rfl⟩ := h
   refine ctlUnique_append hu fun ctl hc => ?_
   have h8 := hpre.ctlUnique
   rw [show ControlOf L s ⟨g, none⟩ = some ctl from hc] at h8
@@ -1272,7 +1272,7 @@ theorem newMutex_ctlUnique {k : K} {L : MutexLayout} {ar : ArenaReg} {s : SC} {r
 theorem acquire_ctlUnique {ks : KShared} {L : MutexLayout} {s : SC} {reg : SyncReg} {c i : Nat}
     {st' : SC × SyncReg} (h : AcquireOk ks L s reg c i st') (hw : WF3 s.flat)
     (hs : SyncCore L s reg) (hu : CtlUnique L s reg) : CtlUnique L st'.1 st'.2 := by
-  obtain ⟨-, e, hi, -, hpre, rfl⟩ := h
+  obtain ⟨e, hi, -, hpre, rfl⟩ := h
   have hA : (deriveSyncEff s c e.guarded).A = s.A ++ [⟨.modify, some e.guarded,
       (s.view c).afp e.guarded, .frame (s.view c).top, true⟩] := rfl
   obtain ⟨hsk, hh⟩ := skel_append hA rfl (fun j y' hy' => ⟨y', hy', Same.refl _⟩) fun z hz => by
@@ -1286,7 +1286,7 @@ theorem acquire_ctlUnique {ks : KShared} {L : MutexLayout} {s : SC} {reg : SyncR
 theorem unlock_ctlUnique {L : MutexLayout} {s : SC} {reg : SyncReg} {c i : Nat}
     {st' : SC × SyncReg} (h : UnlockOk L s reg c i st') (hw : WF3 s.flat)
     (hs : SyncCore L s reg) (hu : CtlUnique L s reg) : CtlUnique L st'.1 st'.2 := by
-  obtain ⟨-, e, g₀, hi, -, -, hpre, -, -, rfl⟩ := h
+  obtain ⟨e, g₀, hi, -, -, hpre, -, -, rfl⟩ := h
   obtain ⟨x, hx, -⟩ := hpre.active
   have hx' : s.A[g₀]? = some x := hx
   have hA : (s.set (releaseEff (s.view c) g₀)).A = s.A.set g₀ { x with active := false } := by
@@ -1301,7 +1301,7 @@ theorem unlock_ctlUnique {L : MutexLayout} {s : SC} {reg : SyncReg} {c i : Nat}
 theorem resetLock_ctlUnique {L : MutexLayout} {s : SC} {reg : SyncReg} {c i : Nat}
     {st' : SC × SyncReg} (h : ResetLockOk L s reg c i st') (hu : CtlUnique L s reg) :
     CtlUnique L st'.1 st'.2 := by
-  obtain ⟨-, e, hi, -, -, -, -, rfl⟩ := h
+  obtain ⟨e, hi, -, -, -, -, rfl⟩ := h
   exact ctlUnique_set hi rfl hu
 
 /-- Controller uniqueness across a step described by `StepFacts` (C21.4). -/

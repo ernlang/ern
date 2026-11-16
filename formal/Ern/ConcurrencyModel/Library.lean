@@ -83,6 +83,19 @@ def CtrlRight (L : MutexLayout) (s : SC) (e : SyncEntry) (f : Nat) : Prop :=
 instance (L : MutexLayout) (s : SC) (e : SyncEntry) (f : Nat) : Decidable (CtrlRight L s e f) := by
   unfold CtrlRight; infer_instance
 
+/-- C2, C14.3: a context that is not live has no current frame, hence no controller-access
+right. -/
+theorem SC.dead_not_ctrlRight {L : MutexLayout} {s : SC} {e : SyncEntry} {c : Nat}
+    (h : ¬ s.Live c) : ¬ CtrlRight L s e (s.view c).top := by
+  rw [SC.view_top_dead h]
+  unfold CtrlRight
+  cases ControlOf L s e with
+  | none => exact id
+  | some ctl =>
+    rintro ⟨a, -, hx, -⟩
+    have ht : (s.viewAt s.noFrame).top = s.noFrame := by simp [SC.viewAt, S3.top]
+    exact not_exercisable_of_top (fun _ _ hy => by rw [ht]; exact SC.noFrame_holder hy) hx
+
 /-- The authorization facts of C14 for an entry: C14.1 (live), C14.2 (`grant = none`), C14.3
 (`CtrlRight`). -/
 def EntryAuth (L : MutexLayout) (s : SC) (e : SyncEntry) (f : Nat) : Prop :=
@@ -322,7 +335,7 @@ kernel state is unchanged and no authority is created (C13 effect). C13 states n
 other than success; only `ok` is defined. -/
 def NewMutexOk (k : K) (L : MutexLayout) (ar : ArenaReg) (s : SC) (reg : SyncReg) (c g : Nat)
     (st' : SC × SyncReg) : Prop :=
-  s.Live c ∧ NewMutexPre k L ar s reg c g ∧ st' = (s, reg ++ [⟨g, none⟩])
+  NewMutexPre k L ar s reg c g ∧ st' = (s, reg ++ [⟨g, none⟩])
 
 /-- `acquire` on entry `i` executed by `c` (C16): with the library instantiation of
 `SyncAuthorized` for the entry, `deriveSync(guarded)` on the registry `reg` and the record of the
@@ -330,7 +343,7 @@ fresh grant identity `|A|` in the entry (C16 success, items 1–3). The outcome 
 (`reject`, non-enabled, `ok`) are defined with the outcome theorems. -/
 def AcquireOk (ks : KShared) (L : MutexLayout) (s : SC) (reg : SyncReg) (c i : Nat)
     (st' : SC × SyncReg) : Prop :=
-  s.Live c ∧ ∃ e, reg[i]? = some e ∧ EntryAuth L s e (s.view c).top ∧
+  ∃ e, reg[i]? = some e ∧ EntryAuth L s e (s.view c).top ∧
     DeriveSyncPre (libKC ks L) reg s c e.guarded ∧
     st' = (deriveSyncEff s c e.guarded, reg.set i { e with grant := some s.A.length })
 
@@ -347,7 +360,7 @@ C17.4 is `CtrlRight` in the state before `unlock` and in the prospective state
 precondition. The outcome classes of C17 are defined with the outcome theorems. -/
 def UnlockOk (L : MutexLayout) (s : SC) (reg : SyncReg) (c i : Nat) (st' : SC × SyncReg) :
     Prop :=
-  s.Live c ∧ ∃ e g, reg[i]? = some e ∧ e.Live s ∧ e.grant = some g ∧ ReleasePre (s.view c) g ∧
+  ∃ e g, reg[i]? = some e ∧ e.Live s ∧ e.grant = some g ∧ ReleasePre (s.view c) g ∧
     CtrlRight L s e (s.view c).top ∧ CtrlRight L (prospectiveUnlock s c g) e (s.view c).top ∧
     st' = (prospectiveUnlock s c g, reg.set i { e with grant := none })
 
@@ -359,11 +372,37 @@ invariant is not a precondition (C18.3: "established separately for every live e
 C21.7"). C18.4 is `CtrlRight`. The outcome classes of C18 are defined with the outcome theorems. -/
 def ResetLockOk (L : MutexLayout) (s : SC) (reg : SyncReg) (c i : Nat) (st' : SC × SyncReg) :
     Prop :=
-  s.Live c ∧ ∃ e, reg[i]? = some e ∧ (s.view c).ExercisableAt e.guarded .modify ∧
+  ∃ e, reg[i]? = some e ∧ (s.view c).ExercisableAt e.guarded .modify ∧
     NoCoveringDesc s e.guarded ∧
     OptP (ControlOf L s e) (fun ctl => s.flat.Usable ctl ∧ isLeaf s.P ctl) False ∧
     CtrlRight L s e (s.view c).top ∧
     st' = (s, reg.set i { e with grant := none })
+
+/-- An `ok` `newMutex` requires the constructing context to be live (C13.2, C2). -/
+theorem newMutexOk_live {k : K} {L : MutexLayout} {ar : ArenaReg} {s : SC} {reg : SyncReg}
+    {c g : Nat} {st' : SC × SyncReg} (h : NewMutexOk k L ar s reg c g st') : s.Live c :=
+  SC.live_of_exercisable h.1.exercisable
+
+/-- An `ok` `acquire` requires the requesting context to be live (C15.6 within C16, C2). -/
+theorem acquireOk_live {ks : KShared} {L : MutexLayout} {s : SC} {reg : SyncReg} {c i : Nat}
+    {st' : SC × SyncReg} (h : AcquireOk ks L s reg c i st') : s.Live c := by
+  obtain ⟨e, -, -, hp, -⟩ := h
+  exact SC.live_of_top_mem hp.frameLive
+
+/-- An `ok` `unlock` requires the acting context to be live (C17.2: O3, Spec 1 §62.2; C2). -/
+theorem unlockOk_live {L : MutexLayout} {s : SC} {reg : SyncReg} {c i : Nat}
+    {st' : SC × SyncReg} (h : UnlockOk L s reg c i st') : s.Live c := by
+  obtain ⟨e, g, -, -, -, hr, -⟩ := h
+  have hh := hr.holderRight
+  unfold OptP at hh; split at hh
+  · rename_i y hy; exact SC.live_of_holderRight hy hh
+  · exact hh.elim
+
+/-- An `ok` `resetLock` requires the acting context to be live (C18.1, C2). -/
+theorem resetLockOk_live {L : MutexLayout} {s : SC} {reg : SyncReg} {c i : Nat}
+    {st' : SC × SyncReg} (h : ResetLockOk L s reg c i st') : s.Live c := by
+  obtain ⟨e, -, hx, -⟩ := h
+  exact SC.live_of_exercisable hx
 
 /-! ## Derived arena operations executed by a context (Spec 1 §76–§78; C2, C19) -/
 
@@ -423,10 +462,11 @@ instance (s : SC) (reg : SyncReg) (ar : ArenaReg) (c storage internal : Nat) :
 
 /-- `newArena(storage, internal)` executed by `c` (Spec 1 §76, §58: `ok` or `reject`): the entry of
 `Arena.newArenaEff` is registered; the kernel state and the synchronization registry are
-unchanged (§76 `ok` effect). A context that is not live executes nothing. -/
+unchanged (§76 `ok` effect). A context that is not live has no current frame (C2): §76.1 fails,
+`reject`. -/
 def NewArenaStepC (s : SC) (reg : SyncReg) (ar : ArenaReg) (c storage internal : Nat)
     (o : Outcome3 (SC × ArenaReg)) : Prop :=
-  s.Live c ∧ Guarded (NewArenaPreC s reg ar c storage internal)
+  Guarded (NewArenaPreC s reg ar c storage internal)
     (s, ar ++ [⟨storage, internal, footprint s.P storage, []⟩]) o
 
 /-- `issue(arena, region, destination)` of entry `i` executed by `c` (Spec 1 §77, §58; Part XIV: a
@@ -434,13 +474,13 @@ derived operation, on the pattern of `Arena.IssueD`): the static checks (§77.1,
 availability `fail` (§77.4) on the view of `c`; then `split` of `internal` on the region (O2) and
 `store` of the block, of fresh identity `|A|`, into the destination (O8), both as executed by `c`
 (`opStepC`; C2, C3: §65.4 and §65.5 read `ancestorC`); the metadata is updated on `ok`
-(`Arena.issueMeta`). A context that is not live executes nothing. -/
+(`Arena.issueMeta`). A context that is not live has no current frame (C2): §77.1 fails, `reject`. -/
 inductive IssueStepC (k : K) (s : SC) (ar : ArenaReg) (c i : Nat) (region : List Nat)
     (dst : Nat) : Outcome3 (SC × ArenaReg) → Prop where
-  | noEntry : s.Live c → ar[i]? = none → IssueStepC k s ar c i region dst .reject
-  | static {E : Arena.ArenaEntry} : s.Live c → ar[i]? = some E →
+  | noEntry : ar[i]? = none → IssueStepC k s ar c i region dst .reject
+  | static {E : Arena.ArenaEntry} : ar[i]? = some E →
       ¬ Arena.IssueStatic (s.view c) E region dst → IssueStepC k s ar c i region dst .reject
-  | fail {E : Arena.ArenaEntry} : s.Live c → ar[i]? = some E →
+  | fail {E : Arena.ArenaEntry} : ar[i]? = some E →
       Arena.IssueStatic (s.view c) E region dst → ¬ Arena.Avail E region →
       IssueStepC k s ar c i region dst .fail
   | split {E : Arena.ArenaEntry} : ar[i]? = some E → Arena.IssueStatic (s.view c) E region dst →
@@ -459,17 +499,26 @@ inductive IssueStepC (k : K) (s : SC) (ar : ArenaReg) (c i : Nat) (region : List
 /-- `reset(arena)` of entry `i` executed by `c` (Spec 1 §78, §58; Part XIV): the derived operation
 `Arena.ResetD` (`derive` of `internal` at `Modify` over the storage, `release`, the check of §78.3)
 on the view of `c`, written back (C2); `derive` and `release` read neither `ancestor` nor the
-stack beyond its top and its membership. A context that is not live executes nothing. -/
+stack beyond its top and its membership. A context that is not live has no current frame (C2):
+the internal `derive` fails, `reject`. -/
 def ResetStepC (s : SC) (ar : ArenaReg) (c i : Nat) (o : Outcome3 (SC × ArenaReg)) : Prop :=
-  s.Live c ∧ ∃ o₃, Arena.ResetD i ⟨s.view c, ar⟩ o₃ ∧
+  ∃ o₃, Arena.ResetD i ⟨s.view c, ar⟩ o₃ ∧
     o = omap (fun L' => (s.set L'.kern, L'.arenas)) o₃
 
 /-- Writing back into `s` an `S3` whose stack is that of the view of `c`, then taking the view of
 `c`, gives that `S3` back (C2). -/
-theorem SC.view_set {s : SC} {c : Nat} {t : S3} (hF : t.F = (s.view c).F) :
+theorem SC.view_set {s : SC} {c : Nat} {t : S3} (hc : s.Live c) (hF : t.F = (s.view c).F) :
     (s.set t).view c = t := by
-  have h : (s.set t).view c = { t with F := (s.view c).F } := rfl
+  have hc' : (s.set t).Live c := hc
+  have h : (s.set t).view c = { t with F := (s.view c).F } := by
+    simp only [SC.view, hc, hc', ite_true]; rfl
   rw [h, ← hF]
+
+/-- Writing back into `s` keeps the stack of the view of a live context (C2). -/
+theorem SC.view_F_set {s : SC} {c : Nat} {t : S3} (hc : s.Live c) :
+    ((s.set t).view c).F = (s.view c).F := by
+  have hc' : (s.set t).Live c := hc
+  rw [SC.view_F_live hc, SC.view_F_live hc']; rfl
 
 /-- Writing back twice keeps the second state only (C2). -/
 theorem SC.set_set (s : SC) (t u : S3) : (s.set t).set u = s.set u := rfl
@@ -480,7 +529,7 @@ theorem newArenaStepC_ok {s : SC} {reg : SyncReg} {ar : ArenaReg} {c st i : Nat}
     {st' : SC × ArenaReg} (h : NewArenaStepC s reg ar c st i (.ok st')) :
     s.Live c ∧ NewArenaPreC s reg ar c st i ∧
       st' = (s, ar ++ [⟨st, i, footprint s.P st, []⟩]) :=
-  ⟨h.1, Guarded.ok_iff.1 h.2⟩
+  ⟨SC.live_of_hasRight (Guarded.ok_iff.1 h).1.storageRight, Guarded.ok_iff.1 h⟩
 
 /-- An `ok` outcome of `issue` executed by `c` (Spec 1 §77, Part XIV): the static checks and
 availability, then `split` then `store` executed by `c`, then the metadata update. -/
@@ -502,7 +551,7 @@ theorem resetStepC_ok {k : K} {s : SC} {ar : ArenaReg} {c i : Nat} {st' : SC × 
       opStepC k (.derive E.internal (footprint s.P E.storage) .modify) c s (.ok s₁) ∧
       opStepC k (.release s.A.length) c s₁ (.ok st'.1) ∧ Arena.ResetNoDeps (s.view c) E ∧
       st'.2 = ar.set i (Arena.resetMeta s.flat E) := by
-  obtain ⟨hl, o₃, hr, ho⟩ := h
+  obtain ⟨o₃, hr, ho⟩ := h
   cases hr with
   | noEntry => cases ho
   | derive => cases ho
@@ -510,10 +559,11 @@ theorem resetStepC_ok {k : K} {s : SC} {ar : ArenaReg} {c i : Nat} {st' : SC × 
   | contract => cases ho
   | @ok E t₁ t₂ hE hd hrl hnd =>
     cases ho
+    have hl : s.Live c := SC.live_of_exercisable (Guarded.ok_iff.1 hd).1.exercisable
     have hF : t₁.F = (s.view c).F := by obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hd; rfl
-    refine ⟨E, s.set t₁, hE, ⟨hl, .ok t₁, hd, rfl⟩, ?_, hnd, rfl⟩
-    refine ⟨hl, .ok t₂, ?_, rfl⟩
-    rw [SC.view_set hF]; exact hrl
+    refine ⟨E, s.set t₁, hE, ⟨.ok t₁, hd, rfl⟩, ?_, hnd, rfl⟩
+    refine ⟨.ok t₂, ?_, rfl⟩
+    rw [SC.view_set hl hF]; exact hrl
 
 /-! ## Labelled steps, runs, encapsulation (C22, C23) -/
 

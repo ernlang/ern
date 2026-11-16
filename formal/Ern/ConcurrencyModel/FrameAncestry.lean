@@ -93,7 +93,7 @@ theorem spawn_ancestry {s s' : SC} {c : Nat} {ps : List Nat} {ls : LocalShape}
     (hfr : FramesC s) (h : SpawnStep s c ps ls (.ok s')) :
     FramesC s' ∧ (∀ f, f ∈ s'.frames ↔ f = s.nF ∨ f ∈ s.frames) ∧
       s'.parC s.nF = some ((s.stk c).headD 0) := by
-  obtain ⟨-, h⟩ := h; obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
+  obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
   have hp := spawn_push (ps := ps) (ls := ls) hfr hpre.creatorLive
   exact ⟨hp.framesC hfr, hp.mem, hp.parNew⟩
 
@@ -111,7 +111,7 @@ theorem exitFrameC_ancestry {k : K} {s s' : SC} {c : Nat} (hfr : FramesC s)
       ∀ d, s'.Live d → s'.ctxParent d =
         if s.ctxParent d = some ((s.stk c).headD 0) then some ((s.stk c).tail.headD 0)
         else s.ctxParent d := by
-  obtain ⟨-, h⟩ := h; obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
+  obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
   have ha := exitEffC_ancestorC (y := 0) (g := 0) hfr hpre.hasCaller
   exact ⟨exitEffC_framesC hfr hpre.hasCaller, fun y => (exitEffC_ancestorC (g := 0) hfr
     hpre.hasCaller).1, fun g y => (exitEffC_ancestorC hfr hpre.hasCaller).2,
@@ -130,7 +130,7 @@ theorem terminate_ancestry {k : K} {s s' : SC} {c : Nat} (hfr : FramesC s)
       ∀ d, s'.Live d → s'.ctxParent d =
         if s.ctxParent d = some ((s.stk c).headD 0) then some ((s.ctxParent c).getD 0)
         else s.ctxParent d := by
-  obtain ⟨-, h⟩ := h; obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
+  obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
   have hpar : s.ctxParent c ≠ none := by
     intro e; have := hpre.hasParent; rw [e] at this; exact this
   exact ⟨termEffC_framesC hfr hpre.nonInitial hpre.initialOnly hpar,
@@ -156,13 +156,13 @@ theorem opStepC_stk {k : K} {op : KernelOp} {c : Nat} {s s' : SC}
     ∀ d, s'.stk d = s.stk d := by
   intro d
   cases op
-  case transfer src dst => obtain ⟨-, h'⟩ := h; obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h'; rfl
-  case depend q x => obtain ⟨-, h'⟩ := h; obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h'; rfl
-  case store a p => obtain ⟨-, h'⟩ := h; obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h'; rfl
+  case transfer src dst => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h; rfl
+  case depend q x => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h; rfl
+  case store a p => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h; rfl
   case enter ps ls => exact absurd rfl (hne ps ls)
   case exit => exact absurd rfl hnx
   all_goals
-    obtain ⟨-, o₃, -, ho⟩ := h
+    obtain ⟨o₃, -, ho⟩ := h
     cases o₃ with
     | ok t => cases ho; rfl
     | reject => cases ho
@@ -174,11 +174,11 @@ the other operations keep the stacks (C2). -/
 theorem opStepC_base {k : K} {op : KernelOp} {c : Nat} {s s' : SC} (hfr : FramesC s)
     (h : opStepC k op c s (.ok s')) : (s'.stk 0).getLast? = (s.stk 0).getLast? := by
   cases op
-  case transfer src dst => obtain ⟨-, h'⟩ := h; obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h'; rfl
-  case depend q x => obtain ⟨-, h'⟩ := h; obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h'; rfl
-  case store a p => obtain ⟨-, h'⟩ := h; obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h'; rfl
+  case transfer src dst => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h; rfl
+  case depend q x => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h; rfl
+  case store a p => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h; rfl
   case enter ps ls =>
-    obtain ⟨-, h'⟩ := h; obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h'
+    obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
     rw [enter_stk hpre.callerLive]
     by_cases e : (0 : Nat) = c
     · subst e
@@ -187,13 +187,13 @@ theorem opStepC_base {k : K} {op : KernelOp} {c : Nat} {s s' : SC} (hfr : Frames
       rw [ht, List.getLast?_cons_cons]
     · simp [e]
   case exit =>
-    obtain ⟨-, h'⟩ := h; obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h'
+    obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
     rw [(exitEffC_pop hfr.nodup hpre.hasCaller).stk 0]
     by_cases e : (0 : Nat) = c
     · subst e; simp only [↓reduceIte]; exact getLast?_tail hpre.hasCaller
     · simp [e]
   all_goals
-    obtain ⟨-, o₃, -, ho⟩ := h
+    obtain ⟨o₃, -, ho⟩ := h
     cases o₃ with
     | ok t => cases ho; rfl
     | reject => cases ho
@@ -212,23 +212,23 @@ theorem lstep_base {ks : KShared} {L : MutexLayout} {lbl : Label}
   cases h with
   | kernel h => exact opStepC_base hfr h
   | spawn h =>
-    obtain ⟨-, h'⟩ := h; obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h'
+    obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
     rw [spawn_stk]; simp [h0]
   | @terminate s s' reg ar c h =>
-    obtain ⟨-, h'⟩ := h; obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h'
+    obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
     have hpar : s.ctxParent c ≠ none := by
       intro e; have := hpre.hasParent; rw [e] at this; exact this
     rw [(termEffC_pop hfr.nodup hpre.initialOnly hpar).stk 0]
     have : (0 : Nat) ≠ c := fun e => hpre.nonInitial e.symm
     simp [this]
   | join h => cases h; rfl
-  | deriveSync h => obtain ⟨-, h'⟩ := h; obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h'; rfl
+  | deriveSync h => obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h; rfl
   | newMutex h => obtain ⟨-, -, rfl⟩ := h; rfl
   | acquire h => obtain ⟨-, _, -, -, -, rfl⟩ := h; rfl
   | unlock h => obtain ⟨-, _, _, -, -, -, -, -, -, rfl⟩ := h; rfl
   | resetLock h => obtain ⟨-, _, -, -, -, -, -, rfl⟩ := h; rfl
   | @spawnVal s s' reg ar c ps ls vs h =>
-    obtain ⟨-, h'⟩ := h; obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h'
+    obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
     have hC : (spawnValEff s c ps ls vs).C = (spawnCreate s c ls).C :=
       transfersEff_C c (spawnCreate s c ls) vs
     have e : (spawnValEff s c ps ls vs).stk 0 = (spawnCreate s c ls).stk 0 := by
@@ -244,7 +244,7 @@ theorem lstep_base {ks : KShared} {L : MutexLayout} {lbl : Label}
     rw [opStepC_stk (fun _ _ e => by cases e) (fun e => by cases e) hrl,
       opStepC_stk (fun _ _ e => by cases e) (fun e => by cases e) hd]
   | readShared h => rfl
-  | writeShared h => exact opStepC_base hfr (writeSharedC_ok_kernel h.1 h.2)
+  | writeShared h => exact opStepC_base hfr (writeSharedC_ok_kernel h)
   | cas h =>
     rcases cas_ok_cases h with hk | e
     · exact opStepC_base hfr hk

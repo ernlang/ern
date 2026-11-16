@@ -106,14 +106,14 @@ theorem opStepC_keep {k : K} {op : KernelOp} {c : Nat} {s s' : SC}
     (h : opStepC k op c s (.ok s')) : Keep s s' := by
   cases op
   case transfer src dst =>
-    obtain ⟨-, h⟩ := h; obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
+    obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
     refine ⟨akeep_transfer s c src dst, fun q _ l => ?_⟩
     show l ∈ footprint (transferEff (s.view c) src dst).P q ↔ _
     rw [transfer_footprint]; exact Iff.rfl
   case depend q x =>
-    obtain ⟨-, h⟩ := h; obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h; exact keep_same rfl rfl
+    obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h; exact keep_same rfl rfl
   case store a p =>
-    obtain ⟨-, h⟩ := h; obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
+    obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
     have hd := hpre.derivedHeld
     unfold OptP at hd; split at hd
     · rename_i y hy
@@ -125,11 +125,11 @@ theorem opStepC_keep {k : K} {op : KernelOp} {c : Nat} {s s' : SC}
       · show l ∈ footprint (storeEff (s.view c) a p).P q ↔ _; rw [he]; exact Iff.rfl
     · exact hd.elim
   case enter ps ls =>
-    obtain ⟨-, h⟩ := h; obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
+    obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
     exact ⟨akeep_of_A rfl rfl (akeep_enter (t := s.view c) (ls := ls) hpre.params),
       fun q hq l => Arena.footprint_shapeP hpre.localsOK hq l⟩
   case exit =>
-    obtain ⟨-, h⟩ := h; obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
+    obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
     exact ⟨akeep_of_A rfl rfl (Arena.exit_akeep (s.view c)), fun _ _ _ => Iff.rfl⟩
   all_goals (obtain ⟨t, hR, rfl⟩ := viewStep_ok h; exact keep_view hR)
 
@@ -158,7 +158,7 @@ theorem keep_transfers (c : Nat) :
 /-- The by-value composite keeps the authorities and the footprints (C5 effects). -/
 theorem keep_spawnVal {k : K} {s s' : SC} {c : Nat} {ps : List Nat} {ls : LocalShape}
     {vs : List (Nat × Nat)} (h : SpawnValStep k s c ps ls vs (.ok s')) : Keep s s' := by
-  obtain ⟨-, h⟩ := h; obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
+  obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
   have h₁ : Keep s (spawnCreate s c ls) :=
     ⟨akeep_of_A rfl rfl (akeep_enter (t := s.view c) (ps := []) (ls := ls)
       (fun _ h => by cases h)), fun q hq l => Arena.footprint_shapeP hpre.localsOK hq l⟩
@@ -178,25 +178,25 @@ theorem lstep_keep {ks : KShared} {L : MutexLayout} {lbl : Label} {st st' : SC �
   cases h with
   | kernel h => exact opStepC_keep h
   | @spawn s s' reg ar c ps ls h =>
-    obtain ⟨-, h⟩ := h; obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
+    obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
     exact ⟨akeep_of_A (s := s.view c) (s' := enterEff (s.view c) ps ls) rfl rfl
       (akeep_enter hpre.params), fun q hq l => Arena.footprint_shapeP hpre.localsOK hq l⟩
   | @terminate s s' reg ar c h =>
-    obtain ⟨-, h⟩ := h; obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
+    obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
     exact ⟨akeep_of_A (s := s.view c) (s' := exitEff (s.view c)) rfl rfl (Arena.exit_akeep _),
       fun _ _ _ => Iff.rfl⟩
   | join h => cases h; exact keep_same rfl rfl
   | deriveSync h =>
-    obtain ⟨-, h⟩ := h; obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
+    obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h
     exact ⟨Arena.akeep_append rfl, fun _ _ _ => Iff.rfl⟩
-  | newMutex h => obtain ⟨-, -, rfl⟩ := h; exact keep_same rfl rfl
+  | newMutex h => obtain ⟨-, rfl⟩ := h; exact keep_same rfl rfl
   | acquire h =>
-    obtain ⟨-, e, -, -, -, rfl⟩ := h
+    obtain ⟨e, -, -, -, rfl⟩ := h
     exact ⟨Arena.akeep_append rfl, fun _ _ _ => Iff.rfl⟩
   | unlock h =>
-    obtain ⟨hc, e, g, -, -, -, hrel, -, -, rfl⟩ := h
-    exact opStepC_keep (k := ks.toK) (op := .release g) ⟨hc, _, .ok hrel, rfl⟩
-  | resetLock h => obtain ⟨-, -, -, -, -, -, -, rfl⟩ := h; exact keep_same rfl rfl
+    obtain ⟨e, g, -, -, -, hrel, -, -, rfl⟩ := h
+    exact opStepC_keep (k := ks.toK) (op := .release g) ⟨_, .ok hrel, rfl⟩
+  | resetLock h => obtain ⟨-, -, -, -, -, -, rfl⟩ := h; exact keep_same rfl rfl
   | spawnVal h => exact keep_spawnVal h
   | newArena h => obtain ⟨-, -, rfl⟩ := newArenaStepC_ok h; exact keep_same rfl rfl
   | issue h =>
@@ -210,7 +210,7 @@ theorem lstep_keep {ks : KShared} {L : MutexLayout} {lbl : Label} {st st' : SC �
     obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hR
     exact (keep_view hR).trans (opStepC_keep hrl) (Nat.le_refl _)
   | readShared h => exact keep_same rfl rfl
-  | writeShared h => exact opStepC_keep (writeSharedC_ok_kernel h.1 h.2)
+  | writeShared h => exact opStepC_keep (writeSharedC_ok_kernel h)
   | cas h =>
     rcases cas_ok_cases h with hk' | rfl
     · exact opStepC_keep hk'
@@ -361,9 +361,9 @@ theorem lstep_arenaInv {ks : KShared} {L : MutexLayout} {lbl : Label} {st st' : 
     obtain ⟨t, hR, rfl⟩ := viewStep_ok hsp
     have hR' : SplitStep ks.toK E.internal [region] (s.view c) (.ok t) := hR
     obtain ⟨hp, rfl⟩ := Guarded.ok_iff.1 hR'
-    obtain ⟨-, h2⟩ := hsto; obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 h2
+    obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hsto
     have hv : (s.set (splitEff (s.view c) E.internal [region])).view c =
-        splitEff (s.view c) E.internal [region] := SC.view_set rfl
+        splitEff (s.view c) E.internal [region] := SC.view_set (opStepC_live hsp) rfl
     have hflat : (storeEffC (s.set (splitEff (s.view c) E.internal [region])) c s.A.length
         dst).flat = Arena.issueKEff s.flat E region dst := by
       unfold storeEffC; rw [hv]
@@ -377,7 +377,7 @@ theorem lstep_arenaInv {ks : KShared} {L : MutexLayout} {lbl : Label} {st st' : 
       rw [this]; exact Arena.allows_some_modify _) hi
   case reset s reg ar c i st' h =>
     rcases st' with ⟨s', ar'⟩
-    obtain ⟨hl, o₃, hr, ho⟩ := h
+    obtain ⟨o₃, hr, ho⟩ := h
     cases hr with
     | noEntry => cases ho
     | derive => cases ho
@@ -385,8 +385,9 @@ theorem lstep_arenaInv {ks : KShared} {L : MutexLayout} {lbl : Label} {st st' : 
     | contract => cases ho
     | @ok E t₁ t₂ hE hd hrl hnd' =>
       cases ho
+      have hl : s.Live c := SC.live_of_exercisable (Guarded.ok_iff.1 hd).1.exercisable
       have h0 : Arena.LInv ⟨s.view c, ar⟩ :=
-        (lInv_congrF (t := s.flat) (F' := (s.view c).F) fun _ => SC.mem_view_F).2 hi
+        (lInv_congrF (t := s.flat) (F' := (s.view c).F) fun _ => SC.mem_view_F hl).2 hi
       have hL := Arena.lInv_reset (.ok hE hd hrl hnd') h0
       have hF : t₂.F = (s.view c).F := by
         obtain ⟨-, rfl⟩ := Guarded.ok_iff.1 hd
@@ -394,7 +395,7 @@ theorem lstep_arenaInv {ks : KShared} {L : MutexLayout} {lbl : Label} {st st' : 
         obtain ⟨x, hx, -⟩ := hp2.active
         rw [releaseEff_eq hx]; rfl
       exact (lInv_congrF (t := t₂) (F' := s.frames) fun f => by
-        rw [hF]; exact SC.mem_view_F.symm).2 hL
+        rw [hF]; exact (SC.mem_view_F hl).symm).2 hL
   all_goals exact keep rfl
 
 /-! ## The separation of the registries (Spec 1 §56; C13.7, OB-C16) -/
@@ -428,7 +429,7 @@ theorem lstep_adminSep {ks : KShared} {L : MutexLayout} {lbl : Label} {st st' : 
       exact hsep e he E hE (back _ (hb e he) hl) (back _ (hb' E hE) hL)
   cases h
   case newMutex s reg ar c g st' h =>
-    obtain ⟨-, hpre, rfl⟩ := h
+    obtain ⟨hpre, rfl⟩ := h
     intro e he E hE hl hL
     rcases List.mem_append.1 he with he | he
     · exact hsep e he E hE hl hL
@@ -437,7 +438,7 @@ theorem lstep_adminSep {ks : KShared} {L : MutexLayout} {lbl : Label} {st st' : 
       have heq' : g = E.internal := heq
       exact hpre.otherAdmin (heq' ▸ mem_liveInternals hE hL)
   case acquire s reg ar c i st' h =>
-    obtain ⟨-, e₀, hi, -, -, rfl⟩ := h
+    obtain ⟨e₀, hi, -, -, rfl⟩ := h
     intro e he E hE hl hL
     rcases mem_set_cases he with rfl | ⟨j, hj, -⟩
     · exact hsep e₀ (List.mem_of_getElem? hi) E hE (back _ (hb _ (List.mem_of_getElem? hi)) hl)
@@ -445,7 +446,7 @@ theorem lstep_adminSep {ks : KShared} {L : MutexLayout} {lbl : Label} {st st' : 
     · exact hsep e (List.mem_of_getElem? hj) E hE (back _ (hb _ (List.mem_of_getElem? hj)) hl)
         (back _ (hb' E hE) hL)
   case unlock s reg ar c i st' h =>
-    obtain ⟨-, e₀, g, hi, -, -, -, -, -, rfl⟩ := h
+    obtain ⟨e₀, g, hi, -, -, -, -, -, rfl⟩ := h
     intro e he E hE hl hL
     rcases mem_set_cases he with rfl | ⟨j, hj, -⟩
     · exact hsep e₀ (List.mem_of_getElem? hi) E hE (back _ (hb _ (List.mem_of_getElem? hi)) hl)
@@ -453,7 +454,7 @@ theorem lstep_adminSep {ks : KShared} {L : MutexLayout} {lbl : Label} {st st' : 
     · exact hsep e (List.mem_of_getElem? hj) E hE (back _ (hb _ (List.mem_of_getElem? hj)) hl)
         (back _ (hb' E hE) hL)
   case resetLock s reg ar c i st' h =>
-    obtain ⟨-, e₀, hi, -, -, -, -, rfl⟩ := h
+    obtain ⟨e₀, hi, -, -, -, -, rfl⟩ := h
     intro e he E hE hl hL
     rcases mem_set_cases he with rfl | ⟨j, hj, -⟩
     · exact hsep e₀ (List.mem_of_getElem? hi) E hE hl hL

@@ -77,12 +77,121 @@ def SC.flat (s : SC) : S3 :=
   { F := s.frames, nF := s.nF, P := s.P, I := s.I, A := s.A, D := s.D, dead := s.dead,
     pins := s.pins }
 
-/-- The `S3` seen by executing context `c` (C2): the stack of `c` first, so that the current
-frame is the top of its local stack, followed by the other globally live frames.
-It is the `S₃` view of C2 on which `K.Satisfiable` of an `alloc` executed by `c` is evaluated
-(`alloc_ok_satisfiable`, `alloc_fail_unsatisfiable`). -/
+/-- An element of a list of numbers is at most its sum. -/
+theorem le_sum_of_mem : ∀ {l : List Nat} {x : Nat}, x ∈ l → x ≤ l.sum
+  | _ :: _, _, .head _ => by simp
+  | y :: l, x, .tail _ h => by simp only [List.sum_cons]; exact Nat.le_add_left_of_le (le_sum_of_mem h)
+
+/-- The frame identity read by an authority holder, `0` for a place. -/
+def holderFrame : Holder → Nat
+  | .frame f => f
+  | .place _ => 0
+
+/-- A frame identity that no authority holds, that is not globally live and that is not yet
+allocated (C2: "all occurrences of 'the current frame' refer to the top of the live local stack of
+`c`"; a context without a live local stack has no current frame). -/
+def SC.noFrame (s : SC) : Nat := s.nF + s.frames.sum + (s.A.map fun y => holderFrame y.holder).sum + 1
+
+/-- The `S3` seen by executing context `c` (C2): for a live context, the stack of `c` first, so
+that the current frame is the top of its local stack, followed by the other globally live frames;
+for a context that is not live, which has no current frame (C2), the frame `SC.noFrame`, which no
+authority holds and which is not live, followed by the globally live frames. It is the `S₃` view of
+C2 on which `K.Satisfiable` of an `alloc` executed by `c` is evaluated (`alloc_ok_satisfiable`,
+`alloc_fail_unsatisfiable`). -/
 def SC.view (s : SC) (c : Nat) : S3 :=
-  { s.flat with F := s.stk c ++ s.frames.filter fun f => decide (f ∉ s.stk c) }
+  { s.flat with F := if s.Live c then s.stk c ++ s.frames.filter fun f => decide (f ∉ s.stk c)
+      else s.noFrame :: s.frames }
+
+/-- No authority is held by `SC.noFrame` (C2). -/
+theorem SC.noFrame_holder {s : SC} {a : Nat} {y : Authority} (h : s.A[a]? = some y) :
+    y.holder ≠ .frame s.noFrame := by
+  intro e
+  have hm : holderFrame y.holder ∈ s.A.map fun y => holderFrame y.holder :=
+    List.mem_map.2 ⟨y, List.mem_of_getElem? h, rfl⟩
+  have := le_sum_of_mem hm
+  rw [e] at this
+  simp only [holderFrame, SC.noFrame] at this
+  omega
+
+/-- `SC.noFrame` is not a globally live frame (C2). -/
+theorem SC.noFrame_not_mem {s : SC} : s.noFrame ∉ s.frames := by
+  intro h
+  have := le_sum_of_mem h
+  simp only [SC.noFrame] at this
+  omega
+
+/-- `SC.noFrame` is not yet allocated (C2). -/
+theorem SC.nF_lt_noFrame (s : SC) : s.nF < s.noFrame := by
+  simp only [SC.noFrame]; omega
+
+/-- The stack of the view of a live context (C2). -/
+theorem SC.view_F_live {s : SC} {c : Nat} (h : s.Live c) :
+    (s.view c).F = s.stk c ++ s.frames.filter fun f => decide (f ∉ s.stk c) := by
+  simp [SC.view, h]
+
+/-- The current frame of the view of a context that is not live is `SC.noFrame` (C2). -/
+theorem SC.view_top_dead {s : SC} {c : Nat} (h : ¬ s.Live c) : (s.view c).top = s.noFrame := by
+  simp [SC.view, S3.top, h]
+
+/-- On an `S3` whose current frame holds no authority, no authority is exercisable (Spec 1 §43:
+every exercise chain ends at an authority held by the current frame). -/
+theorem not_exercisable_of_top {t : S3}
+    (h : ∀ (a : Nat) (y : Authority), t.A[a]? = some y → y.holder ≠ Holder.frame t.top)
+    {a : Nat} {m : Mode} : ¬ t.ExercisableAt a m := by
+  intro hx
+  induction hx with
+  | base hy _ _ hh => exact h _ _ hy hh
+  | held _ _ _ _ _ _ ih => exact ih
+
+/-- A context whose view lists only allocated frames is live (C2: the view of a context that is
+not live has the unallocated frame `SC.noFrame` on top). -/
+theorem SC.live_of_view_bound {s : SC} {c : Nat} (h : ∀ f ∈ (s.view c).F, f < s.nF) :
+    s.Live c :=
+  Decidable.byContradiction fun hc =>
+    Nat.lt_asymm (h _ (by simp [SC.view, hc])) (SC.nF_lt_noFrame s)
+
+/-- C2: a context that is not live has no current frame, so no authority is exercisable from its
+view (Spec 1 §43). -/
+theorem SC.dead_not_exercisable {s : SC} {c a : Nat} {m : Mode} (h : ¬ s.Live c) :
+    ¬ (s.view c).ExercisableAt a m :=
+  not_exercisable_of_top fun _ _ hy => by
+    rw [SC.view_top_dead h]; exact SC.noFrame_holder hy
+
+/-- C2: a context that is not live has no right over any place (Spec 1 §43). -/
+theorem SC.dead_not_hasRight {s : SC} {c q : Nat} {m : Mode} (h : ¬ s.Live c) :
+    ¬ HasRight (s.view c) m q :=
+  fun ⟨_, _, hx, _⟩ => SC.dead_not_exercisable h hx
+
+/-- An authority exercisable from the view of `c` makes `c` live (C2). -/
+theorem SC.live_of_exercisable {s : SC} {c a : Nat} {m : Mode}
+    (h : (s.view c).ExercisableAt a m) : s.Live c :=
+  Decidable.byContradiction fun hc => SC.dead_not_exercisable hc h
+
+/-- A right over a place from the view of `c` makes `c` live (C2). -/
+theorem SC.live_of_hasRight {s : SC} {c q : Nat} {m : Mode} (h : HasRight (s.view c) m q) :
+    s.Live c :=
+  Decidable.byContradiction fun hc => SC.dead_not_hasRight hc h
+
+/-- The current frame of the view of `c` is globally live only if `c` is live (C2). -/
+theorem SC.live_of_top_mem {s : SC} {c : Nat} (h : (s.view c).top ∈ s.frames) : s.Live c :=
+  Decidable.byContradiction fun hc => SC.noFrame_not_mem (by rw [← SC.view_top_dead hc]; exact h)
+
+/-- C2: a context that is not live holds no authority through its current frame and has no right
+over a holding place (Spec 1 §62.2). -/
+theorem SC.dead_not_holderRight {s : SC} {c a : Nat} {y : Authority} (h : ¬ s.Live c)
+    (hy : s.A[a]? = some y) : ¬ HolderRight (s.view c) y.holder := by
+  cases hh : y.holder with
+  | frame f =>
+    intro e
+    simp only [HolderRight] at e
+    rw [SC.view_top_dead h] at e
+    exact SC.noFrame_holder hy (hh.trans (congrArg Holder.frame e))
+  | place p => exact SC.dead_not_hasRight h
+
+/-- A holder right from the view of `c` over an existing authority makes `c` live (C2). -/
+theorem SC.live_of_holderRight {s : SC} {c a : Nat} {y : Authority} (hy : s.A[a]? = some y)
+    (h : HolderRight (s.view c) y.holder) : s.Live c :=
+  Decidable.byContradiction fun hc => SC.dead_not_holderRight hc hy h
 
 /-- C2 ("The authority and dependency state is globally coherent"), C4 ("An active `Modify`
 derivative transferred to the child continues to suppress conflicting effective exercise through
@@ -261,8 +370,9 @@ theorem SC.mem_frames {s : SC} {f : Nat} : f ∈ s.frames ↔ ∃ c, f ∈ s.stk
   · rintro ⟨c, hc⟩; exact SC.mem_frames_of hc
 
 /-- The view of a context lists exactly the globally live frames (C2). -/
-theorem SC.mem_view_F {s : SC} {c f : Nat} : f ∈ (s.view c).F ↔ f ∈ s.frames := by
-  simp only [SC.view, SC.flat, List.mem_append, List.mem_filter, decide_eq_true_eq]
+theorem SC.mem_view_F {s : SC} {c f : Nat} (hc : s.Live c) : f ∈ (s.view c).F ↔ f ∈ s.frames := by
+  rw [SC.view_F_live hc]
+  simp only [List.mem_append, List.mem_filter, decide_eq_true_eq]
   constructor
   · rintro (h | ⟨h, -⟩)
     · exact SC.mem_frames_of h
@@ -303,8 +413,9 @@ theorem SC.stk_nodup {s : SC} (hnd : s.frames.Nodup) (c : Nat) : (s.stk c).Nodup
   · simp [SC.stk, List.getElem?_eq_none_iff.2 (Nat.le_of_not_lt hc)]
 
 /-- The view of a context is duplicate-free when the live frames are (C3). -/
-theorem SC.view_nodup {s : SC} (hnd : s.frames.Nodup) (c : Nat) : (s.view c).F.Nodup := by
-  simp only [SC.view, SC.flat]
+theorem SC.view_nodup {s : SC} (hnd : s.frames.Nodup) {c : Nat} (hc : s.Live c) :
+    (s.view c).F.Nodup := by
+  rw [SC.view_F_live hc]
   refine List.nodup_append.2 ⟨SC.stk_nodup hnd c, hnd.sublist (List.filter_sublist ..),
     fun a ha b hb e => ?_⟩
   subst e
@@ -314,7 +425,7 @@ theorem SC.view_nodup {s : SC} (hnd : s.frames.Nodup) (c : Nat) : (s.view c).F.N
 /-- The current frame of the view of `c` is the top of the stack of `c` (C2). -/
 theorem SC.view_top {s : SC} {c f : Nat} {rest : List Nat} (h : s.stk c = f :: rest) :
     (s.view c).top = f := by
-  simp [SC.view, S3.top, h]
+  simp [SC.view, S3.top, h, SC.live_of_stk (s := s) (c := c) (by rw [h]; exact List.cons_ne_nil _ _)]
 
 /-! ## Membership congruence (C2)
 
@@ -371,27 +482,36 @@ theorem SC.view_eq (s : SC) (c : Nat) :
     s.view c = { s.flat with F := (s.view c).F } := rfl
 
 /-- `WF3` of the flat state carries to every view (C2). -/
-theorem SC.wf3_view {s : SC} (hfr : FramesC s) (hw : WF3 s.flat) {c : Nat} :
+theorem SC.wf3_view {s : SC} (hfr : FramesC s) (hw : WF3 s.flat) {c : Nat} (hc : s.Live c) :
     WF3 (s.view c) := by
   rw [SC.view_eq]
-  refine wf3_mem_congr hw (fun f => SC.mem_view_F) (SC.view_nodup hfr.nodup c) ?_
+  refine wf3_mem_congr hw (fun f => SC.mem_view_F hc) (SC.view_nodup hfr.nodup hc) ?_
   intro he
   have h0 := hfr.initial
   unfold OptP at h0; split at h0
   · rename_i x hx
     have hs := hfr.nonempty 0 (by simp [SC.Live, hx, OptP, h0.1])
     obtain ⟨f, hf⟩ := List.exists_mem_of_ne_nil _ hs
-    have := (SC.mem_view_F (c := c)).2 (SC.mem_frames_of hf)
+    have := (SC.mem_view_F hc).2 (SC.mem_frames_of hf)
     rw [he] at this; simp at this
   · exact h0.elim
+
+/-- A context whose view satisfies `WF3` is live (Spec 1 §49: the frames of the stack are
+allocated; C2: the view of a context that is not live has the unallocated `SC.noFrame` on top). -/
+theorem SC.live_of_wf3_view {s : SC} {c : Nat} (hw : WF3 (s.view c)) : s.Live c :=
+  SC.live_of_view_bound hw.frames.2.2
 
 /-- `WF3` of a view carries to the flat state (C2). -/
 theorem SC.wf3_flat_of_view {s : SC} {c : Nat} (hw : WF3 (s.view c)) (hnd : s.frames.Nodup) :
     WF3 s.flat := by
+  have hc : s.Live c := by
+    refine Decidable.byContradiction fun hc => ?_
+    have hm : s.noFrame ∈ (s.view c).F := by simp [SC.view, hc]
+    exact absurd (hw.frames.2.2 _ hm) (Nat.not_lt.2 (Nat.le_of_lt (SC.nF_lt_noFrame s)))
   have := wf3_mem_congr (t := s.view c) (F' := s.frames) hw
-    (fun f => SC.mem_view_F.symm) hnd (fun he => by
+    (fun f => (SC.mem_view_F hc).symm) hnd (fun he => by
       obtain ⟨f, hf⟩ := List.exists_mem_of_ne_nil _ hw.frames.1
-      have := SC.mem_view_F.1 hf; rw [he] at this; simp at this)
+      have := (SC.mem_view_F hc).1 hf; rw [he] at this; simp at this)
   exact this
 
 end Ern.ConcurrencyModel

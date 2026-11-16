@@ -227,6 +227,17 @@ theorem ctrlRight_of_free {L : MutexLayout} {st : SC × SyncReg} {e : SyncEntry}
     rintro ⟨a, ha, hx, he⟩
     exact ⟨a, ha, exercisable_viewAt (exercisable_of_free hx), he⟩
 
+/-- A guard-free controller right of `c` makes `c` live (C2). -/
+theorem ctrlRightFree_live {L : MutexLayout} {st : SC × SyncReg} {e : SyncEntry} {c : Nat}
+    (h : CtrlRightFree L st e c) : st.1.Live c := by
+  unfold CtrlRightFree at h
+  revert h
+  cases ControlOf L st.1 e with
+  | none => exact False.elim
+  | some ctl =>
+    rintro ⟨a, -, hx, -⟩
+    exact SC.live_of_exercisable (exercisable_of_free hx)
+
 /-- `MetaRight` (Spec 1 §36, §77.1) with `HasRightFree` over the arena value (C22.6,
 administration rights); `False` when the arena value does not exist, as `Arena.MetaRight`. -/
 def MetaRightFree (st : SC × SyncReg) (c : Nat) (E : Arena.ArenaEntry) : Prop :=
@@ -558,9 +569,9 @@ def resetMid (s : SC) (c : Nat) (E : Arena.ArenaEntry) : SC :=
   s.set (deriveEff (s.view c) E.internal (footprint s.P E.storage) .modify)
 
 /-- The view of `c` after a `store` executed by `c` is the `store` on the view (C2). -/
-theorem view_storeEffC (s : SC) (c a p : Nat) :
+theorem view_storeEffC {s : SC} {c : Nat} (a p : Nat) (hc : s.Live c) :
     (storeEffC s c a p).view c = storeEff (s.view c) a p :=
-  SC.view_set (by unfold storeEff; split <;> rfl)
+  SC.view_set hc (by unfold storeEff; split <;> rfl)
 
 /-- The inventory of the rights a step from `st` reads (C22.6: "every ordinary exercisability
 judgment under Spec 1 §43 (`ExercisableAt`) or right over a place (`HasRight`)" the step depends
@@ -766,7 +777,7 @@ theorem rightsRead_of_free {ks : KShared} {L : MutexLayout} {st : SC × SyncReg 
     | store a p =>
       refine ⟨hasRight_of_free h.1, ?_⟩
       have h2 := hasRight_of_free h.2
-      rw [view_storeEffC] at h2
+      rw [view_storeEffC a p (SC.live_of_hasRight (hasRight_of_free h.1))] at h2
       exact h2
   | spawn => trivial
   | terminate => trivial
@@ -799,7 +810,9 @@ theorem rightsRead_of_free {ks : KShared} {L : MutexLayout} {st : SC × SyncReg 
       | none => exact id
       | some g =>
         rintro ⟨hg, hc, hp⟩
-        refine ⟨?_, ctrlRight_of_free hc, ctrlRight_of_free hp⟩
+        have ht : ((prospectiveUnlock s c g).view c).top = (s.view c).top := by
+          unfold S3.top; rw [SC.view_F_set (ctrlRightFree_live hc)]
+        refine ⟨?_, ctrlRight_of_free hc, ht ▸ ctrlRight_of_free hp⟩
         revert hg
         show OptP (s.A[g]?) _ False → OptP (s.A[g]?) _ False
         cases s.A[g]? with
@@ -825,7 +838,8 @@ theorem rightsRead_of_free {ks : KShared} {L : MutexLayout} {st : SC × SyncReg 
       refine ⟨metaRight_of_free hm, hasRight_of_free hd, exercisable_of_free hx,
         hasRight_of_free h1, ?_⟩
       have h2' := hasRight_of_free h2
-      rw [view_storeEffC] at h2'
+      rw [view_storeEffC (s := issueMid s c E region) _ _
+        (show (issueMid s c E region).Live c from SC.live_of_hasRight (s := s) (hasRight_of_free hd))] at h2'
       exact h2'
   | reset c i =>
     simp only [RightsReadFree, RightsRead] at h ⊢
@@ -857,125 +871,125 @@ theorem rightsRead_of_step {ks : KShared} {L : MutexLayout} {lbl : Label}
   | @kernel s s' reg ar c op hk =>
     cases op with
     | derive a region m =>
-      obtain ⟨-, o, hR, ho⟩ := hk
+      obtain ⟨o, hR, ho⟩ := hk
       cases hR with
       | ok hp => exact hp.exercisable
       | reject => cases ho
     | split a rs =>
-      obtain ⟨-, o, hR, ho⟩ := hk
+      obtain ⟨o, hR, ho⟩ := hk
       cases hR with
       | ok hp => exact hp.exercisable
       | reject => cases ho
     | release a =>
-      obtain ⟨-, o, hR, ho⟩ := hk
+      obtain ⟨o, hR, ho⟩ := hk
       cases hR with
       | ok hp => exact hp.holderRight
       | reject => cases ho
     | transfer src dst =>
-      have hp := (Guarded.ok_iff.1 hk.2).1
+      have hp := (Guarded.ok_iff.1 hk).1
       exact ⟨hp.srcRight, hp.dstRight, hp.noOutsideDerived⟩
-    | depend q x => exact (Guarded.ok_iff.1 hk.2).1.right
+    | depend q x => exact (Guarded.ok_iff.1 hk).1.right
     | enter => trivial
     | exit => trivial
     | read a ls =>
-      obtain ⟨-, o, hR, ho⟩ := hk
+      obtain ⟨o, hR, ho⟩ := hk
       cases hR with
       | ok hp => exact hp.exercisable
       | reject => cases ho
     | write a ls =>
-      obtain ⟨-, o, hR, ho⟩ := hk
+      obtain ⟨o, hR, ho⟩ := hk
       cases hR with
       | ok hp => exact hp.exercisable
       | reject => cases ho
     | writeShared a ls =>
-      obtain ⟨-, o, hR, ho⟩ := hk
+      obtain ⟨o, hR, ho⟩ := hk
       cases hR with
       | ok hp => exact hp.exercisable
       | reject => cases ho
     | pin p =>
-      obtain ⟨-, o, hR, ho⟩ := hk
+      obtain ⟨o, hR, ho⟩ := hk
       cases hR with
       | ok hp => exact hp.right
       | reject => cases ho
     | unpin o =>
-      obtain ⟨-, o₃, hR, ho⟩ := hk
+      obtain ⟨o₃, hR, ho⟩ := hk
       cases hR with
       | ok hp => exact hp.right
       | reject => cases ho
     | endUse p =>
-      obtain ⟨-, o, hR, ho⟩ := hk
+      obtain ⟨o, hR, ho⟩ := hk
       cases hR with
       | ok hp => exact ⟨hp.right, hp.access⟩
       | reject => cases ho
     | free p au =>
-      obtain ⟨-, o, hR, ho⟩ := hk
+      obtain ⟨o, hR, ho⟩ := hk
       cases hR with
       | ok hp => exact ⟨hp.right, hp.access⟩
       | reject => cases ho
     | alloc pr ow ls =>
-      obtain ⟨-, o, hR, ho⟩ := hk
+      obtain ⟨o, hR, ho⟩ := hk
       cases hR with
       | ok hst => exact ⟨hst.providerRight, hst.ownerRight⟩
       | fail => cases ho
       | reject => cases ho
     | store a p =>
-      have hp := (Guarded.ok_iff.1 hk.2).1
+      have hp := (Guarded.ok_iff.1 hk).1
       exact ⟨hp.right, hp.keepsTarget⟩
   | spawn => trivial
   | terminate => trivial
   | join => trivial
-  | deriveSync hd => exact (Guarded.ok_iff.1 hd.2).1.authorized
-  | newMutex hn => exact ⟨hn.2.1.exercisable, hn.2.1.ctlRight⟩
+  | deriveSync hd => exact (Guarded.ok_iff.1 hd).1.authorized
+  | newMutex hn => exact ⟨hn.1.exercisable, hn.1.ctlRight⟩
   | @acquire s reg ar c i st₁ hacq =>
-    obtain ⟨-, e, he, hauth, hd, -⟩ := hacq
+    obtain ⟨e, he, hauth, hd, -⟩ := hacq
     show OptP (reg[i]?) _ False
     rw [he]
     exact ⟨hauth.2.2, hd.authorized⟩
   | @unlock s reg ar c i st₁ hu =>
-    obtain ⟨-, e, g, he, -, hg, hrel, hc, hp, -⟩ := hu
+    obtain ⟨e, g, he, -, hg, hrel, hc, hp, -⟩ := hu
     show OptP (reg[i]?) _ False
     rw [he]
     show OptP e.grant _ False
     rw [hg]
     exact ⟨hrel.holderRight, hc, hp⟩
   | @resetLock s reg ar c i st₁ hr =>
-    obtain ⟨-, e, he, hx, -, -, hc, -⟩ := hr
+    obtain ⟨e, he, hx, -, -, hc, -⟩ := hr
     show OptP (reg[i]?) _ False
     rw [he]
     exact ⟨hx, hc⟩
-  | spawnVal hs => exact valRights_of_pre _ _ (Guarded.ok_iff.1 hs.2).1.transfers
+  | spawnVal hs => exact valRights_of_pre _ _ (Guarded.ok_iff.1 hs).1.transfers
   | newArena hn =>
     have hp := (newArenaStepC_ok hn).2.1
     exact ⟨hp.storageRight, hp.exercisable⟩
   | @issue s reg ar c i region dst st₁ hs =>
     obtain ⟨E, s₁, hE, hst, -, hsp, hsto, -⟩ := issueStepC_ok hs
-    obtain ⟨-, o, hR, ho⟩ := hsp
+    obtain ⟨o, hR, ho⟩ := hsp
     cases hR with
     | reject => cases ho
     | ok hsp' =>
       obtain rfl := Outcome3.ok.inj ho
-      have hp := (Guarded.ok_iff.1 hsto.2).1
+      have hp := (Guarded.ok_iff.1 hsto).1
       show OptP (ar[i]?) _ False
       rw [hE]
       exact ⟨hst.metaRight, hst.dstRight, hsp'.exercisable, hp.right, hp.keepsTarget⟩
   | @reset s reg ar c i st₁ hs =>
     obtain ⟨E, s₁, hE, hd, hrl, -, -⟩ := resetStepC_ok (k := ks.toK) hs
-    obtain ⟨-, o, hR, ho⟩ := hd
+    obtain ⟨o, hR, ho⟩ := hd
     cases hR with
     | reject => cases ho
     | ok hd' =>
       obtain rfl := Outcome3.ok.inj ho
-      obtain ⟨-, o', hR', ho'⟩ := hrl
+      obtain ⟨o', hR', ho'⟩ := hrl
       cases hR' with
       | reject => cases ho'
       | ok hp =>
         show OptP (ar[i]?) _ False
         rw [hE]
         exact ⟨hd'.exercisable, hp.holderRight⟩
-  | readShared h => exact (Guarded.ok_iff.1 h.2).1.read.exercisable
-  | writeShared h => exact (Guarded.ok_iff.1 h.2).1.o11.exercisable
+  | readShared h => exact (Guarded.ok_iff.1 h).1.read.exercisable
+  | writeShared h => exact (Guarded.ok_iff.1 h).1.o11.exercisable
   | @cas s s' reg ar c a l succ fail br h =>
-    obtain ⟨-, (⟨-, h⟩ | ⟨-, h⟩)⟩ := h
+    obtain (⟨-, h⟩ | ⟨-, h⟩) := h
     · cases h
     · cases br with
       | success v => exact (Guarded.ok_iff.1 h).1.o11.exercisable

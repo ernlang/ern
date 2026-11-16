@@ -78,7 +78,7 @@ theorem atomic_success_is_o11 {ks : KShared} {s s' : SC} {c a : Nat} {region : L
     {ord : Option MemOrder} {kind : WriteKind}
     (h : WriteSharedCStep ks s c a region ord kind (.ok s')) :
     opStepC ks.toK (.writeShared a region) c s (.ok s') ∧ s' = writeSharedCEff s c region :=
-  ⟨writeSharedC_ok_kernel h.1 h.2, (Guarded.ok_iff.1 h.2).2⟩
+  ⟨writeSharedC_ok_kernel h, (Guarded.ok_iff.1 h).2⟩
 
 /-- **Theorem 8** (C40): on a single `Atomic` leaf, an order outside the row of the operation is a
 static `reject`. -/
@@ -141,20 +141,20 @@ theorem cas_failure_case {ks : KShared} {L : MutexLayout} {s s' : SC} {reg : Syn
       (CasStep ks s c a l succ fail (.failure v) (.ok s') → s' = s) ∧
       (LStep ks L (.cas c a l succ fail (.failure v)) (s, reg, ar) st' → st' = (s, reg, ar)) ∧
       (¬ CasOrdersOK succ fail → ∀ br o, CasStep ks s c a l succ fail br o → o = .reject) := by
-  refine ⟨fun ho => ⟨fun h => ?_, fun h => ⟨h.1, .inr ⟨ho, h.2⟩⟩⟩, fun h => ?_, fun h => ?_,
+  refine ⟨fun ho => ⟨fun h => ?_, fun h => .inr ⟨ho, h⟩⟩, fun h => ?_, fun h => ?_,
     fun hn br o h => ?_⟩
-  · obtain ⟨hl, (⟨hn, -⟩ | ⟨-, h⟩)⟩ := h
+  · rcases h with ⟨hn, -⟩ | ⟨-, h⟩
     · exact absurd ho hn
-    · exact ⟨hl, h⟩
-  · obtain ⟨-, (⟨-, h⟩ | ⟨-, h⟩)⟩ := h
+    · exact h
+  · rcases h with ⟨-, h⟩ | ⟨-, h⟩
     · cases h
     · exact readShared_ok_eq h
   · cases h with
     | cas h =>
-      obtain ⟨-, (⟨-, h⟩ | ⟨-, h⟩)⟩ := h
+      rcases h with ⟨-, h⟩ | ⟨-, h⟩
       · cases h
       · rw [readShared_ok_eq h]
-  · obtain ⟨-, (⟨-, e⟩ | ⟨ho, -⟩)⟩ := h
+  · rcases h with ⟨-, e⟩ | ⟨ho, -⟩
     · exact e
     · exact absurd ho hn
 

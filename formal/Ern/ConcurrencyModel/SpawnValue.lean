@@ -183,10 +183,15 @@ instance (k : K) [DecidablePred k.Pinned] (s : SC) (c : Nat) (ps : List Nat) (ls
     ⟨fun ⟨a, b, c, d, e, f, g, h, i, j, l⟩ => ⟨a, b, c, d, e, f, g, h, i, j, l⟩,
      fun ⟨a, b, c, d, e, f, g, h, i, j, l⟩ => ⟨a, b, c, d, e, f, g, h, i, j, l⟩⟩
 
-/-- The by-value composite executed by `c` (C5): `ok` or `reject`; no outcome if `c` is not
-live. -/
+/-- The by-value composite executed by `c` (C5): `ok` or `reject`; a creating context that is not
+live fails C4.1: `reject`. -/
 def SpawnValStep (k : K) (s : SC) (c : Nat) (ps : List Nat) (ls : LocalShape)
     (vs : List (Nat × Nat)) (o : Outcome3 SC) : Prop :=
-  s.Live c ∧ Guarded (SpawnValPre k s c ps ls vs) (spawnValEff s c ps ls vs) o
+  Guarded (SpawnValPre k s c ps ls vs) (spawnValEff s c ps ls vs) o
+
+/-- An `ok` by-value composite requires the creating context to be live (C4.1). -/
+theorem spawnValStep_live {k : K} {s s' : SC} {c : Nat} {ps : List Nat} {ls : LocalShape}
+    {vs : List (Nat × Nat)} (h : SpawnValStep k s c ps ls vs (.ok s')) : s.Live c :=
+  SC.live_of_stk (Guarded.ok_iff.1 h).1.creatorLive
 
 end Ern.ConcurrencyModel

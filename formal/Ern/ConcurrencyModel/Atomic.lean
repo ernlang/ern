@@ -139,10 +139,11 @@ def ReadSharedRel (ks : KShared) (s : SC) (c a l : Nat) (order : MemOrder) (o : 
     Prop :=
   Guarded (ReadSharedPre ks s c a l order) s o
 
-/-- `readShared(access, leaf, order)` executed by `c` (C37); no outcome if `c` is not live. -/
+/-- `readShared(access, leaf, order)` executed by `c` (C37). A context that is not live has no
+current frame (C2): C37.2 fails, `reject`. -/
 def ReadSharedStep (ks : KShared) (s : SC) (c a l : Nat) (order : MemOrder) (o : Outcome3 SC) :
     Prop :=
-  s.Live c ∧ ReadSharedRel ks s c a l order o
+  ReadSharedRel ks s c a l order o
 
 /-! ## Concurrent `writeShared` (C35, C38, C39) -/
 
@@ -171,11 +172,11 @@ def WriteSharedCRel (ks : KShared) (s : SC) (c a : Nat) (region : List Nat)
     (ord : Option MemOrder) (kind : WriteKind) (o : Outcome3 SC) : Prop :=
   Guarded (WriteSharedCPre ks s c a region ord kind) (writeSharedCEff s c region) o
 
-/-- The concurrent evaluation of `writeShared` executed by `c` (C35, C38–C40); no outcome if `c`
-is not live. -/
+/-- The concurrent evaluation of `writeShared` executed by `c` (C35, C38–C40). A context that is
+not live has no current frame (C2): the exercise of Spec 1 §68.2 fails, `reject`. -/
 def WriteSharedCStep (ks : KShared) (s : SC) (c a : Nat) (region : List Nat)
     (ord : Option MemOrder) (kind : WriteKind) (o : Outcome3 SC) : Prop :=
-  s.Live c ∧ WriteSharedCRel ks s c a region ord kind o
+  WriteSharedCRel ks s c a region ord kind o
 
 /-! ## Compare-and-exchange (C39, C40) -/
 
@@ -198,13 +199,13 @@ instance (succ fail : MemOrder) : Decidable (CasOrdersOK succ fail) := by
 `fail` and branch `br` (C39, C40): a static `reject` when an order is outside its row (C40);
 otherwise, on success, the concurrent `writeShared` RMW on the single leaf with the success order;
 on failure, the `readShared` observation with the failure order, which neither mutates nor creates
-a grant (C39). No outcome if `c` is not live. -/
+a grant (C39). A context that is not live has no current frame (C2): `reject`. -/
 def CasStep (ks : KShared) (s : SC) (c a leaf : Nat) (succ fail : MemOrder) (br : CasBranch)
     (o : Outcome3 SC) : Prop :=
-  s.Live c ∧ ((¬ CasOrdersOK succ fail ∧ o = .reject) ∨
+  (¬ CasOrdersOK succ fail ∧ o = .reject) ∨
     (CasOrdersOK succ fail ∧ match br with
       | .success v => WriteSharedCRel ks s c a [leaf] (some succ) (.rmw v) o
-      | .failure _ => ReadSharedRel ks s c a leaf fail o))
+      | .failure _ => ReadSharedRel ks s c a leaf fail o)
 
 /-! ## The atomic cases are O11 or state-preserving steps (C37, C39) -/
 
@@ -216,21 +217,21 @@ theorem readShared_ok_eq {ks : KShared} {s s' : SC} {c a l : Nat} {order : MemOr
 /-- C39, C35: a successful concurrent `writeShared` is a successful O11 step executed by the same
 context (Spec 1 §68, unchanged), with the same effect. -/
 theorem writeSharedC_ok_kernel {ks : KShared} {s s' : SC} {c a : Nat} {region : List Nat}
-    {ord : Option MemOrder} {kind : WriteKind} (hl : s.Live c)
+    {ord : Option MemOrder} {kind : WriteKind}
     (h : WriteSharedCRel ks s c a region ord kind (.ok s')) :
     opStepC ks.toK (.writeShared a region) c s (.ok s') := by
   obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
-  exact ⟨hl, .ok (write3Eff (s.view c) region), .ok hpre.o11, rfl⟩
+  exact ⟨.ok (write3Eff (s.view c) region), .ok hpre.o11, rfl⟩
 
 /-- C39: a successful compare-and-exchange is either a successful O11 step on the single leaf
 (success) or leaves the state unchanged (failure, a `readShared` observation). -/
 theorem cas_ok_cases {ks : KShared} {s s' : SC} {c a l : Nat} {succ fail : MemOrder}
     {br : CasBranch} (h : CasStep ks s c a l succ fail br (.ok s')) :
     opStepC ks.toK (.writeShared a [l]) c s (.ok s') ∨ s' = s := by
-  obtain ⟨hl, (⟨-, h⟩ | ⟨-, h⟩)⟩ := h
+  obtain (⟨-, h⟩ | ⟨-, h⟩) := h
   · cases h
   · cases br with
-    | success v => exact .inl (writeSharedC_ok_kernel hl h)
+    | success v => exact .inl (writeSharedC_ok_kernel h)
     | failure v => exact .inr (readShared_ok_eq h)
 
 end Ern.ConcurrencyModel

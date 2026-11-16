@@ -58,10 +58,10 @@ theorem mutex_steps : opStepC kMutex.toK (.derive 1 [3] .modify) 0 m0 (.ok m1) �
     opStepC kMutex.toK (.derive 0 [1, 2] .observe) 0 m2 (.ok m3) ∧
     SpawnStep m3 0 [3] [] (.ok m4) ∧ AcquireOk kMutex mutexLayout m4 regFree 1 0 (m5, regTaken) ∧
     UnlockOk mutexLayout m5 regTaken 1 0 (m6, regFree) :=
-  ⟨⟨by decide, _, .ok (by decide), rfl⟩, ⟨by decide, .ok (by decide)⟩,
-    ⟨by decide, by decide, rfl⟩, ⟨by decide, _, .ok (by decide), rfl⟩, ⟨by decide, .ok (by decide)⟩,
-    ⟨by decide, ⟨2, none⟩, rfl, by decide, by decide, rfl⟩,
-    ⟨by decide, ⟨2, some 4⟩, 4, rfl, by decide, rfl, by decide, by decide, by decide, rfl⟩⟩
+  ⟨⟨_, .ok (by decide), rfl⟩, (.ok (by decide)),
+    ⟨by decide, rfl⟩, ⟨_, .ok (by decide), rfl⟩, (.ok (by decide)),
+    ⟨⟨2, none⟩, rfl, by decide, by decide, rfl⟩,
+    ⟨⟨2, some 4⟩, 4, rfl, by decide, rfl, by decide, by decide, by decide, rfl⟩⟩
 
 /-- Non-vacuity of `EncapStep` (C22, C51.1): the construction of the reference mutex, the
 `acquire(e)` of context 1 and its `unlock(e)` form an `EncapsulatedTrace` from the initial state
@@ -91,7 +91,7 @@ theorem grantDiscipline_not_of_i1 :
     DeriveSyncStep (libKC kMutex mutexLayout) regFree m4 1 2 (.ok m5) ∧
     ¬ RestrictedStep mutexLayout (m4, regFree, []) (.deriveSync 1 2) ∧ I1 m5.flat ∧
     ¬ GrantDiscipline m5 regFree :=
-  ⟨⟨by decide, .ok (by decide)⟩, by unfold RestrictedStep; decide, by decide,
+  ⟨(.ok (by decide)), by unfold RestrictedStep; decide, by decide,
     by unfold GrantDiscipline; decide⟩
 
 /-! ## Rows 1a–1c: `join` (C8) -/
@@ -101,22 +101,43 @@ def mJ : SC := termEffC m4 1
 
 /-- **Row 1a** (C8, `reject`): `join` of an identifier unknown to the execution (no context `2`).
 Positive twin: row 1c. -/
-theorem witness_1a : JoinReject m4 0 2 ∧ JoinStep m4 0 2 .reject :=
-  ⟨by unfold JoinReject; decide, .reject (by decide) (by decide)⟩
+theorem witness_1a : JoinReject m4 2 ∧ JoinStep m4 0 2 .reject :=
+  ⟨by unfold JoinReject; decide, .reject (by decide)⟩
 
 /-- **Row 1b** (C8, legal, not enabled, no transition): `join` of the live context 1. -/
-theorem witness_1b : JoinNotEnabled m4 0 1 ∧ (∀ o, ¬ JoinStep m4 0 1 o) ∧
+theorem witness_1b : JoinNotEnabled m4 1 ∧ (∀ o, ¬ JoinStep m4 0 1 o) ∧
     ∀ st', ¬ LStep kMutex mutexLayout (.join 0 1) (m4, regFree, []) st' := by
-  have hn : JoinNotEnabled m4 0 1 := by unfold JoinNotEnabled; decide
-  have hno := ((join_classes (s := m4) (c := 0) (d := 1) (by decide)).2.2.2.1 hn)
+  have hn : JoinNotEnabled m4 1 := by unfold JoinNotEnabled; decide
+  have hno := ((join_classes (s := m4) (c := 0) (d := 1)).2.2.2.1 hn)
   refine ⟨hn, hno, fun st' h => ?_⟩
   cases h with
   | join h => exact hno _ h
 
 /-- **Row 1c** (C8, `ok`, state unchanged): `join` of context 1 after its termination. -/
-theorem witness_1c : TermStep kMutex.toK m4 1 (.ok mJ) ∧ JoinOkClass mJ 0 1 ∧
+theorem witness_1c : TermStep kMutex.toK m4 1 (.ok mJ) ∧ JoinOkClass mJ 1 ∧
     LStep kMutex mutexLayout (.join 0 1) (mJ, regFree, []) (mJ, regFree, []) :=
-  ⟨⟨by decide, .ok (by decide)⟩, by unfold JoinOkClass; decide, .join (.ok (by decide) (by decide))⟩
+  ⟨(.ok (by decide)), by unfold JoinOkClass; decide, .join (.ok (by decide))⟩
+
+/-- **Witness, C4.1** (`reject`): `spawn` with one local, requested by context 1 after its
+termination. Single cause: C4.1 fails (context 1 is not live and has no current frame, C2); C4.3
+(no parameter), C4.5 (shape of the locals, origin protection, `AnchorOrderHeld` in the final state)
+hold. Outcome `reject`, no labelled step. Positive twin: the same request by the live context 0,
+`ok`. -/
+theorem witness_spawn_terminated : ¬ mJ.Live 1 ∧ mJ.stk 1 = [] ∧
+    (∀ a ∈ ([] : List Nat), OptP ((mJ.view 1).A[a]?) (fun y => y.active = true ∧
+      y.holder = .frame (mJ.view 1).top ∧ y.origin ≠ none) False) ∧
+    ShapeOK mJ.P.length (LocalShape.toShape [(none, 0)]) ∧
+    (∀ p ∈ ([] : List Nat), ParamOriginHidden ((spawnEff mJ 1 [] [(none, 0)]).view mJ.C.length) p) ∧
+    AnchorOrderHeldC (spawnEff mJ 1 [] [(none, 0)]) ∧
+    SpawnStep mJ 1 [] [(none, 0)] .reject ∧
+    (∀ st', ¬ LStep kMutex mutexLayout (.spawn 1 [] [(none, 0)]) (mJ, regFree, []) st') ∧
+    LStep kMutex mutexLayout (.spawn 0 [] [(none, 0)]) (mJ, regFree, [])
+      (spawnEff mJ 0 [] [(none, 0)], regFree, []) :=
+  have hc : ¬ mJ.Live 1 := by decide
+  ⟨hc, by decide, by decide, by decide, by decide, by decide,
+    (dead_requests_reject (ks := kMutex) (L := mutexLayout) (reg := regFree) (ar := []) hc).2.1 _ _,
+    fun _ h => by cases h with | spawn h => exact hc (spawnStep_live h),
+    .spawn (.ok (by decide))⟩
 
 /-! ## Rows 2a–2e: `acquire` (C15, C16) -/
 
@@ -139,11 +160,10 @@ theorem witness_2b : m5.flat.Active 4 ∧ AcquireNotEnabled mutexLayout m5 regTa
     (∀ o, ¬ AcquireOutcome kMutex mutexLayout m5 regTaken 0 0 o) ∧
     ∀ st', ¬ LStep kMutex mutexLayout (.acquire 0 0) (m5, regTaken, []) st' := by
   have hn : AcquireNotEnabled mutexLayout m5 regTaken 0 0 := by
-    refine ⟨⟨by decide, ⟨2, some 4⟩, rfl, by decide, by decide, by unfold AcquireIndependent; decide,
+    refine ⟨⟨⟨2, some 4⟩, rfl, by decide, by decide, by unfold AcquireIndependent; decide,
       fun h => by cases h⟩, ⟨2, some 4⟩, rfl, by decide⟩
   exact ⟨by decide, hn,
-    ((acquire_classes (ks := kMutex) (ar := []) (s := m5) (reg := regTaken) (c := 0) (i := 0)
-      (by decide)).2.2.1 hn)⟩
+    ((acquire_classes (ks := kMutex) (ar := []) (s := m5) (reg := regTaken) (c := 0) (i := 0)).2.2.1 hn)⟩
 
 /-- `g′ := derive(grant, Modify, footprint(T))` by context 1, authority 5 (O1). -/
 def m5d : SC := m5.set (deriveEff (m5.view 1) 4 [3] .modify)
@@ -163,12 +183,11 @@ theorem witness_2c : opStepC kMutex.toK (.derive 4 [3] .modify) 1 m5 (.ok m5d) �
     (∀ o, ¬ AcquireOutcome kMutex mutexLayout m5x regTaken 0 0 o) ∧
     ∀ st', ¬ LStep kMutex mutexLayout (.acquire 0 0) (m5x, regTaken, []) st' := by
   have hn : AcquireNotEnabled mutexLayout m5x regTaken 0 0 := by
-    refine ⟨⟨by decide, ⟨2, some 4⟩, rfl, by decide, by decide, by unfold AcquireIndependent; decide,
+    refine ⟨⟨⟨2, some 4⟩, rfl, by decide, by decide, by unfold AcquireIndependent; decide,
       fun h => by cases h⟩, ⟨2, some 4⟩, rfl, by decide⟩
-  exact ⟨⟨by decide, _, .ok (by decide), rfl⟩, ⟨by decide, .ok (by decide)⟩,
-    ⟨by decide, .ok (by decide)⟩, by decide, by decide, by decide, hn,
-    ((acquire_classes (ks := kMutex) (ar := []) (s := m5x) (reg := regTaken) (c := 0) (i := 0)
-      (by decide)).2.2.1 hn)⟩
+  exact ⟨⟨_, .ok (by decide), rfl⟩, (.ok (by decide)),
+    (.ok (by decide)), by decide, by decide, by decide, hn,
+    ((acquire_classes (ks := kMutex) (ar := []) (s := m5x) (reg := regTaken) (c := 0) (i := 0)).2.2.1 hn)⟩
 
 /-- Context 0 enters frame 2 without parameter (O6): it holds no authority there. -/
 def m5f : SC := enterEffC m5 0 [] []
@@ -182,8 +201,8 @@ theorem witness_2d : opStepC kMutex.toK (.enter [] []) 0 m5 (.ok m5f) ∧
     AcquireIndependent m5f 0 2 ∧ AcquireReject mutexLayout m5f regTaken 0 0 ∧
     AcquireOutcome kMutex mutexLayout m5f regTaken 0 0 .reject :=
   have hr : AcquireReject mutexLayout m5f regTaken 0 0 :=
-    acquire_reject_precedence (e := ⟨2, some 4⟩) (by decide) rfl (by decide)
-  ⟨⟨by decide, .ok (by decide)⟩, by decide, by decide, by unfold AcquireIndependent; decide, hr,
+    acquire_reject_precedence (e := ⟨2, some 4⟩) rfl (by decide)
+  ⟨(.ok (by decide)), by decide, by decide, by unfold AcquireIndependent; decide, hr,
     .reject hr⟩
 
 /-! ## Rows 3a–3d: `unlock` (C17) -/
@@ -193,7 +212,7 @@ C17.1 (live entry, `grant = some 4`), C17.2 and C17.3 (`ReleasePre`, O3), C17.4 
 controller-access right through `o` before the step and in the prospective state). -/
 theorem witness_3a : UnlockPre mutexLayout m5 regTaken 1 0 ∧
     LStep kMutex mutexLayout (.unlock 1 0) (m5, regTaken, []) (m6, regFree, []) :=
-  ⟨⟨by decide, ⟨2, some 4⟩, 4, rfl, by decide, rfl, by decide, by decide, by decide⟩,
+  ⟨⟨⟨2, some 4⟩, 4, rfl, by decide, rfl, by decide, by decide, by decide⟩,
     .unlock (st' := (m6, regFree)) mutex_steps.2.2.2.2.2.2⟩
 
 /-- **Row 3b** (C17, `reject`): the recorded grant 4 has become inactive by an ordinary `release`
@@ -211,8 +230,8 @@ theorem witness_3b : opStepC kMutex.toK (.release 4) 1 m5 (.ok m6) ∧
     CtrlRight mutexLayout m6 ⟨2, some 4⟩ (m6.view 1).top ∧
     CtrlRight mutexLayout (prospectiveUnlock m6 1 4) ⟨2, some 4⟩ (m6.view 1).top ∧
     UnlockOutcome mutexLayout m6 regTaken 1 0 .reject :=
-  ⟨⟨by decide, _, .ok (by decide), rfl⟩, by decide, by decide, by decide, by decide, by decide,
-    by decide, by decide, by decide, .reject (by decide) fun ⟨_, e, g, he, _, hg, hrel, _⟩ => by
+  ⟨⟨_, .ok (by decide), rfl⟩, by decide, by decide, by decide, by decide, by decide,
+    by decide, by decide, by decide, .reject fun ⟨e, g, he, _, hg, hrel, _⟩ => by
       cases he; cases hg; exact (by decide : ¬ ReleasePre (m6.view 1) 4) hrel⟩
 
 /-- `o′ := derive(root_M, Observe, {lock})` by context 0 from the constructed mutex, authority 3
@@ -238,9 +257,9 @@ theorem witness_3c : opStepC kMutex.toK (.derive 0 [2] .observe) 0 m2 (.ok n3) �
     CtrlRight mutexLayout n6 ⟨2, some 4⟩ (n6.view 1).top ∧
     ¬ CtrlRight mutexLayout (prospectiveUnlock n6 1 4) ⟨2, some 4⟩ (n6.view 1).top ∧
     UnlockOutcome mutexLayout n6 regTaken 1 0 .reject :=
-  ⟨⟨by decide, _, .ok (by decide), rfl⟩, ⟨by decide, .ok (by decide)⟩,
-    ⟨by decide, ⟨2, none⟩, rfl, by decide, by decide, rfl⟩, ⟨by decide, .ok (by decide)⟩,
-    by decide, by decide, by decide, by decide, .reject (by decide) fun ⟨_, e, g, he, _, hg, _, _, hp⟩ => by
+  ⟨⟨_, .ok (by decide), rfl⟩, (.ok (by decide)),
+    ⟨⟨2, none⟩, rfl, by decide, by decide, rfl⟩, (.ok (by decide)),
+    by decide, by decide, by decide, by decide, .reject fun ⟨e, g, he, _, hg, _, _, hp⟩ => by
       cases he; cases hg
       exact (by decide : ¬ CtrlRight mutexLayout (prospectiveUnlock n6 1 4) ⟨2, some 4⟩
         (n6.view 1).top) hp⟩
@@ -251,10 +270,10 @@ theorem witness_3d : opStepC kMutex.toK (.derive 3 [2] .observe) 1 n6 (.ok n7) �
     UnlockPre mutexLayout n7 regTaken 1 0 ∧
     LStep kMutex mutexLayout (.unlock 1 0) (n7, regTaken, [])
       (prospectiveUnlock n7 1 4, regFree, []) :=
-  ⟨⟨by decide, _, .ok (by decide), rfl⟩,
-    ⟨by decide, ⟨2, some 4⟩, 4, rfl, by decide, rfl, by decide, by decide, by decide⟩,
+  ⟨⟨_, .ok (by decide), rfl⟩,
+    ⟨⟨2, some 4⟩, 4, rfl, by decide, rfl, by decide, by decide, by decide⟩,
     .unlock (st' := (prospectiveUnlock n7 1 4, regFree))
-      ⟨by decide, ⟨2, some 4⟩, 4, rfl, by decide, rfl, by decide, by decide, by decide, rfl⟩⟩
+      ⟨⟨2, some 4⟩, 4, rfl, by decide, rfl, by decide, by decide, by decide, rfl⟩⟩
 
 /-! ## Rows 4a–4d: `resetLock` (C18) -/
 
@@ -269,17 +288,17 @@ through `root_M`). -/
 theorem witness_4a : TermStep kMutex.toK m5 1 (.ok mA) ∧ ¬ mA.flat.Active 4 ∧
     ResetLockPre mutexLayout mA regTaken 0 0 ∧
     LStep kMutex mutexLayout (.resetLock 0 0) (mA, regTaken, []) (mA, regFree, []) :=
-  ⟨⟨by decide, .ok (by decide)⟩, by decide,
-    ⟨by decide, ⟨2, some 4⟩, rfl, by decide, by decide, by decide, by decide⟩,
-    .resetLock (st' := (mA, regFree)) ⟨by decide, ⟨2, some 4⟩, rfl, by decide, by decide, by decide,
+  ⟨(.ok (by decide)), by decide,
+    ⟨⟨2, some 4⟩, rfl, by decide, by decide, by decide, by decide⟩,
+    .resetLock (st' := (mA, regFree)) ⟨⟨2, some 4⟩, rfl, by decide, by decide, by decide,
       by decide, rfl⟩⟩
 
 /-- **Row 4b** (C18, `ok`): `resetLock(e)` by context 0 while `grant = none`: C18.1–C18.4 hold as
 in row 4a; no prerequisite on the recorded grant (C18). -/
 theorem witness_4b : ResetLockPre mutexLayout m2 regFree 0 0 ∧
     LStep kMutex mutexLayout (.resetLock 0 0) (m2, regFree, []) (m2, regFree, []) :=
-  ⟨⟨by decide, ⟨2, none⟩, rfl, by decide, by decide, by decide, by decide⟩,
-    .resetLock (st' := (m2, regFree)) ⟨by decide, ⟨2, none⟩, rfl, by decide, by decide, by decide,
+  ⟨⟨⟨2, none⟩, rfl, by decide, by decide, by decide, by decide⟩,
+    .resetLock (st' := (m2, regFree)) ⟨⟨2, none⟩, rfl, by decide, by decide, by decide,
       by decide, rfl⟩⟩
 
 /-- `acquire(e)` by context 0 (C16): the grant 3, held by frame 0. -/
@@ -295,8 +314,8 @@ theorem witness_4c : AcquireOk kMutex mutexLayout m2 regFree 0 0 (mG, regG) ∧
       False ∧
     CtrlRight mutexLayout mG ⟨2, some 3⟩ (mG.view 0).top ∧
     ResetLockOutcome mutexLayout mG regG 0 0 .reject :=
-  ⟨⟨by decide, ⟨2, none⟩, rfl, by decide, by decide, rfl⟩, by decide, by decide, by decide,
-    by decide, .reject (by decide) (by unfold ResetLockPre; decide)⟩
+  ⟨⟨⟨2, none⟩, rfl, by decide, by decide, rfl⟩, by decide, by decide, by decide,
+    by decide, .reject (by unfold ResetLockPre; decide)⟩
 
 /-- `s := derive(root_M, Modify, {slot})` by context 0, authority 3 (O1). -/
 def mR1 : SC := m2.set (deriveEff (m2.view 0) 0 [1] .modify)
@@ -321,11 +340,11 @@ theorem witness_4d : opStepC kMutex.toK (.derive 0 [1] .modify) 0 m2 (.ok mR1) �
     opStepC kMutex.toK (.enter [3] []) 0 mT1 (.ok mT2) ∧
     ResetLockPre mutexLayout mT2 regFree 0 0 ∧
     LStep kMutex mutexLayout (.resetLock 0 0) (mT2, regFree, []) (mT2, regFree, []) :=
-  ⟨⟨by decide, _, .ok (by decide), rfl⟩, ⟨by decide, .ok (by decide)⟩, by decide, by decide,
-    by decide, by decide, .reject (by decide) (by unfold ResetLockPre; decide),
-    ⟨by decide, _, .ok (by decide), rfl⟩, ⟨by decide, .ok (by decide)⟩,
-    ⟨by decide, ⟨2, none⟩, rfl, by decide, by decide, by decide, by decide⟩,
-    .resetLock (st' := (mT2, regFree)) ⟨by decide, ⟨2, none⟩, rfl, by decide, by decide, by decide,
+  ⟨⟨_, .ok (by decide), rfl⟩, (.ok (by decide)), by decide, by decide,
+    by decide, by decide, .reject (by unfold ResetLockPre; decide),
+    ⟨_, .ok (by decide), rfl⟩, (.ok (by decide)),
+    ⟨⟨2, none⟩, rfl, by decide, by decide, by decide, by decide⟩,
+    .resetLock (st' := (mT2, regFree)) ⟨⟨2, none⟩, rfl, by decide, by decide, by decide,
       by decide, rfl⟩⟩
 
 /-! ## Row 2e: `acquire` of an absent or dead entry (C16.1)
@@ -348,8 +367,8 @@ theorem witness_2e : regFree[1]? = none ∧ AcquireReject mutexLayout m4 regFree
     AcquireReject mutexLayout mD regTaken 0 0 ∧
     AcquireOutcome kMutex mutexLayout mD regTaken 0 0 .reject :=
   have hd : AcquireReject mutexLayout mD regTaken 0 0 :=
-    ⟨by decide, .inr ⟨⟨2, some 4⟩, rfl, .inl (by decide)⟩⟩
-  ⟨rfl, ⟨by decide, .inl rfl⟩, .reject ⟨by decide, .inl rfl⟩, ⟨by decide, _, .ok (by decide), rfl⟩,
+    .inr ⟨⟨2, some 4⟩, rfl, .inl (by decide)⟩
+  ⟨rfl, (.inl rfl), .reject (.inl rfl), ⟨_, .ok (by decide), rfl⟩,
     by decide, by decide, by unfold AcquireIndependent; decide, hd, .reject hd⟩
 
 /-! ## Rows 5a–5d: `newMutex` (C13)
@@ -363,14 +382,14 @@ twelve preconditions C13.1–C13.11 hold (C13.11 through `root_M`, of effective 
 `lock`, the only authority with an effective mode there). -/
 theorem witness_5a : NewMutexPre kMutex.toK mutexLayout [] m2 [] 0 2 ∧
     LStep kMutex mutexLayout (.newMutex 0 2) (m2, [], []) (m2, regFree, []) :=
-  ⟨mutex_steps.2.2.1.2.1, .newMutex (st' := (m2, regFree)) mutex_steps.2.2.1⟩
+  ⟨mutex_steps.2.2.1.1, .newMutex (st' := (m2, regFree)) mutex_steps.2.2.1⟩
 
 /-- No `ok` step of `newMutex` when a precondition fails (C13). -/
 theorem newMutex_none {k : KShared} {L : MutexLayout} {ar : ArenaReg} {s : SC} {reg : SyncReg}
     {c g : Nat} (h : ¬ NewMutexPre k.toK L ar s reg c g) :
     (∀ st', ¬ NewMutexOk k.toK L ar s reg c g st') ∧
       ∀ st', ¬ LStep k L (.newMutex c g) (s, reg, ar) st' :=
-  ⟨fun _ h' => h h'.2.1, fun _ h' => by cases h' with | newMutex h' => exact h h'.2.1⟩
+  ⟨fun _ h' => h h'.1, fun _ h' => by cases h' with | newMutex h' => exact h h'.1⟩
 
 /-- **Row 5b** (C13.11, `reject`): after `o′ := derive(root_M, Observe, {lock})`, the frame of
 context 0 has only `Observe` rights on the controller (`root_M` of effective mode `Observe`, `o′`).
@@ -398,9 +417,9 @@ theorem witness_5b : opStepC kMutex.toK (.derive 0 [2] .observe) 0 m2 (.ok n3) �
     (∀ st', ¬ NewMutexOk kMutex.toK mutexLayout [] n3 [] 0 2 st') ∧
     ∀ st', ¬ LStep kMutex mutexLayout (.newMutex 0 2) (n3, [], []) st' :=
   have hn : ¬ NewMutexPre kMutex.toK mutexLayout [] n3 [] 0 2 := by decide
-  ⟨⟨by decide, _, .ok (by decide), rfl⟩, by decide, by decide, by decide, by decide, by decide,
+  ⟨⟨_, .ok (by decide), rfl⟩, by decide, by decide, by decide, by decide, by decide,
     by decide, by decide, by decide, by decide, by decide, by decide, by decide, by decide,
-    by decide, .reject (by decide) hn, (newMutex_none hn).1, (newMutex_none hn).2⟩
+    by decide, .reject hn, (newMutex_none hn).1, (newMutex_none hn).2⟩
 
 /-- Statics of row 5c (Spec 1 §47): `0` the mutex value `M`, `1` its field `slot` (`Init`), `2`
 its field `lock` (`Init`), `3` and `4` two protected roots `T₁`, `T₂` (`Init`), both owned by
@@ -445,9 +464,9 @@ theorem witness_5c : NewMutexOk kMutex.toK mutexLayout [] u0 [] 0 1 (u0, [⟨1, 
     (∀ st', ¬ LStep kMutex mutexLayout (.newMutex 0 2) (u0, [⟨1, none⟩], []) st') ∧
     NewMutexOk kMutex.toK mutexLayout [] u0 [] 0 2 (u0, [⟨2, none⟩]) :=
   have hn : ¬ NewMutexPre kMutex.toK mutexLayout [] u0 [⟨1, none⟩] 0 2 := by decide
-  ⟨⟨by decide, by decide, rfl⟩, by decide, by decide, by decide, by decide, by decide, by decide,
+  ⟨⟨by decide, rfl⟩, by decide, by decide, by decide, by decide, by decide, by decide,
     by decide, by decide, by decide, by decide, by decide, by decide, by decide, by decide,
-    .reject (by decide) hn, (newMutex_none hn).1, (newMutex_none hn).2, ⟨by decide, by decide, rfl⟩⟩
+    .reject hn, (newMutex_none hn).1, (newMutex_none hn).2, ⟨by decide, rfl⟩⟩
 
 /-- The arena registry after `newArena(T, guarded)` by context 0 (Spec 1 §76). -/
 def arT : ArenaReg := [⟨3, 2, footprint m2.P 3, []⟩]
@@ -478,8 +497,8 @@ theorem witness_5d : NewArenaStepC m2 [] [] 0 3 2 (.ok (m2, arT)) ∧
     (∀ st', ¬ NewMutexOk kMutex.toK mutexLayout arT m2 [] 0 2 st') ∧
     ∀ st', ¬ LStep kMutex mutexLayout (.newMutex 0 2) (m2, [], arT) st' :=
   have hn : ¬ NewMutexPre kMutex.toK mutexLayout arT m2 [] 0 2 := by decide
-  ⟨⟨by decide, .ok (by decide)⟩, by decide, by decide, by decide, by decide, by decide, by decide,
-    by decide, by decide, by decide, by decide, by decide, by decide, .reject (by decide) hn,
+  ⟨(.ok (by decide)), by decide, by decide, by decide, by decide, by decide, by decide,
+    by decide, by decide, by decide, by decide, by decide, by decide, .reject hn,
     (newMutex_none hn).1, (newMutex_none hn).2⟩
 
 end Ern.ConcurrencyModel

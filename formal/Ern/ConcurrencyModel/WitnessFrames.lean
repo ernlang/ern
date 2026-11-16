@@ -41,8 +41,8 @@ theorem frames_steps : opStepC kFrames.toK (.enter [] [(none, 0), (none, 0)]) 0 
     opStepC kFrames.toK (.write 1 [1]) 0 f1 (.ok f2) ∧
     opStepC kFrames.toK (.write 2 [2]) 0 f2 (.ok f3) ∧
     opStepC kFrames.toK (.alloc 2 1 [(none, 0)]) 0 f3 (.ok f4) :=
-  ⟨⟨by decide, .ok (by decide)⟩, ⟨by decide, _, .ok (by decide), rfl⟩,
-    ⟨by decide, _, .ok (by decide), rfl⟩, ⟨by decide, _, .ok (by decide) trivial, rfl⟩⟩
+  ⟨(.ok (by decide)), ⟨_, .ok (by decide), rfl⟩,
+    ⟨_, .ok (by decide), rfl⟩, ⟨_, .ok (by decide) trivial, rfl⟩⟩
 
 /-- `a := derive(root_p, Modify, {p})` by context 0, authority 4 (O1). -/
 def f5 : SC := f4.set (deriveEff (f4.view 0) 2 [2] .modify)
@@ -57,7 +57,7 @@ theorem witness_7a : opStepC kFrames.toK (.derive 2 [2] .modify) 0 f4 (.ok f5) �
     LStep kFrames mutexLayout (.spawnVal 0 [4] [(none, 0)] [(1, 4)]) (f5, [], [])
       (spawnValEff f5 0 [4] [(none, 0)] [(1, 4)], [], []) :=
   have hp : SpawnValPre kFrames.toK f5 0 [4] [(none, 0)] [(1, 4)] := by decide
-  ⟨⟨by decide, _, .ok (by decide), rfl⟩, hp, .spawnVal ⟨by decide, .ok hp⟩⟩
+  ⟨⟨_, .ok (by decide), rfl⟩, hp, .spawnVal (.ok hp)⟩
 
 /-- C4 ("An active `Modify` derivative transferred to the child continues to suppress conflicting
 effective exercise through its origin in the creator, by Spec 1 §43"), C9: before the derivation
@@ -94,12 +94,11 @@ theorem witness_7b : opStepC kFrames.toK (.derive 1 [1] .modify) 0 f4 (.ok f5') 
     SpawnValStep kFrames.toK f5' 0 [4] [(none, 0)] [(1, 4)] .reject ∧
     ∀ st', ¬ LStep kFrames mutexLayout (.spawnVal 0 [4] [(none, 0)] [(1, 4)]) (f5', [], []) st' :=
   have hn : ¬ SpawnValPre kFrames.toK f5' 0 [4] [(none, 0)] [(1, 4)] := by decide
-  ⟨⟨by decide, _, .ok (by decide), rfl⟩, by decide, by decide, by decide, by decide, by decide,
-    by decide, by decide, by decide, by decide, by decide, by decide, ⟨by decide, .reject hn⟩,
+  ⟨⟨_, .ok (by decide), rfl⟩, by decide, by decide, by decide, by decide, by decide,
+    by decide, by decide, by decide, by decide, by decide, by decide, (.reject hn),
     fun st' h => by
       cases h with
       | spawnVal h =>
-        obtain ⟨-, h⟩ := h
         cases h with
         | ok hp => exact hn hp⟩
 
@@ -117,7 +116,7 @@ theorem witness_8 : SpawnValStep kFrames.toK f4 0 [] [(none, 0)] [(1, 4)] (.ok f
     f6.stk 1 = [2] ∧ f6.parC 2 = some 1 ∧ ExitPreC kFrames.toK f6 0 ∧
     LStep kFrames mutexLayout (.kernel 0 .exit) (f6, [], []) (f7, [], []) ∧
     f7.parC 2 = some 0 ∧ f7.stk 0 = [0] ∧ f7.Live 1 :=
-  ⟨⟨by decide, .ok (by decide)⟩, by decide, by decide, by decide,
-    .kernel ⟨by decide, .ok (by decide)⟩, by decide, by decide, by decide⟩
+  ⟨(.ok (by decide)), by decide, by decide, by decide,
+    .kernel (.ok (by decide)), by decide, by decide, by decide⟩
 
 end Ern.ConcurrencyModel
