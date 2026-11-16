@@ -227,9 +227,9 @@ def exitEffC (s : SC) (c : Nat) : SC :=
     C := reparent (s.C.modify c fun x => { x with stack := x.stack.tail })
       ((s.stk c).headD 0) ((s.stk c).tail.headD 0) }
 
-/-- Preconditions of `exitFrameC` executed by `c` (Spec 1 §73 re-indexed; C6, C6.1: O7.1
-transposed, O7.2–O7.5 on the global state). The surviving frames are the other globally live
-frames. -/
+/-- Preconditions of `exitFrameC` executed by `c` (Spec 1 §73 re-indexed; C6, first paragraph:
+O7.1 transposed to the local stack; C6.1, C6.2: O7.2–O7.5 on the global state). The surviving
+frames are the other globally live frames. -/
 structure ExitPreC (k : K) (s : SC) (c : Nat) : Prop where
   /-- Spec 1 §73.1 re-indexed (C6, first paragraph): the current frame of `c` is not the
   initial frame of its context and has a surviving caller in its stack. -/

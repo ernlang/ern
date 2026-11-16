@@ -13,8 +13,10 @@ Theorem 5 of `formal/DESIGN.md`, Milestone 4, target theorems:
   synchronization entry and an arena (`admin_guard_reached`);
 * C19: an administration operation keeps the inherited administration right of Spec 1
   (`MetaRight`, §36, §77.1, §78.1) unweakened (`issue_metaRight`, `reset_metaRight`), and the
-  authority on which that right rests, a grant in particular, covers every leaf of the
-  administrative value (`metaRight_covers`).
+  authority on which that right rests, a grant in particular, is exercisable in `Modify` and
+  covers every leaf of the administrative value (`metaRight_grounded`);
+* C13.11: the O10.2 exclusivity follows from the reachable-state invariants
+  (`ctlRight_exclusive_of_i1`, `ctlRight_exclusive_reached`).
 -/
 
 namespace Ern.ConcurrencyModel
@@ -44,6 +46,30 @@ theorem newMutex_establishes {ks : KShared} {L : MutexLayout} {st st' : SC × Sy
     · rename_i y hy; exact ⟨y, hy, hg.1⟩
     · exact hg.elim
 
+/-- **Theorem 5**, C13.11 ("The ordinary-write exclusivity requirement of O10.2 (Spec 1 §67.2)
+also applies to this non-atomic write; whether it follows from the reachable-state invariants is a
+verification target, not an assumption"): on a state satisfying `I1` (Spec 1 §50), an authority
+of effective mode `Modify` on the controller leaf is the only one with an effective mode there
+(Spec 1 `effective_exclusive`), so the O10.2 part of C13.11 follows from its effective-`Modify`
+part. The precondition keeps both (`NewMutexPre.ctlRight`). Fragment: every state satisfying
+`I1`. -/
+theorem ctlRight_exclusive_of_i1 {s : SC} {c a ctl : Nat} (h1 : I1 s.flat)
+    (ha : effective (s.view c) a ctl = some .modify) :
+    ∀ b ∈ List.range s.A.length, b ≠ a → effective (s.view c) b ctl = none :=
+  fun _ _ hb => effective_exclusive h1 (Ne.symm hb) ha
+
+/-- **Theorem 5**, C13.11 on reached states: on every state reached from the initial state of
+Spec 1 §47 by a trace satisfying the restrictions of C23, the O10.2 exclusivity of C13.11 follows
+from the effective `Modify` of the constructing frame's authority over the controller leaf. Under
+`DDSound` (Spec 1 §80) and well-formed statics (Spec 1 §47). -/
+theorem ctlRight_exclusive_reached {ks : KShared} {L : MutexLayout} {statics : Statics}
+    {lbls : List Label} {st' : SC × SyncReg × ArenaReg} (hdd : DDSound ks.toK)
+    (hst : StaticsOK statics)
+    (h : RestrictedTrace ks L (SC.ofS3 (S3.init statics), [], []) lbls st') {c a ctl : Nat}
+    (ha : effective (st'.1.view c) a ctl = some .modify) :
+    ∀ b ∈ List.range st'.1.A.length, b ≠ a → effective (st'.1.view c) b ctl = none :=
+  ctlRight_exclusive_of_i1 (restricted_inv hdd hst h).1.2.1.1.1 ha
+
 /-! ## The guard on administration identities (C13.7, Spec 1 §56; `OB-C16`) -/
 
 /-- **Theorem 5** (C13.7, C21.4, Spec 1 §56; `OB-C16`): every state reached from the initial state
@@ -66,8 +92,7 @@ theorem admin_guard_reached {ks : KShared} {L : MutexLayout} {statics : Statics}
 /-- C19 ("the grant must therefore cover the entire required administrative footprint"): an
 authority whose effective mode permits `m` on every leaf of a place covers every leaf of that
 place (Spec 1 §43, case 1: an authority that does not cover a leaf has no effective mode there).
-For the administration right `MetaRight` (Spec 1 §36), the authority on which it rests, a grant
-in particular, covers every leaf of the administrative value. -/
+`metaRight_grounded` applies it to the authority on which `MetaRight` rests. -/
 theorem metaRight_covers {t : S3} {a p : Nat} {m : Mode}
     (h : ∀ l ∈ footprint t.P p, Allows (effective t a l) m) :
     ∀ l ∈ footprint t.P p, ∃ x, t.A[a]? = some x ∧ x.active = true ∧ l ∈ x.footprint := by
@@ -80,13 +105,33 @@ theorem metaRight_covers {t : S3} {a p : Nat} {m : Mode}
     exact ⟨x, hx, ha, hlx⟩
 
 /-- **Theorem 5** (C19, Spec 1 §36, §77.1): an `ok` `issue` executed by `c` satisfies the inherited
-administration right `MetaRight` of Spec 1, unweakened, on the view of `c` (C2), and the authority
-on which it rests covers every leaf of the arena value. -/
+administration right `MetaRight` of Spec 1, unweakened, on the view of `c` (C2); the authority on
+which it rests covers every leaf of the arena value (`metaRight_grounded`). -/
 theorem issue_metaRight {k : K} {s : SC} {ar : ArenaReg} {c i : Nat} {region : List Nat}
     {dst : Nat} {st' : SC × ArenaReg} (h : IssueStepC k s ar c i region dst (.ok st')) :
     ∃ E, ar[i]? = some E ∧ Arena.MetaRight (s.view c) E := by
   obtain ⟨E, -, hE, hst, -⟩ := issueStepC_ok h
   exact ⟨E, hE, hst.metaRight⟩
+
+/-- **Theorem 5** (C19: "A grant protecting an administrative value may permit `MetaRight` only
+when it provides exercisable `Modify` over every required leaf of that administrative value. The
+grant must therefore cover the entire required administrative footprint"; Spec 1 §36, §43):
+`MetaRight` rests on an authority exercisable in `Modify` whose effective mode permits `Modify` on
+every leaf of the administrative value and which covers each of them; a grant permitting
+`MetaRight` is such an authority. Fragment: every state. -/
+theorem metaRight_grounded {t : S3} {E : Arena.ArenaEntry} (h : Arena.MetaRight t E) :
+    ∃ v b, Arena.arenaValue t E = some v ∧ t.ExercisableAt b .modify ∧
+      ∀ l ∈ footprint t.P v, Allows (effective t b l) .modify ∧
+        ∃ x, t.A[b]? = some x ∧ x.active = true ∧ l ∈ x.footprint := by
+  unfold Arena.MetaRight at h
+  cases hv : Arena.arenaValue t E with
+  | none => rw [hv] at h; exact h.elim
+  | some v =>
+    rw [hv] at h
+    simp only [OptP] at h
+    unfold HasRight at h
+    obtain ⟨b, -, hb, hall⟩ := h
+    exact ⟨v, b, rfl, hb, fun l hl => ⟨hall l hl, metaRight_covers hall l hl⟩⟩
 
 /-- An exercisable authority exists (Spec 1 §43). -/
 theorem exercisable_lt {t : S3} {b : Nat} {m : Mode} (h : t.ExercisableAt b m) : b < t.A.length := by

@@ -14,8 +14,8 @@ frame structure satisfies `FramesC`:
   projection, and an `ok` outcome stays a single-context state whose projection is the Spec 1
   effect (`conservative_op`, `conservative_ok`).
 
-The statement on `K_C.SyncAuthorized` and `deriveSync` is in `Ern.ConcurrencyModel.SyncLib`
-(`conservative_deriveSync`).
+The statements on `K_C.SyncAuthorized` and `deriveSync` are in `SequentialConservativity`
+(`projection_libKC`, `registry_none_no_deriveSync`).
 
 Theorem numbers are those of `formal/DESIGN.md`, Milestone 4, target theorems.
 -/

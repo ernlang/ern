@@ -27,8 +27,9 @@ def mutexStatics : Statics :=
 theorem mutexStatics_ok : StaticsOK mutexStatics := by decide
 
 /-- The contract of the mutex witnesses: the controller `lock` (place 2) is the only
-`SharedMutable` leaf; no discipline is selected. -/
-abbrev kMutex : KShared := testKS [2] (fun _ => none) false
+`SharedMutable` leaf, of discipline `Atomic(4, 4)` (C35: one discipline for each applicable
+`SharedMutable` leaf). -/
+abbrev kMutex : KShared := testKS [2] (fun l => if l = 2 then some (.atomic 4 4) else none) false
 
 /-- Initial single-context state (Spec 1 §47). -/
 def m0 : SC := SC.ofS3 (S3.init mutexStatics)
@@ -80,6 +81,18 @@ theorem mutex_encapsulated : EncapsulatedTrace kMutex mutexLayout (m0, [], [])
     (.acquire (st' := (m5, regTaken)) mutex_steps.2.2.2.2.2.1) <|
   .cons ⟨by unfold RestrictedStep; decide, by decide, by decide⟩
     (.unlock (st' := (m6, regFree)) mutex_steps.2.2.2.2.2.2) .nil
+
+/-- C22 ("It is not implied by structural exclusivity I1 alone"): from the constructed mutex,
+context 1 takes a raw `deriveSync(guarded)`, `ok` under the library instantiation of
+`SyncAuthorized` (C15) and excluded by C22.2 (`RestrictedStep`). The resulting state satisfies
+`I1` (Spec 1 §50) while the entry records `grant = none` and an active descendant covers `T`:
+`GrantDiscipline` fails. -/
+theorem grantDiscipline_not_of_i1 :
+    DeriveSyncStep (libKC kMutex mutexLayout) regFree m4 1 2 (.ok m5) ∧
+    ¬ RestrictedStep mutexLayout (m4, regFree, []) (.deriveSync 1 2) ∧ I1 m5.flat ∧
+    ¬ GrantDiscipline m5 regFree :=
+  ⟨⟨by decide, .ok (by decide)⟩, by unfold RestrictedStep; decide, by decide,
+    by unfold GrantDiscipline; decide⟩
 
 /-! ## Rows 1a–1c: `join` (C8) -/
 

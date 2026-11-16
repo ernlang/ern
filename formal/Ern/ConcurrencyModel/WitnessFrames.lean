@@ -59,6 +59,16 @@ theorem witness_7a : opStepC kFrames.toK (.derive 2 [2] .modify) 0 f4 (.ok f5) �
   have hp : SpawnValPre kFrames.toK f5 0 [4] [(none, 0)] [(1, 4)] := by decide
   ⟨⟨by decide, _, .ok (by decide), rfl⟩, hp, .spawnVal ⟨by decide, .ok hp⟩⟩
 
+/-- C4 ("An active `Modify` derivative transferred to the child continues to suppress conflicting
+effective exercise through its origin in the creator, by Spec 1 §43"), C9: before the derivation
+`root_p` has effective mode `Modify` on `p` for context 0; after the composite of row 7a yields
+`a := derive(root_p, Modify, {p})` to context 1, `a` is active and `root_p` has no effective mode
+on `p` for context 0 (`SC.effective_view`). -/
+theorem witness_derivative_restricts : effective (f4.view 0) 2 2 = some .modify ∧
+    (spawnValEff f5 0 [4] [(none, 0)] [(1, 4)]).flat.Active 4 ∧
+    effective ((spawnValEff f5 0 [4] [(none, 0)] [(1, 4)]).view 0) 2 2 = none := by
+  decide
+
 /-- **Row 7b** (C5 item 5, `reject`): the same composite yielding `b`, which covers the leaf of
 the source `v`. Single cause: C5 item 5 fails; the other preconditions of C4 and C5 hold, the
 transfer phase of `v` included (`b` grounds the `Modify` right over `v`, Spec 1 §63.1, §63.4).

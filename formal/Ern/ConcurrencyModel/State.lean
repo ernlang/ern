@@ -84,6 +84,14 @@ It is the `S₃` view of C2 on which `K.Satisfiable` of an `alloc` executed by `
 def SC.view (s : SC) (c : Nat) : S3 :=
   { s.flat with F := s.stk c ++ s.frames.filter fun f => decide (f ∉ s.stk c) }
 
+/-- C2 ("The authority and dependency state is globally coherent"), C4 ("An active `Modify`
+derivative transferred to the child continues to suppress conflicting effective exercise through
+its origin in the creator, by Spec 1 §43"), C9 ("An active derivative continues to restrict its
+origin according to effective rights"): effective modes (Spec 1 §43) are read on the global
+authority state, whatever the context whose view is taken. -/
+theorem SC.effective_view (s : SC) (c a l : Nat) : effective (s.view c) a l = effective s.flat a l :=
+  rfl
+
 /-- Kernel components of an `S3` written back into `s`; contexts unchanged (C2). -/
 def SC.set (s : SC) (t : S3) : SC :=
   { s with nF := t.nF, P := t.P, I := t.I, A := t.A, D := t.D, dead := t.dead, pins := t.pins }
