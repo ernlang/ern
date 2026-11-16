@@ -8,7 +8,9 @@ import Ern.ConcurrencyModel.AtomicCases
 import Ern.ConcurrencyModel.Conservativity
 import Ern.ConcurrencyModel.Contract
 import Ern.ConcurrencyModel.DeriveSync
+import Ern.ConcurrencyModel.Encapsulation
 import Ern.ConcurrencyModel.FrameAncestry
+import Ern.ConcurrencyModel.Inventory
 import Ern.ConcurrencyModel.Library
 import Ern.ConcurrencyModel.Outcomes
 import Ern.ConcurrencyModel.Preservation
