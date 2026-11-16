@@ -6,8 +6,8 @@ import Ern.ConcurrencyModel.WitnessBase
 Rows 1a–5d of the witness table of the tranche brief. States are built from the initial state of
 Spec 1 §47 by `ok` steps. A rejection states its single cause: the named condition fails and
 every other precondition of the clause holds in the same state; its positive twin is cited in its
-docstring. Outcome classes are those of theorem 7 (`Outcomes`). C13 names no outcome for a failed
-precondition of `newMutex`: its rejections are stated as the absence of an `ok` step.
+docstring. Outcome classes are those of `Outcomes` (theorem 7, and `NewMutexOutcome` for C13 with
+Spec 1 §58).
 -/
 
 namespace Ern.ConcurrencyModel
@@ -341,8 +341,9 @@ theorem witness_2e : regFree[1]? = none ∧ AcquireReject mutexLayout m4 regFree
 
 /-! ## Rows 5a–5d: `newMutex` (C13)
 
-C13 names no outcome for a failed precondition: a rejection is the absence of an `ok` step,
-`NewMutexOk` and `LStep` alike, with exactly the named precondition failing. -/
+C13 names no outcome for a failed precondition; Spec 1 §58 makes it `reject`
+(`NewMutexOutcome`). Each rejection also shows the absence of an `ok` step, `NewMutexOk` and
+`LStep` alike, with exactly the named precondition failing. -/
 
 /-- **Row 5a** (C13, `ok`): `newMutex(guarded)` by context 0 after `store(guarded, slot)`: the
 twelve preconditions C13.1–C13.11 hold (C13.11 through `root_M`, of effective mode `Modify` on
@@ -380,12 +381,13 @@ theorem witness_5b : opStepC kMutex.toK (.derive 0 [2] .observe) 0 m2 (.ok n3) �
     OptP (ControlOf mutexLayout n3 ⟨2, none⟩) (fun ctl => ∀ e ∈ ([] : SyncReg), e.Live n3 →
       ControlOf mutexLayout n3 e ≠ some ctl) False ∧
     NoCoveringDesc n3 2 ∧
+    NewMutexOutcome kMutex.toK mutexLayout [] n3 [] 0 2 .reject ∧
     (∀ st', ¬ NewMutexOk kMutex.toK mutexLayout [] n3 [] 0 2 st') ∧
     ∀ st', ¬ LStep kMutex mutexLayout (.newMutex 0 2) (n3, [], []) st' :=
   have hn : ¬ NewMutexPre kMutex.toK mutexLayout [] n3 [] 0 2 := by decide
   ⟨⟨by decide, _, .ok (by decide), rfl⟩, by decide, by decide, by decide, by decide, by decide,
     by decide, by decide, by decide, by decide, by decide, by decide, by decide, by decide,
-    by decide, (newMutex_none hn).1, (newMutex_none hn).2⟩
+    by decide, .reject (by decide) hn, (newMutex_none hn).1, (newMutex_none hn).2⟩
 
 /-- Statics of row 5c (Spec 1 §47): `0` the mutex value `M`, `1` its field `slot` (`Init`), `2`
 its field `lock` (`Init`), `3` and `4` two protected roots `T₁`, `T₂` (`Init`), both owned by
@@ -425,13 +427,14 @@ theorem witness_5c : NewMutexOk kMutex.toK mutexLayout [] u0 [] 0 1 (u0, [⟨1, 
     OptP (ControlOf mutexLayout u0 ⟨2, none⟩) (fun ctl => ∃ a ∈ List.range u0.A.length,
       (u0.view 0).ExercisableAt a .modify ∧ effective (u0.view 0) a ctl = some .modify ∧
       ∀ b ∈ List.range u0.A.length, b ≠ a → effective (u0.view 0) b ctl = none) False ∧
+    NewMutexOutcome kMutex.toK mutexLayout [] u0 [⟨1, none⟩] 0 2 .reject ∧
     (∀ st', ¬ NewMutexOk kMutex.toK mutexLayout [] u0 [⟨1, none⟩] 0 2 st') ∧
     (∀ st', ¬ LStep kMutex mutexLayout (.newMutex 0 2) (u0, [⟨1, none⟩], []) st') ∧
     NewMutexOk kMutex.toK mutexLayout [] u0 [] 0 2 (u0, [⟨2, none⟩]) :=
   have hn : ¬ NewMutexPre kMutex.toK mutexLayout [] u0 [⟨1, none⟩] 0 2 := by decide
   ⟨⟨by decide, by decide, rfl⟩, by decide, by decide, by decide, by decide, by decide, by decide,
     by decide, by decide, by decide, by decide, by decide, by decide, by decide, by decide,
-    (newMutex_none hn).1, (newMutex_none hn).2, ⟨by decide, by decide, rfl⟩⟩
+    .reject (by decide) hn, (newMutex_none hn).1, (newMutex_none hn).2, ⟨by decide, by decide, rfl⟩⟩
 
 /-- The arena registry after `newArena(T, guarded)` by context 0 (Spec 1 §76). -/
 def arT : ArenaReg := [⟨3, 2, footprint m2.P 3, []⟩]
@@ -458,11 +461,12 @@ theorem witness_5d : NewArenaStepC m2 [] [] 0 3 2 (.ok (m2, arT)) ∧
     OptP (ControlOf mutexLayout m2 ⟨2, none⟩) (fun ctl => ∃ a ∈ List.range m2.A.length,
       (m2.view 0).ExercisableAt a .modify ∧ effective (m2.view 0) a ctl = some .modify ∧
       ∀ b ∈ List.range m2.A.length, b ≠ a → effective (m2.view 0) b ctl = none) False ∧
+    NewMutexOutcome kMutex.toK mutexLayout arT m2 [] 0 2 .reject ∧
     (∀ st', ¬ NewMutexOk kMutex.toK mutexLayout arT m2 [] 0 2 st') ∧
     ∀ st', ¬ LStep kMutex mutexLayout (.newMutex 0 2) (m2, [], arT) st' :=
   have hn : ¬ NewMutexPre kMutex.toK mutexLayout arT m2 [] 0 2 := by decide
   ⟨⟨by decide, .ok (by decide)⟩, by decide, by decide, by decide, by decide, by decide, by decide,
-    by decide, by decide, by decide, by decide, by decide, by decide, (newMutex_none hn).1,
-    (newMutex_none hn).2⟩
+    by decide, by decide, by decide, by decide, by decide, by decide, .reject (by decide) hn,
+    (newMutex_none hn).1, (newMutex_none hn).2⟩
 
 end Ern.ConcurrencyModel

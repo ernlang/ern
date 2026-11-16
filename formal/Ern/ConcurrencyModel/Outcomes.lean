@@ -15,6 +15,8 @@ steps").
   conditions take precedence for the same state.
 * `deriveSync` (C15), `unlock` (C17), `resetLock` (C18): `ok` or `reject`, no waiting class;
   `resetLock` does not require `grant = none`.
+* `newMutex` (C13): `ok` or `reject` (Spec 1 §58; C13 names no outcome for a failed
+  precondition and defines no `fail`).
 
 The logical controller state is the recorded grant of the entry (C12, C17 effect); `acquire` is
 one coherent abstract step (C16), so no abstract state has the controller occupied by another
@@ -290,5 +292,32 @@ theorem resetLock_outcomes {L : MutexLayout} {s : SC} {reg : SyncReg} {c i : Nat
   · by_cases h : ResetLockPre L s reg c i
     · exact .inl h
     · exact .inr (.reject hl h)
+
+/-! ## `newMutex` (C13, Spec 1 §58) -/
+
+/-- The outcomes of `newMutex(guarded)` executed by `c` (C13, Spec 1 §58): `ok` with the effect of
+C13, `reject` when a precondition C13.1–C13.11 fails. C13 names no outcome for a failed
+precondition; Spec 1 §58 gives every operation an outcome among `ok`, `reject` and `fail`,
+`reject` meaning that "the static discipline does not permit the step", and a library operation
+produces `fail` only where it defines it ("Library-abstraction operations ... may define their own
+`fail` cases"), which C13 does not. No waiting outcome. -/
+inductive NewMutexOutcome (k : K) (L : MutexLayout) (ar : ArenaReg) (s : SC) (reg : SyncReg)
+    (c g : Nat) : Outcome3 (SC × SyncReg) → Prop where
+  | ok {st' : SC × SyncReg} : NewMutexOk k L ar s reg c g st' →
+      NewMutexOutcome k L ar s reg c g (.ok st')
+  | reject : s.Live c → ¬ NewMutexPre k L ar s reg c g → NewMutexOutcome k L ar s reg c g .reject
+
+/-- `newMutex` (C13, Spec 1 §58): for a live context, `ok` exactly when C13.1–C13.11 hold, else
+`reject`; no `fail`. Fragment: every state. -/
+theorem newMutex_outcomes {k : K} {L : MutexLayout} {ar : ArenaReg} {s : SC} {reg : SyncReg}
+    {c g : Nat} (hl : s.Live c) :
+    (NewMutexPre k L ar s reg c g ↔ ∃ st', NewMutexOk k L ar s reg c g st') ∧
+      (∀ o, NewMutexOutcome k L ar s reg c g o → o ≠ .fail) ∧
+      (NewMutexPre k L ar s reg c g ∨ NewMutexOutcome k L ar s reg c g .reject) := by
+  refine ⟨⟨fun h => ⟨_, hl, h, rfl⟩, fun ⟨_, _, h, _⟩ => h⟩,
+    (fun o h => by cases h <;> (intro e; cases e)), ?_⟩
+  by_cases h : NewMutexPre k L ar s reg c g
+  · exact .inl h
+  · exact .inr (.reject hl h)
 
 end Ern.ConcurrencyModel
