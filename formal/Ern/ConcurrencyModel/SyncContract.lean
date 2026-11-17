@@ -52,18 +52,21 @@ theorem grants_exclusive {s : SC} (hw : WF3 s.flat) (h1 : I1 s.flat) {g a b : Na
 /-! ## Soundness of the synchronization contract (C14, C15, C25; `OB-C15`) -/
 
 /-- **Theorem 4**, soundness of the synchronization contract (C14, C15, C25; `OB-C15`): under `SyncInv` and `GrantDiscipline`, and the kernel invariant
-re-indexed (`KInvC`: `WF3`, `I1` and `I2` are used), the library instantiation of
-`SyncAuthorized` (the facts C14.1–C14.3 only) on the registry, for the current frame of a live
-context, entails that no active descendant of `guarded` covers a protected leaf and all the
+re-indexed (`KInvC`: `FramesC`, `WF3`, `I1` and `I2` are used), the library instantiation of
+`SyncAuthorized` (the facts C14.1–C14.3 only) on the registry, for the current frame of the
+requesting context, entails that no active descendant of `guarded` covers a protected leaf and all the
 preconditions of `deriveSync` on that registry, in particular the own mode (C15.1), I1 for the
 full-footprint grant (§60.3) and the validity of the origin chain (§60.1). Fragment: states
 satisfying `KInvC`. -/
 theorem realizability {ks : KShared} {L : MutexLayout} {reg : SyncReg} {ar : ArenaReg} {s : SC}
     {c g : Nat}
-    (hk : KInvC s) (hsi : SyncInv L s reg ar) (hgd : GrantDiscipline s reg) (hc : s.stk c ≠ [])
+    (hk : KInvC s) (hsi : SyncInv L s reg ar) (hgd : GrantDiscipline s reg)
     (ha : LibSyncAuthorized L reg s g (s.view c).top) :
     NoCoveringDesc s g ∧ DeriveSyncPre (libKC ks L) reg s c g := by
+  -- C14.3, C2: a context that is not live has no controller-access right.
+  have hl : s.Live c := Decidable.byContradiction fun h => SC.dead_not_libSyncAuthorized h ha
   obtain ⟨⟨hfr, hw⟩, ⟨⟨h1, h2, -, -⟩, -, -⟩, -, -⟩ := hk
+  have hc : s.stk c ≠ [] := hfr.nonempty c hl
   obtain ⟨e, he, rfl, hl, hn, hcr⟩ := ha
   have hnc := hgd e he hl hn
   obtain ⟨y, hy, ya⟩ := hl
