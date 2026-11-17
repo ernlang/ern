@@ -5,15 +5,18 @@ import Ern.ConcurrencyModel.FrameAncestry
 
 Theorem 1 of `formal/DESIGN.md`, Milestone 4, target theorems:
 
-* the five state-level requirements of C24 on a single-context state (`sequential_conservativity`):
-  preconditions and outcomes coincide, projected effects coincide, authority exercise retains the
-  Spec 1 definition, sequential ancestry is recovered, the sequential invariants correspond;
+* C24 is carried by the statements on states whose only live context is the initial one
+  (`SC.Sole`): the five state-level requirements (`sole_conservativity`): preconditions and
+  outcomes coincide, projected effects coincide, authority exercise retains the Spec 1
+  definition, sequential ancestry is recovered, the sequential invariants correspond; and the
+  last paragraph of C24, a history involving additional contexts does not return to an invalid
+  single-context authority state (`no_invalid_sole_return`, the additional contexts having
+  terminated);
+* the statements on `SC.Single` (one context in all) are the special case of histories without
+  `spawn`: `sequential_conservativity` of `sole_conservativity`, `no_invalid_single_return` of
+  `no_invalid_sole_return`;
 * the reachable sequential domain under inherited operations corresponds to the sequential domain
   of Spec 1, in both directions (`sequential_domain`, `sequential_domain_converse`);
-* a history involving additional contexts does not return to an invalid single-context authority
-  state (`no_invalid_single_return` for `SC.Single`; `no_invalid_sole_return` for every reached
-  state whose only live context is the initial one, the additional contexts having terminated),
-  and the five requirements hold on such states (`sole_conservativity`);
 * the two verification obligations of C2: the registry is an external argument of
   `K_C.SyncAuthorized` (`registry_external`, `registry_none_no_deriveSync`), and `K.Satisfiable`
   of a context-executed allocation is evaluated on the view of the executing context
@@ -24,8 +27,9 @@ namespace Ern.ConcurrencyModel
 
 open Ern.MemoryModel.Access
 
-/-- **Theorem 1** (C24, C2) on a single-context state with the frame structure `FramesC`: for
-every inherited operation O1–O16 executed by the context,
+/-- **Theorem 1** (C24, C2) on a single-context state with the frame structure `FramesC`, the
+special case of `sole_conservativity` where the state has one context in all: for every inherited
+operation O1–O16 executed by the context,
 
 1. preconditions and outcomes coincide with Spec 1 on the projection `SC.toS3`, outcome by
    outcome;
@@ -80,12 +84,14 @@ theorem sequential_domain {ks : KShared} {L : MutexLayout} {statics : Statics} {
   obtain ⟨hsg, hr, hk⟩ := key h hlab ⟨⟨_, rfl⟩, by rw [toS3_ofS3]; exact .init, hk0⟩
   exact ⟨hsg, hr, hk.1⟩
 
-/-- **Theorem 1** (C24: "A transition history involving additional contexts must not return to an
-invalid single-context authority state"): along every run of the labelled step relation from the
-initial state of Spec 1 §47 (any contexts, libraries and atomic cases, without trace
-restriction), a reached single-context state satisfies the frame structure and the kernel
+/-- **Theorem 1**, special case of the histories without `spawn` (C24): along every run of the
+labelled step relation from the initial state of Spec 1 §47 (any contexts, libraries and atomic
+cases, without trace restriction), a reached single-context state (`SC.Single`, one context in
+all, which no run containing a `spawn` reaches) satisfies the frame structure and the kernel
 invariant of Spec 1 §57 on its projection, under `DDSound` (Spec 1 §80) and well-formed statics
-(Spec 1 §47). -/
+(Spec 1 §47). The last paragraph of C24 ("A transition history involving additional contexts must
+not return to an invalid single-context authority state") is carried by
+`no_invalid_sole_return`. -/
 theorem no_invalid_single_return {ks : KShared} {L : MutexLayout} {statics : Statics}
     {lbls : List Label} {st' : SC × SyncReg × ArenaReg} (hdd : DDSound ks.toK)
     (hst : StaticsOK statics) (h : LRun ks L (SC.ofS3 (S3.init statics), [], []) lbls st')

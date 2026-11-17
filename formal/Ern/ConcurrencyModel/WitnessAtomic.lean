@@ -98,7 +98,10 @@ theorem witness_6e : WriteSharedPre kAtomic.toK (v0.view 0) 0 [1, 2] ∧ AtomicL
 /-- **Witness 6f** (C38, `reject`): `writeShared(root_V, {1, 3}, release)` over an `Atomic` and a
 `Synchronized` leaf, with no composite contract. Single cause: the composite contract of C38 is
 missing; the classes are mixed with at most one `Atomic` leaf, and the O11 preconditions hold.
-Positive twin: the same request under a contract whose composite contract admits it, `ok`. -/
+Positive twin: the same request under the test contract `kComposite`, whose composite contract
+admits every region, `ok`. The twin rests on that test contract admitting the step; it does not
+establish that such a composite contract is justified under C38–C40. The rejection without a
+composite contract is grounded by C38. -/
 theorem witness_6f : WriteSharedPre kAtomic.toK (v0.view 0) 0 [1, 3] ∧
     MixedClasses kAtomic [1, 3] ∧
     ([1, 3].filter fun l => decide (AtomicLeaf kAtomic l)).length ≤ 1 ∧
