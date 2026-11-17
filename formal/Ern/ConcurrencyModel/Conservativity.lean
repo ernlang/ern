@@ -3,7 +3,8 @@ import Ern.ConcurrencyModel.Steps
 /-!
 # Sequential conservativity (C24)
 
-On single-context states (`SC.Single`: one context, the initial one, live, without parent) whose
+On states whose only live context is the initial one, without parent (`SC.Sole`), in particular
+single-context states (`SC.Single`: one context, the initial one, live, without parent), whose
 frame structure satisfies `FramesC`:
 
 * `ancestorC` coincides with `ancestor` of Spec 1 §39 on the stack of the context
@@ -11,8 +12,9 @@ frame structure satisfies `FramesC`:
 * `AnchorOrderC`, `AnchorOrderHeldC` and `KInvC` coincide with their Spec 1 counterparts on the
   projection `SC.toS3` (`single_anchorOrderC`, `single_anchorOrderHeldC`, `single_kInvC`);
 * every inherited operation O1–O16 executed by the context has the outcomes of Spec 1 on the
-  projection, and an `ok` outcome stays a single-context state whose projection is the Spec 1
-  effect (`conservative_op`, `conservative_ok`).
+  projection, and an `ok` outcome stays a single-context state (`conservative_ok`), or keeps the
+  initial context the only live one (`conservative_ok_sole`), whose projection is the Spec 1
+  effect (`conservative_op`).
 
 The statements on `K_C.SyncAuthorized` and `deriveSync` are in `SequentialConservativity`
 (`projection_libKC`, `registry_none_no_deriveSync`).
@@ -556,9 +558,10 @@ theorem exitPreC_single (hs : s.Sole) (hd : (s.stk 0).Pairwise (· > ·)) :
     refine ⟨a, ?_, ?_, ?_, haoh.2 e⟩ <;> simp only [hv] <;> assumption
 
 /-- Theorem 1 (C24, "preconditions and outcomes coincide; projected effects coincide"): on a
-single-context state with the frame structure `FramesC`, every inherited operation O1–O16
-executed by the context has exactly the outcomes of Spec 1 (§58, §60–§75) on the projection
-`SC.toS3`, outcome by outcome. Fragment: single-context states, operations O1–O16. -/
+state whose only live context is the initial one, with the frame structure `FramesC`, every
+inherited operation O1–O16 executed by the context has exactly the outcomes of Spec 1 (§58,
+§60–§75) on the projection `SC.toS3`, outcome by outcome. Fragment: states whose only live
+context is the initial one (`SC.Sole`), single-context states included; operations O1–O16. -/
 theorem conservative_op (hs : s.Sole) (hfr : FramesC s) (op : KernelOp) :
     (∀ o, opStepC k op 0 s o → op.Step k s.toS3 (omap SC.toS3 o)) ∧
     (∀ o₃, op.Step k s.toS3 o₃ → ∃ o, opStepC k op 0 s o ∧ omap SC.toS3 o = o₃) := by
