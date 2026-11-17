@@ -4,8 +4,8 @@ import Ern.ConcurrencyModel.SequentialConservativity
 /-!
 # Witnesses: `join`, `acquire`, `unlock`, `resetLock`, `newMutex` (C8, C13, C15–C18)
 
-Rows 1a–5d of the witness table of the tranche brief. States are built from the initial state of
-Spec 1 §47 by `ok` steps. A rejection states its single cause: the named condition fails and
+Each witness states its situation, its expected outcome and the clause that gives it. States are
+built from the initial state of Spec 1 §47 by `ok` steps. A rejection states its single cause: the named condition fails and
 every other precondition of the clause holds in the same state; its positive twin is cited in its
 docstring. Outcome classes are those of `Outcomes` (theorem 7, and `NewMutexOutcome` for C13,
 "Outcome").
@@ -200,9 +200,9 @@ theorem witness_spawn_terminated : ¬ mJ.Live 1 ∧ mJ.stk 1 = [] ∧
     fun _ h => by cases h with | spawn h => exact hc (spawnStep_live h),
     .spawn (.ok (by decide))⟩
 
-/-! ## Rows 2a–2e: `acquire` (C15, C16) -/
+/-! ## `acquire` (C15, C16) -/
 
-/-- **Row 2a** (C15, C16.3, `ok`): `acquire(e)` by context 1 from `m4`: the entry is live,
+/-- **Witness 2a** (C15, C16.3, `ok`): `acquire(e)` by context 1 from `m4`: the entry is live,
 `grant = none` (C14.1, C14.2), the requester has the controller-access right (C14.3, through
 `o`), and the preconditions of `deriveSync` hold (C15.1–C15.6). The controller acquisition under
 its protocol is a realization obligation not represented in `S_C` (C16: C41, C48, C49, `OB-C05`);
@@ -215,7 +215,7 @@ theorem witness_2a : EntryAuth mutexLayout m4 ⟨2, none⟩ (m4.view 1).top ∧
     .acquire (st' := (m5, regTaken)) mutex_steps.2.2.2.2.2.1,
     ⟨by unfold RestrictedStep; decide, by decide, by decide⟩⟩
 
-/-- **Row 2b** (C16.2, not enabled): the request of context 0 is legal and the recorded grant 4 is
+/-- **Witness 2b** (C16.2, not enabled): the request of context 0 is legal and the recorded grant 4 is
 active: no outcome, no labelled step. -/
 theorem witness_2b : m5.flat.Active 4 ∧ AcquireNotEnabled mutexLayout m5 regTaken 0 0 ∧
     (∀ o, ¬ AcquireOutcome kMutex mutexLayout m5 regTaken 0 0 o) ∧
@@ -234,7 +234,7 @@ def m5e : SC := enterEffC m5d 1 [4] []
 re-anchored on `guarded`. -/
 def m5x : SC := exitEffC m5e 1
 
-/-- **Row 2c** (C16.2, not enabled): after a frame exit, the recorded grant 4 is inactive while its
+/-- **Witness 2c** (C16.2, not enabled): after a frame exit, the recorded grant 4 is inactive while its
 derived authority `g′` survives and covers `T`; the request of context 0 is legal: no outcome, no
 labelled step. -/
 theorem witness_2c : opStepC kMutex.toK (.derive 4 [3] .modify) 1 m5 (.ok m5d) ∧
@@ -253,9 +253,9 @@ theorem witness_2c : opStepC kMutex.toK (.derive 4 [3] .modify) 1 m5 (.ok m5d) �
 /-- Context 0 enters frame 2 without parameter (O6): it holds no authority there. -/
 def m5f : SC := enterEffC m5 0 [] []
 
-/-- **Row 2d** (C16.1 and precedence, `reject`): while the grant 4 is taken, context 0 from a
+/-- **Witness 2d** (C16.1 and precedence, `reject`): while the grant 4 is taken, context 0 from a
 frame without controller-access right requests `acquire(e)`. Single cause: C14.3 fails; the entry
-is live and the conditions of `AcquireIndependent` hold. Twin: row 2b, the same request from
+is live and the conditions of `AcquireIndependent` hold. Twin: `witness_2b`, the same request from
 frame 0, which has the right: legal, not enabled. -/
 theorem witness_2d : opStepC kMutex.toK (.enter [] []) 0 m5 (.ok m5f) ∧
     (⟨2, some 4⟩ : SyncEntry).Live m5f ∧ ¬ CtrlRight mutexLayout m5f ⟨2, some 4⟩ (m5f.view 0).top ∧
@@ -266,9 +266,9 @@ theorem witness_2d : opStepC kMutex.toK (.enter [] []) 0 m5 (.ok m5f) ∧
   ⟨(.ok (by decide)), by decide, by decide, by unfold AcquireIndependent; decide, hr,
     .reject hr⟩
 
-/-! ## Rows 3a–3d: `unlock` (C17) -/
+/-! ## `unlock` (C17) -/
 
-/-- **Row 3a** (C17, C17.4, `ok`): `unlock(e)` by context 1, holder of the active grant 4:
+/-- **Witness 3a** (C17, C17.4, `ok`): `unlock(e)` by context 1, holder of the active grant 4:
 C17.1 (live entry, `grant = some 4`), C17.2 and C17.3 (`ReleasePre`, O3), C17.4 (the
 controller-access right through `o` before the step and in the prospective state). -/
 theorem witness_3a : UnlockPre mutexLayout m5 regTaken 1 0 ∧
@@ -276,11 +276,11 @@ theorem witness_3a : UnlockPre mutexLayout m5 regTaken 1 0 ∧
   ⟨⟨⟨2, some 4⟩, 4, rfl, by decide, rfl, by decide, by decide, by decide⟩,
     .unlock (st' := (m6, regFree)) mutex_steps.2.2.2.2.2.2⟩
 
-/-- **Row 3b** (C17, `reject`): the recorded grant 4 has become inactive by an ordinary `release`
+/-- **Witness 3b** (C17, `reject`): the recorded grant 4 has become inactive by an ordinary `release`
 (O3; C18: "inherited legal release"). Single cause: the activity of C17.2 fails; the entry is live
 and records `grant = some 4`, the other conditions of O3 hold (derived, holder right, no active
 descendant, no anchor), and C17.4 holds before the step and in the prospective state. Positive
-twin: row 3a. -/
+twin: `witness_3a`. -/
 theorem witness_3b : opStepC kMutex.toK (.release 4) 1 m5 (.ok m6) ∧
     (⟨2, some 4⟩ : SyncEntry).Live m6 ∧ ¬ (m6.view 1).Active 4 ∧
     OptP ((m6.view 1).A[4]?) (fun y => y.origin ≠ none) False ∧
@@ -307,10 +307,10 @@ def n6 : SC := storeEffC n5 1 3 3
 /-- `o″ := derive(o′, Observe, {lock})` by context 1, authority 5, held by frame 1 (O1). -/
 def n7 : SC := n6.set (deriveEff (n6.view 1) 3 [2] .observe)
 
-/-- **Row 3c** (C17.4, `reject`): context 1 reaches the controller only through `o′`, held by the
+/-- **Witness 3c** (C17.4, `reject`): context 1 reaches the controller only through `o′`, held by the
 protected leaf `T` and exercisable through the grant: the right does not survive the release of
 the grant. Single cause: the prospective right of C17.4 fails; C17.1–C17.3 and the right before
-the step hold. Positive twin: row 3d. -/
+the step hold. Positive twin: `witness_3d`. -/
 theorem witness_3c : opStepC kMutex.toK (.derive 0 [2] .observe) 0 m2 (.ok n3) ∧
     SpawnStep n3 0 [3] [] (.ok n4) ∧ AcquireOk kMutex mutexLayout n4 regFree 1 0 (n5, regTaken) ∧
     opStepC kMutex.toK (.store 3 3) 1 n5 (.ok n6) ∧
@@ -325,7 +325,7 @@ theorem witness_3c : opStepC kMutex.toK (.derive 0 [2] .observe) 0 m2 (.ok n3) �
       exact (by decide : ¬ CtrlRight mutexLayout (prospectiveUnlock n6 1 4) ⟨2, some 4⟩
         (n6.view 1).top) hp⟩
 
-/-- **Row 3d** (C17.4, `ok`): as row 3c, after context 1 has obtained `o″ := derive(o′, Observe,
+/-- **Witness 3d** (C17.4, `ok`): as `witness_3c`, after context 1 has obtained `o″ := derive(o′, Observe,
 {lock})`, held by its frame, a controller-access right independent of the grant. -/
 theorem witness_3d : opStepC kMutex.toK (.derive 3 [2] .observe) 1 n6 (.ok n7) ∧
     UnlockPre mutexLayout n7 regTaken 1 0 ∧
@@ -336,13 +336,13 @@ theorem witness_3d : opStepC kMutex.toK (.derive 3 [2] .observe) 1 n6 (.ok n7) �
     .unlock (st' := (prospectiveUnlock n7 1 4, regFree))
       ⟨⟨2, some 4⟩, 4, rfl, by decide, rfl, by decide, by decide, by decide, rfl⟩⟩
 
-/-! ## Rows 4a–4d: `resetLock` (C18) -/
+/-! ## `resetLock` (C18) -/
 
 /-- Context 1 terminates while holding the grant 4, without `unlock` (C7; C18: frame exit): the
 grant is abandoned. -/
 def mA : SC := termEffC m5 1
 
-/-- **Row 4a** (C18, `ok`): `resetLock(e)` by context 0 on the abandoned grant 4, inactive, with no
+/-- **Witness 4a** (C18, `ok`): `resetLock(e)` by context 0 on the abandoned grant 4, inactive, with no
 active descendant: C18.1 (`ExercisableAt(guarded, Modify)` through `root_M` over `slot`), C18.2
 (no covering active descendant), C18.3 (usable controller leaf), C18.4 (controller-access right
 through `root_M`). -/
@@ -354,8 +354,8 @@ theorem witness_4a : TermStep kMutex.toK m5 1 (.ok mA) ∧ ¬ mA.flat.Active 4 �
     .resetLock (st' := (mA, regFree)) ⟨⟨2, some 4⟩, rfl, by decide, by decide, by decide,
       by decide, rfl⟩⟩
 
-/-- **Row 4b** (C18, `ok`): `resetLock(e)` by context 0 while `grant = none`: C18.1–C18.4 hold as
-in row 4a; no prerequisite on the recorded grant (C18). -/
+/-- **Witness 4b** (C18, `ok`): `resetLock(e)` by context 0 while `grant = none`: C18.1–C18.4 hold as
+in `witness_4a`; no prerequisite on the recorded grant (C18). -/
 theorem witness_4b : ResetLockPre mutexLayout m2 regFree 0 0 ∧
     LStep kMutex mutexLayout (.resetLock 0 0) (m2, regFree, []) (m2, regFree, []) :=
   ⟨⟨⟨2, none⟩, rfl, by decide, by decide, by decide, by decide⟩,
@@ -367,8 +367,8 @@ def mG : SC := deriveSyncEff m2 0 2
 /-- The registry recording the grant 3. -/
 def regG : SyncReg := [⟨2, some 3⟩]
 
-/-- **Row 4c** (C18.2, `reject`): the active grant 3, a descendant of `guarded`, covers `T`. Single
-cause: C18.2 fails; C18.1, C18.3 and C18.4 hold. Positive twin: row 4b. -/
+/-- **Witness 4c** (C18.2, `reject`): the active grant 3, a descendant of `guarded`, covers `T`. Single
+cause: C18.2 fails; C18.1, C18.3 and C18.4 hold. Positive twin: `witness_4b`. -/
 theorem witness_4c : AcquireOk kMutex mutexLayout m2 regFree 0 0 (mG, regG) ∧
     ¬ NoCoveringDesc mG 2 ∧ (mG.view 0).ExercisableAt 2 .modify ∧
     OptP (ControlOf mutexLayout mG ⟨2, some 3⟩) (fun ctl => mG.flat.Usable ctl ∧ isLeaf mG.P ctl)
@@ -387,7 +387,7 @@ def mT1 : SC := m2.set (deriveEff (m2.view 0) 0 [1, 2] .modify)
 /-- Context 0 enters frame 1 yielding `s′` (O6). -/
 def mT2 : SC := enterEffC mT1 0 [3] []
 
-/-- **Row 4d** (C18.4, `reject`): from frame 1, which holds `s` over `slot` only, `resetLock(e)`
+/-- **Witness 4d** (C18.4, `reject`): from frame 1, which holds `s` over `slot` only, `resetLock(e)`
 by context 0. Single cause: C18.4 fails; C18.1 (through `s` over `slot`), C18.2 and C18.3 hold.
 Positive twin: the same with `s′` over `slot` and `lock`, `ok`. -/
 theorem witness_4d : opStepC kMutex.toK (.derive 0 [1] .modify) 0 m2 (.ok mR1) ∧
@@ -408,19 +408,19 @@ theorem witness_4d : opStepC kMutex.toK (.derive 0 [1] .modify) 0 m2 (.ok mR1) �
     .resetLock (st' := (mT2, regFree)) ⟨⟨2, none⟩, rfl, by decide, by decide, by decide,
       by decide, rfl⟩⟩
 
-/-! ## Row 2e: `acquire` of an absent or dead entry (C16.1)
+/-! ## `acquire` of an absent or dead entry (C16.1)
 
-The dead entry is built from the abandoned grant of row 4a. -/
+The dead entry is built from the abandoned grant of `witness_4a`. -/
 
 /-- `release(guarded)` by context 0 after the grant 4 was abandoned (O3): the entry dies, the
 registry still recording `grant = some 4`. -/
 def mD : SC := mA.set (releaseEff (mA.view 0) 2)
 
-/-- **Row 2e** (C16.1, `reject`): `acquire` of an absent entry (index 1 of a one-entry registry),
+/-- **Witness 2e** (C16.1, `reject`): `acquire` of an absent entry (index 1 of a one-entry registry),
 then of a dead entry (`guarded` released, `grant = some 4` still recorded). Single cause for the
 dead entry: C14.1 fails; the controller-access right (C14.3) and the conditions of
 `AcquireIndependent` hold, and the recorded grant puts the grant-sensitive conditions out of
-`reject` (C16.1). Positive twin: row 2a. -/
+`reject` (C16.1). Positive twin: `witness_2a`. -/
 theorem witness_2e : regFree[1]? = none ∧ AcquireReject mutexLayout m4 regFree 1 1 ∧
     AcquireOutcome kMutex mutexLayout m4 regFree 1 1 .reject ∧
     opStepC kMutex.toK (.release 2) 0 mA (.ok mD) ∧ ¬ (⟨2, some 4⟩ : SyncEntry).Live mD ∧
@@ -432,13 +432,13 @@ theorem witness_2e : regFree[1]? = none ∧ AcquireReject mutexLayout m4 regFree
   ⟨rfl, (.inl rfl), .reject (.inl rfl), ⟨_, .ok (by decide), rfl⟩,
     by decide, by decide, by unfold AcquireIndependent; decide, hd, .reject hd⟩
 
-/-! ## Rows 5a–5d: `newMutex` (C13)
+/-! ## `newMutex` (C13)
 
 C13, "Outcome": `reject` when an applicable precondition fails, no `fail`
 (`NewMutexOutcome`). Each rejection also shows the absence of an `ok` step, `NewMutexOk` and
 `LStep` alike, with exactly the named precondition failing. -/
 
-/-- **Row 5a** (C13, `ok`): `newMutex(guarded)` by context 0 after `store(guarded, slot)`: the
+/-- **Witness 5a** (C13, `ok`): `newMutex(guarded)` by context 0 after `store(guarded, slot)`: the
 twelve preconditions C13.1–C13.11 hold (C13.11 through `root_M`, of effective mode `Modify` on
 `lock`, the only authority with an effective mode there). -/
 theorem witness_5a : NewMutexPre kMutex.toK mutexLayout [] m2 [] 0 2 ∧
@@ -452,9 +452,9 @@ theorem newMutex_none {k : KShared} {L : MutexLayout} {ar : ArenaReg} {s : SC} {
       ∀ st', ¬ LStep k L (.newMutex c g) (s, reg, ar) st' :=
   ⟨fun _ h' => h h'.1, fun _ h' => by cases h' with | newMutex h' => exact h h'.1⟩
 
-/-- **Row 5b** (C13.11, `reject`): after `o′ := derive(root_M, Observe, {lock})`, the frame of
+/-- **Witness 5b** (C13.11, `reject`): after `o′ := derive(root_M, Observe, {lock})`, the frame of
 context 0 has only `Observe` rights on the controller (`root_M` of effective mode `Observe`, `o′`).
-Single cause: C13.11 fails; the eleven other preconditions hold. Positive twin: row 5a. -/
+Single cause: C13.11 fails; the eleven other preconditions hold. Positive twin: `witness_5a`. -/
 theorem witness_5b : opStepC kMutex.toK (.derive 0 [2] .observe) 0 m2 (.ok n3) ∧
     effective (n3.view 0) 0 2 = some .observe ∧ effective (n3.view 0) 3 2 = some .observe ∧
     ¬ OptP (ControlOf mutexLayout n3 ⟨2, none⟩) (fun ctl => ∃ a ∈ List.range n3.A.length,
@@ -482,7 +482,7 @@ theorem witness_5b : opStepC kMutex.toK (.derive 0 [2] .observe) 0 m2 (.ok n3) �
     by decide, by decide, by decide, by decide, by decide, by decide, by decide, by decide,
     by decide, .reject hn, (newMutex_none hn).1, (newMutex_none hn).2⟩
 
-/-- Statics of row 5c (Spec 1 §47): `0` the mutex value `M`, `1` its field `slot` (`Init`), `2`
+/-- Statics of `witness_5c` (Spec 1 §47): `0` the mutex value `M`, `1` its field `slot` (`Init`), `2`
 its field `lock` (`Init`), `3` and `4` two protected roots `T₁`, `T₂` (`Init`), both owned by
 `slot`. Root authorities: `0` of `M` (frame 0), `1` of `T₁` and `2` of `T₂`, both held by `slot`.
 A `store` cannot give `slot` a second active authority (Spec 1 §65.2), so both are root
@@ -494,10 +494,10 @@ def mutexStatics2 : Statics :=
 /-- The statics are well formed (Spec 1 §47). -/
 theorem mutexStatics2_ok : StaticsOK mutexStatics2 := by decide
 
-/-- Initial state of row 5c (Spec 1 §47). -/
+/-- Initial state of `witness_5c` (Spec 1 §47). -/
 def u0 : SC := SC.ofS3 (S3.init mutexStatics2)
 
-/-- **Row 5c** (C13.8, `reject`): `root_T₂`, held by the same `slot`, has the controller `lock` of
+/-- **Witness 5c** (C13.8, `reject`): `root_T₂`, held by the same `slot`, has the controller `lock` of
 the live entry of `root_T₁` (positional `ControlOf`, C12). Single cause: C13.8 fails; the eleven
 other preconditions hold. Positive twin: the same `newMutex(root_T₂)` with an empty registry,
 `ok`. -/
@@ -532,10 +532,10 @@ theorem witness_5c : NewMutexOk kMutex.toK mutexLayout [] u0 [] 0 1 (u0, [⟨1, 
 /-- The arena registry after `newArena(T, guarded)` by context 0 (Spec 1 §76). -/
 def arT : ArenaReg := [⟨3, 2, footprint m2.P 3, []⟩]
 
-/-- **Row 5d** (C13.7, `reject`): `guarded` is the `internal` identity of a live arena registered
+/-- **Witness 5d** (C13.7, `reject`): `guarded` is the `internal` identity of a live arena registered
 by `newArena(T, guarded)` (Spec 1 §56, §76). Single cause: C13.7 fails on the arena registry; the
 eleven other preconditions hold, among them the uniqueness among synchronization entries.
-Positive twin: row 5a, the same request with an empty arena registry. -/
+Positive twin: `witness_5a`, the same request with an empty arena registry. -/
 theorem witness_5d : NewArenaStepC m2 [] [] 0 3 2 (.ok (m2, arT)) ∧
     2 ∈ Arena.liveInternals m2.flat arT ∧
     OptP (m2.A[2]?) (fun y => y.active = true ∧ y.mode = .modify ∧

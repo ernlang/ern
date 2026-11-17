@@ -3,10 +3,10 @@ import Ern.ConcurrencyModel.WitnessBase
 /-!
 # Witnesses: by-value `spawn` and frame exit with reparenting (C5, C6)
 
-Rows 7a, 7b and 8 of the witness table of the tranche brief. States are built from the initial
-state of Spec 1 §47 by `ok` steps. The rejection states its single cause: the named condition
-fails and every other precondition of the clause holds; its positive twin is cited in its
-docstring.
+Each witness states its situation, its expected outcome and the clause that gives it. States are
+built from the initial state of Spec 1 §47 by `ok` steps. The rejection states its single cause:
+the named condition fails and every other precondition of the clause holds; its positive twin is
+cited in its docstring.
 -/
 
 namespace Ern.ConcurrencyModel
@@ -49,7 +49,7 @@ def f5 : SC := f4.set (deriveEff (f4.view 0) 2 [2] .modify)
 /-- `b := derive(root_v, Modify, {v})` by context 0, authority 4 (O1). -/
 def f5' : SC := f4.set (deriveEff (f4.view 0) 1 [1] .modify)
 
-/-- **Row 7a** (C5, `ok`): from frame 1, the by-value composite creates context 1 with one local
+/-- **Witness 7a** (C5, `ok`): from frame 1, the by-value composite creates context 1 with one local
 `d` (place 4), moves `v` (and the root `T` it owns) into `d`, and yields `a`, which covers `p`
 only: the preconditions of C4 and C5 (items 1–5, C5.1–C5.4) hold. -/
 theorem witness_7a : opStepC kFrames.toK (.derive 2 [2] .modify) 0 f4 (.ok f5) ∧
@@ -61,7 +61,7 @@ theorem witness_7a : opStepC kFrames.toK (.derive 2 [2] .modify) 0 f4 (.ok f5) �
 
 /-- C4 ("An active `Modify` derivative transferred to the child continues to suppress conflicting
 effective exercise through its origin in the creator, by Spec 1 §43"), C9: before the derivation
-`root_p` has effective mode `Modify` on `p` for context 0; after the composite of row 7a yields
+`root_p` has effective mode `Modify` on `p` for context 0; after the composite of `witness_7a` yields
 `a := derive(root_p, Modify, {p})` to context 1, `a` is active and `root_p` has no effective mode
 on `p` for context 0 (`SC.effective_view`). -/
 theorem witness_derivative_restricts : effective (f4.view 0) 2 2 = some .modify ∧
@@ -69,10 +69,10 @@ theorem witness_derivative_restricts : effective (f4.view 0) 2 2 = some .modify 
     effective ((spawnValEff f5 0 [4] [(none, 0)] [(1, 4)]).view 0) 2 2 = none := by
   decide
 
-/-- **Row 7b** (C5 item 5, `reject`): the same composite yielding `b`, which covers the leaf of
+/-- **Witness 7b** (C5 item 5, `reject`): the same composite yielding `b`, which covers the leaf of
 the source `v`. Single cause: C5 item 5 fails; the other preconditions of C4 and C5 hold, the
 transfer phase of `v` included (`b` grounds the `Modify` right over `v`, Spec 1 §63.1, §63.4).
-Positive twin: row 7a. -/
+Positive twin: `witness_7a`. -/
 theorem witness_7b : opStepC kFrames.toK (.derive 1 [1] .modify) 0 f4 (.ok f5') ∧
     ¬ (∀ a ∈ [4], ∀ v ∈ [(1, 4)], ∀ l ∈ (f5'.view 0).afp a, l ∉ footprint f5'.P v.1) ∧
     f5'.stk 0 ≠ [] ∧
@@ -108,7 +108,7 @@ def f6 : SC := spawnValEff f4 0 [] [(none, 0)] [(1, 4)]
 /-- `exitFrameC` of frame 1 by context 0 (C6). -/
 def f7 : SC := exitEffC f6 0
 
-/-- **Row 8** (C6, `ok`): context 0 exits frame 1, the parent of the initial frame 2 of context 1:
+/-- **Witness 8** (C6, `ok`): context 0 exits frame 1, the parent of the initial frame 2 of context 1:
 the frame is the current non-initial frame of context 0 with the surviving caller frame 0, and the
 inherited conditions of O7 (O7.2–O7.5, under `ancestorC`) hold. The initial frame 2 takes the
 surviving caller frame 0 as parent; the other links are unchanged. -/

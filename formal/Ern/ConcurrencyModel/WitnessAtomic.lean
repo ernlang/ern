@@ -3,9 +3,9 @@ import Ern.ConcurrencyModel.WitnessBase
 /-!
 # Witnesses: the atomic step cases (C37–C40)
 
-Rows 6a–6h of the witness table of the tranche brief, on the initial state of Spec 1 §47. A
-rejection states its single cause: the named condition fails and every other precondition of the
-clause holds; its positive twin is cited in its docstring.
+Each witness states its situation, its expected outcome and the clause that gives it, on the
+initial state of Spec 1 §47. A rejection states its single cause: the named condition fails and
+every other precondition of the clause holds; its positive twin is cited in its docstring.
 -/
 
 namespace Ern.ConcurrencyModel
@@ -41,7 +41,7 @@ theorem not_atomic_disc {ks : KShared} {l : Nat} (h : ¬ AtomicLeaf ks l) :
     ¬ ∃ sz al, ks.SharedDiscipline l = some (.atomic sz al) :=
   fun ⟨_, _, e⟩ => h (by unfold AtomicLeaf; rw [e]; rfl)
 
-/-- **Row 6a** (C37, C40, `ok`, state unchanged): `readShared(root_V, 1, acquire)`: C37.1–C37.2
+/-- **Witness 6a** (C37, C40, `ok`, state unchanged): `readShared(root_V, 1, acquire)`: C37.1–C37.2
 (the `read3` preconditions on the leaf), C37.3 (`SharedMutable`, `Atomic(4, 4)`), C37.4 and C40
 (`acquire` is in the load row). The labelled step keeps the state and both registries for every
 observed value. -/
@@ -50,9 +50,9 @@ theorem witness_6a : ReadSharedPre kAtomic v0 0 0 1 .acquire ∧
   have hp : ReadSharedPre kAtomic v0 0 0 1 .acquire := ⟨by decide, by decide, ⟨4, 4, rfl⟩, trivial⟩
   ⟨hp, fun _ => .readShared (.ok hp)⟩
 
-/-- **Row 6b** (C37, `reject`): `readShared` on the `Synchronized` leaf 3, then on the `Confined`
+/-- **Witness 6b** (C37, `reject`): `readShared` on the `Synchronized` leaf 3, then on the `Confined`
 leaf 4. Single cause: the `Atomic` discipline of C37.3 fails; the `read3` preconditions,
-`SharedMutable` and the order hold. Positive twin: row 6a. -/
+`SharedMutable` and the order hold. Positive twin: `witness_6a`. -/
 theorem witness_6b :
     (Read3Pre (v0.view 0) 0 [3] ∧ kAtomic.SharedMutable 3 ∧ LoadOrderOK .acquire ∧
       (¬ ∃ sz al, kAtomic.SharedDiscipline 3 = some (.atomic sz al)) ∧
@@ -65,14 +65,14 @@ theorem witness_6b :
   ⟨⟨by decide, by decide, trivial, h3, .reject fun hp => h3 hp.atomic⟩,
     ⟨by decide, by decide, trivial, h4, .reject fun hp => h4 hp.atomic⟩⟩
 
-/-- **Row 6c** (C40, `reject`): `readShared(root_V, 1, release)`. Single cause: `release` is not in
-the load row of C40; the other preconditions of C37 hold. Positive twin: row 6a. -/
+/-- **Witness 6c** (C40, `reject`): `readShared(root_V, 1, release)`. Single cause: `release` is not in
+the load row of C40; the other preconditions of C37 hold. Positive twin: `witness_6a`. -/
 theorem witness_6c : Read3Pre (v0.view 0) 0 [1] ∧ kAtomic.SharedMutable 1 ∧
     (∃ sz al, kAtomic.SharedDiscipline 1 = some (.atomic sz al)) ∧ ¬ LoadOrderOK .release ∧
     ReadSharedStep kAtomic v0 0 0 1 .release .reject :=
   ⟨by decide, by decide, ⟨4, 4, rfl⟩, id, .reject fun hp => hp.order⟩
 
-/-- **Row 6d** (C39, C40, `ok`): an atomic `writeShared(root_V, {1}, release)` store: the O11
+/-- **Witness 6d** (C39, C40, `ok`): an atomic `writeShared(root_V, {1}, release)` store: the O11
 preconditions (Spec 1 §68), a single `Atomic` leaf with `release` in the store row (C38, C40).
 The step is the O11 step with its effect (theorem 8). -/
 theorem witness_6d : WriteSharedCPre kAtomic v0 0 0 [1] (some .release) .store ∧
@@ -82,9 +82,9 @@ theorem witness_6d : WriteSharedCPre kAtomic v0 0 0 [1] (some .release) .store �
     ⟨by decide, .inl ⟨1, 4, 4, .release, rfl, rfl, rfl, trivial⟩, fun h => absurd rfl h⟩
   ⟨hp, .writeShared (.ok hp)⟩
 
-/-- **Row 6e** (C38, `reject`): `writeShared(root_V, {1, 2}, release)` over two `Atomic` leaves.
+/-- **Witness 6e** (C38, `reject`): `writeShared(root_V, {1, 2}, release)` over two `Atomic` leaves.
 Single cause: the region has more than one `Atomic` leaf; the O11 preconditions hold and the
-store needs no initialized leaf. Positive twin: row 6d. -/
+store needs no initialized leaf. Positive twin: `witness_6d`. -/
 theorem witness_6e : WriteSharedPre kAtomic.toK (v0.view 0) 0 [1, 2] ∧ AtomicLeaf kAtomic 1 ∧
     AtomicLeaf kAtomic 2 ∧ ¬ WriteDisciplineOK kAtomic [1, 2] (some .release) .store ∧
     WriteSharedCStep kAtomic v0 0 0 [1, 2] (some .release) .store .reject :=
@@ -95,7 +95,7 @@ theorem witness_6e : WriteSharedPre kAtomic.toK (v0.view 0) 0 [1, 2] ∧ AtomicL
     cases hr with
     | reject hn => exact hn ⟨by decide, hd, fun h => absurd rfl h⟩, hr⟩
 
-/-- **Row 6f** (C38, `reject`): `writeShared(root_V, {1, 3}, release)` over an `Atomic` and a
+/-- **Witness 6f** (C38, `reject`): `writeShared(root_V, {1, 3}, release)` over an `Atomic` and a
 `Synchronized` leaf, with no composite contract. Single cause: the composite contract of C38 is
 missing; the classes are mixed with at most one `Atomic` leaf, and the O11 preconditions hold.
 Positive twin: the same request under a contract whose composite contract admits it, `ok`. -/
@@ -113,14 +113,14 @@ theorem witness_6f : WriteSharedPre kAtomic.toK (v0.view 0) 0 [1, 3] ∧
       .inr (.inr ⟨by unfold MixedClasses SingleClass; decide, by decide, rfl⟩),
       fun h => absurd rfl h⟩)⟩
 
-/-- **Row 6g** (C40, `reject`): a compare-and-exchange on leaf 1 with the failure order `release`.
+/-- **Witness 6g** (C40, `reject`): a compare-and-exchange on leaf 1 with the failure order `release`.
 Single cause: `release` is not in the CAS-failure row; the success order `acq_rel` is in the RMW
-row. A static `reject` whatever the branch. Positive twin: row 6h. -/
+row. A static `reject` whatever the branch. Positive twin: `witness_6h`. -/
 theorem witness_6g : RMWOrderOK .acqRel ∧ ¬ CasFailureOrderOK .release ∧
     ∀ br, CasStep kAtomic v0 0 0 1 .acqRel .release br .reject :=
   ⟨trivial, id, fun _ => .inl ⟨fun h => h.2, rfl⟩⟩
 
-/-- **Row 6h** (C39, C40, `ok`): a failed compare-and-exchange on leaf 1 with the success order
+/-- **Witness 6h** (C39, C40, `ok`): a failed compare-and-exchange on leaf 1 with the success order
 `acq_rel` and the failure order `acquire`: the `readShared` observation of the leaf with the
 failure order (C39), state and registries unchanged, for every observed value. -/
 theorem witness_6h : CasOrdersOK .acqRel .acquire ∧
