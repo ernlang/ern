@@ -91,13 +91,18 @@ def MixedClasses (ks : KShared) (region : List Nat) : Prop :=
 /-- The discipline acceptance of a concurrent `writeShared` over `region`, with order annotation
 `ord` and modification kind `kind` (C35, C38–C40):
 
-* a single `Atomic` leaf (C38: one atomic unit is one logical leaf), with an order of its C40
+* a single `Atomic` leaf (C38: one atomic unit is one logical leaf), with an order annotation (C39,
+  "Applicability of atomic memory-order annotations": required for `Atomic` storage) of its C40
   row; an RMW is an atomic modification (C39);
 * a region classified consistently `Synchronized` or `Confined` (C38: eligible under O11 and its
-  contract), with no order annotation, which C40 gives only to atomic operations ("a
-  source-level order outside its row is a static `reject`"), and a plain write;
+  contract), with no order annotation (C39, "Applicability of atomic memory-order annotations": it
+  does not apply to `Synchronized` or `Confined` storage, and one supplied is `reject`), and a
+  plain write;
 * a region that combines classes, has at most one `Atomic` leaf (C38: more than one `Atomic` leaf
-  is `reject`) and is admitted by a separately established composite contract (C38).
+  is `reject`) and is admitted by a separately established composite contract (C38), which
+  determines whether the step carries an annotation (C39, "Applicability of atomic memory-order
+  annotations": the paragraph does not govern such a region); the annotation is that of the whole
+  step, handed to the composite contract.
 
 Any other region is `reject` (C38, C39, C40). -/
 def WriteDisciplineOK (ks : KShared) (region : List Nat) (ord : Option MemOrder)

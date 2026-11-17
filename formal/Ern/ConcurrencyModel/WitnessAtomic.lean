@@ -134,4 +134,68 @@ theorem witness_6h : CasOrdersOK .acqRel .acquire ∧
       (st' := (v0, [], []))).1 ho,
     fun _ => .cas (.inr ⟨ho, .ok hp⟩)⟩
 
+/-- **Witness 6i, C38 third paragraph, C39** (`ok`): a concurrent `writeShared(root_V, {3})` over
+the `Synchronized` leaf 3, then `writeShared(root_V, {4})` over the `Confined` leaf 4, each without
+a memory-order annotation: the O11 preconditions hold (Spec 1 §68), the region is of a single class
+(C38) and the annotation does not apply (C39, "Applicability of atomic memory-order
+annotations"). The step is the O11 step with its effect. -/
+theorem witness_6i : WriteSharedCPre kAtomic v0 0 0 [3] none .store ∧
+    LStep kAtomic mutexLayout (.writeShared 0 0 [3] none .store) (v0, [], [])
+      (writeSharedCEff v0 0 [3], [], []) ∧
+    WriteSharedCPre kAtomic v0 0 0 [4] none .store ∧
+    LStep kAtomic mutexLayout (.writeShared 0 0 [4] none .store) (v0, [], [])
+      (writeSharedCEff v0 0 [4], [], []) :=
+  have h3 : WriteSharedCPre kAtomic v0 0 0 [3] none .store :=
+    ⟨by decide, .inr (.inl ⟨rfl, rfl, .inl (by decide)⟩), fun h => absurd rfl h⟩
+  have h4 : WriteSharedCPre kAtomic v0 0 0 [4] none .store :=
+    ⟨by decide, .inr (.inl ⟨rfl, rfl, .inr (by decide)⟩), fun h => absurd rfl h⟩
+  ⟨h3, .writeShared (.ok h3), h4, .writeShared (.ok h4)⟩
+
+/-- **Witness 6j, C39** (`reject`): the requests of witness 6i with the memory-order annotation
+`release`, which is in the store row of C40. Single cause: an annotation is supplied on
+`Synchronized` (then `Confined`) storage (C39, "Applicability of atomic memory-order annotations");
+the O11 preconditions hold and the region is of a single class. No labelled step. Positive twin:
+witness 6i. -/
+theorem witness_6j : StoreOrderOK .release ∧
+    (WriteSharedPre kAtomic.toK (v0.view 0) 0 [3] ∧
+      kAtomic.SharedDiscipline 3 = some .synchronized ∧
+      ¬ WriteDisciplineOK kAtomic [3] (some .release) .store ∧
+      WriteSharedCStep kAtomic v0 0 0 [3] (some .release) .store .reject ∧
+      ∀ st', ¬ LStep kAtomic mutexLayout (.writeShared 0 0 [3] (some .release) .store)
+        (v0, [], []) st') ∧
+    (WriteSharedPre kAtomic.toK (v0.view 0) 0 [4] ∧ kAtomic.SharedDiscipline 4 = some .confined ∧
+      ¬ WriteDisciplineOK kAtomic [4] (some .release) .store ∧
+      WriteSharedCStep kAtomic v0 0 0 [4] (some .release) .store .reject ∧
+      ∀ st', ¬ LStep kAtomic mutexLayout (.writeShared 0 0 [4] (some .release) .store)
+        (v0, [], []) st') :=
+  have k3 := (annotation_rejected (ks := kAtomic) (s := v0) (c := 0) (a := 0) (kind := .store)
+    (singleClass_singleton (l := 3) (by decide)) (List.mem_singleton_self 3)).2 (.inl rfl) .release
+  have k4 := (annotation_rejected (ks := kAtomic) (s := v0) (c := 0) (a := 0) (kind := .store)
+    (singleClass_singleton (l := 4) (by decide)) (List.mem_singleton_self 4)).2 (.inr rfl) .release
+  have ho3 : WriteSharedPre kAtomic.toK (v0.view 0) 0 [3] := by decide
+  have ho4 : WriteSharedPre kAtomic.toK (v0.view 0) 0 [4] := by decide
+  ⟨trivial,
+    ⟨ho3, rfl, fun hd => absurd ((k3 _).1 (.ok ⟨ho3, hd, fun h => absurd rfl h⟩)) (by intro e; cases e),
+      (k3 _).2 rfl, fun _ h => by
+        cases h with | writeShared h => exact absurd ((k3 _).1 h) (by intro e; cases e)⟩,
+    ⟨ho4, rfl, fun hd => absurd ((k4 _).1 (.ok ⟨ho4, hd, fun h => absurd rfl h⟩)) (by intro e; cases e),
+      (k4 _).2 rfl, fun _ h => by
+        cases h with | writeShared h => exact absurd ((k4 _).1 h) (by intro e; cases e)⟩⟩
+
+/-- **Witness 6k, C39** (`reject`): a concurrent `writeShared(root_V, {1})` over the `Atomic` leaf 1
+without a memory-order annotation. Single cause: the annotation required on `Atomic` storage is
+missing (C39, "Applicability of atomic memory-order annotations"); the O11 preconditions hold and
+the region is a single `Atomic` leaf. No labelled step. Positive twin: witness 6d, the same store
+annotated `release`. -/
+theorem witness_6k : WriteSharedPre kAtomic.toK (v0.view 0) 0 [1] ∧ AtomicLeaf kAtomic 1 ∧
+    ¬ WriteDisciplineOK kAtomic [1] none .store ∧
+    WriteSharedCStep kAtomic v0 0 0 [1] none .store .reject ∧
+    ∀ st', ¬ LStep kAtomic mutexLayout (.writeShared 0 0 [1] none .store) (v0, [], []) st' :=
+  have k1 := (annotation_rejected (ks := kAtomic) (s := v0) (c := 0) (a := 0) (kind := .store)
+    (singleClass_singleton (l := 1) (by decide)) (List.mem_singleton_self 1)).1 (by decide)
+  have ho : WriteSharedPre kAtomic.toK (v0.view 0) 0 [1] := by decide
+  ⟨ho, by decide, fun hd => absurd ((k1 _).1 (.ok ⟨ho, hd, fun h => absurd rfl h⟩)) (by intro e; cases e),
+    (k1 _).2 rfl, fun _ h => by
+      cases h with | writeShared h => exact absurd ((k1 _).1 h) (by intro e; cases e)⟩
+
 end Ern.ConcurrencyModel

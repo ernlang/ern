@@ -122,6 +122,39 @@ theorem mixed_rejected {ks : KShared} {s : SC} {c a : Nat} {region : List Nat}
   · exact hm.2 (singleClass_const hs)
   · exact hc hcc
 
+/-- **Theorem 8** (C39, "Applicability of atomic memory-order annotations"): for a concurrent
+`writeShared` whose region is governed by a single `K_C.SharedDiscipline` class, the class of its
+leaf `l` (the region is not empty):
+
+1. on `Atomic` storage the annotation is required: without one, the outcome is `reject`;
+2. on `Synchronized` or `Confined` storage the annotation does not apply: with one, the outcome is
+   `reject`.
+
+Fragment: every state, every contract `K_C`, every kind of modification. -/
+theorem annotation_rejected {ks : KShared} {s : SC} {c a : Nat} {region : List Nat}
+    {kind : WriteKind} {l : Nat} (hsc : SingleClass ks region) (hl : l ∈ region) :
+    (AtomicLeaf ks l → ∀ o, WriteSharedCStep ks s c a region none kind o ↔ o = .reject) ∧
+    ((ks.SharedDiscipline l = some .synchronized ∨ ks.SharedDiscipline l = some .confined) →
+      ∀ ord o, WriteSharedCStep ks s c a region (some ord) kind o ↔ o = .reject) := by
+  have key : ∀ {ord : Option MemOrder}, ¬ WriteDisciplineOK ks region ord kind → ∀ o,
+      WriteSharedCStep ks s c a region ord kind o ↔ o = .reject := fun hn o =>
+    ⟨fun h => by
+      cases h with
+      | ok hp => exact absurd hp.discipline hn
+      | reject => rfl,
+     fun e => by subst e; exact .reject fun hp => hn hp.discipline⟩
+  refine ⟨fun hat => key ?_, fun hd ord => key ?_⟩
+  · rintro (⟨l', sz, al, o, -, -, e, -⟩ | ⟨-, -, hs | hs⟩ | ⟨hm, -, -⟩)
+    · cases e
+    · unfold AtomicLeaf at hat; rw [hs l hl] at hat; cases hat
+    · unfold AtomicLeaf at hat; rw [hs l hl] at hat; cases hat
+    · exact hm.2 hsc
+  · rintro (⟨l', sz, al, o, e1, e2, -, -⟩ | ⟨e, -, -⟩ | ⟨hm, -, -⟩)
+    · subst e1; rw [List.mem_singleton.1 hl] at hd
+      rcases hd with hd | hd <;> rw [e2] at hd <;> cases hd
+    · cases e
+    · exact hm.2 hsc
+
 /-- **Theorem 8** (C39): the concurrent `writeShared` has no `fail` outcome. -/
 theorem writeSharedC_no_fail {ks : KShared} {s : SC} {c a : Nat} {region : List Nat}
     {ord : Option MemOrder} {kind : WriteKind} (o : Outcome3 SC)
