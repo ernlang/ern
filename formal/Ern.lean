@@ -19,6 +19,7 @@ import Ern.ConcurrencyModel.SequentialConservativity
 import Ern.ConcurrencyModel.SpawnValue
 import Ern.ConcurrencyModel.SpawnValuePreserve
 import Ern.ConcurrencyModel.State
+import Ern.ConcurrencyModel.StepRefinement
 import Ern.ConcurrencyModel.Steps
 import Ern.ConcurrencyModel.SyncContract
 import Ern.ConcurrencyModel.SyncInit
