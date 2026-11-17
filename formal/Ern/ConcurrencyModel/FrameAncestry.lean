@@ -52,7 +52,7 @@ theorem ancestry_props {s : SC} (hfr : FramesC s) :
       WellFounded (fun g f => f ∈ s.frames ∧ s.parC f = some g) ∧
       (s.Single → ∀ g f, s.ancestorC g f ↔ ancestor (s.stk 0) g f) :=
   ⟨hfr.nonempty, hfr.nodup, fun _ hf => ancestorC_refl hf, fun _ _ h₁ h₂ => ancestorC_antisymm h₁ h₂,
-    parC_wellFounded hfr, fun hs g f => single_ancestorC hs (single_decreasing hs hfr) g f⟩
+    parC_wellFounded hfr, fun hs g f => single_ancestorC hs.sole (single_decreasing hs.sole hfr) g f⟩
 
 /-! ## The initial frame of a new context (C3, C4, C5) -/
 

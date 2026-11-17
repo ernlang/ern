@@ -1,4 +1,5 @@
 import Ern.ConcurrencyModel.WitnessBase
+import Ern.ConcurrencyModel.SequentialConservativity
 
 /-!
 # Witnesses: `join`, `acquire`, `unlock`, `resetLock`, `newMutex` (C8, C13, C15–C18)
@@ -102,6 +103,35 @@ def mJ : SC := termEffC m4 1
 /-- Context 0 spawns context 2 after the termination of context 1 (C4): context 1 is
 terminated, context 2 is live. -/
 def mJ2 : SC := spawnEff mJ 0 [] []
+
+/-- C24, scope of theorem 1: `mJ`, where context 1 has been created then terminated, is reached
+from the initial state of Spec 1 §47 by a run; it is not `SC.Single`, its context list keeping
+the terminated context 1; its only live context is the initial one, so that
+`no_invalid_sole_return` applies: `mJ` satisfies `FramesC` and the kernel invariant of Spec 1 §57
+on its projection. -/
+theorem mJ_sole : LRun kMutex mutexLayout (m0, [], [])
+      [.kernel 0 (.derive 1 [3] .modify), .kernel 0 (.store 2 1), .newMutex 0 2,
+       .kernel 0 (.derive 0 [1, 2] .observe), .spawn 0 [3] [], .terminate 1] (mJ, regFree, []) ∧
+    ¬ mJ.Single ∧ (∀ c, mJ.Live c → c = 0) ∧ FramesC mJ ∧ KInv mJ.toS3 := by
+  have hr : LRun kMutex mutexLayout (m0, [], [])
+      [.kernel 0 (.derive 1 [3] .modify), .kernel 0 (.store 2 1), .newMutex 0 2,
+       .kernel 0 (.derive 0 [1, 2] .observe), .spawn 0 [3] [], .terminate 1] (mJ, regFree, []) :=
+    .cons (.kernel mutex_steps.1) <| .cons (.kernel mutex_steps.2.1) <|
+      .cons (.newMutex (st' := (m2, regFree)) mutex_steps.2.2.1) <|
+      .cons (.kernel mutex_steps.2.2.2.1) <| .cons (.spawn mutex_steps.2.2.2.2.1) <|
+      .cons (.terminate (.ok (by decide))) .nil
+  have hlen : mJ.C.length = 2 := by decide
+  have hl : ∀ c, mJ.Live c → c = 0 := fun c hc =>
+    match c, hc with
+    | 0, _ => rfl
+    | 1, h => absurd h (by decide)
+    | n + 2, h => by
+      have e : mJ.C[n + 2]? = none := List.getElem?_eq_none (by omega)
+      unfold SC.Live at h; rw [e] at h; exact h.elim
+  refine ⟨hr, fun ⟨stk, h⟩ => ?_, hl,
+    no_invalid_sole_return (testKS_dd _ _ _) mutexStatics_ok hr hl⟩
+  have := congrArg List.length h
+  rw [hlen] at this; cases this
 
 /-- **Witness 1a, C8** (`reject`): `join` of an identifier unknown to the execution (no context
 `2`), requested by the live context 0. Single cause: the identifier is unknown; the requester is

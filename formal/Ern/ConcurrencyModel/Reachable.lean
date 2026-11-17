@@ -104,7 +104,7 @@ theorem init_inv {k : K} {statics : Statics} (hdd : DDSound k) (hst : StaticsOK 
   obtain ⟨-, -, -, hkc⟩ := reachable_single (k := k) hdd hst .init
   obtain ⟨-, haux, hh⟩ := init_kinv hst
   have hflat : (SC.ofS3 (S3.init statics)).flat = S3.init statics := by
-    rw [single_flat ⟨_, rfl⟩, toS3_ofS3]
+    rw [single_flat (SC.Single.sole ⟨_, rfl⟩), toS3_ofS3]
   refine ⟨⟨hkc, by rw [hflat]; exact haux, by rw [hflat]; exact hh⟩, ?_, ?_⟩
   · refine ⟨⟨?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_, ?_⟩, ?_⟩
     · intro e he; cases he
