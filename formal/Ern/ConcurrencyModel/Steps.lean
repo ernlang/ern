@@ -13,7 +13,8 @@ import Ern.ConcurrencyModel.State
   of a non-initial context), `join` (C8);
 * `CStep`, the union of their `ok` transitions.
 
-Waiting (`join` on a live context) has no outcome: the transition is not enabled (C8).
+Waiting (`join` by a live context on a live context) has no outcome: the transition is not enabled
+(C8).
 -/
 
 namespace Ern.ConcurrencyModel
@@ -464,13 +465,21 @@ theorem termStep_live {k : K} {s s' : SC} {c : Nat} (h : TermStep k s c (.ok s')
 
 /-! ## `join` (C8) -/
 
-/-- `join d` executed by `c` (C8): `reject` when `d` is unknown to the execution (no context
-has identity `d`, identities being the indices of `C`); `ok` with the state unchanged when `d` has
-the completed lifecycle state; no outcome while `d` is live (C8: awaiting completion is not an
-`Outcome3` result). -/
+/-- `join d` executed by `c` (C8): `reject` when the requesting context `c` is not live, whatever
+the target (C8, "Requesting-context validity", which takes precedence over the classification by
+target), or when `d` is unknown to the execution (no context has identity `d`, identities being the
+indices of `C`); for a live requester, `ok` with the state unchanged when `d` has the completed
+lifecycle state, and no outcome while `d` is live (C8: awaiting completion is not an `Outcome3`
+result). -/
 inductive JoinStep (s : SC) (c d : Nat) : Outcome3 SC → Prop where
-  | ok : OptP (s.C[d]?) (fun x => x.life = .done) False → JoinStep s c d (.ok s)
-  | reject : s.C[d]? = none → JoinStep s c d .reject
+  | ok : s.Live c → OptP (s.C[d]?) (fun x => x.life = .done) False → JoinStep s c d (.ok s)
+  | deadRequester : ¬ s.Live c → JoinStep s c d .reject
+  | unknown : s.C[d]? = none → JoinStep s c d .reject
+
+/-- An `ok` `join` requires the requesting context to be live (C8, "Requesting-context
+validity"). -/
+theorem joinStep_live {s s' : SC} {c d : Nat} (h : JoinStep s c d (.ok s')) : s.Live c := by
+  cases h with | ok hl _ => exact hl
 
 /-! ## Concurrent kernel steps -/
 

@@ -94,29 +94,60 @@ theorem grantDiscipline_not_of_i1 :
   ⟨(.ok (by decide)), by unfold RestrictedStep; decide, by decide,
     by unfold GrantDiscipline; decide⟩
 
-/-! ## Rows 1a–1c: `join` (C8) -/
+/-! ## `join` (C8) -/
 
 /-- Context 1 terminates (C7). -/
 def mJ : SC := termEffC m4 1
 
-/-- **Row 1a** (C8, `reject`): `join` of an identifier unknown to the execution (no context `2`).
-Positive twin: row 1c. -/
-theorem witness_1a : JoinReject m4 2 ∧ JoinStep m4 0 2 .reject :=
-  ⟨by unfold JoinReject; decide, .reject (by decide)⟩
+/-- Context 0 spawns context 2 after the termination of context 1 (C4): context 1 is
+terminated, context 2 is live. -/
+def mJ2 : SC := spawnEff mJ 0 [] []
 
-/-- **Row 1b** (C8, legal, not enabled, no transition): `join` of the live context 1. -/
-theorem witness_1b : JoinNotEnabled m4 1 ∧ (∀ o, ¬ JoinStep m4 0 1 o) ∧
+/-- **Witness 1a, C8** (`reject`): `join` of an identifier unknown to the execution (no context
+`2`), requested by the live context 0. Single cause: the identifier is unknown; the requester is
+live. Positive twin: `witness_1c`. -/
+theorem witness_1a : m4.Live 0 ∧ m4.C[2]? = none ∧ JoinReject m4 0 2 ∧ JoinStep m4 0 2 .reject :=
+  ⟨by decide, by decide, .inr (by decide), .unknown (by decide)⟩
+
+/-- **Witness 1b, C8** (legal, not enabled, no transition): `join` of the live context 1,
+requested by the live context 0: no outcome and no labelled step. -/
+theorem witness_1b : JoinNotEnabled m4 0 1 ∧ (∀ o, ¬ JoinStep m4 0 1 o) ∧
     ∀ st', ¬ LStep kMutex mutexLayout (.join 0 1) (m4, regFree, []) st' := by
-  have hn : JoinNotEnabled m4 1 := by unfold JoinNotEnabled; decide
+  have hn : JoinNotEnabled m4 0 1 := by unfold JoinNotEnabled; decide
   have hno := ((join_classes (s := m4) (c := 0) (d := 1)).2.2.2.1 hn)
   refine ⟨hn, hno, fun st' h => ?_⟩
   cases h with
   | join h => exact hno _ h
 
-/-- **Row 1c** (C8, `ok`, state unchanged): `join` of context 1 after its termination. -/
-theorem witness_1c : TermStep kMutex.toK m4 1 (.ok mJ) ∧ JoinOkClass mJ 1 ∧
+/-- **Witness 1c, C8** (`ok`, state unchanged): `join` of context 1 after its termination,
+requested by the live context 0. -/
+theorem witness_1c : TermStep kMutex.toK m4 1 (.ok mJ) ∧ JoinOkClass mJ 0 1 ∧
     LStep kMutex mutexLayout (.join 0 1) (mJ, regFree, []) (mJ, regFree, []) :=
-  ⟨(.ok (by decide)), by unfold JoinOkClass; decide, .join (.ok (by decide))⟩
+  ⟨(.ok (by decide)), by unfold JoinOkClass; decide, .join (.ok (by decide) (by decide))⟩
+
+/-- **Witness 1d, C8, "Requesting-context validity"** (`reject`): `join` of the terminated context
+1, requested by context 1 itself after its termination. Single cause: the requester is not live;
+the target has the completed lifecycle state, so a live requester obtains `ok`. No labelled step.
+Positive twin: `witness_1c`. -/
+theorem witness_1d : ¬ mJ.Live 1 ∧ OptP (mJ.C[1]?) (fun x => x.life = .done) False ∧
+    JoinReject mJ 1 1 ∧ JoinStep mJ 1 1 .reject ∧
+    ∀ st', ¬ LStep kMutex mutexLayout (.join 1 1) (mJ, regFree, []) st' :=
+  have hc : ¬ mJ.Live 1 := by decide
+  ⟨hc, by decide, .inl hc, .deadRequester hc, fun _ h => hc (lstep_live h)⟩
+
+/-- **Witness 1e, C8, "Requesting-context validity"** (`reject`): `join` of the live context 2,
+requested by the terminated context 1. Single cause: the requester is not live; the target is
+live. No labelled step. Positive twin: the same target joined by the live context 0, legal and not
+enabled, with no outcome. -/
+theorem witness_1e : SpawnStep mJ 0 [] [] (.ok mJ2) ∧ ¬ mJ2.Live 1 ∧
+    OptP (mJ2.C[2]?) (fun x => x.life = .live) False ∧ JoinReject mJ2 1 2 ∧
+    JoinStep mJ2 1 2 .reject ∧
+    (∀ st', ¬ LStep kMutex mutexLayout (.join 1 2) (mJ2, regFree, []) st') ∧
+    JoinNotEnabled mJ2 0 2 ∧ ∀ o, ¬ JoinStep mJ2 0 2 o :=
+  have hc : ¬ mJ2.Live 1 := by decide
+  have hn : JoinNotEnabled mJ2 0 2 := by unfold JoinNotEnabled; decide
+  ⟨.ok (by decide), hc, by decide, .inl hc, .deadRequester hc, fun _ h => hc (lstep_live h), hn,
+    (join_classes (s := mJ2) (c := 0) (d := 2)).2.2.2.1 hn⟩
 
 /-- **Witness, C4.1** (`reject`): `spawn` with one local, requested by context 1 after its
 termination. Single cause: C4.1 fails (context 1 is not live and has no current frame, C2); C4.3

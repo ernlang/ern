@@ -8,9 +8,9 @@ the conditions of its own clause; the outcome type is that of Spec 1 §58 (`Outc
 added constructor; a legal request that is not enabled has no outcome (DESIGN.md, "Abstract
 steps").
 
-* `join` (C8): `reject` for an unknown identifier, legal and not enabled for a live target, `ok`
-  with the state unchanged for a completed target; C8 reads the target only, whatever the
-  requester.
+* `join` (C8): `reject` for a requester that is not live (C8, "Requesting-context validity",
+  checked first) or an unknown identifier; for a live requester, legal and not enabled for a live
+  target, `ok` with the state unchanged for a completed target.
 * `acquire` (C16): `reject` for an invalid requester-side request (C16.1), legal and not enabled
   when the recorded grant is not `none` (C16.2), `ok` otherwise (C16.3); invalid requester-side
   conditions take precedence for the same state.
@@ -18,6 +18,10 @@ steps").
   `resetLock` does not require `grant = none`.
 * `newMutex` (C13): `ok` or `reject` (Spec 1 §58; C13 names no outcome for a failed
   precondition and defines no `fail`).
+* every request of a context that is not live is `reject` (`dead_requests_reject`,
+  `dead_only_reject`); every labelled step has a live requester (`lstep_live`); every request
+  other than `join` and `acquire` has an outcome (`requests_have_outcome`), and the legal but
+  non-enabled class, the absence of an outcome, has a live requester (`notEnabled_live`).
 
 The logical controller state is the recorded grant of the entry (C12, C17 effect); `acquire` is
 one coherent abstract step (C16), so no abstract state has the controller occupied by another
@@ -30,48 +34,70 @@ open Ern.MemoryModel.Access
 
 /-! ## `join` (C8) -/
 
-/-- C8: the identifier is unknown to the execution: `reject`. C8 classifies the request by its
-target only and states no condition on the requester. -/
-def JoinReject (s : SC) (d : Nat) : Prop := s.C[d]? = none
+/-- C8: `reject`: the requesting context is not live ("Requesting-context validity": whatever the
+target identifier or lifecycle state, with precedence over the classification by target), or the
+identifier is unknown to the execution. -/
+def JoinReject (s : SC) (c d : Nat) : Prop := ¬ s.Live c ∨ s.C[d]? = none
 
-/-- C8: a legal `join` whose target is live is not activable as a successful abstract step. -/
-def JoinNotEnabled (s : SC) (d : Nat) : Prop := OptP (s.C[d]?) (fun x => x.life = .live) False
+/-- C8: a legal `join` (live requester) whose target is live is not activable as a successful
+abstract step. -/
+def JoinNotEnabled (s : SC) (c d : Nat) : Prop :=
+  s.Live c ∧ OptP (s.C[d]?) (fun x => x.life = .live) False
 
-/-- C8: the target has a recorded completed lifecycle state: `ok`. -/
-def JoinOkClass (s : SC) (d : Nat) : Prop := OptP (s.C[d]?) (fun x => x.life = .done) False
+/-- C8: a legal `join` (live requester) whose target has a recorded completed lifecycle state:
+`ok`. -/
+def JoinOkClass (s : SC) (c d : Nat) : Prop :=
+  s.Live c ∧ OptP (s.C[d]?) (fun x => x.life = .done) False
 
-/-- **Theorem 7**, `join` (C8): for every requester, live or not (C8 states no condition on it),
-exactly one class applies, read on the target; `reject` and `ok` are its outcomes, the `ok` state
-being unchanged; a non-enabled request has no outcome; `fail` is never produced. Fragment: every
+/-- **Theorem 7**, `join` (C8): for every requester and every target, exactly one class applies;
+the outcome is `reject` exactly when the requester is not live or the identifier is unknown (C8,
+"Requesting-context validity" first); a completed target with a live requester gives `ok`, the
+state unchanged; a non-enabled request has no outcome; `fail` is never produced. Fragment: every
 state. -/
 theorem join_classes {s : SC} {c d : Nat} :
-    ((JoinReject s d ∧ ¬ JoinNotEnabled s d ∧ ¬ JoinOkClass s d) ∨
-      (¬ JoinReject s d ∧ JoinNotEnabled s d ∧ ¬ JoinOkClass s d) ∨
-      (¬ JoinReject s d ∧ ¬ JoinNotEnabled s d ∧ JoinOkClass s d)) ∧
-    (JoinReject s d → JoinStep s c d .reject) ∧
-    (JoinOkClass s d → JoinStep s c d (.ok s)) ∧
-    (JoinNotEnabled s d → ∀ o, ¬ JoinStep s c d o) ∧
+    ((JoinReject s c d ∧ ¬ JoinNotEnabled s c d ∧ ¬ JoinOkClass s c d) ∨
+      (¬ JoinReject s c d ∧ JoinNotEnabled s c d ∧ ¬ JoinOkClass s c d) ∨
+      (¬ JoinReject s c d ∧ ¬ JoinNotEnabled s c d ∧ JoinOkClass s c d)) ∧
+    (JoinStep s c d .reject ↔ JoinReject s c d) ∧
+    (JoinOkClass s c d → JoinStep s c d (.ok s)) ∧
+    (JoinNotEnabled s c d → ∀ o, ¬ JoinStep s c d o) ∧
     (∀ o, JoinStep s c d o → o ≠ .fail) ∧
     (∀ s', JoinStep s c d (.ok s') → s' = s) := by
-  refine ⟨?_, fun h => .reject h, fun h => .ok h, ?_, ?_, ?_⟩
+  refine ⟨?_, ⟨fun h => ?_, fun h => ?_⟩, fun h => .ok h.1 h.2, ?_, ?_, ?_⟩
   · unfold JoinReject JoinNotEnabled JoinOkClass
-    cases hd : s.C[d]? with
-    | none => exact .inl ⟨rfl, id, id⟩
-    | some x =>
-      change (some x = none ∧ ¬ x.life = .live ∧ ¬ x.life = .done) ∨
-        (¬ some x = none ∧ x.life = .live ∧ ¬ x.life = .done) ∨
-        (¬ some x = none ∧ ¬ x.life = .live ∧ x.life = .done)
-      cases hx : x.life with
-      | live => exact .inr (.inl ⟨(fun h => by cases h), rfl, (fun h => by cases h)⟩)
-      | done => exact .inr (.inr ⟨(fun h => by cases h), (fun h => by cases h), rfl⟩)
+    by_cases hl : s.Live c
+    · cases hd : s.C[d]? with
+      | none => exact .inl ⟨.inr rfl, fun h => h.2, fun h => h.2⟩
+      | some x =>
+        change ((¬ s.Live c ∨ some x = none) ∧ ¬ (s.Live c ∧ x.life = .live) ∧
+            ¬ (s.Live c ∧ x.life = .done)) ∨
+          (¬ (¬ s.Live c ∨ some x = none) ∧ (s.Live c ∧ x.life = .live) ∧
+            ¬ (s.Live c ∧ x.life = .done)) ∨
+          (¬ (¬ s.Live c ∨ some x = none) ∧ ¬ (s.Live c ∧ x.life = .live) ∧
+            (s.Live c ∧ x.life = .done))
+        have hnr : ¬ (¬ s.Live c ∨ some x = none) := fun h => by
+          rcases h with h | h
+          · exact h hl
+          · cases h
+        cases hx : x.life with
+        | live => exact .inr (.inl ⟨hnr, ⟨hl, rfl⟩, (fun h => by cases h.2)⟩)
+        | done => exact .inr (.inr ⟨hnr, (fun h => by cases h.2), ⟨hl, rfl⟩⟩)
+    · exact .inl ⟨.inl hl, fun h => hl h.1, fun h => hl h.1⟩
+  · cases h with
+    | deadRequester hl => exact .inl hl
+    | unknown hu => exact .inr hu
+  · rcases h with hl | hu
+    · exact .deadRequester hl
+    · exact .unknown hu
   · intro hn o h
-    unfold JoinNotEnabled at hn
+    obtain ⟨hl, hn⟩ := hn
     cases h with
-    | ok hdn =>
+    | ok _ hdn =>
       revert hn hdn; cases s.C[d]? with
       | none => intro hn; exact hn.elim
       | some x => simp only [OptP]; intro h1 h2; rw [h1] at h2; cases h2
-    | reject hu => rw [hu] at hn; exact hn
+    | deadRequester hd => exact hd hl
+    | unknown hu => rw [hu] at hn; exact hn
   · intro o h; cases h <;> (intro e; cases e)
   · intro s' h; cases h; rfl
 
@@ -336,8 +362,8 @@ fails and every request has the outcome `reject`: the inherited operations O1–
 by-value `spawn` (C4.1), `terminate` (C7), `deriveSync` (C15.6) under every contract `K_C`,
 `newMutex` (C13.2), `acquire` (C14.3 by C16.1; never legal, hence never non-enabled), `unlock` and
 `resetLock` (C17.4, C18.4), the arena operations (Spec 1 §76.1, §77.1, §78), `readShared` (C37.2),
-the concurrent `writeShared` and the compare-and-exchange (Spec 1 §68.2, C39). `join` is classified
-by its target only (C8, `join_classes`). Fragment: every state, every registry. -/
+the concurrent `writeShared` and the compare-and-exchange (Spec 1 §68.2, C39), and `join` (C8,
+"Requesting-context validity"), whatever its target. Fragment: every state, every registry. -/
 theorem dead_requests_reject {ks : KShared} {L : MutexLayout} {s : SC} {reg : SyncReg}
     {ar : ArenaReg} {c : Nat} (hc : ¬ s.Live c) :
     (∀ op, opStepC ks.toK op c s .reject) ∧
@@ -354,7 +380,8 @@ theorem dead_requests_reject {ks : KShared} {L : MutexLayout} {s : SC} {reg : Sy
     (∀ i, ResetStepC s ar c i .reject) ∧
     (∀ a l order, ReadSharedStep ks s c a l order .reject) ∧
     (∀ a region ord kind, WriteSharedCStep ks s c a region ord kind .reject) ∧
-    (∀ a l succ fail br, CasStep ks s c a l succ fail br .reject) := by
+    (∀ a l succ fail br, CasStep ks s c a l succ fail br .reject) ∧
+    (∀ d, JoinStep s c d .reject) := by
   have hx : ∀ {a : Nat} {m : Mode}, ¬ (s.view c).ExercisableAt a m := SC.dead_not_exercisable hc
   have hr : ∀ {q : Nat} {m : Mode}, ¬ HasRight (s.view c) m q := SC.dead_not_hasRight hc
   refine ⟨fun op => ?_, fun _ _ => .reject fun hp => hc (SC.live_of_stk hp.creatorLive),
@@ -368,7 +395,8 @@ theorem dead_requests_reject {ks : KShared} {L : MutexLayout} {s : SC} {reg : Sy
     fun _ => .reject fun ⟨_, _, _, _, _, h1⟩ => SC.dead_not_ctrlRight hc h1,
     fun _ _ => .reject fun hp => hr hp.storageRight, fun i _ _ => ?_, fun i => ?_,
     fun _ _ _ => .reject fun hp => hx hp.read.exercisable,
-    fun _ _ _ _ => .reject fun hp => hx hp.o11.exercisable, fun _ _ succ fail br => ?_⟩
+    fun _ _ _ _ => .reject fun hp => hx hp.o11.exercisable, fun _ _ succ fail br => ?_,
+    fun _ => .deadRequester hc⟩
   · cases op with
     | transfer => exact .reject fun hp => hr hp.srcRight
     | depend => exact .reject fun hp => hr hp.right
@@ -415,14 +443,16 @@ theorem dead_requests_reject {ks : KShared} {L : MutexLayout} {s : SC} {reg : Sy
       | failure v => exact .reject fun hp => hx hp.read.exercisable
     · exact .inl ⟨ho, rfl⟩
 
-/-- C2, Spec 1 §58: a request of a context that is not live has no outcome other than `reject`:
-no `ok` (each `ok` step requires a live requester, `opStepC_live`) and no `fail` (the `fail` of
-`alloc` and of `issue` requires their static preconditions, which read a right of the current
-frame: Spec 1 §71.3, §77.1). Fragment: every state. -/
+/-- C2, C8, Spec 1 §58: a request of a context that is not live has no outcome other than
+`reject`: no `ok` (each `ok` step requires a live requester, `opStepC_live`, `joinStep_live`) and
+no `fail` (the `fail` of `alloc` and of `issue` requires their static preconditions, which read a
+right of the current frame: Spec 1 §71.3, §77.1; `join` defines no `fail`, C8). Fragment: every
+state. -/
 theorem dead_only_reject {ks : KShared} {s : SC} {ar : ArenaReg} {c : Nat} (hc : ¬ s.Live c) :
     (∀ op o, opStepC ks.toK op c s o → o = .reject) ∧
-      (∀ i region dst o, IssueStepC ks.toK s ar c i region dst o → o = .reject) := by
-  refine ⟨fun op o h => ?_, fun i region dst o h => ?_⟩
+      (∀ i region dst o, IssueStepC ks.toK s ar c i region dst o → o = .reject) ∧
+      (∀ d o, JoinStep s c d o → o = .reject) := by
+  refine ⟨fun op o h => ?_, fun i region dst o h => ?_, fun d o h => ?_⟩
   · cases o with
     | ok s' => exact absurd (opStepC_live h) hc
     | reject => rfl
@@ -453,5 +483,199 @@ theorem dead_only_reject {ks : KShared} {s : SC} {ar : ArenaReg} {c : Nat} (hc :
         unfold Ern.MemoryModel.Arena.MetaRight OptP at h; split at h
         · exact absurd h (SC.dead_not_hasRight hc)
         · exact h.elim
+  · cases h with
+    | ok hl _ => exact absurd hl hc
+    | deadRequester => rfl
+    | unknown => rfl
+
+/-! ## Requesters of labelled steps and the non-enabled class (C2, C8, C16, C26; Spec 1 §58) -/
+
+/-- The requesting context of a labelled step (C1: an operation belongs to the ordered sequence
+of operations of an execution context). -/
+def Label.requester : Label → Nat
+  | .kernel c _ | .spawn c _ _ | .terminate c | .join c _ | .deriveSync c _ | .newMutex c _
+  | .acquire c _ | .unlock c _ | .resetLock c _ | .spawnVal c _ _ _ | .newArena c _ _
+  | .issue c _ _ _ | .reset c _ | .readShared c _ _ _ _ | .writeShared c _ _ _ _
+  | .cas c _ _ _ _ _ => c
+
+/-- **Theorem 7** (C2, C8; C28: `complete(c)` follows the last event of the terminated context
+`c`): every labelled step is requested by a context that is live in its source state: an `ok` step
+satisfies the requester-side precondition of its clause, which a context that is not live fails
+(`dead_requests_reject`). Fragment: every state, every registry. -/
+theorem lstep_live {ks : KShared} {L : MutexLayout} {lbl : Label}
+    {st st' : SC × SyncReg × ArenaReg} (h : LStep ks L lbl st st') : st.1.Live lbl.requester := by
+  cases h with
+  | kernel h => exact opStepC_live h
+  | spawn h => exact spawnStep_live h
+  | terminate h => exact termStep_live h
+  | join h => exact joinStep_live h
+  | deriveSync h => exact deriveSyncStep_live h
+  | newMutex h => exact newMutexOk_live h
+  | acquire h => exact acquireOk_live h
+  | unlock h => exact unlockOk_live h
+  | resetLock h => exact resetLockOk_live h
+  | spawnVal h => exact spawnValStep_live h
+  | newArena h => exact (newArenaStepC_ok h).1
+  | issue h =>
+    obtain ⟨_, _, _, _, _, hsp, _⟩ := issueStepC_ok h
+    exact opStepC_live hsp
+  | reset h =>
+    obtain ⟨_, _, _, hd, _⟩ := resetStepC_ok (k := ks.toK) h
+    exact opStepC_live hd
+  | readShared h => exact SC.live_of_exercisable (Guarded.ok_iff.1 h).1.read.exercisable
+  | writeShared h => exact SC.live_of_exercisable (Guarded.ok_iff.1 h).1.o11.exercisable
+  | @cas _ _ _ _ _ _ _ _ _ br h =>
+    obtain (⟨-, h⟩ | ⟨-, h⟩) := h
+    · cases h
+    · cases br with
+      | success v => exact SC.live_of_exercisable (Guarded.ok_iff.1 h).1.o11.exercisable
+      | failure v => exact SC.live_of_exercisable (Guarded.ok_iff.1 h).1.read.exercisable
+
+/-- A guarded transition has an outcome (Spec 1 §58). -/
+theorem guarded_exists {σ : Type} {P : Prop} {eff : σ} : ∃ o, Guarded P eff o :=
+  (Classical.em P).elim (fun h => ⟨_, .ok h⟩) (fun h => ⟨_, .reject h⟩)
+
+/-- Every operation O1–O16 of Spec 1 has an outcome (Spec 1 §58: "Every operation has a conceptual
+outcome"). -/
+theorem kernelStep_exists (k : K) (op : KernelOp) (t : S3) : ∃ o, op.Step k t o := by
+  cases op with
+  | alloc pr ow ls =>
+    by_cases hst : AllocStatic k t pr ow ls
+    · by_cases hs : k.Satisfiable pr ls t
+      · exact ⟨_, .ok hst hs⟩
+      · exact ⟨_, .fail hst hs⟩
+    · exact ⟨_, .reject hst⟩
+  | _ => exact guarded_exists
+
+/-- Every inherited operation O1–O16 requested by any context has an outcome (Spec 1 §58, C2). -/
+theorem opStepC_exists (k : K) (op : KernelOp) (c : Nat) (s : SC) : ∃ o, opStepC k op c s o := by
+  cases op with
+  | transfer => exact guarded_exists
+  | depend => exact guarded_exists
+  | store => exact guarded_exists
+  | enter => exact guarded_exists
+  | exit => exact guarded_exists
+  | _ =>
+    obtain ⟨o₃, h⟩ := kernelStep_exists k _ (s.view c)
+    exact ⟨_, o₃, h, rfl⟩
+
+/-- **Theorem 7** (Spec 1 §58: "Every operation has a conceptual outcome"; C26: only a legal but
+non-enabled request has no successful transition and no `reject`): every request of the machine
+other than `join` and `acquire`, by every requester, live or not, has an outcome among `ok`,
+`reject` and `fail`: the inherited operations O1–O16 (C2), `spawn` and by-value `spawn` (C4, C5),
+`terminate` (C7), `deriveSync` (C15) under every contract `K_C`, `newMutex` (C13, "Outcome"),
+`unlock` (C17), `resetLock` (C18), the arena operations (Spec 1 §76–§78), `readShared` (C37), the
+concurrent `writeShared` (C39) and the compare-and-exchange (C39, C40). Fragment: every state,
+every registry. -/
+theorem requests_have_outcome {ks : KShared} {L : MutexLayout} {s : SC} {reg : SyncReg}
+    {ar : ArenaReg} {c : Nat} :
+    (∀ op, ∃ o, opStepC ks.toK op c s o) ∧
+    (∀ ps ls, ∃ o, SpawnStep s c ps ls o) ∧
+    (∀ ps ls vs, ∃ o, SpawnValStep ks.toK s c ps ls vs o) ∧
+    (∃ o, TermStep ks.toK s c o) ∧
+    (∀ (R : Type) (kc : KC R) (r : R) (g : Nat), ∃ o, DeriveSyncStep kc r s c g o) ∧
+    (∀ g, ∃ o, NewMutexOutcome ks.toK L ar s reg c g o) ∧
+    (∀ i, ∃ o, UnlockOutcome L s reg c i o) ∧
+    (∀ i, ∃ o, ResetLockOutcome L s reg c i o) ∧
+    (∀ st i, ∃ o, NewArenaStepC s reg ar c st i o) ∧
+    (∀ i region dst, ∃ o, IssueStepC ks.toK s ar c i region dst o) ∧
+    (∀ i, ∃ o, ResetStepC s ar c i o) ∧
+    (∀ a l order, ∃ o, ReadSharedStep ks s c a l order o) ∧
+    (∀ a region ord kind, ∃ o, WriteSharedCStep ks s c a region ord kind o) ∧
+    (∀ a l succ fail br, ∃ o, CasStep ks s c a l succ fail br o) := by
+  refine ⟨fun op => opStepC_exists _ op c s, fun _ _ => guarded_exists,
+    fun _ _ _ => guarded_exists, guarded_exists, fun _ _ _ _ => guarded_exists, fun g => ?_,
+    fun i => ?_, fun i => ?_, fun _ _ => guarded_exists, fun i region dst => ?_, fun i => ?_,
+    fun _ _ _ => guarded_exists, fun _ _ _ _ => guarded_exists, fun a l succ fail br => ?_⟩
+  · obtain ⟨hiff, -, hor⟩ := newMutex_outcomes (k := ks.toK) (L := L) (ar := ar) (s := s)
+      (reg := reg) (c := c) (g := g)
+    rcases hor with h | h
+    · obtain ⟨st', h⟩ := hiff.1 h; exact ⟨_, .ok h⟩
+    · exact ⟨_, h⟩
+  · obtain ⟨hiff, -, hor⟩ := unlock_outcomes (L := L) (s := s) (reg := reg) (c := c) (i := i)
+    rcases hor with h | h
+    · obtain ⟨st', h⟩ := hiff.1 h; exact ⟨_, .ok h⟩
+    · exact ⟨_, h⟩
+  · obtain ⟨hiff, -, hor⟩ := resetLock_outcomes (L := L) (s := s) (reg := reg) (c := c) (i := i)
+    rcases hor with h | h
+    · obtain ⟨st', h⟩ := hiff.1 h; exact ⟨_, .ok h⟩
+    · exact ⟨_, h⟩
+  · cases hE : ar[i]? with
+    | none => exact ⟨_, .noEntry hE⟩
+    | some E =>
+      by_cases hst : Ern.MemoryModel.Arena.IssueStatic (s.view c) E region dst
+      · by_cases hav : Ern.MemoryModel.Arena.Avail E region
+        · obtain ⟨o₁, h₁⟩ := opStepC_exists ks.toK (.split E.internal [region]) c s
+          cases o₁ with
+          | ok s₁ =>
+            obtain ⟨o₂, h₂⟩ := opStepC_exists ks.toK (.store s.A.length dst) c s₁
+            cases o₂ with
+            | ok s₂ => exact ⟨_, .ok hE hst hav h₁ h₂⟩
+            | reject => exact ⟨_, .store hE hst hav h₁ h₂⟩
+            | fail => cases h₂
+          | reject => exact ⟨_, .split hE hst hav h₁⟩
+          | fail =>
+            obtain ⟨o₃, hR, ho⟩ := h₁
+            cases o₃ with
+            | ok => cases ho
+            | reject => cases ho
+            | fail => cases hR
+        · exact ⟨_, .fail hE hst hav⟩
+      · exact ⟨_, .static hE hst⟩
+  · have : ∃ o₃, Ern.MemoryModel.Arena.ResetD i ⟨s.view c, ar⟩ o₃ := by
+      cases hE : ar[i]? with
+      | none => exact ⟨_, .noEntry hE⟩
+      | some E =>
+        obtain ⟨o₁, h₁⟩ := guarded_exists (P := DerivePre (s.view c) E.internal
+          (footprint (s.view c).P E.storage) .modify)
+          (eff := deriveEff (s.view c) E.internal (footprint (s.view c).P E.storage) .modify)
+        cases o₁ with
+        | ok s₁ =>
+          obtain ⟨o₂, h₂⟩ := kernelStep_exists ks.toK (.release (s.view c).A.length) s₁
+          cases o₂ with
+          | ok s₂ =>
+            by_cases hn : Ern.MemoryModel.Arena.ResetNoDeps (s.view c) E
+            · exact ⟨_, .ok hE h₁ h₂ hn⟩
+            · exact ⟨_, .contract hE h₁ h₂ hn⟩
+          | reject => exact ⟨_, .release hE h₁ h₂⟩
+          | fail => cases h₂
+        | reject => exact ⟨_, .derive hE h₁⟩
+        | fail => cases h₁
+    obtain ⟨o₃, h⟩ := this
+    exact ⟨_, o₃, h, rfl⟩
+  · by_cases ho : CasOrdersOK succ fail
+    · cases br with
+      | success v =>
+        obtain ⟨o, h⟩ := guarded_exists (P := WriteSharedCPre ks s c a [l] (some succ) (.rmw v))
+          (eff := writeSharedCEff s c [l])
+        exact ⟨o, .inr ⟨ho, h⟩⟩
+      | failure v =>
+        obtain ⟨o, h⟩ := guarded_exists (P := ReadSharedPre ks s c a l fail) (eff := s)
+        exact ⟨o, .inr ⟨ho, h⟩⟩
+    · exact ⟨_, .inl ⟨ho, rfl⟩⟩
+
+/-- **Theorem 7** (C8, C16, C26: "A legal but non-enabled request has no successful abstract
+transition; an illegal request has the specified `reject` outcome"): the class "legal and not
+activable" is inhabited only by a live requester, and only for `join` and `acquire`: for these two
+operations it is exactly the absence of an outcome, and every other request has an outcome
+(`requests_have_outcome`). Fragment: every state, every registry. -/
+theorem notEnabled_live {ks : KShared} {L : MutexLayout} {s : SC} {reg : SyncReg} {c d i : Nat} :
+    (JoinNotEnabled s c d → s.Live c) ∧ (AcquireNotEnabled L s reg c i → s.Live c) ∧
+    ((¬ ∃ o, JoinStep s c d o) ↔ JoinNotEnabled s c d) ∧
+    ((¬ ∃ o, AcquireOutcome ks L s reg c i o) ↔ AcquireNotEnabled L s reg c i) := by
+  obtain ⟨hjc, hjr, hjo, hjn, -, -⟩ := join_classes (s := s) (c := c) (d := d)
+  obtain ⟨hac, hao, han, -⟩ := acquire_classes (ks := ks) (L := L) (s := s) (reg := reg)
+    (ar := []) (c := c) (i := i)
+  refine ⟨fun h => h.1, fun h => Decidable.byContradiction fun hl =>
+    (acquire_dead_reject hl).2 h.1, ⟨fun hno => ?_, fun h ⟨o, ho⟩ => hjn h o ho⟩,
+    ⟨fun hno => ?_, fun h ⟨o, ho⟩ => (han h).1 o ho⟩⟩
+  · rcases hjc with ⟨hr, -, -⟩ | ⟨-, hn, -⟩ | ⟨-, -, hk⟩
+    · exact absurd ⟨_, hjr.2 hr⟩ hno
+    · exact hn
+    · exact absurd ⟨_, hjo hk⟩ hno
+  · rcases hac with ⟨hr, -, -⟩ | ⟨-, hn, -⟩ | ⟨-, -, hk⟩
+    · exact absurd ⟨_, .reject hr⟩ hno
+    · exact hn
+    · obtain ⟨st', h⟩ := hao.1 hk; exact absurd ⟨_, .ok h⟩ hno
 
 end Ern.ConcurrencyModel
