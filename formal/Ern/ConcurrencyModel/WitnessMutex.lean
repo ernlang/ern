@@ -6,8 +6,8 @@ import Ern.ConcurrencyModel.WitnessBase
 Rows 1a–5d of the witness table of the tranche brief. States are built from the initial state of
 Spec 1 §47 by `ok` steps. A rejection states its single cause: the named condition fails and
 every other precondition of the clause holds in the same state; its positive twin is cited in its
-docstring. Outcome classes are those of `Outcomes` (theorem 7, and `NewMutexOutcome` for C13 with
-Spec 1 §58).
+docstring. Outcome classes are those of `Outcomes` (theorem 7, and `NewMutexOutcome` for C13,
+"Outcome").
 -/
 
 namespace Ern.ConcurrencyModel
@@ -404,7 +404,7 @@ theorem witness_2e : regFree[1]? = none ∧ AcquireReject mutexLayout m4 regFree
 
 /-! ## Rows 5a–5d: `newMutex` (C13)
 
-C13 names no outcome for a failed precondition; Spec 1 §58 makes it `reject`
+C13, "Outcome": `reject` when an applicable precondition fails, no `fail`
 (`NewMutexOutcome`). Each rejection also shows the absence of an `ok` step, `NewMutexOk` and
 `LStep` alike, with exactly the named precondition failing. -/
 

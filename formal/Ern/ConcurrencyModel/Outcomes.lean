@@ -16,8 +16,7 @@ steps").
   conditions take precedence for the same state.
 * `deriveSync` (C15), `unlock` (C17), `resetLock` (C18): `ok` or `reject`, no waiting class;
   `resetLock` does not require `grant = none`.
-* `newMutex` (C13): `ok` or `reject` (Spec 1 §58; C13 names no outcome for a failed
-  precondition and defines no `fail`).
+* `newMutex` (C13, "Outcome"): `ok` or `reject`, no `fail`.
 * every request of a context that is not live is `reject` (`dead_requests_reject`,
   `dead_only_reject`); every labelled step has a live requester (`lstep_live`); every request
   other than `join` and `acquire` has an outcome (`requests_have_outcome`), and the legal but
@@ -326,21 +325,19 @@ theorem resetLock_outcomes {L : MutexLayout} {s : SC} {reg : SyncReg} {c i : Nat
     · exact .inl h
     · exact .inr (.reject h)
 
-/-! ## `newMutex` (C13, Spec 1 §58) -/
+/-! ## `newMutex` (C13) -/
 
-/-- The outcomes of `newMutex(guarded)` executed by `c` (C13, Spec 1 §58): `ok` with the effect of
-C13, `reject` when a precondition C13.1–C13.11 fails. C13 names no outcome for a failed
-precondition; Spec 1 §58 gives every operation an outcome among `ok`, `reject` and `fail`,
-`reject` meaning that "the static discipline does not permit the step", and a library operation
-produces `fail` only where it defines it ("Library-abstraction operations ... may define their own
-`fail` cases"), which C13 does not. No waiting outcome. -/
+/-- The outcomes of `newMutex(guarded)` executed by `c` (C13, "Outcome": "`ok` when all applicable
+preconditions hold and the registration effect is established; `reject` when any applicable
+precondition fails. This operation defines no `fail` outcome"): `ok` with the effect of C13,
+`reject` when a precondition C13.1–C13.11 fails. No waiting outcome. -/
 inductive NewMutexOutcome (k : K) (L : MutexLayout) (ar : ArenaReg) (s : SC) (reg : SyncReg)
     (c g : Nat) : Outcome3 (SC × SyncReg) → Prop where
   | ok {st' : SC × SyncReg} : NewMutexOk k L ar s reg c g st' →
       NewMutexOutcome k L ar s reg c g (.ok st')
   | reject : ¬ NewMutexPre k L ar s reg c g → NewMutexOutcome k L ar s reg c g .reject
 
-/-- `newMutex` (C13, Spec 1 §58): for every constructing context, live or not, `ok` exactly when
+/-- `newMutex` (C13, "Outcome"): for every constructing context, live or not, `ok` exactly when
 C13.1–C13.11 hold, else `reject`; no `fail`. Fragment: every state. -/
 theorem newMutex_outcomes {k : K} {L : MutexLayout} {ar : ArenaReg} {s : SC} {reg : SyncReg}
     {c g : Nat} :

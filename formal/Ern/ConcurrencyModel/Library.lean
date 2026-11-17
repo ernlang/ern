@@ -336,9 +336,10 @@ instance (k : K) [DecidablePred k.SharedMutable] (L : MutexLayout) (ar : ArenaRe
     ⟨fun ⟨a, b, c, d, e, f, h, i, j, l, m, n⟩ => ⟨a, b, c, d, e, f, h, i, j, l, m, n⟩,
      fun ⟨a, b, c, d, e, f, h, i, j, l, m, n⟩ => ⟨a, b, c, d, e, f, h, i, j, l, m, n⟩⟩
 
-/-- `newMutex(guarded)` executed by `c` (C13): registers the entry `⟨guarded, none⟩`; the
-kernel state is unchanged and no authority is created (C13 effect). C13 states no outcome
-other than success; only `ok` is defined. -/
+/-- The `ok` outcome of `newMutex(guarded)` executed by `c` (C13, "Outcome": `ok` when all
+applicable preconditions hold and the registration effect is established): registers the entry
+`⟨guarded, none⟩`; the kernel state is unchanged and no authority is created (C13 effect). The
+`reject` outcome is `NewMutexOutcome.reject`. -/
 def NewMutexOk (k : K) (L : MutexLayout) (ar : ArenaReg) (s : SC) (reg : SyncReg) (c g : Nat)
     (st' : SC × SyncReg) : Prop :=
   NewMutexPre k L ar s reg c g ∧ st' = (s, reg ++ [⟨g, none⟩])
