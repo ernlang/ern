@@ -73,8 +73,10 @@ structure ValTransferPre (k : K) (fin : S3) (t : SC) (c src dst : Nat) : Prop wh
   sameShape : SameShape (t.view c).P src dst
   /-- C5 item 1, Spec 1 §63.3: all source leaves are `Init`. -/
   srcInit : ∀ l ∈ footprint (t.view c).P src, (t.view c).I l = .init
-  /-- C5 item 2, Spec 1 §63.3: no destination leaf is `Init`. -/
-  dstNotInit : ∀ l ∈ footprint (t.view c).P dst, (t.view c).I l ≠ .init
+  /-- C5.1 ("The fresh destination leaves are `Uninit`"), C5 item 2 ("with corresponding `Uninit`
+  leaves"), replacing Spec 1 §63.3 ("no destination leaf is `Init`") for a fresh destination: every
+  destination leaf is `Uninit`. -/
+  dstUninit : ∀ l ∈ footprint (t.view c).P dst, (t.view c).I l = .uninit
   /-- C5.2, Spec 1 §63.3: disjoint footprints. -/
   disjoint : ¬ overlap (t.view c).P src dst
   /-- C5.2, C5 item 4, Spec 1 §63.4: no active derived authority covers a source leaf from
@@ -99,7 +101,7 @@ instance (k : K) [DecidablePred k.Pinned] (fin : S3) (t : SC) (c src dst : Nat) 
   decidable_of_iff ((t.view c).Usable src ∧ (t.view c).Usable dst ∧
     HasRight (t.view c) .modify src ∧ SameShape (t.view c).P src dst ∧
     (∀ l ∈ footprint (t.view c).P src, (t.view c).I l = .init) ∧
-    (∀ l ∈ footprint (t.view c).P dst, (t.view c).I l ≠ .init) ∧ ¬ overlap (t.view c).P src dst ∧
+    (∀ l ∈ footprint (t.view c).P dst, (t.view c).I l = .uninit) ∧ ¬ overlap (t.view c).P src dst ∧
     (∃ g ∈ List.range (t.view c).A.length, Grounds (t.view c) .modify src g ∧
       ∀ j ∈ List.range (t.view c).A.length, ActiveDerivedOutside (t.view c) src j →
         RightChain (t.view c) g j) ∧
@@ -110,6 +112,12 @@ instance (k : K) [DecidablePred k.Pinned] (fin : S3) (t : SC) (c src dst : Nat) 
         ¬ SelfLock fin j))
     ⟨fun ⟨a, b, c, d, e, f, g, h, i, j, l⟩ => ⟨a, b, c, d, e, f, g, h, i, j, l⟩,
      fun ⟨a, b, c, d, e, f, g, h, i, j, l⟩ => ⟨a, b, c, d, e, f, g, h, i, j, l⟩⟩
+
+/-- Spec 1 §63.3 for a fresh destination: no destination leaf is `Init` (C5 item 2). -/
+theorem ValTransferPre.dstNotInit {k : K} {fin : S3} {t : SC} {c src dst : Nat}
+    (h : ValTransferPre k fin t c src dst) :
+    ∀ l ∈ footprint (t.view c).P dst, (t.view c).I l ≠ .init :=
+  fun l hl e => by rw [h.dstUninit l hl] at e; cases e
 
 /-- C5.2: every by-value argument satisfies `ValTransferPre` at the start of its transfer
 phase, in the declared order, on the state produced by the earlier transfers. -/
@@ -188,6 +196,25 @@ live fails C4.1: `reject`. -/
 def SpawnValStep (k : K) (s : SC) (c : Nat) (ps : List Nat) (ls : LocalShape)
     (vs : List (Nat × Nat)) (o : Outcome3 SC) : Prop :=
   Guarded (SpawnValPre k s c ps ls vs) (spawnValEff s c ps ls vs) o
+
+/-- The transfer phases (C5.2): the `i`-th by-value argument satisfies `ValTransferPre` in the
+state produced by the `i` earlier transfers. -/
+theorem valTransfersPre_nth {k : K} {fin : S3} {c : Nat} :
+    ∀ {t : SC} {vs : List (Nat × Nat)}, ValTransfersPre k fin c t vs → ∀ i (hi : i < vs.length),
+      ValTransferPre k fin (transfersEff c t (vs.take i)) c vs[i].1 vs[i].2
+  | _, [], _, _, hi => absurd hi (Nat.not_lt_zero _)
+  | _, _ :: _, h, 0, _ => h.1
+  | _, _ :: _, h, i + 1, hi => valTransfersPre_nth h.2 i (Nat.lt_of_succ_lt_succ hi)
+
+/-- C5.1, C5.2, C5 item 2: in an `ok` by-value composite, at the start of the transfer phase of each
+by-value argument, every leaf of its fresh destination is `Uninit`, in the state produced by the
+earlier transfers. Fragment: every state. -/
+theorem spawnVal_dst_uninit {k : K} {s s' : SC} {c : Nat} {ps : List Nat} {ls : LocalShape}
+    {vs : List (Nat × Nat)} (h : SpawnValStep k s c ps ls vs (.ok s')) (i : Nat)
+    (hi : i < vs.length) :
+    ∀ l ∈ footprint ((transfersEff c (spawnCreate s c ls) (vs.take i)).view c).P vs[i].2,
+      ((transfersEff c (spawnCreate s c ls) (vs.take i)).view c).I l = .uninit :=
+  (valTransfersPre_nth (Guarded.ok_iff.1 h).1.transfers i hi).dstUninit
 
 /-- An `ok` by-value composite requires the creating context to be live (C4.1). -/
 theorem spawnValStep_live {k : K} {s s' : SC} {c : Nat} {ps : List Nat} {ls : LocalShape}
