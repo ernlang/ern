@@ -98,6 +98,20 @@ theorem stepOblC_without_raw_ops {Ty : Type} (k : K) (C : Nat → Nat → Prop)
   · show OblAlong ObR ObW m (rawOps π w (.reset c i) st m)
     rw [(rawOps_arena_nil π w st m c st₀ int i).2]; trivial
 
+/-- A translated run extends by a step whose obligation holds in every state, without asking for it:
+by `stepOblC_without_raw_ops`, a step of `join`, `deriveSync`, `newMutex`, `acquire`, `unlock`,
+`resetLock`, `newArena` or `reset` extends a translated run with no obligation (Spec 1 §20.3). -/
+theorem TransRun.step_without_obligation {Ty : Type} {ks : KShared} {ML : MutexLayout}
+    {C : Nat → Nat → Prop} {ObR : Machine.ReadOblSpec Ty} {ObW : Machine.WriteOblSpec Ty}
+    {statics : Statics} {π : Params Ty} {tr : List (Label × WriteRepr)}
+    {ops : List (Machine.Op Ty)} {lbl : Label} {w : WriteRepr} {st st' : SC × SyncReg × ArenaReg}
+    {m : Machine.State} (h : TransRun ks ML C ObR ObW statics π tr ops st m)
+    (hs : LStep ks ML lbl st st')
+    (hfree : ∀ st₀ m₀, StepOblC ks.toK C ObR ObW π w lbl st₀ m₀) :
+    TransRun ks ML C ObR ObW statics π (tr ++ [(lbl, w)]) (ops ++ rawOps π w lbl st m) st'
+      (run m (rawOps π w lbl st m)) :=
+  .step h hs (hfree st m)
+
 /-- **Theorem 9b**, simulation of the translated runs (C2, C4–C8, C13–C19, C25, C37–C39, C50;
 Spec 1 §82 preamble, §9 ¶9, §57; `OB-C12`, abstract part), at the grain of abstract steps:
 contexts interleave at the grain of abstract steps, and the raw operations of one step run without
@@ -111,7 +125,8 @@ restriction.
 What it does not say: that an arbitrary `LRun` is translatable for given parameters. A legal
 abstract transition does not guarantee that fixed parameters allow each raw operation: the
 obligations of each step (`StepOblC`) stay hypotheses of the translated run, step by step; only
-those of the labels without raw operation are derived (`stepOblC_without_raw_ops`). The existence
+those of the labels without raw operation are derived (`stepOblC_without_raw_ops`), and a run
+extends by such a step without asking for them (`TransRun.step_without_obligation`). The existence
 of parameters for every admitted run is the layout and ABI obligation that `formal/DESIGN.md`
 keeps open ("Layout interface").
 
@@ -191,7 +206,19 @@ theorem exec_noUB {Ty : Type} {C : Nat → Nat → Prop} {ObR : Machine.ReadOblS
 interleave at the grain of abstract steps): under the hypotheses of `refinement_step`, no raw
 operation of `rawOps` for the step has a `ub` outcome in the state where it runs. It is about these
 raw operations only and says nothing of the physical accesses that are not modelled
-(`StepRefinement`, `rawSort`). -/
+(`rawSort`). Not proven by this statement:
+
+* the physical realization of the concurrent operations; the physical accesses to the controller
+  of the mutex are not modelled: the non-atomic initialization write of C13 and the atomic
+  operations of C48 for `acquire`, `unlock` and `resetLock` (`OB-C05`);
+* the indivisibility of atomic units and the compilation of memory orders (C38, C39, C50;
+  `OB-C12`, concrete part; `OB-C27`); a raw read followed by a raw write does not show it;
+* the consistency of an observed value with the bytes read (C31–C34);
+* the correspondence of physical events, the internal order of compound steps, `rf`, `mo`, `hb`
+  (C26–C34, `OB-C20`);
+* that an admitted abstract execution is realizable for given parameters: the obligations of each
+  step stay hypotheses;
+* any absence of race. -/
 theorem step_no_ub {Ty : Type} {C : Nat → Nat → Prop} {ObR : Machine.ReadOblSpec Ty}
     {ObW : Machine.WriteOblSpec Ty} {π : Params Ty} {w : WriteRepr} {ks : KShared}
     {ML : MutexLayout} {lbl : Label} {st st' : SC × SyncReg × ArenaReg} {m : Machine.State}
@@ -205,8 +232,21 @@ of abstract steps: contexts interleave at the grain of abstract steps. Under `DD
 §80) and `ParamsOK`, along every translated run, none of the raw operations of the run (the
 creations and writes of the statics, then `rawOps` of each step, in order) has a `ub` outcome in the
 state where it runs. It is about these raw operations only: it says nothing of the physical accesses
-that are not modelled (the controller of the mutex, `OB-C05`; atomicity and memory orders, `OB-C12`
-concrete part, `OB-C27`; physical events, `OB-C20`), nor of races. -/
+that are not modelled, and it is not the safety of the concurrent machine.
+
+Not proven by this statement:
+
+* the physical realization of the concurrent operations; the physical accesses to the controller
+  of the mutex are not modelled: the non-atomic initialization write of C13 and the atomic
+  operations of C48 for `acquire`, `unlock` and `resetLock` (`OB-C05`);
+* the indivisibility of atomic units and the compilation of memory orders (C38, C39, C50;
+  `OB-C12`, concrete part; `OB-C27`); a raw read followed by a raw write does not show it;
+* the consistency of an observed value with the bytes read (C31–C34);
+* the correspondence of physical events, the internal order of compound steps, `rf`, `mo`, `hb`
+  (C26–C34, `OB-C20`);
+* that an admitted abstract execution is realizable for given parameters: the obligations of each
+  step stay hypotheses;
+* any absence of race. -/
 theorem run_no_ub {Ty : Type} {ks : KShared} {ML : MutexLayout} {C : Nat → Nat → Prop}
     {ObR : Machine.ReadOblSpec Ty} {ObW : Machine.WriteOblSpec Ty} {statics : Statics}
     {π : Params Ty} {tr : List (Label × WriteRepr)} {ops : List (Machine.Op Ty)}
@@ -221,7 +261,7 @@ theorem run_no_ub {Ty : Type} {ks : KShared} {ML : MutexLayout} {C : Nat → Nat
 one (`SC.Sole`), the raw operations of an inherited operation O1–O16 executed by context 0 are the
 raw operations `Refinement.opsOf` of the memory model for the same operation on the projection
 `SC.toS3`, its obligations are those of `Refinement.StepObl` on the projection, and `ReprC` is
-`Repr` of the projection when the state has one context in all. -/
+`Repr` of the projection. -/
 theorem rawOps_sole {Ty : Type} {k : K} {C : Nat → Nat → Prop} {ObR : Machine.ReadOblSpec Ty}
     {ObW : Machine.WriteOblSpec Ty} {π : Params Ty} {w : WriteRepr}
     {st : SC × SyncReg × ArenaReg} (hs : st.1.Sole) (op : KernelOp) (m : Machine.State) :

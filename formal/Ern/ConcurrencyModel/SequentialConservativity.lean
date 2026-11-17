@@ -87,7 +87,7 @@ theorem sequential_domain {ks : KShared} {L : MutexLayout} {statics : Statics} {
 /-- **Theorem 1**, special case of the histories without `spawn` (C24): along every run of the
 labelled step relation from the initial state of Spec 1 §47 (any contexts, libraries and atomic
 cases, without trace restriction), a reached single-context state (`SC.Single`, one context in
-all, which no run containing a `spawn` reaches) satisfies the frame structure and the kernel
+all) satisfies the frame structure and the kernel
 invariant of Spec 1 §57 on its projection, under `DDSound` (Spec 1 §80) and well-formed statics
 (Spec 1 §47). The last paragraph of C24 ("A transition history involving additional contexts must
 not return to an invalid single-context authority state") is carried by

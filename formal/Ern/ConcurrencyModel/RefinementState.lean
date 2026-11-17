@@ -214,17 +214,22 @@ theorem reached_pointer_sound_store {Ty : Type} {ks : KShared} {ML : MutexLayout
         (bytesOf (run m (storeOps π.pe m π.L π.ty (st.1.view c) a p)) π.L p i).2 =
           some (anchorAlloc π.L (st.1.view c) a)) ∧
       (∀ l ∈ (st.1.view c).afp a, (π.L l).alloc = anchorAlloc π.L (st.1.view c) a ∧
-        AllocP m (π.L l).alloc fun al => al.live = true ∧ (π.L l).off + (π.L l).len ≤ al.size) :=
+        AllocP m (π.L l).alloc fun al => al.live = true ∧ (π.L l).off + (π.L l).len ≤ al.size) ∧
+      ((∀ l ∈ (st.1.view c).afp a, (π.L l).len = 0) →
+        ad = baseOf m (anchorAlloc π.L (st.1.view c) a)) ∧
+      ((∃ l ∈ (st.1.view c).afp a, 0 < (π.L l).len) → ∃ l ∈ (st.1.view c).afp a,
+        0 < (π.L l).len ∧ ad = leafAddr m π.L l ∧
+          ∀ l' ∈ (st.1.view c).afp a, 0 < (π.L l').len → ad ≤ leafAddr m π.L l') :=
   have hk := TransRun.kInvCA hdd hπ h
-  have hp := pointer_sound_storeC (ty := π.ty) (refinement_run hdd hπ h).2.1 hk.1.1.1 hk.1.1.2
+  pointer_sound_storeC (ty := π.ty) (refinement_run hdd hπ h).2.1 hk.1.1.1 hk.1.1.2
     hk.1.2.1.2.2 hs had hsz henc
-  ⟨hp.1, hp.2.1, hp.2.2.1⟩
 
 /-- Pointer soundness of the block stored by `issue` executed by `c` (Spec 1 §77, Part XIV, §82.2,
 §82.3, §82.7; C2), at the grain of abstract steps: the raw operations of an `ok` `issue` of a
 registered entry are the `store` of the block, of identity `|A|`, into the destination on the state
 `t` after `split` of `internal` on the region (`rawOps_issue`), and the conclusions of
-`pointer_sound_storeC` hold on `t`. -/
+`pointer_sound_storeC` hold on `t`, the leaves covered by the block being those of the region
+(`RefinementArena.issue_pointer_sound`). -/
 theorem issue_pointer_soundC {Ty : Type} {k : K} {ty : Nat → Ty} {pe : PtrEnc} {L : Layout}
     {rtok : Nat → Nat} {s : SC} {ar : ArenaReg} {st' : SC × ArenaReg} {m : Machine.State}
     {c i dst ad : Nat} {region : List Nat} {E : Arena.ArenaEntry}
@@ -239,8 +244,11 @@ theorem issue_pointer_soundC {Ty : Type} {k : K} {ty : Nat → Ty} {pe : PtrEnc}
       (∀ i, i < (L dst).len →
         (bytesOf (run m (storeOps (Ty := Ty) pe m L ty t s.A.length dst)) L dst i).2 =
           some (anchorAlloc L t s.A.length)) ∧
-      (∀ l ∈ t.afp s.A.length, (L l).alloc = anchorAlloc L t s.A.length ∧
-        AllocP m (L l).alloc fun al => al.live = true ∧ (L l).off + (L l).len ≤ al.size) := by
+      (∀ l ∈ region, (L l).alloc = anchorAlloc L t s.A.length ∧
+        AllocP m (L l).alloc fun al => al.live = true ∧ (L l).off + (L l).len ≤ al.size) ∧
+      ((∀ l ∈ region, (L l).len = 0) → ad = baseOf m (anchorAlloc L t s.A.length)) ∧
+      ((∃ l ∈ region, 0 < (L l).len) → ∃ l ∈ region, 0 < (L l).len ∧
+        ad = leafAddr m L l ∧ ∀ l' ∈ region, 0 < (L l').len → ad ≤ leafAddr m L l') := by
   intro t
   obtain ⟨E', s₁, hE', -, -, hsp, hsto, -⟩ := issueStepC_ok h
   rw [hE] at hE'; cases hE'
@@ -261,7 +269,11 @@ theorem issue_pointer_soundC {Ty : Type} {k : K} {ty : Nat → Ty} {pe : PtrEnc}
   have := pointer_sound_storeC (ty := ty) (ad := ad) (reprC_set_same rfl rfl rfl hR) hfr₁ hw₁
     hnd₁ hsto (by rw [hv]; exact had) hsz (by rw [hv]; exact henc)
   rw [hv] at this
-  exact ⟨this.1, this.2.1, this.2.2.1⟩
+  have hafp : t.afp s.A.length = region := by
+    show (splitEff (s.view c) E.internal [region]).afp (s.view c).A.length = region
+    simp [S3.afp, Arena.split_block]
+  rw [hafp] at this
+  exact this
 
 /-- **Theorem 9f**, pointers written by `issue` (Spec 1 §77, §82.2, §82.3, §82.7): on a state
 reached by a translated run, under `DDSound(K)` and `ParamsOK`, the conclusions of
@@ -282,8 +294,11 @@ theorem reached_issue_pointer_sound {Ty : Type} {ks : KShared} {ML : MutexLayout
       (∀ i, i < (π.L dst).len →
         (bytesOf (run m (storeOps π.pe m π.L π.ty t st.1.A.length dst)) π.L dst i).2 =
           some (anchorAlloc π.L t st.1.A.length)) ∧
-      (∀ l ∈ t.afp st.1.A.length, (π.L l).alloc = anchorAlloc π.L t st.1.A.length ∧
-        AllocP m (π.L l).alloc fun al => al.live = true ∧ (π.L l).off + (π.L l).len ≤ al.size) :=
+      (∀ l ∈ region, (π.L l).alloc = anchorAlloc π.L t st.1.A.length ∧
+        AllocP m (π.L l).alloc fun al => al.live = true ∧ (π.L l).off + (π.L l).len ≤ al.size) ∧
+      ((∀ l ∈ region, (π.L l).len = 0) → ad = baseOf m (anchorAlloc π.L t st.1.A.length)) ∧
+      ((∃ l ∈ region, 0 < (π.L l).len) → ∃ l ∈ region, 0 < (π.L l).len ∧
+        ad = leafAddr m π.L l ∧ ∀ l' ∈ region, 0 < (π.L l').len → ad ≤ leafAddr m π.L l') :=
   have hk := TransRun.kInvCA hdd hπ h
   issue_pointer_soundC (ty := π.ty) (refinement_run hdd hπ h).2.1 hk.1.1.1 hk.1.1.2 hk.1.2.1.2.2
     hi hE had hsz henc

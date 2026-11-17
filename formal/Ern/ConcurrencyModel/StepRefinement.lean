@@ -604,10 +604,11 @@ theorem vals_realized {fin : S3} {c f : Nat} {ps : List Nat} :
     rw [run_append]
     exact ⟨exec_append hex₁ hex₂, hR₂⟩
 
-/-- `readShared` (C37) and the failed CAS (C39): the raw read of the leaf is an `ok` raw step that
-leaves the memory state unchanged, and `ReprC` holds; the observed value is bound to no byte here
+/-- `readShared` (C37) and the failed CAS (C39), abstract effect only (`rawSort`): the raw read of
+the leaf is an `ok` raw step that leaves the memory state unchanged, and `ReprC` holds; neither the
+memory order nor the observed value is modelled, the observed value being bound to no byte here
 (C31–C34). -/
-theorem readShared_realized {ks : KShared} {s : SC} {c a l : Nat} {order : MemOrder}
+theorem readShared_rawOps {ks : KShared} {s : SC} {c a l : Nat} {order : MemOrder}
     {m : Machine.State} (hR : ReprC π.L π.rtok s m) (hk : KInvCA s)
     (hp : ReadSharedPre ks s c a l order)
     (hob : OblAlong ObR ObW m (readOps m π.L π.ty [l])) :
@@ -620,8 +621,10 @@ theorem readShared_realized {ks : KShared} {s : SC} {c a l : Nat} {order : MemOr
   exact ⟨hex, by rw [hrun]; exact hR⟩
 
 /-- The concurrent `writeShared` of kind store (C36, C39): the raw operations of O11 (Spec 1 §68,
-§82.2) on the view of `c`, from its O11 preconditions. -/
-theorem writeSharedStore_realized {ks : KShared} {s : SC} {c a : Nat} {region : List Nat}
+§82.2) on the view of `c`, from its O11 preconditions. They are a realization when the region has
+no `Atomic` leaf, and the abstract effect only otherwise (`rawSort`: indivisibility and memory
+order not modelled). -/
+theorem writeSharedStore_rawOps {ks : KShared} {s : SC} {c a : Nat} {region : List Nat}
     {ord : Option MemOrder} {m : Machine.State} (hR : ReprC π.L π.rtok s m) (hk : KInvCA s)
     (hpre : WriteSharedCPre ks s c a region ord .store)
     (hob : OblAlong ObR ObW m (writeOps m π.L π.ty w region)) :
@@ -636,10 +639,11 @@ theorem writeSharedStore_realized {ks : KShared} {s : SC} {c a : Nat} {region : 
   exact ⟨hex, (reprC_set (s := s) (t := write3Eff (s.view c) region)
     fun _ => SC.mem_view_F hc).2 hR'⟩
 
-/-- An RMW and a successful CAS (C38, C39): the raw reads of the leaves of the region, as O9, then
-the raw operations of O11, from the O11 preconditions and the initialized leaves of the RMW
-(`WriteSharedCPre.rmwInit`). The indivisibility of the read and the write is not shown. -/
-theorem rmw_realized {ks : KShared} {s : SC} {c a : Nat} {region : List Nat}
+/-- An RMW and a successful CAS (C38, C39), abstract effect only (`rawSort`): the raw reads of the
+leaves of the region, as O9, then the raw operations of O11, from the O11 preconditions and the
+initialized leaves of the RMW (`WriteSharedCPre.rmwInit`). The indivisibility of the read and the
+write is not shown; the observed value is bound to no byte here (C31–C34). -/
+theorem rmw_rawOps {ks : KShared} {s : SC} {c a : Nat} {region : List Nat}
     {ord : Option MemOrder} {v : Nat} {m : Machine.State} (hR : ReprC π.L π.rtok s m)
     (hk : KInvCA s) (hpre : WriteSharedCPre ks s c a region ord (.rmw v))
     (hob : OblAlong ObR ObW m (readOps m π.L π.ty region ++ writeOps m π.L π.ty w region)) :
@@ -825,22 +829,22 @@ theorem refinement_step {ks : KShared} {ML : MutexLayout} {lbl : Label}
     refine reprC_set_same ?_ ?_ ?_ hR <;> unfold releaseEff <;> split <;> rfl
   | readShared h =>
     obtain ⟨hp, -⟩ := Guarded.ok_iff.1 h
-    exact readShared_realized hR hk hp hob
+    exact readShared_rawOps hR hk hp hob
   | @writeShared s s' reg ar c a region order kind h =>
     obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
     cases kind with
-    | store => exact writeSharedStore_realized hR hk hpre hob
-    | rmw v => exact rmw_realized hR hk hpre hob
+    | store => exact writeSharedStore_rawOps hR hk hpre hob
+    | rmw v => exact rmw_rawOps hR hk hpre hob
   | @cas s s' reg ar c a l succ fail br h =>
     rcases h with ⟨-, h⟩ | ⟨-, h⟩
     · cases h
     · cases br with
       | success v =>
         obtain ⟨hpre, rfl⟩ := Guarded.ok_iff.1 h
-        exact rmw_realized hR hk hpre hob
+        exact rmw_rawOps hR hk hpre hob
       | failure v =>
         obtain ⟨hp, rfl⟩ := Guarded.ok_iff.1 h
-        exact readShared_realized hR hk hp hob
+        exact readShared_rawOps hR hk hp hob
 
 end Step
 
