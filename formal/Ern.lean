@@ -31,6 +31,7 @@ import Ern.ConcurrencyModel.WitnessAtomic
 import Ern.ConcurrencyModel.WitnessBase
 import Ern.ConcurrencyModel.WitnessFrames
 import Ern.ConcurrencyModel.WitnessMutex
+import Ern.ConcurrencyModel.WitnessRefinement
 import Ern.Corpus.DataStack
 import Ern.Corpus.Lib
 import Ern.Corpus.LibRunner
