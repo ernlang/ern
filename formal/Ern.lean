@@ -5,6 +5,7 @@ import Ern.ConcurrencyModel.Ancestry
 import Ern.ConcurrencyModel.ArenaPreserve
 import Ern.ConcurrencyModel.Atomic
 import Ern.ConcurrencyModel.AtomicCases
+import Ern.ConcurrencyModel.CompositeRmw
 import Ern.ConcurrencyModel.Conservativity
 import Ern.ConcurrencyModel.Contract
 import Ern.ConcurrencyModel.DeriveSync
