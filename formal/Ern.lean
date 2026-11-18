@@ -20,6 +20,7 @@ import Ern.ConcurrencyModel.RefinementArenas
 import Ern.ConcurrencyModel.RefinementAuthority
 import Ern.ConcurrencyModel.RefinementFail
 import Ern.ConcurrencyModel.RefinementLifetimes
+import Ern.ConcurrencyModel.RefinementPinnedLive
 import Ern.ConcurrencyModel.RefinementPinning
 import Ern.ConcurrencyModel.RefinementRights
 import Ern.ConcurrencyModel.RefinementState
