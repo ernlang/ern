@@ -20,6 +20,10 @@ Not proven here, by any statement of this module:
   operations of C48 for `acquire`, `unlock` and `resetLock` (`OB-C05`);
 * the indivisibility of atomic units and the compilation of memory orders (C38, C39, C50;
   `OB-C12`, concrete part; `OB-C27`); a raw read followed by a raw write does not show it;
+* what an RMW over more than one leaf, admitted under a composite contract (C38), reads: `rawOps`
+  reads every leaf of its region, an auxiliary construction whose read obligations restrict the
+  translated runs (`composite_rmw_restricts`); the faithful correspondence of a composite RMW
+  stays open;
 * the consistency of an observed value with the bytes read (C31–C34);
 * the correspondence of physical events, the internal order of compound steps, `rf`, `mo`, `hb`
   (C26–C34, `OB-C20`);
@@ -137,6 +141,10 @@ Not proven by this statement:
   operations of C48 for `acquire`, `unlock` and `resetLock` (`OB-C05`);
 * the indivisibility of atomic units and the compilation of memory orders (C38, C39, C50;
   `OB-C12`, concrete part; `OB-C27`); a raw read followed by a raw write does not show it;
+* what an RMW over more than one leaf, admitted under a composite contract (C38), reads: `rawOps`
+  reads every leaf of its region, an auxiliary construction whose read obligations restrict the
+  translated runs (`composite_rmw_restricts`); the faithful correspondence of a composite RMW
+  stays open;
 * the consistency of an observed value with the bytes read (C31–C34);
 * the correspondence of physical events, the internal order of compound steps, `rf`, `mo`, `hb`
   (C26–C34, `OB-C20`);
@@ -213,6 +221,10 @@ raw operations only and says nothing of the physical accesses that are not model
   operations of C48 for `acquire`, `unlock` and `resetLock` (`OB-C05`);
 * the indivisibility of atomic units and the compilation of memory orders (C38, C39, C50;
   `OB-C12`, concrete part; `OB-C27`); a raw read followed by a raw write does not show it;
+* what an RMW over more than one leaf, admitted under a composite contract (C38), reads: `rawOps`
+  reads every leaf of its region, an auxiliary construction whose read obligations restrict the
+  translated runs (`composite_rmw_restricts`); the faithful correspondence of a composite RMW
+  stays open;
 * the consistency of an observed value with the bytes read (C31–C34);
 * the correspondence of physical events, the internal order of compound steps, `rf`, `mo`, `hb`
   (C26–C34, `OB-C20`);
@@ -241,6 +253,10 @@ Not proven by this statement:
   operations of C48 for `acquire`, `unlock` and `resetLock` (`OB-C05`);
 * the indivisibility of atomic units and the compilation of memory orders (C38, C39, C50;
   `OB-C12`, concrete part; `OB-C27`); a raw read followed by a raw write does not show it;
+* what an RMW over more than one leaf, admitted under a composite contract (C38), reads: `rawOps`
+  reads every leaf of its region, an auxiliary construction whose read obligations restrict the
+  translated runs (`composite_rmw_restricts`); the faithful correspondence of a composite RMW
+  stays open;
 * the consistency of an observed value with the bytes read (C31–C34);
 * the correspondence of physical events, the internal order of compound steps, `rf`, `mo`, `hb`
   (C26–C34, `OB-C20`);
