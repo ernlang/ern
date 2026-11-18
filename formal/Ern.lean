@@ -17,6 +17,7 @@ import Ern.ConcurrencyModel.Preservation
 import Ern.ConcurrencyModel.Reachable
 import Ern.ConcurrencyModel.RefinementArenas
 import Ern.ConcurrencyModel.RefinementAuthority
+import Ern.ConcurrencyModel.RefinementFail
 import Ern.ConcurrencyModel.RefinementPinning
 import Ern.ConcurrencyModel.RefinementState
 import Ern.ConcurrencyModel.RunRefinement
