@@ -16,6 +16,7 @@ import Ern.ConcurrencyModel.Outcomes
 import Ern.ConcurrencyModel.Preservation
 import Ern.ConcurrencyModel.Reachable
 import Ern.ConcurrencyModel.RefinementAuthority
+import Ern.ConcurrencyModel.RefinementPinning
 import Ern.ConcurrencyModel.RefinementState
 import Ern.ConcurrencyModel.RunRefinement
 import Ern.ConcurrencyModel.SequentialConservativity
