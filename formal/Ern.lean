@@ -19,6 +19,7 @@ import Ern.ConcurrencyModel.RefinementArenas
 import Ern.ConcurrencyModel.RefinementAuthority
 import Ern.ConcurrencyModel.RefinementFail
 import Ern.ConcurrencyModel.RefinementPinning
+import Ern.ConcurrencyModel.RefinementRights
 import Ern.ConcurrencyModel.RefinementState
 import Ern.ConcurrencyModel.RunRefinement
 import Ern.ConcurrencyModel.SequentialConservativity
