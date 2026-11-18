@@ -26,8 +26,9 @@ What rests on what (Spec 1 §43; C22.6 "the entire authority-holder chain"):
   requesting frame with a present effective mode on the controller, and on its holder chain
   (`CtrlBasis`).
 
-The origin chain is not counted: a right does not rest on the origins of its grounding authority,
-which may be inactive (C16.2: "an inactive recorded grant with surviving derived authorities").
+The origin chain is not counted: Spec 1 §63.4 names it beside "the exercisable authority on which
+that right rests", not as part of it. Whether the origins of a founding authority are active is not
+stated here.
 
 * `rights_founded_active`: for every `ok` labelled step, every founding authority of a right it
   reads is active in the state where the right is read;
@@ -229,13 +230,14 @@ theorem 6): for every `ok` labelled step, the rights of the inventory of theorem
 (`rights_inventory`), and every authority that founds one of them (`Founds`: the authority it is
 grounded on and, along the holder chain of its exercise, every authority that exercise rests on) is
 active in the state where the step reads that right, the intermediate and resulting states
-included. Together with `usesOf_active`, every authority that an `ok` step relies on, as a means of
-access or through a right it reads, is active where it is relied on. Fragment: every labelled step,
-every state.
+included. With `usesOf_active`: the authorities that an `ok` step uses (`usesOf`) and those that
+found the rights it reads (`Founds`) are active in the states where the step relies on them.
+Fragment: every labelled step, every state.
 
 The activity comes from Spec 1 §43 (an exercisable authority is active, along its holder chain);
 the step gives that the rights hold. The origin chain of a grounding authority is not counted
-(C16.2). The physical accesses that these rights justify are not modelled (`OB-C05`, `OB-C20`). -/
+(Spec 1 §63.4 names it beside that authority), and its activity is not stated here. The physical
+accesses that these rights justify are not modelled (`OB-C05`, `OB-C20`). -/
 theorem rights_founded_active {ks : KShared} {L : MutexLayout} {lbl : Label}
     {st st' : SC × SyncReg × ArenaReg} (h : LStep ks L lbl st st') :
     RightsRead ks L st lbl ∧ ∀ t j, Founds ks L st lbl t j → t.Active j := by

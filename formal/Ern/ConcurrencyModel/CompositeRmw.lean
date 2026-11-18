@@ -23,7 +23,8 @@ changing it:
 * `composite_rmw_restricts`: the parametric obligations `ObR` of the added reads do not follow from
   them, nor from the obligations of the O11 writes: an admitted RMW over an `Atomic` leaf and a
   `Synchronized` leaf, under concrete parameters, has an execution of `ok` raw steps with the read
-  of the `Atomic` leaf alone, and is the step of no translated run with the reads of both leaves.
+  of the `Atomic` leaf alone; with the reads of both leaves, its obligations fail in the initial
+  memory state, and no translated run has it as its single step.
 
 So the results of theorem 9 hold as proved, conditional on these obligations, and the faithful
 correspondence of a composite RMW stays open. These reads are an auxiliary construction of the
@@ -242,8 +243,8 @@ the parameters `πRmw` (`ParamsOK`), the read obligation `obRAtomic` and the wri
   representation, the raw operations form an execution of `ok` raw steps and `ReprC` holds after
   them;
 * with the raw reads of leaves 1 and 3, as `rawOps` gives them, the obligations of the step fail
-  for every written representation (the read of leaf 3), so the step is the step of no translated
-  run.
+  for every written representation (the read of leaf 3), so no translated run has this step as its
+  single step.
 
 The test contract admitting the step does not establish that such a composite contract is
 justified under C38–C40. -/
