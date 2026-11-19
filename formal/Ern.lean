@@ -23,6 +23,7 @@ import Ern.ConcurrencyModel.Outcomes
 import Ern.ConcurrencyModel.Preservation
 import Ern.ConcurrencyModel.Rc11
 import Ern.ConcurrencyModel.Rc11Projection
+import Ern.ConcurrencyModel.Rc11Witnesses
 import Ern.ConcurrencyModel.Reachable
 import Ern.ConcurrencyModel.RefinementArenas
 import Ern.ConcurrencyModel.RefinementAuthority
