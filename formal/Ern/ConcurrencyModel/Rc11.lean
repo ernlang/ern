@@ -18,6 +18,9 @@ Sources:
 * for the amended middle term of `scb`, the corrigendum named by C34 (O. Lahav, December 2025):
   `(sb \ rmw) ; hb ; (sb \ rmw)` in place of `sb|≠loc ; hb ; sb|≠loc`.
 
+Nothing here is a claim about herd or about a compiler: the comparison is between definitions
+written in Lean, on a declared fragment.
+
 The fragment (`Frag`) is the fence-free fragment with the **two-event** representation of an RMW:
 a read and a write related by `rmw`, as herd produces with `-variant normw`. The default one-event
 representation of herd, an event both read and write, is **outside** the fragment: this is a limit
@@ -52,20 +55,25 @@ namespace Lab
 
 variable {T V : Type}
 
+/-- The location of a label (`loc` of `rc11.cat`). -/
 def loc : Lab T V → Nat
   | .init l _ | .read _ l _ _ | .write _ l _ _ => l
 
+/-- The value of a label. -/
 def val : Lab T V → V
   | .init _ v | .read _ _ v _ | .write _ _ v _ => v
 
+/-- The thread of a label; none for an initial write. -/
 def thread? : Lab T V → Option T
   | .init .. => none
   | .read t .. | .write t .. => some t
 
+/-- The order annotation of a label; none for an initial write. -/
 def ann? : Lab T V → Option Ann
   | .init .. => none
   | .read _ _ _ a | .write _ _ _ a => some a
 
+/-- `R` of herd: the reads. -/
 def isR : Lab T V → Bool
   | .read .. => true
   | _ => false
@@ -75,6 +83,7 @@ def isW : Lab T V → Bool
   | .write .. | .init .. => true
   | _ => false
 
+/-- `IW` of herd: the initial writes. -/
 def isIW : Lab T V → Bool
   | .init .. => true
   | _ => false
@@ -97,13 +106,21 @@ variable {E T V : Type} (G : Graph E T V)
 
 /-! ## The sets and relations that `rc11.cat` names -/
 
+/-- `R` of `rc11.cat`: the reads. -/
 def R (e : E) : Prop := (G.lab e).isR = true
+/-- `W` of `rc11.cat`: the writes, the initial writes included. -/
 def W (e : E) : Prop := (G.lab e).isW = true
+/-- `IW` of `rc11.cat`: the initial writes. -/
 def IW (e : E) : Prop := (G.lab e).isIW = true
+/-- `RLX` of `rc11.cat`. -/
 def RLX (e : E) : Prop := (G.lab e).ann? = some .rlx
+/-- `REL` of `rc11.cat`. -/
 def REL (e : E) : Prop := (G.lab e).ann? = some .rel
+/-- `ACQ_REL` of `rc11.cat`. -/
 def ACQ_REL (e : E) : Prop := (G.lab e).ann? = some .acqRel
+/-- `ACQ` of `rc11.cat`. -/
 def ACQ (e : E) : Prop := (G.lab e).ann? = some .acq
+/-- `SC` of `rc11.cat`. -/
 def SC (e : E) : Prop := (G.lab e).ann? = some .sc
 /-- `A`: the events that carry an order annotation, every event but the initial writes. -/
 def A (e : E) : Prop := (G.lab e).ann?.isSome = true
@@ -281,15 +298,19 @@ theorem dr_empty (a b : E) : ¬ G.dr a b := by
 /-- `rs`, `sw`, `coherencermw` and `atomicity` with `rmw` alone in place of `myrmw`. -/
 def rfRmw (a b : E) : Prop := ∃ c, G.rf a c ∧ G.rmw c b
 
+/-- `rs` with `rmw` alone in place of `myrmw` (the `[RMW]` lemma). -/
 def rsR (a b : E) : Prop :=
   G.W a ∧ ∃ c, (a = c ∨ (G.sb a c ∧ G.loc a c)) ∧ G.W c ∧ G.Atomic c ∧ RTC G.rfRmw c b
 
+/-- `sw` with `rmw` alone in place of `myrmw` (the `[RMW]` lemma). -/
 def swR (a b : E) : Prop :=
   (G.REL a ∨ G.ACQ_REL a ∨ G.SC a) ∧ (∃ c, G.rsR a c ∧ G.rf c b) ∧ G.R b ∧ G.Atomic b ∧
     (G.ACQ b ∨ G.ACQ_REL b ∨ G.SC b)
 
+/-- `coherencermw` with `rmw` alone in place of `myrmw` (the `[RMW]` lemma). -/
 def CoherenceRmwR : Prop := ∀ a b, G.rmw a b → ¬ G.eco b a
 
+/-- `atomicity` with `rmw` alone in place of `myrmw` (the `[RMW]` lemma). -/
 def AtomicityR : Prop := ∀ a b, G.rmw a b → ¬ ∃ c, G.rb a c ∧ G.mo c b
 
 variable {G}

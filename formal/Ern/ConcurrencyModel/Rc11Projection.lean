@@ -126,9 +126,11 @@ theorem classify (hF : G.Frag) (e : E) :
         subst ht hlc
         exact .inr (.inr (.inr ⟨t, l, v, a, w, v', a', rfl, rfl, hlw⟩))
 
+/-- The context of an event of a thread is the thread. -/
 theorem ctxOf_inl {e : E} {t : T} : G.ctxOf e = .inl t ↔ (G.lab e).thread? = some t := by
   unfold ctxOf; cases G.lab e <;> simp [Lab.thread?]
 
+/-- An event whose context is an event is that event, an initial write. -/
 theorem ctxOf_inr {e x : E} (h : G.ctxOf e = .inr x) : x = e := by
   unfold ctxOf at h; cases hl : G.lab e <;> simp_all
 
@@ -170,8 +172,10 @@ def proj (hF : G.Frag) : Events.Graph G.PE (T ⊕ E) Nat V Unit where
 
 /-! ## The write component -/
 
+/-- The write component of an event outside a pair is the event. -/
 theorem wc_none {e : E} (h : G.partner e = none) : G.wc e = e := by unfold wc; rw [h]; rfl
 
+/-- The write component of the read component of a pair is its partner. -/
 theorem wc_some {e w : E} (h : G.partner e = some w) : G.wc e = w := by unfold wc; rw [h]; rfl
 
 variable {G} (hF : G.Frag)
@@ -224,13 +228,16 @@ theorem loc_wc (e : E) : (G.lab (G.wc e)).loc = (G.lab e).loc := by
 /-! ## The attributes of the image -/
 
 omit hF in
+/-- The access of the image of an event (table of the brief). -/
 theorem proj_acc (hF : G.Frag) (a : G.PE) : (G.proj hF).acc? a = some (G.accOf a.1) := rfl
 
+/-- The unit of the image of an event is its location. -/
 theorem proj_unitOf (a : G.PE) : (G.proj hF).unitOf a = some (G.lab a.1).loc := by
   unfold Events.Graph.unitOf; rw [proj_acc hF]
   rcases shape hF a.1 with ⟨l, v, hl, h, -⟩ | ⟨t, l, v, o, hl, h, -⟩ | ⟨t, l, v, o, hl, -, h, -⟩ |
     ⟨t, l, v, o, w, v', o', hl, -, -, h, -⟩ <;> rw [h, hl] <;> rfl
 
+/-- The image of an event writes exactly when its write component is a write. -/
 theorem proj_writes_iff (a : G.PE) : (G.proj hF).Writes a ↔ G.W (G.wc a.1) := by
   unfold Events.Graph.Writes Events.Graph.kind?; rw [proj_acc hF]
   rcases shape hF a.1 with ⟨l, v, hl, h, hw⟩ | ⟨t, l, v, o, hl, h, hw⟩ |
@@ -241,22 +248,27 @@ theorem proj_writes_iff (a : G.PE) : (G.proj hF).Writes a ↔ G.W (G.wc a.1) := 
   · simp [W, hl, Lab.isW, Events.UKind.kind, Events.Kind.Writes]
   · simp [W, hlw, Lab.isW, Events.UKind.kind, Events.Kind.Writes]
 
+/-- The image of an event reads exactly when the event is a read. -/
 theorem proj_reads_iff (a : G.PE) : (G.proj hF).Reads a ↔ G.R a.1 := by
   unfold Events.Graph.Reads Events.Graph.kind?; rw [proj_acc hF]
   rcases shape hF a.1 with ⟨l, v, hl, h, -⟩ | ⟨t, l, v, o, hl, h, -⟩ |
     ⟨t, l, v, o, hl, -, h, -⟩ | ⟨t, l, v, o, w, v', o', hl, -, -, h, -⟩ <;>
     rw [h] <;> simp [R, hl, Lab.isR, Events.UKind.kind, Events.Kind.Reads]
 
+/-- The modifications of a unit in the image (C31): the events whose write component is a write of
+that location. -/
 theorem proj_modOn_iff (a : G.PE) (u : Nat) :
     (G.proj hF).ModOn a u ↔ G.W (G.wc a.1) ∧ (G.lab a.1).loc = u := by
   unfold Events.Graph.ModOn
   rw [proj_unitOf hF, proj_writes_iff hF, Option.some.injEq, and_comm]
 
+/-- The read components of a unit in the image (C31): the reads of that location. -/
 theorem proj_readOn_iff (a : G.PE) (u : Nat) :
     (G.proj hF).ReadOn a u ↔ G.R a.1 ∧ (G.lab a.1).loc = u := by
   unfold Events.Graph.ReadOn
   rw [proj_unitOf hF, proj_reads_iff hF, Option.some.injEq, and_comm]
 
+/-- The RMW events of the image are the read components of the pairs. -/
 theorem proj_isRMW_iff (a : G.PE) : (G.proj hF).IsRMW a ↔ ∃ w, G.partner a.1 = some w := by
   unfold Events.Graph.IsRMW Events.Graph.kind?; rw [proj_acc hF]
   rcases shape hF a.1 with ⟨l, v, hl, h, -⟩ | ⟨t, l, v, o, hl, h, -⟩ |
@@ -266,6 +278,8 @@ theorem proj_isRMW_iff (a : G.PE) : (G.proj hF).IsRMW a ↔ ∃ w, G.partner a.1
   · simp [Events.UKind.kind, hp]
   · simp [Events.UKind.kind, hp]
 
+/-- The value written by the image of an event is the value of its write component (table of the
+brief). -/
 theorem proj_valW (a : G.PE) (h : G.W (G.wc a.1)) :
     (G.proj hF).valW a = some (G.lab (G.wc a.1)).val := by
   unfold Events.Graph.valW; rw [proj_acc hF]
@@ -277,6 +291,7 @@ theorem proj_valW (a : G.PE) (h : G.W (G.wc a.1)) :
   · simp [W, hl, Lab.isW] at h
   · rw [hlw]; rfl
 
+/-- The value read by the image of a read is its value (table of the brief). -/
 theorem proj_valR (a : G.PE) (h : G.R a.1) : (G.proj hF).valR a = some (G.lab a.1).val := by
   unfold Events.Graph.valR; rw [proj_acc hF]
   rcases shape hF a.1 with ⟨l, v, hl, hacc, -⟩ | ⟨t, l, v, o, hl, hacc, -⟩ |
@@ -399,12 +414,14 @@ theorem proj_po_sb {a b : G.PE} (h : (G.proj hF).po a b) : G.sb (G.wc a.1) b.1 :
     · exact h
 
 omit hF in
+/-- A pair row with a release-capable order has its write component annotated `REL` or `SC`. -/
 theorem ordPair_rel {o o' : Ann}
     (h : ordPair o o' = .release ∨ ordPair o o' = .acqRel ∨ ordPair o o' = .seqCst) :
     o' = .rel ∨ o' = .sc := by
   cases o <;> cases o' <;> simp_all [ordPair]
 
 omit hF in
+/-- A pair row with an acquire-capable order has its read component annotated `ACQ` or `SC`. -/
 theorem ordPair_acq {o o' : Ann}
     (h : ordPair o o' = .acquire ∨ ordPair o o' = .acqRel ∨ ordPair o o' = .seqCst) :
     o = .acq ∨ o = .sc := by
@@ -441,6 +458,7 @@ theorem proj_acqCap {b : G.PE} {u : Nat} (h : (G.proj hF).AcqCap b u) :
     rcases ordPair_acq ho with rfl | rfl <;> simp [ACQ, SC, hl, Lab.ann?]
 
 omit hF in
+/-- An event annotated `REL`, `SC` or `ACQ` is in `RLX | REL | ACQ_REL | ACQ | SC`. -/
 theorem atomic_of_ann {e : E} (h : G.REL e ∨ G.SC e ∨ G.ACQ e) : G.Atomic e := by
   rcases h with h | h | h
   · exact .inr (.inl h)
@@ -553,6 +571,7 @@ theorem proj_ecoBase (hcr : G.CoherenceRmw) (hat : G.Atomicity) {x y : G.PE}
     | none => rw [G.wc_none hp]; exact .single (.inr (.inr hrb))
     | some w => rw [G.wc_some hp]; exact .single (.inr (.inl (hmo w hp)))
 
+/-- `eco` of the image is `eco` of RC11 between the write components. -/
 theorem proj_eco (hcr : G.CoherenceRmw) (hat : G.Atomicity) {x y : G.PE}
     (h : (G.proj hF).ECO x y) : G.eco (G.wc x.1) (G.wc y.1) := by
   induction h with

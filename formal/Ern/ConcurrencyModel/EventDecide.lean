@@ -256,6 +256,7 @@ def relTab (R : α → α → Prop) [DecidableRel R] : List (List Bool) :=
 def relB (R : α → α → Prop) [DecidableRel R] (i j : Nat) : Bool :=
   Closure.tget (((relTab R)[i]?).getD []) j
 
+/-- The tabulated relation at two positions is the relation at the events in those positions. -/
 theorem relB_iff (R : α → α → Prop) [DecidableRel R] (i j : Nat) :
     relB R i j = true ↔
       ∃ x y, (elems : List α)[i]? = some x ∧ (elems : List α)[j]? = some y ∧ R x y := by
@@ -274,6 +275,7 @@ variable [DecidableEq α]
 /-- The position of an element in the enumeration. -/
 def idx (a : α) : Nat := (elems : List α).idxOf a
 
+/-- The position of an element designates it. -/
 theorem getElem?_idx (a : α) : (elems : List α)[idx a]? = some a := by
   have h := List.idxOf_lt_length_of_mem (complete a)
   unfold idx
@@ -346,12 +348,14 @@ def writesB : Option Kind → Bool
   | some .write | some .rmw => true
   | _ => false
 
+/-- `Reads` (C30, C31) decided on the access kind. -/
 theorem reads_iff (e : E) : G.Reads e ↔ readsB (G.kind? e) = true := by
   unfold Reads
   cases G.kind? e with
   | none => simp [readsB]
   | some k => cases k <;> simp [readsB, Kind.Reads]
 
+/-- `Writes` (C30, C31) decided on the access kind. -/
 theorem writes_iff (e : E) : G.Writes e ↔ writesB (G.kind? e) = true := by
   unfold Writes
   cases G.kind? e with
@@ -367,6 +371,7 @@ def atomicB : Option (Acc U V) → Bool
   | some (.atomic ..) => true
   | _ => false
 
+/-- `Atomic` (C27, C33) decided on the access. -/
 theorem atomic_iff (e : E) : G.Atomic e ↔ atomicB (G.acc? e) = true := by
   unfold Atomic
   cases G.acc? e with
@@ -380,6 +385,7 @@ def scB : Option (Acc U V) → Bool
   | some (.atomic _ .seqCst _) => true
   | _ => false
 
+/-- `SC` (C34) decided on the access. -/
 theorem sc_iff (e : E) : G.SC e ↔ scB (G.acc? e) = true := by
   unfold SC
   cases G.acc? e with
@@ -397,6 +403,7 @@ def lifeB [DecidableEq C] : Option (SyncRole C) → Option (SyncRole C) → Bool
   | some (.complete c), some (.join c') => decide (c = c')
   | _, _ => false
 
+/-- The lifecycle sources of `sw` (C32.2, C32.3) decided on the `sync` attributes. -/
 theorem life_iff [DecidableEq C] (a b : E) :
     ((∃ c, G.sync? a = some (.spawn c) ∧ G.sync? b = some (.start c)) ∨
       (∃ c, G.sync? a = some (.complete c) ∧ G.sync? b = some (.join c))) ↔
@@ -411,6 +418,7 @@ def valB [DecidableEq V] : Option V → Option V → Bool
   | some v, some v' => decide (v = v')
   | _, _ => false
 
+/-- The value condition of conjunct 1 (C34.1) decided on the values. -/
 theorem val_iff [DecidableEq V] (w r : E) :
     (∃ v, G.valW w = some v ∧ G.valR r = some v) ↔ valB (G.valW w) (G.valR r) = true := by
   cases G.valW w <;> cases G.valR r <;> simp [valB, eq_comm]
@@ -420,6 +428,7 @@ def interB : Option Range → Option Range → Bool
   | some r, some r' => decide (r.Inter r')
   | _, _ => false
 
+/-- `Conflict` (C30) decided without quantifying over ranges. -/
 theorem conflict_iff' [DecidableEq C] (a b : E) : G.Conflict a b ↔
     G.ctx a ≠ G.ctx b ∧ interB (G.range? a) (G.range? b) = true ∧ (G.Writes a ∨ G.Writes b) := by
   unfold Conflict
@@ -431,18 +440,22 @@ instance [DecidableEq C] (a b : E) : Decidable (G.Conflict a b) :=
 /-- Two events designate the same unit. -/
 def SameUnit (a b : E) : Prop := (G.unitOf a).isSome = true ∧ G.unitOf a = G.unitOf b
 
+/-- A property of the unit of an event, decided without enumerating the units. -/
 theorem exists_unitOf_iff (a : E) (P : U → Prop) [DecidablePred P] :
     (∃ u, G.unitOf a = some u ∧ P u) ↔ (G.unitOf a).any (fun u => decide (P u)) = true := by
   cases G.unitOf a <;> simp
 
+/-- A release-capable event designates its unit (C32.1). -/
 theorem unitOf_of_relCap {a : E} {u : U} (h : G.RelCap a u) : G.unitOf a = some u := by
   obtain ⟨o, k, h, -⟩ := h
   exact G.unitOf_atomic h
 
+/-- Two events designate the same unit exactly when some unit is designated by both. -/
 theorem sameUnit_iff (a b : E) : G.SameUnit a b ↔ ∃ u, G.unitOf a = some u ∧ G.unitOf b = some u := by
   unfold SameUnit
   cases ha : G.unitOf a <;> cases hb : G.unitOf b <;> simp [eq_comm]
 
+/-- Two modifications of one unit (C31, C34.2), without enumerating the units. -/
 theorem two_modOn_iff (a b : E) :
     (∃ u, G.ModOn a u ∧ G.ModOn b u) ↔ G.SameUnit a b ∧ G.Writes a ∧ G.Writes b := by
   rw [sameUnit_iff]
@@ -450,6 +463,7 @@ theorem two_modOn_iff (a b : E) :
   · rintro ⟨u, ⟨ha, hwa⟩, hb, hwb⟩; exact ⟨⟨u, ha, hb⟩, hwa, hwb⟩
   · rintro ⟨⟨u, ha, hb⟩, hwa, hwb⟩; exact ⟨u, ⟨ha, hwa⟩, hb, hwb⟩
 
+/-- A modification and a read component of one unit (C34.1), without enumerating the units. -/
 theorem modOn_readOn_iff (w r : E) :
     (∃ u, G.ModOn w u ∧ G.ReadOn r u) ↔ G.SameUnit w r ∧ G.Writes w ∧ G.Reads r := by
   rw [sameUnit_iff]
@@ -457,6 +471,7 @@ theorem modOn_readOn_iff (w r : E) :
   · rintro ⟨u, ⟨ha, hwa⟩, hb, hwb⟩; exact ⟨⟨u, ha, hb⟩, hwa, hwb⟩
   · rintro ⟨⟨u, ha, hb⟩, hwa, hwb⟩; exact ⟨u, ⟨ha, hwa⟩, hb, hwb⟩
 
+/-- Conjunct 2 (C34.2), without enumerating the units. -/
 theorem moTotal_iff : G.MoTotal ↔
     (∀ a b, G.mo a b → G.SameUnit a b ∧ G.Writes a ∧ G.Writes b) ∧
     (∀ a, (G.unitOf a).isSome = true → G.Writes a → ¬ G.mo a a) ∧
@@ -498,6 +513,7 @@ def rmwOnB (u : U) : Option (Acc U V) → Bool
   | some (.atomic u' _ (.rmw _ _)) => decide (u' = u)
   | _ => false
 
+/-- `AtomicRMWOn` (C31, C48) decided on the access. -/
 theorem atomicRMWOn_iff (e : E) (u : U) : G.AtomicRMWOn e u ↔ rmwOnB u (G.acc? e) = true := by
   unfold AtomicRMWOn
   cases G.acc? e with
@@ -522,24 +538,29 @@ def acqCapB (u : U) : Option (Acc U V) → Bool
       (decide (o = .acquire) || decide (o = .acqRel) || decide (o = .seqCst))
   | _ => false
 
+/-- `writesB` on a kind is `Kind.Writes` (C30, C31). -/
 theorem writesB_some (k : Kind) : writesB (some k) = true ↔ k.Writes := by
   cases k <;> simp [writesB, Kind.Writes]
 
+/-- `readsB` on a kind is `Kind.Reads` (C30, C31). -/
 theorem readsB_some (k : Kind) : readsB (some k) = true ↔ k.Reads := by
   cases k <;> simp [readsB, Kind.Reads]
 
+/-- `relCapB` on an atomic access (C32.1, C40). -/
 theorem relCapB_atomic (u u' : U) (o : MemOrder) (k : UKind V) :
     relCapB u (some (.atomic u' o k)) = true ↔
       u' = u ∧ k.kind.Writes ∧ (o = .release ∨ o = .acqRel ∨ o = .seqCst) := by
   rw [relCapB, Bool.and_eq_true, Bool.and_eq_true, decide_eq_true_eq, writesB_some, and_assoc]
   cases o <;> simp
 
+/-- `acqCapB` on an atomic access (C32.1, C40). -/
 theorem acqCapB_atomic (u u' : U) (o : MemOrder) (k : UKind V) :
     acqCapB u (some (.atomic u' o k)) = true ↔
       u' = u ∧ k.kind.Reads ∧ (o = .acquire ∨ o = .acqRel ∨ o = .seqCst) := by
   rw [acqCapB, Bool.and_eq_true, Bool.and_eq_true, decide_eq_true_eq, readsB_some, and_assoc]
   cases o <;> simp
 
+/-- `RelCap` (C32.1, C40) decided on the access. -/
 theorem relCap_iff (e : E) (u : U) : G.RelCap e u ↔ relCapB u (G.acc? e) = true := by
   unfold RelCap
   cases G.acc? e with
@@ -554,6 +575,7 @@ theorem relCap_iff (e : E) (u : U) : G.RelCap e u ↔ relCapB u (G.acc? e) = tru
     | unit => simp [relCapB]
     | plain => simp [relCapB]
 
+/-- `AcqCap` (C32.1, C40) decided on the access. -/
 theorem acqCap_iff (e : E) (u : U) : G.AcqCap e u ↔ acqCapB u (G.acc? e) = true := by
   unfold AcqCap
   cases G.acc? e with

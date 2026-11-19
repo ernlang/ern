@@ -166,9 +166,11 @@ marker. -/
 theorem not_X_of_unit (hX : ∀ e, X e → G.Pure e) {e : E} {u : U} (h : G.unitOf e = some u) :
     ¬ X e := fun hx => G.not_pure_of_unitOf h (hX e hx)
 
+/-- An event with an access kind is not an erased pure authority marker (C27). -/
 theorem not_X_of_kind (hX : ∀ e, X e → G.Pure e) {e : E} {k : Kind} (h : G.kind? e = some k) :
     ¬ X e := fun hx => G.not_pure_of_kind h (hX e hx)
 
+/-- A `seq_cst` event is not an erased pure authority marker (C27, C34). -/
 theorem not_X_of_sc (hX : ∀ e, X e → G.Pure e) {e : E} (h : G.SC e) : ¬ X e := fun hx => by
   obtain ⟨u, k, h⟩ := h
   exact G.not_pure_of_unitOf (G.unitOf_atomic h) (hX e hx)
@@ -278,6 +280,8 @@ variable (hX : ∀ e, X e → G.Pure e) (hrf : ∀ x y, G.rf x y → ¬ X x ∧ 
   (hmo : ∀ x y, G.mo x y → ¬ X x ∧ ¬ X y)
 
 include hX hrf in
+/-- Conjunct 1 (C34.1) holds on the graph exactly when it holds after the erasure of a set `X` of
+pure authority markers that no `rf` edge touches (C34, erasure premises). -/
 theorem erase_rfWF_iff : (G.erase X).RfWF ↔ G.RfWF := by
   constructor
   · rintro ⟨h1, h2, h3⟩
@@ -293,6 +297,8 @@ theorem erase_rfWF_iff : (G.erase X).RfWF ↔ G.RfWF := by
     exact ⟨⟨⟨w, (hrf _ _ hw).1⟩, hw⟩, fun w₁ w₂ h₁ h₂ => Subtype.ext (hu w₁.1 w₂.1 h₁ h₂)⟩
 
 include hX hmo in
+/-- Conjunct 2 (C34.2) holds on the graph exactly when it holds after the erasure of a set `X` of
+pure authority markers that no `mo` edge touches (C34, erasure premises). -/
 theorem erase_moTotal_iff : (G.erase X).MoTotal ↔ G.MoTotal := by
   have hs : ∀ {e : E} {u : U}, G.ModOn e u → ¬ X e := fun h => G.not_X_of_unit hX h.1
   constructor
@@ -309,6 +315,8 @@ theorem erase_moTotal_iff : (G.erase X).MoTotal ↔ G.MoTotal := by
       fun a b ha hb hab => hto a.1 b.1 ha hb fun e => hab (Subtype.ext e)⟩
 
 include hrf hmo in
+/-- Conjunct 3 (C34.3) holds on the graph exactly when it holds after the erasure of a set `X` of
+events that no `rf` or `mo` edge touches (C34, erasure premises). -/
 theorem erase_rmwAtomic_iff : (G.erase X).RmwAtomic ↔ G.RmwAtomic := by
   constructor
   · intro h w r hr hrfwr
@@ -336,6 +344,8 @@ theorem ecoBase_not_X (hrf : ∀ x y, G.rf x y → ¬ X x ∧ ¬ X y)
   · exact ⟨(hrf _ _ h₁).2, (hmo _ _ h₂).2⟩
 
 include hrf hmo in
+/-- `eco` (C34.4) between surviving events is unchanged by the erasure of a set `X` of events that
+no `rf` or `mo` edge touches (C34, erasure premises). -/
 theorem erase_eco_iff (a b : {e // ¬ X e}) : (G.erase X).ECO a b ↔ G.ECO a.1 b.1 := by
   have heq : (G.erase X).EcoBase = restrictRel X G.EcoBase := by
     funext a b
@@ -345,6 +355,8 @@ theorem erase_eco_iff (a b : {e // ¬ X e}) : (G.erase X).ECO a b ↔ G.ECO a.1 
   exact tg_restrict_iff_of_closed (G.ecoBase_not_X hrf hmo) a b
 
 include hX hrf hmo in
+/-- Conjunct 4 (C34.4) holds on the graph exactly when it holds after the erasure of a set `X` of
+pure authority markers that no `rf` or `mo` edge touches (C29, C34). -/
 theorem erase_coherence_iff : (G.erase X).Coherence ↔ G.Coherence := by
   constructor
   · intro h a b hab hba
@@ -373,6 +385,8 @@ theorem erase_coherence_iff : (G.erase X).Coherence ↔ G.Coherence := by
     · exact .inr ((G.erase_eco_iff hrf hmo b a).1 heco)
 
 include hX in
+/-- Conjunct 5 (C34.5) holds on the graph exactly when it holds after the erasure of any set `X` of
+pure authority markers (C29, C34). -/
 theorem erase_hbIrrefl_iff : (G.erase X).HbIrrefl ↔ G.HbIrrefl := by
   constructor
   · intro h a ha
@@ -382,6 +396,8 @@ theorem erase_hbIrrefl_iff : (G.erase X).HbIrrefl ↔ G.HbIrrefl := by
     exact h a.1 ((G.erase_hb_iff hX a a).1 ha)
 
 include hrf in
+/-- Conjunct 6 (C34.6) holds on the graph exactly when it holds after the erasure of a set `X` of
+events that no `rf` edge touches (C29, C34). -/
 theorem erase_noThinAir_iff : (G.erase X).NoThinAir ↔ G.NoThinAir := by
   have hR : ∀ x y, G.PoRf x y → X x ∨ X y → G.po x y := by
     rintro x y (h | h) hxy
@@ -439,6 +455,8 @@ theorem erase_scb_iff (a b : {e // ¬ X e}) : (G.erase X).SCB a b ↔ G.SCB a.1 
     · exact .inr (.inr (.inr (.inr ((G.erase_rb_iff hrf a b).2 h))))
 
 include hX hrf in
+/-- Conjunct 7 (C34.7) holds on the graph exactly when it holds after the erasure of a set `X` of
+pure authority markers that no `rf` edge touches (C29, C34). -/
 theorem erase_scConsistent_iff : (G.erase X).SCConsistent ↔ G.SCConsistent := by
   have heq : (G.erase X).PSC = restrictRel X G.PSC := by
     funext a b

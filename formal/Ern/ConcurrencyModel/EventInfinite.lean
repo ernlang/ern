@@ -76,8 +76,11 @@ def G : Graph Ev Ev Unit Nat Unit where
     exfalso; apply hne
     cases a <;> cases b <;> simp_all [ev]
 
+/-- The access of `h`, `W_rel(x, 1)`. -/
 theorem acc_h : G.acc? .h = some (.atomic () .release (.write 1)) := rfl
+/-- The access of `u_{n+1}`, `U_rlx(x: 1 → 1)`. -/
 theorem acc_u (n : Nat) : G.acc? (.u n) = some (.atomic () .relaxed (.rmw 1 1)) := rfl
+/-- The access of `v_{n+1}`, `U_rlx(x: 7 → 7)`. -/
 theorem acc_v (n : Nat) : G.acc? (.v n) = some (.atomic () .relaxed (.rmw 7 7)) := rfl
 
 /-- Every event is a modification of the unit. -/
@@ -86,6 +89,7 @@ theorem modOn (e : Ev) : G.ModOn e () := by
 
 /-- The events other than `h` are atomic RMW modifications of the unit. -/
 theorem rmw_u (n : Nat) : G.AtomicRMWOn (.u n) () := ⟨_, _, _, acc_u n⟩
+/-- The `v_n` are atomic RMW modifications of the unit (C31, C48). -/
 theorem rmw_v (n : Nat) : G.AtomicRMWOn (.v n) () := ⟨_, _, _, acc_v n⟩
 
 /-- `h` reads nothing. -/

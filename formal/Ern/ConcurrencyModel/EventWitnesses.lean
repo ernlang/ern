@@ -20,6 +20,10 @@ Non-vacuity of the conjuncts (`OB-C26`): T1 satisfies the seven conjuncts togeth
 the conjuncts 1, 2, 3, 4, 6, 7 alone. No graph is rejected by conjunct 5 alone, since conjunct 4
 entails it (`hbIrrefl_of_coherence`); T8 is a graph that conjunct 5 rejects.
 
+The `sw` edges of the witnesses go through `RSMember`, retained reading 5 (a formalization
+hypothesis); on these finite graphs it coincides with the reading by `rf` chains
+(`rsMember_iff_chain`), so no verdict depends on it.
+
 The erasures of T1, T13 and T14 are obtained through the equivalences of 10c, whose premises
 (no pure authority marker is an endpoint of `rf` or `mo`) are checked on each.
 -/
@@ -103,6 +107,7 @@ theorem t1_sw : T1.toGraph.SW 9 12 ∧ T1.toGraph.SW 12 15 ∧ T1.toGraph.SW 9 1
 theorem t1_exercised : T1.toGraph.rf 9 12 ∧ T1.toGraph.mo 9 12 ∧ T1.toGraph.IsRMW 12 ∧
     T1.toGraph.HB 0 16 ∧ T1.toGraph.PSC 7 13 := by decide +kernel
 
+/-- **T1** (C33): no pair of events is in a race. -/
 theorem noRace_t1 : ∀ a b, ¬ T1.toGraph.Race a b := by decide +kernel
 
 /-- **T1, erased** (C34, 10c): the erasure of T1 is admitted. -/
@@ -119,11 +124,14 @@ def T2 : ListGraph 7 (Fin 3) (Fin 1) Nat Unit := lg 7
 
 /-- **T2** (C34.1): rejected by conjunct 1 alone. -/
 theorem t2_verdict : Verdict T2.toGraph false true true true true true true := by decide +kernel
+/-- **T2** (C33): no pair of events is in a race. -/
 theorem noRace_t2 : ∀ a b, ¬ T2.toGraph.Race a b := by decide +kernel
 
 /-- Twin of T2: the read has `W_rlx(x,1)` as source. -/
 def T2t : ListGraph 7 (Fin 3) (Fin 1) Nat Unit := { T2 with rf := [(4, 6)] }
+/-- **Twin of T2** (C34): admitted. -/
 theorem t2t_consistent : T2t.toGraph.EventConsistent := by decide +kernel
+/-- **Twin of T2** (C33): no pair of events is in a race. -/
 theorem noRace_t2t : ∀ a b, ¬ T2t.toGraph.Race a b := by decide +kernel
 
 /-! ## T3: conjunct 2 alone -/
@@ -136,11 +144,14 @@ def T3 : ListGraph 7 (Fin 3) (Fin 1) Nat Unit := lg 7
 
 /-- **T3** (C34.2): rejected by conjunct 2 alone. -/
 theorem t3_verdict : Verdict T3.toGraph true false true true true true true := by decide +kernel
+/-- **T3** (C33): no pair of events is in a race. -/
 theorem noRace_t3 : ∀ a b, ¬ T3.toGraph.Race a b := by decide +kernel
 
 /-- Twin of T3: `W_rlx(x,2)` is in `mo`. -/
 def T3t : ListGraph 7 (Fin 3) (Fin 1) Nat Unit := { T3 with mo := [(0, 4), (0, 6), (4, 6)] }
+/-- **Twin of T3** (C34): admitted. -/
 theorem t3t_consistent : T3t.toGraph.EventConsistent := by decide +kernel
+/-- **Twin of T3** (C33): no pair of events is in a race. -/
 theorem noRace_t3t : ∀ a b, ¬ T3t.toGraph.Race a b := by decide +kernel
 
 /-! ## T4: conjunct 3 alone -/
@@ -153,6 +164,7 @@ def T4 : ListGraph 7 (Fin 3) (Fin 1) Nat Unit := lg 7
 
 /-- **T4** (C34.3): rejected by conjunct 3 alone. -/
 theorem t4_verdict : Verdict T4.toGraph true true false true true true true := by decide +kernel
+/-- **T4** (C33): no pair of events is in a race. -/
 theorem noRace_t4 : ∀ a b, ¬ T4.toGraph.Race a b := by decide +kernel
 
 /-- Twin of T4: the second RMW reads the first (`1 → 2`). -/
@@ -160,7 +172,9 @@ def T4t : ListGraph 7 (Fin 3) (Fin 1) Nat Unit := lg 7
   [ini 0 0, sy 0 (.spawn 1), sy 0 (.spawn 2), sy 1 (.start 1), up 1 0 .relaxed 0 1,
    sy 2 (.start 2), up 2 0 .relaxed 1 2]
   [(0, 4), (4, 6)] [(0, 4), (0, 6), (4, 6)]
+/-- **Twin of T4** (C34): admitted. -/
 theorem t4t_consistent : T4t.toGraph.EventConsistent := by decide +kernel
+/-- **Twin of T4** (C33): no pair of events is in a race. -/
 theorem noRace_t4t : ∀ a b, ¬ T4t.toGraph.Race a b := by decide +kernel
 
 /-! ## T5: conjunct 4 alone -/
@@ -173,6 +187,7 @@ def T5 : ListGraph 10 (Fin 3) (Fin 2) Nat Unit := lg 10
 
 /-- **T5** (C34.4): rejected by conjunct 4 alone. -/
 theorem t5_verdict : Verdict T5.toGraph true true true false true true true := by decide +kernel
+/-- **T5** (C33): no pair of events is in a race. -/
 theorem noRace_t5 : ∀ a b, ¬ T5.toGraph.Race a b := by decide +kernel
 
 /-- Twin of T5: the last read returns `1` and reads `W_rlx(d,1)`. -/
@@ -180,7 +195,9 @@ def T5t : ListGraph 10 (Fin 3) (Fin 2) Nat Unit := lg 10
   [ini 0 0, ini 0 1, sy 0 (.spawn 1), sy 0 (.spawn 2), sy 1 (.start 1), wr 1 0 .relaxed 1,
    wr 1 1 .release 1, sy 2 (.start 2), rd 2 1 .acquire 1, rd 2 0 .relaxed 1]
   [(6, 8), (5, 9)] [(0, 5), (1, 6)]
+/-- **Twin of T5** (C34): admitted. -/
 theorem t5t_consistent : T5t.toGraph.EventConsistent := by decide +kernel
+/-- **Twin of T5** (C33): no pair of events is in a race. -/
 theorem noRace_t5t : ∀ a b, ¬ T5t.toGraph.Race a b := by decide +kernel
 
 /-! ## T6: conjunct 6 alone -/
@@ -193,6 +210,7 @@ def T6 : ListGraph 10 (Fin 3) (Fin 2) Nat Unit := lg 10
 
 /-- **T6** (C34.6): rejected by conjunct 6 alone. -/
 theorem t6_verdict : Verdict T6.toGraph true true true true true false true := by decide +kernel
+/-- **T6** (C33): no pair of events is in a race. -/
 theorem noRace_t6 : ∀ a b, ¬ T6.toGraph.Race a b := by decide +kernel
 
 /-- Twin of T6: both reads return `0` and read the initial writes. -/
@@ -200,7 +218,9 @@ def T6t : ListGraph 10 (Fin 3) (Fin 2) Nat Unit := lg 10
   [ini 0 0, ini 0 1, sy 0 (.spawn 1), sy 0 (.spawn 2), sy 1 (.start 1), rd 1 0 .relaxed 0,
    wr 1 1 .relaxed 1, sy 2 (.start 2), rd 2 1 .relaxed 0, wr 2 0 .relaxed 1]
   [(0, 5), (1, 8)] [(0, 9), (1, 6)]
+/-- **Twin of T6** (C34): admitted. -/
 theorem t6t_consistent : T6t.toGraph.EventConsistent := by decide +kernel
+/-- **Twin of T6** (C33): no pair of events is in a race. -/
 theorem noRace_t6t : ∀ a b, ¬ T6t.toGraph.Race a b := by decide +kernel
 
 /-! ## T7: conjunct 7 alone -/
@@ -213,6 +233,7 @@ def T7 : ListGraph 10 (Fin 3) (Fin 2) Nat Unit := lg 10
 
 /-- **T7** (C34.7): rejected by conjunct 7 alone. -/
 theorem t7_verdict : Verdict T7.toGraph true true true true true true false := by decide +kernel
+/-- **T7** (C33): no pair of events is in a race. -/
 theorem noRace_t7 : ∀ a b, ¬ T7.toGraph.Race a b := by decide +kernel
 
 /-- Twin of T7: the read of `x` returns `1` and reads `W_sc(x,1)`. -/
@@ -220,7 +241,9 @@ def T7t : ListGraph 10 (Fin 3) (Fin 2) Nat Unit := lg 10
   [ini 0 0, ini 0 1, sy 0 (.spawn 1), sy 0 (.spawn 2), sy 1 (.start 1), wr 1 0 .seqCst 1,
    rd 1 1 .seqCst 0, sy 2 (.start 2), wr 2 1 .seqCst 1, rd 2 0 .seqCst 1]
   [(1, 6), (5, 9)] [(0, 5), (1, 8)]
+/-- **Twin of T7** (C34): admitted. -/
 theorem t7t_consistent : T7t.toGraph.EventConsistent := by decide +kernel
+/-- **Twin of T7** (C33): no pair of events is in a race. -/
 theorem noRace_t7t : ∀ a b, ¬ T7t.toGraph.Race a b := by decide +kernel
 
 /-! ## T8: conjunct 5 -/
@@ -233,7 +256,9 @@ def T8 : ListGraph 10 (Fin 3) (Fin 2) Nat Unit := lg 10
 
 /-- **T8** (C33, C34.5): conjuncts 4, 5 and 6 are false, `hb` having a cycle; the others hold. -/
 theorem t8_verdict : Verdict T8.toGraph true true true false false false true := by decide +kernel
+/-- **T8** (C33): `hb` has a cycle through `R_acq(x)=1`. -/
 theorem t8_hb_cycle : T8.toGraph.HB 5 5 := by decide +kernel
+/-- **T8** (C33): no pair of events is in a race. -/
 theorem noRace_t8 : ∀ a b, ¬ T8.toGraph.Race a b := by decide +kernel
 
 /-- Twin of T8: both reads return `0` and read the initial writes. -/
@@ -241,7 +266,9 @@ def T8t : ListGraph 10 (Fin 3) (Fin 2) Nat Unit := lg 10
   [ini 0 0, ini 0 1, sy 0 (.spawn 1), sy 0 (.spawn 2), sy 1 (.start 1), rd 1 0 .acquire 0,
    wr 1 1 .release 1, sy 2 (.start 2), rd 2 1 .acquire 0, wr 2 0 .release 1]
   [(0, 5), (1, 8)] [(0, 9), (1, 6)]
+/-- **Twin of T8** (C34): admitted. -/
 theorem t8t_consistent : T8t.toGraph.EventConsistent := by decide +kernel
+/-- **Twin of T8** (C33): no pair of events is in a race. -/
 theorem noRace_t8t : ∀ a b, ¬ T8t.toGraph.Race a b := by decide +kernel
 
 /-! ## T9 and T10: the release sequence (C48) -/
@@ -255,7 +282,10 @@ def T9 : ListGraph 11 (Fin 3) (Fin 2) Nat Unit := lg 11
 /-- **T9** (C48: "Ordinary atomic stores, including same-thread non-RMW stores, do **not** extend
 the sequence"): admitted; no `sw` edge leaves `W_rel(f,1)`. T9 is the admitted twin of T10. -/
 theorem t9_consistent : T9.toGraph.EventConsistent := by decide +kernel
+/-- **T9** (C48): no `sw` edge leaves `W_rel(f,1)`: `W_rlx(f,2)` is not a member of its release
+sequence (retained reading 5). -/
 theorem t9_no_sw : ∀ b, ¬ T9.toGraph.SW 6 b := by decide +kernel
+/-- **T9** (C33): no pair of events is in a race. -/
 theorem noRace_t9 : ∀ a b, ¬ T9.toGraph.Race a b := by decide +kernel
 
 /-- T10. c1: `W_rlx(d,1)`, `W_rel(f,1)`. c2: `U_rlx(f: 1→2)`. c3: `R_acq(f)=2` reading the RMW,
@@ -269,7 +299,10 @@ def T10 : ListGraph 13 (Fin 4) (Fin 2) Nat Unit := lg 13
 /-- **T10** (C48): rejected by conjunct 4 alone; the RMW extends the sequence, and `sw` relates
 `W_rel(f,1)` to the read. -/
 theorem t10_verdict : Verdict T10.toGraph true true true false true true true := by decide +kernel
+/-- **T10** (C32.1, C48): `sw` relates `W_rel(f,1)` to `R_acq(f)=2`, the RMW being a member of its
+release sequence (retained reading 5). -/
 theorem t10_sw : T10.toGraph.SW 7 11 := by decide +kernel
+/-- **T10** (C33): no pair of events is in a race. -/
 theorem noRace_t10 : ∀ a b, ¬ T10.toGraph.Race a b := by decide +kernel
 
 /-- Twin of T10: the last read returns `1` and reads `W_rlx(d,1)`. -/
@@ -278,7 +311,9 @@ def T10t : ListGraph 13 (Fin 4) (Fin 2) Nat Unit := lg 13
    wr 1 0 .relaxed 1, wr 1 1 .release 1, sy 2 (.start 2), up 2 1 .relaxed 1 2, sy 3 (.start 3),
    rd 3 1 .acquire 2, rd 3 0 .relaxed 1]
   [(7, 9), (9, 11), (6, 12)] [(0, 6), (1, 7), (1, 9), (7, 9)]
+/-- **Twin of T10** (C34): admitted. -/
 theorem t10t_consistent : T10t.toGraph.EventConsistent := by decide +kernel
+/-- **Twin of T10** (C33): no pair of events is in a race. -/
 theorem noRace_t10t : ∀ a b, ¬ T10t.toGraph.Race a b := by decide +kernel
 
 /-! ## T11 and T12: `SCConsistent` (C34) -/
@@ -292,6 +327,7 @@ def T11 : ListGraph 12 (Fin 3) (Fin 2) Nat Unit := lg 12
 
 /-- **T11** (C34, LWG 3941): admitted. -/
 theorem t11_consistent : T11.toGraph.EventConsistent := by decide +kernel
+/-- **T11** (C33): no pair of events is in a race. -/
 theorem noRace_t11 : ∀ a b, ¬ T11.toGraph.Race a b := by decide +kernel
 
 /-- T12. c1: `R_acq(x)=1`, `R_sc(y)=0`. c2: `W_sc(x,1)`. c3: `W_sc(y,1)`. c4: `R_acq(y)=1`,
@@ -305,6 +341,7 @@ def T12 : ListGraph 16 (Fin 5) (Fin 2) Nat Unit := lg 16
 /-- **T12** (C34): admitted; an `sw` edge leaving a `seq_cst` write directly does not enter
 `po ; hb ; po`. -/
 theorem t12_consistent : T12.toGraph.EventConsistent := by decide +kernel
+/-- **T12** (C33): no pair of events is in a race. -/
 theorem noRace_t12 : ∀ a b, ¬ T12.toGraph.Race a b := by decide +kernel
 
 /-! ## T13 and T14: the middle term of `scb` and the erasure (C34) -/
@@ -320,6 +357,7 @@ def T13 : ListGraph 15 (Fin 4) (Fin 2) Nat Unit := lg 15
 
 /-- **T13** (C34): rejected by conjunct 7 alone. -/
 theorem t13_verdict : Verdict T13.toGraph true true true true true true false := by decide +kernel
+/-- **T13** (C33): no pair of events is in a race. -/
 theorem noRace_t13 : ∀ a b, ¬ T13.toGraph.Race a b := by decide +kernel
 
 /-- **T13, erased** (C34, 10c): the erasure of T13 is rejected by conjunct 7 alone too. -/
@@ -342,6 +380,7 @@ def T14 : ListGraph 15 (Fin 4) (Fin 2) Nat Unit := lg 15
 
 /-- **T14** (C34): admitted. -/
 theorem t14_consistent : T14.toGraph.EventConsistent := by decide +kernel
+/-- **T14** (C33): no pair of events is in a race. -/
 theorem noRace_t14 : ∀ a b, ¬ T14.toGraph.Race a b := by decide +kernel
 
 /-- **T14, erased** (C34, 10c): admitted. -/

@@ -238,8 +238,10 @@ def Ga (fromInit : Bool) : LG 8 (Fin 3) Nat where
   mo := [(0, 4), (0, 5), (4, 5), (1, 6)]
   fromInit := fromInit
 
+/-- The conditions of the fragment hold on `Ga`. -/
 theorem ga_check (f : Bool) : (Ga f).Check := by cases f <;> decide +kernel
 
+/-- `Ga` is a graph of the fragment. -/
 theorem ga_frag (f : Bool) : (Ga f).toGraph.Frag := (Ga f).frag (ga_check f)
 
 /-- **(a)**, RC11 side (C34: "Inclusion of executions consistent with the **published** `rc11.cat`
@@ -277,8 +279,10 @@ def Gc (fromInit : Bool) : LG 7 (Fin 2) Nat where
   mo := [(0, 2), (1, 3), (1, 4), (3, 4)]
   fromInit := fromInit
 
+/-- The conditions of the fragment hold on `Gc`. -/
 theorem gc_check (f : Bool) : (Gc f).Check := by cases f <;> decide +kernel
 
+/-- `Gc` is a graph of the fragment. -/
 theorem gc_frag (f : Bool) : (Gc f).toGraph.Frag := (Gc f).frag (gc_check f)
 
 /-- **(c)**, RC11 side: `Gc` is inconsistent for RC11 in both forms, by its check `coherence1`
