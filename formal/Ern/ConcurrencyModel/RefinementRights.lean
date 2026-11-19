@@ -26,9 +26,13 @@ What rests on what (Spec 1 §43; C22.6 "the entire authority-holder chain"):
   requesting frame with a present effective mode on the controller, and on its holder chain
   (`CtrlBasis`).
 
-The origin chain is not counted: Spec 1 §63.4 names it beside "the exercisable authority on which
-that right rests", not as part of it. Whether the origins of a founding authority are active is not
-stated here.
+What is counted as founding a right, and what is not: counted: the authority exercised and, along the holder chain of its exercise, every authority that
+exercise rests on (Spec 1 §43; C22.6, "entire authority-holder chain"; C22.6 also states that a
+grant is not excluded because of its origin). Not counted: the origin chain of a grounding authority,
+which Spec 1 §63.4, §69.2 and §70.3 name separately ("the exercisable authority on which that right
+rests and its origin chain"). Its activity is `I2` (Spec 1 §51), proved on the reached states
+(`KInvCA`); it is not checked in the intermediate states of composite steps, and `Founds` covers no
+origin chain.
 
 * `rights_founded_active`: for every `ok` labelled step, every founding authority of a right it
   reads is active in the state where the right is read;
@@ -98,7 +102,13 @@ case by case, the intermediate and resulting states included (`storeEff` for `st
 authority grounding the access clause (Spec 1 §63.4, §69.2, §70.3) grounds the place right, so it
 is among the founding authorities of that right. The labels that read no right
 (`enterFrame`, `exitFrame`, `spawn`, `terminate`, `join`) have none, and a holder right on a frame
-(Spec 1 §62.2) rests on no authority. -/
+(Spec 1 §62.2) rests on no authority. What is counted: the authority exercised and, along the holder chain of its exercise, every authority that
+exercise rests on (Spec 1 §43; C22.6, "entire authority-holder chain"; C22.6 also states that a
+grant is not excluded because of its origin). Not counted: the origin chain of a grounding authority,
+which Spec 1 §63.4, §69.2 and §70.3 name separately ("the exercisable authority on which that right
+rests and its origin chain"). Its activity is `I2` (Spec 1 §51), proved on the reached states
+(`KInvCA`); it is not checked in the intermediate states of composite steps, and `Founds` covers no
+origin chain. -/
 def Founds (ks : KShared) (L : MutexLayout) (st : SC × SyncReg × ArenaReg) :
     Label → S3 → Nat → Prop
   | .kernel c (.derive a _ m), t, j => t = st.1.view c ∧ ExerciseBasis t a m j
@@ -235,9 +245,14 @@ found the rights it reads (`Founds`) are active in the states where the step rel
 Fragment: every labelled step, every state.
 
 The activity comes from Spec 1 §43 (an exercisable authority is active, along its holder chain);
-the step gives that the rights hold. The origin chain of a grounding authority is not counted
-(Spec 1 §63.4 names it beside that authority), and its activity is not stated here. The physical
-accesses that these rights justify are not modelled (`OB-C05`, `OB-C20`). -/
+the step gives that the rights hold. What is counted: the authority exercised and, along the holder chain of its exercise, every authority that
+exercise rests on (Spec 1 §43; C22.6, "entire authority-holder chain"; C22.6 also states that a
+grant is not excluded because of its origin). Not counted: the origin chain of a grounding authority,
+which Spec 1 §63.4, §69.2 and §70.3 name separately ("the exercisable authority on which that right
+rests and its origin chain"). Its activity is `I2` (Spec 1 §51), proved on the reached states
+(`KInvCA`); it is not checked in the intermediate states of composite steps, and `Founds` covers no
+origin chain. The physical accesses that these rights
+justify are not modelled (`OB-C05`, `OB-C20`). -/
 theorem rights_founded_active {ks : KShared} {L : MutexLayout} {lbl : Label}
     {st st' : SC × SyncReg × ArenaReg} (h : LStep ks L lbl st st') :
     RightsRead ks L st lbl ∧ ∀ t j, Founds ks L st lbl t j → t.Active j := by

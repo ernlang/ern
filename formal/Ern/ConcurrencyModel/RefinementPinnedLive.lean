@@ -12,7 +12,9 @@ belongs to a usable place). This module transports it, at the grain of abstract 
 * `I5` on the global state (`SC.flat`: usable places range over the globally live frames, C2) is
   preserved by every labelled step (`lstep_i5`), from a state satisfying `KInvCA`, under
   `DDSound(K)`; it holds on every state reached from the initial state of Spec 1 §47
-  (`reached_i5`). It is an auxiliary invariant of the proof, not a statement of Spec 2.
+  (`reached_i5`). C20 requires every transition to preserve the applicable global invariants, and
+  `I5` is one of them: Spec 1 §57 requires it on the reachable states. `lstep_i5`, `lrun_i5` and
+  `reached_i5` therefore belong to the coverage of theorem 2 (module `Reachable`).
 * `reached_pinned_address_live`: the conclusions of `pinned_address_stable_reachable` for every
   labelled step executed by any context, on every reached state.
 
@@ -226,9 +228,11 @@ theorem spawnVal_i5 {k : K} {s s' : SC} {c : Nat} {ps : List Nat} {ls : LocalSha
   exact transfers_i5 (spawnCreate s c ls) vs hpre.transfers hb₀
     (fun v hv => spawn_frameOwned (hpre.freshDst v hv)) hframe h5₀
 
-/-- Every labelled step keeps `I5` on the global state (Spec 1 §57; C2, C4–C8, C13–C19, C37–C39),
-from a state satisfying `KInvCA`, under `DDSound(K)` (Spec 1 §80, for the internal steps of `issue`
-and `reset`). Fragment: every labelled step, no trace restriction. -/
+/-- Every labelled step keeps `I5` on the global state (Spec 1 §57; C2, C4–C8, C13–C19, C20,
+C37–C39), from a state satisfying `KInvCA`, under `DDSound(K)` (Spec 1 §80, for the internal steps
+of `issue` and `reset`). C20 requires every transition to preserve the applicable global
+invariants; `I5` is one of them (Spec 1 §57, required on the reachable states), so this result
+belongs to the coverage of theorem 2. Fragment: every labelled step, no trace restriction. -/
 theorem lstep_i5 {ks : KShared} {ML : MutexLayout} {lbl : Label}
     {st st' : SC × SyncReg × ArenaReg} (hdd : DDSound ks.toK) (hk : KInvCA st.1)
     (h : LStep ks ML lbl st st') (h5 : I5 ks.toK st.1.flat) : I5 ks.toK st'.1.flat := by
@@ -275,8 +279,9 @@ theorem lstep_i5 {ks : KShared} {ML : MutexLayout} {lbl : Label}
     · exact opStepC_i5 hk hc h5
     · exact h5
 
-/-- `I5` on the global state along every run (Spec 1 §57), from a state satisfying `KInvCA` and
-`I5`, under `DDSound(K)` (Spec 1 §80). -/
+/-- `I5` on the global state along every run (Spec 1 §57; C20), from a state satisfying `KInvCA`
+and `I5`, under `DDSound(K)` (Spec 1 §80). Part of the coverage of theorem 2: C20 requires every
+transition to preserve the applicable global invariants, `I5` among them. -/
 theorem lrun_i5 {ks : KShared} {ML : MutexLayout} {st st' : SC × SyncReg × ArenaReg}
     {lbls : List Label} (hdd : DDSound ks.toK) (h : LRun ks ML st lbls st') (hk : KInvCA st.1)
     (h5 : I5 ks.toK st.1.flat) : I5 ks.toK st'.1.flat := by
@@ -285,8 +290,10 @@ theorem lrun_i5 {ks : KShared} {ML : MutexLayout} {st st' : SC × SyncReg × Are
   | cons hs _ ih => exact ih (lstep_kInvCA hdd hs hk) (lstep_i5 hdd hk hs h5)
 
 /-- `I5` on the global state of every state reached from the initial state of Spec 1 §47 by a run
-of labelled steps, no trace restriction (Spec 1 §57; C2), under `DDSound(K)` (Spec 1 §80) and
-well-formed statics (§47), as `Access.reachable_i5`. -/
+of labelled steps, no trace restriction (Spec 1 §57; C2, C20), under `DDSound(K)` (Spec 1 §80) and
+well-formed statics (§47), as `Access.reachable_i5`. Spec 1 §57 requires `I5` on the reachable
+states, and C20 requires every transition to preserve the applicable global invariants: this result
+belongs to the coverage of theorem 2. -/
 theorem reached_i5 {ks : KShared} {ML : MutexLayout} {statics : Statics}
     {st : SC × SyncReg × ArenaReg} {lbls : List Label} (hdd : DDSound ks.toK)
     (hst : StaticsOK statics) (hL : LRun ks ML (SC.ofS3 (S3.init statics), [], []) lbls st) :

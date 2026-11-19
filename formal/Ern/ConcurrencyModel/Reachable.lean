@@ -14,6 +14,10 @@ Theorem 2 of `formal/DESIGN.md` (Milestone 4), assembled from `Preservation`,
 * `KInvCA`, `SyncState` (`SyncInv` and `GrantDiscipline`) and the arena invariant `ArenaInvC`
   together, on every labelled step admitted by `RestrictedStep` (C22.1–C22.3, C22.5) and along a
   `RestrictedTrace` (C23).
+
+`I5` (Spec 1 §57), which C20 also requires every transition to preserve, is proved for every
+labelled step and on every reached state in the module `RefinementPinnedLive` (`lstep_i5`,
+`lrun_i5`, `reached_i5`), on the global state.
 -/
 
 namespace Ern.ConcurrencyModel
