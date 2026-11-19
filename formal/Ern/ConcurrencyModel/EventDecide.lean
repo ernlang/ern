@@ -428,7 +428,67 @@ theorem conflict_iff' [DecidableEq C] (a b : E) : G.Conflict a b ↔
 instance [DecidableEq C] (a b : E) : Decidable (G.Conflict a b) :=
   decidable_of_iff _ (G.conflict_iff' a b).symm
 
+/-- Two events designate the same unit. -/
+def SameUnit (a b : E) : Prop := (G.unitOf a).isSome = true ∧ G.unitOf a = G.unitOf b
+
+theorem exists_unitOf_iff (a : E) (P : U → Prop) [DecidablePred P] :
+    (∃ u, G.unitOf a = some u ∧ P u) ↔ (G.unitOf a).any (fun u => decide (P u)) = true := by
+  cases G.unitOf a <;> simp
+
+theorem unitOf_of_relCap {a : E} {u : U} (h : G.RelCap a u) : G.unitOf a = some u := by
+  obtain ⟨o, k, h, -⟩ := h
+  exact G.unitOf_atomic h
+
+theorem sameUnit_iff (a b : E) : G.SameUnit a b ↔ ∃ u, G.unitOf a = some u ∧ G.unitOf b = some u := by
+  unfold SameUnit
+  cases ha : G.unitOf a <;> cases hb : G.unitOf b <;> simp [eq_comm]
+
+theorem two_modOn_iff (a b : E) :
+    (∃ u, G.ModOn a u ∧ G.ModOn b u) ↔ G.SameUnit a b ∧ G.Writes a ∧ G.Writes b := by
+  rw [sameUnit_iff]
+  constructor
+  · rintro ⟨u, ⟨ha, hwa⟩, hb, hwb⟩; exact ⟨⟨u, ha, hb⟩, hwa, hwb⟩
+  · rintro ⟨⟨u, ha, hb⟩, hwa, hwb⟩; exact ⟨u, ⟨ha, hwa⟩, hb, hwb⟩
+
+theorem modOn_readOn_iff (w r : E) :
+    (∃ u, G.ModOn w u ∧ G.ReadOn r u) ↔ G.SameUnit w r ∧ G.Writes w ∧ G.Reads r := by
+  rw [sameUnit_iff]
+  constructor
+  · rintro ⟨u, ⟨ha, hwa⟩, hb, hwb⟩; exact ⟨⟨u, ha, hb⟩, hwa, hwb⟩
+  · rintro ⟨⟨u, ha, hb⟩, hwa, hwb⟩; exact ⟨u, ⟨ha, hwa⟩, hb, hwb⟩
+
+theorem moTotal_iff : G.MoTotal ↔
+    (∀ a b, G.mo a b → G.SameUnit a b ∧ G.Writes a ∧ G.Writes b) ∧
+    (∀ a, (G.unitOf a).isSome = true → G.Writes a → ¬ G.mo a a) ∧
+    (∀ a b c, G.SameUnit a b → G.SameUnit a c → G.Writes a → G.Writes b → G.Writes c →
+      G.mo a b → G.mo b c → G.mo a c) ∧
+    (∀ a b, G.SameUnit a b → G.Writes a → G.Writes b → a ≠ b → G.mo a b ∨ G.mo b a) := by
+  unfold MoTotal
+  have hu : ∀ a, (G.unitOf a).isSome = true → ∃ u, G.unitOf a = some u := fun a h => by
+    cases hx : G.unitOf a with
+    | none => rw [hx] at h; cases h
+    | some u => exact ⟨u, rfl⟩
+  constructor
+  · rintro ⟨h1, h2⟩
+    refine ⟨fun a b h => (G.two_modOn_iff a b).1 (h1 a b h), fun a hs hw => ?_,
+      fun a b c hab hac hwa hwb hwc => ?_, fun a b hab hwa hwb hne => ?_⟩
+    · obtain ⟨u, ha⟩ := hu a hs
+      exact (h2 u).1 a ⟨ha, hw⟩
+    · obtain ⟨u, ha⟩ := hu a hab.1
+      exact (h2 u).2.1 a b c ⟨ha, hwa⟩ ⟨hab.2 ▸ ha, hwb⟩ ⟨hac.2 ▸ ha, hwc⟩
+    · obtain ⟨u, ha⟩ := hu a hab.1
+      exact (h2 u).2.2 a b ⟨ha, hwa⟩ ⟨hab.2 ▸ ha, hwb⟩ hne
+  · rintro ⟨h1, h2, h3, h4⟩
+    refine ⟨fun a b h => (G.two_modOn_iff a b).2 (h1 a b h), fun u => ⟨fun a ha => ?_,
+      fun a b c ha hb hc => ?_, fun a b ha hb hne => ?_⟩⟩
+    · exact h2 a (by rw [ha.1]; rfl) ha.2
+    · exact h3 a b c ((G.sameUnit_iff a b).2 ⟨u, ha.1, hb.1⟩)
+        ((G.sameUnit_iff a c).2 ⟨u, ha.1, hc.1⟩) ha.2 hb.2 hc.2
+    · exact h4 a b ((G.sameUnit_iff a b).2 ⟨u, ha.1, hb.1⟩) ha.2 hb.2 hne
+
 variable [DecidableEq U]
+
+instance (a b : E) : Decidable (G.SameUnit a b) := inferInstanceAs (Decidable (_ ∧ _))
 
 instance (e : E) (u : U) : Decidable (G.ModOn e u) := inferInstanceAs (Decidable (_ ∧ _))
 instance (e : E) (u : U) : Decidable (G.ReadOn e u) := inferInstanceAs (Decidable (_ ∧ _))
@@ -516,15 +576,19 @@ instance (a b : E) : Decidable (G.Loc a b) :=
     unfold Loc
     cases ha : G.unitOf a <;> cases hb : G.unitOf b <;> simp [eq_comm])
 
-variable [Enum E] [DecidableEq E] [Enum U] [DecidableEq C] [DecidableEq V]
+variable [Enum E] [DecidableEq E] [DecidableEq C] [DecidableEq V]
   [DecidableRel G.po] [DecidableRel G.rf] [DecidableRel G.mo]
 
 instance (u : U) (h m : E) : Decidable (G.RSMember u h m) := by
   unfold RSMember; infer_instance
 
 instance : DecidableRel G.SW := fun a b =>
-  decidable_of_iff ((∃ u m, G.RelCap a u ∧ G.AcqCap b u ∧ G.RSMember u a m ∧ G.rf m b) ∨
-    lifeB (G.sync? a) (G.sync? b) = true) (by unfold SW; rw [← G.life_iff a b])
+  decidable_of_iff ((∃ u, G.unitOf a = some u ∧
+      ∃ m, G.RelCap a u ∧ G.AcqCap b u ∧ G.RSMember u a m ∧ G.rf m b) ∨
+    lifeB (G.sync? a) (G.sync? b) = true) (by
+      unfold SW; rw [← G.life_iff a b]
+      refine or_congr ⟨fun ⟨u, _, m, h⟩ => ⟨u, m, h⟩, fun ⟨u, m, h⟩ => ?_⟩ Iff.rfl
+      exact ⟨u, G.unitOf_of_relCap h.1, m, h⟩)
 
 instance : DecidableRel G.PoSw := fun _ _ => inferInstanceAs (Decidable (_ ∨ _))
 
@@ -547,21 +611,29 @@ instance : DecidableRel G.PSC := fun a b => by unfold PSC; infer_instance
 instance : DecidableRel G.PoRf := fun a b => by unfold PoRf; infer_instance
 
 instance : Decidable G.RfWF :=
-  decidable_of_iff ((∀ w r, G.rf w r → ∃ u, G.ModOn w u ∧ G.ReadOn r u) ∧
-    (∀ r u, G.ReadOn r u → (∃ w, G.rf w r) ∧ ∀ w w', G.rf w r → G.rf w' r → w = w') ∧
+  decidable_of_iff ((∀ w r, G.rf w r → G.SameUnit w r ∧ G.Writes w ∧ G.Reads r) ∧
+    (∀ r, (G.unitOf r).isSome = true → G.Reads r →
+      (∃ w, G.rf w r) ∧ ∀ w w', G.rf w r → G.rf w' r → w = w') ∧
     (∀ w r, G.rf w r → valB (G.valW w) (G.valR r) = true)) (by
       unfold RfWF
-      exact and_congr Iff.rfl (and_congr Iff.rfl
+      refine and_congr (forall_congr' fun w => forall_congr' fun r => imp_congr_right fun _ =>
+        (G.modOn_readOn_iff w r).symm) (and_congr ?_
         (forall_congr' fun w => forall_congr' fun r => imp_congr_right fun _ =>
-          (G.val_iff w r).symm)))
+          (G.val_iff w r).symm))
+      constructor
+      · intro h r u hr
+        exact h r (by rw [hr.1]; rfl) hr.2
+      · intro h r hs hr
+        cases hu : G.unitOf r with
+        | none => rw [hu] at hs; cases hs
+        | some u => exact h r u ⟨hu, hr⟩)
 
-instance : Decidable G.MoTotal := by
-  unfold MoTotal
-  haveI : ∀ u : U, Decidable (∀ a b c : E, G.ModOn a u → G.ModOn b u → G.ModOn c u →
-      G.mo a b → G.mo b c → G.mo a c) := fun _ => inferInstance
-  haveI : ∀ u : U, Decidable (∀ a b : E, G.ModOn a u → G.ModOn b u → a ≠ b →
-      G.mo a b ∨ G.mo b a) := fun _ => inferInstance
-  infer_instance
+instance : Decidable G.MoTotal :=
+  haveI : Decidable (∀ a b c : E, G.SameUnit a b → G.SameUnit a c → G.Writes a → G.Writes b →
+      G.Writes c → G.mo a b → G.mo b c → G.mo a c) := inferInstance
+  haveI : Decidable (∀ a b : E, G.SameUnit a b → G.Writes a → G.Writes b → a ≠ b →
+      G.mo a b ∨ G.mo b a) := inferInstance
+  decidable_of_iff _ G.moTotal_iff.symm
 instance : Decidable G.RmwAtomic := by unfold RmwAtomic; infer_instance
 instance : Decidable G.Coherence := by unfold Coherence; infer_instance
 instance : Decidable G.HbIrrefl := by unfold HbIrrefl; infer_instance
