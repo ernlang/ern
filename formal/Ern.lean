@@ -10,6 +10,7 @@ import Ern.ConcurrencyModel.Conservativity
 import Ern.ConcurrencyModel.Contract
 import Ern.ConcurrencyModel.DeriveSync
 import Ern.ConcurrencyModel.Encapsulation
+import Ern.ConcurrencyModel.EventGraph
 import Ern.ConcurrencyModel.FrameAncestry
 import Ern.ConcurrencyModel.Inventory
 import Ern.ConcurrencyModel.Library
