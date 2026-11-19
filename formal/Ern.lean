@@ -11,6 +11,7 @@ import Ern.ConcurrencyModel.Contract
 import Ern.ConcurrencyModel.DeriveSync
 import Ern.ConcurrencyModel.Encapsulation
 import Ern.ConcurrencyModel.EventDecide
+import Ern.ConcurrencyModel.EventErasure
 import Ern.ConcurrencyModel.EventGraph
 import Ern.ConcurrencyModel.EventInfinite
 import Ern.ConcurrencyModel.EventLemmas
