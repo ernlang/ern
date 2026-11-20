@@ -122,8 +122,8 @@ theorem witness_d7 : WriteSharedCPre kAtomic v0 0 0 [] none .store ∧
 /-- **Witness D8** (C35, C51 item 2(e)):
 
 1. under `kAll`, whose composite contract admits every region, the store over `{A, U}` annotated
-   `release` is `reject`: U has no class (C35: "even when a composite contract would otherwise
-   admit the region"); positive twin: the store over `{A, S}` annotated `release` under `kAll`,
+   `release` is `reject`: U has no class (C35: even if a composite contract would otherwise have
+   admitted the region); positive twin: the store over `{A, S}` annotated `release` under `kAll`,
    `ok`;
 2. the store over `{U}` without annotation is `reject` under the concurrent evaluation (C35) and
    `ok` as the inherited O11 step (Spec 1 §68): the converse of theorem 11d fails. -/
@@ -143,8 +143,8 @@ theorem witness_d8 : CompositeAdmits kAll [1, 5] ∧
     hk, .kernel hk⟩
 
 /-- **Witness D9** (C38, `reject`): under `kAll`, the store over `{A, A′, S}` annotated `release`.
-Single cause: two `Atomic` leaves (C38; C39: a composite contract cannot "admit more than one
-`Atomic` leaf"), although the composite contract admits the region. Positive twin: the store over
+Single cause: two `Atomic` leaves (C38; C39: a composite contract cannot have more than one
+`Atomic` leaf admitted), although the composite contract admits the region. Positive twin: the store over
 `{A, S}` under `kAll` (witness D8, item 1). -/
 theorem witness_d9 : CompositeAdmits kAll [1, 2, 3] ∧
     WriteSharedCStep kAll v0 0 0 [1, 2, 3] (some .release) .store .reject :=

@@ -25,8 +25,8 @@ Formalization hypotheses (readings, not rules of the specification):
   `size = 0`; C38 makes the byte range of the leaf a single unit, of size `size` (`ZeroAtomic`);
 * reading 7 (C28, C38, declared order of a composite contract): the composite contract reads only
   the region; admitting a mixed-class region is giving its declared order, an enumeration of the
-  leaves of the region, each once, the order of the leaf writes in the step; a contract that gives
-  no order does not admit (`CompositeAdmits`). The authority and validity markers that C28 also
+  leaves of the region, each once, the order of the leaf writes in the step; a region for which the
+  contract gives no order is not admitted (`CompositeAdmits`). The authority and validity markers that C28 also
   names are not represented, and no consequence on events is proved here.
 -/
 
@@ -125,8 +125,8 @@ instance (order region : List Nat) : Decidable (Enumerates order region) := by
 
 /-- The composite contract admits `region`: it gives a declared order that enumerates the leaves of
 the region (C38: a region combining classes "requires a separately established composite
-contract"; C28: the contract determines the within-step order, and one that leaves it undetermined
-does not admit the step; reading 7). -/
+contract"; C28: the contract determines the within-step order, and a step whose order it leaves
+undetermined is not admitted; reading 7). -/
 def CompositeAdmits (ks : KShared) (region : List Nat) : Prop :=
   ∃ order, ks.CompositeContract region = some order ∧ Enumerates order region
 
@@ -172,8 +172,8 @@ instance (ks : KShared) (region : List Nat) : Decidable (MixedClasses ks region)
   row of C40; any other region, the empty one included, is `reject`;
 * kind `store`:
   - every targeted leaf has a selected `K_C.SharedDiscipline` class (C35: a nonempty region with a
-    leaf lacking one is `reject`, "even when a composite contract would otherwise admit the
-    region");
+    leaf lacking one is `reject`, even if a composite contract would otherwise have admitted the
+    region);
   - no targeted leaf is an `Atomic` leaf of zero physical size (C38);
   - at most one `Atomic` leaf (C38: more than one is `reject`, unconditionally);
   - with an `Atomic` leaf, an annotation in the store row of C40; with none, no annotation (C39:

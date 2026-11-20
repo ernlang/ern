@@ -73,9 +73,9 @@ theorem writeSharedCEff_nil (s : SC) (c : Nat) : writeSharedCEff s c [] = s := b
   simp only [writeSharedCEff, write3Eff, SC.set, SC.view, SC.flat, List.not_mem_nil, ite_false]
 
 /-- **Theorem 11a**, row "leaf without a class" (C35: "concurrent evaluation of `writeShared` over
-a nonempty region is `reject` if any targeted leaf lacks a selected `K_C.SharedDiscipline` class,
-even when a composite contract would otherwise admit the region"): `reject` whatever the order,
-the kind and the composite contract. -/
+a nonempty region is `reject` if any targeted leaf lacks a selected `K_C.SharedDiscipline` class",
+even if a composite contract would otherwise have admitted the region): `reject` whatever the
+order, the kind and the composite contract. -/
 theorem unclassified_rejected {ks : KShared} {s : SC} {c a : Nat} {region : List Nat}
     {ord : Option MemOrder} {kind : WriteKind} {l : Nat} (hl : l ∈ region)
     (hn : ks.SharedDiscipline l = none) (cc : List Nat → Option (List Nat)) :
@@ -106,8 +106,8 @@ theorem zero_atomic_rejected {ks : KShared} {s : SC} {c a : Nat} {region : List 
     cases this; exact hsz rfl
 
 /-- **Theorem 11a**, row "more than one `Atomic` leaf" (C38: such a region is `reject`; C39: a
-composite contract cannot "admit more than one `Atomic` leaf"): `multi_atomic_rejected` under
-every composite contract. -/
+composite contract cannot have more than one `Atomic` leaf admitted): `multi_atomic_rejected`
+under every composite contract. -/
 theorem multi_atomic_rejected_any {ks : KShared} {s : SC} {c a : Nat} {region : List Nat}
     {ord : Option MemOrder} {kind : WriteKind} {l₁ l₂ : Nat} (h12 : l₁ ≠ l₂)
     (h₁ : l₁ ∈ region) (h₂ : l₂ ∈ region) (ha₁ : AtomicLeaf ks l₁) (ha₂ : AtomicLeaf ks l₂)

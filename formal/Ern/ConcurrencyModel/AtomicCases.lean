@@ -115,8 +115,8 @@ theorem multi_atomic_rejected {ks : KShared} {s : SC} {c a : Nat} {region : List
     subst e1
     rw [List.mem_singleton] at h₁ h₂; exact h12 (h₁.trans h₂.symm)
 
-/-- **Theorem 8** (C38): a region that combines `SharedDiscipline` classes, which the composite
-contract does not admit, is `reject`, whatever the order and the kind. -/
+/-- **Theorem 8** (C38): a region that combines `SharedDiscipline` classes and is not admitted by
+the composite contract is `reject`, whatever the order and the kind. -/
 theorem mixed_rejected {ks : KShared} {s : SC} {c a : Nat} {region : List Nat}
     {ord : Option MemOrder} {kind : WriteKind} (hm : MixedClasses ks region)
     (hc : ¬ CompositeAdmits ks region) :
