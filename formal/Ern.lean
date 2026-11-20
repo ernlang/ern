@@ -5,6 +5,7 @@ import Ern.ConcurrencyModel.Ancestry
 import Ern.ConcurrencyModel.ArenaPreserve
 import Ern.ConcurrencyModel.Atomic
 import Ern.ConcurrencyModel.AtomicCases
+import Ern.ConcurrencyModel.Classification
 import Ern.ConcurrencyModel.CompositeRmw
 import Ern.ConcurrencyModel.Conservativity
 import Ern.ConcurrencyModel.Contract
@@ -18,6 +19,7 @@ import Ern.ConcurrencyModel.EventLemmas
 import Ern.ConcurrencyModel.EventWitnesses
 import Ern.ConcurrencyModel.FrameAncestry
 import Ern.ConcurrencyModel.Inventory
+import Ern.ConcurrencyModel.Legality
 import Ern.ConcurrencyModel.Library
 import Ern.ConcurrencyModel.Outcomes
 import Ern.ConcurrencyModel.Preservation
@@ -47,6 +49,7 @@ import Ern.ConcurrencyModel.SyncPreserve
 import Ern.ConcurrencyModel.WitnessAtomic
 import Ern.ConcurrencyModel.WitnessBase
 import Ern.ConcurrencyModel.WitnessFrames
+import Ern.ConcurrencyModel.WitnessLegality
 import Ern.ConcurrencyModel.WitnessMutex
 import Ern.ConcurrencyModel.WitnessRefinement
 import Ern.Corpus.DataStack
