@@ -3,10 +3,10 @@ import Ern.ConcurrencyModel.EventErasure
 /-!
 # Theorem 10d: witness graphs and non-vacuity (C30–C34, C48; `OB-C26`)
 
-Witness graphs T1 to T14 of the brief of the tranche, each with its admitted twin, and the two
-witnesses of 10a on conflicts. A witness replaces no general proof. Each verdict is computed on the
-definitions of C34 by evaluation (`decide +kernel`, through `EventDecide`); the expected verdicts
-are those of the brief, computed from the clauses.
+Witness graphs T1 to T14, each with its admitted twin, and the two witnesses of 10a on conflicts.
+A witness replaces no general proof. Each verdict is computed on the definitions of C34 by
+evaluation (`decide +kernel`, through `EventDecide`); the expected verdicts are drawn from the
+clauses (C30–C34, C48).
 
 In every witness, context `0` makes the initial writes (non-atomic, designating their unit, value
 `0`), then creates the other contexts: the `spawn(c)` to `start(c)` edges are present, and no

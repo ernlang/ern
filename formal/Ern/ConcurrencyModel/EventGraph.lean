@@ -11,8 +11,9 @@ Events (C27), the base relations `po`, `rf`, `mo` (C28, C31), `sw` (C32, C48), `
 
 The type of events is arbitrary: a graph may be infinite, and no well-foundedness is assumed on
 `po`, `rf` or `mo` (C26: "a finite or potentially unbounded trace"). Finiteness is a hypothesis of a
-statement only where C34 names it ("For a finite event graph") or where the brief of the tranche
-names it.
+statement only where C34 names it ("For a finite event graph"), and in the statements that state it
+as a hypothesis: statement 3 on release sequences (`rsMember_iff_chain`) and the comparison with
+RC11 (`proj_consistent`).
 
 Formalization hypotheses (retained readings, not rules of the specification):
 
@@ -27,7 +28,7 @@ Formalization hypotheses (retained readings, not rules of the specification):
    convex set of atomic RMW modifications following the head. What C48 means when `mo` is not well
    founded is the open point on infinite graphs; this reading is not a rule (`RSMember`).
 
-Not proven here, nor anywhere in this tranche: that a graph comes from an execution or that an
+Not proven by the event-model modules: that a graph comes from an execution or that an
 execution has a consistent graph; the events of a composite step; the physical classification of
 markers and the projection of validity events (`OB-C19`, external part); the compilation of memory
 orders and of the no-thin-air rule (`OB-C22`, `OB-C27`); any absence of race.
@@ -130,8 +131,8 @@ inductive Attrs (C U V S : Type) where
 deriving DecidableEq, Repr
 
 /-- The origin of an event (C27): the index of the abstract transition or library phase that
-generates it in the trace, and its position in that transition. This tranche relates it to no
-step. -/
+generates it in the trace, and its position in that transition. The event-model modules relate it
+to no step. -/
 structure Origin where
   step : Nat
   pos : Nat
@@ -282,8 +283,9 @@ modifications on that unit. Ordinary atomic stores, including same-thread non-RM
 This formalization reads it as an interval: `m` is a member when `m = h`, or when `m` is an atomic
 RMW modification of `u` with `mo(h, m)` and every modification `x` of `u` with `mo(h, x)` and
 `mo(x, m)` is an atomic RMW modification of `u`. On a total `mo` it is a convex segment, maximal
-(`rsMember_between`, `not_rsMember_after`). What the rule of C48 means when `mo` is not well founded
-is open (decision 6 of the tranche, infinite graphs); this definition does not settle it, and the
+(`rsMember_between`, `not_rsMember_after`). The specification states no finiteness or
+well-foundedness condition on `po`, `rf` or `mo` (C26, C34), and what the rule of C48 means when
+`mo` is not well founded is not determined; this definition does not settle it, and the
 infinite witness of `EventInfinite` shows where it can give more members than the atomic RMWs
 reached from `h` by `rf` chains. A non-atomic write is neither a head nor a member (C31). -/
 def RSMember (u : U) (h m : E) : Prop :=

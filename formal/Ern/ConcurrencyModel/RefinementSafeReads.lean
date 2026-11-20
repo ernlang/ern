@@ -31,8 +31,8 @@ context (C2):
   invariant hypothesis.
 
 What these statements say is about the bytes the raw read returns. They say nothing of the observed
-value carried by the label of a `readShared`, a CAS or an RMW: no tranche links it to the bytes read
-so far, and the link depends on C31 to C34. For an RMW over more than one leaf, admitted under a
+value carried by the label of a `readShared`, a CAS or an RMW: no statement of the formalization
+links it to the bytes read, and the link depends on C31 to C34. For an RMW over more than one leaf, admitted under a
 composite contract (C38), the reads of every leaf of the region are an auxiliary construction of
 `rawOps`, not physical events; the clauses do not say what such a step reads, and that reserve
 stays open (`composite_rmw_restricts`).

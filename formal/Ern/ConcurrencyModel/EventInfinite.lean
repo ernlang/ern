@@ -21,9 +21,11 @@ other than the `v_n` writes the value `7`. So the finiteness condition of statem
 not exclude an infinite sequence of RMWs reading one another with no origin.
 
 What it does not show: it is a declarative graph, with no initial write and no creation of
-contexts. Nothing establishes that an ERN execution or a safe program produces it. It documents the
-open point on infinite graphs (decision 6 of the tranche); it is not an established defect of the
-specification, which states nothing this witness contradicts. Conjunct 2 requires `mo` to be a
+contexts. Nothing establishes that an ERN execution or a safe program produces it. It documents an
+open point: the specification states no finiteness or well-foundedness condition on `po`, `rf` or
+`mo` (C26, C34), and what the release-sequence rule of C48 means on an `mo` that is not well founded
+is not determined. It is not an established defect of the specification, which states nothing this
+witness contradicts. Conjunct 2 requires `mo` to be a
 strict total order of the modifications of the unit, the represented initial write included as one
 of them; it does not require an initial write to exist, and this graph has none.
 -/

@@ -10,7 +10,7 @@ entails conjunct 5 (C34); the total order `S` on a finite graph (C34); the conse
 
 The release sequence is `RSMember`, retained reading 5 (a formalization hypothesis, open when `mo`
 is not well founded). Statements 1 and 2 on chains hold on every graph; statement 3 assumes a finite
-graph, as the brief of the tranche permits; the infinite witness of `EventInfinite` shows that the
+graph, a hypothesis it states; the infinite witness of `EventInfinite` shows that the
 finiteness condition of statement 2 is needed.
 -/
 
@@ -515,8 +515,8 @@ theorem chain_iff (h1 : G.RfWF) (h2 : G.MoTotal) (h3 : G.RmwAtomic) {u : U} {h m
 
 /-- **Release sequence and chains, statement 3** (C31, C48; retained reading 5): on a finite graph,
 under conjuncts 1 to 3, the members of the release sequence of `h` other than `h` are exactly the
-atomic RMW modifications that a chain relates to `h`. A corollary of statement 2; finiteness, which
-the brief of the tranche permits here, gives the finitely many modifications in between. On such a
+atomic RMW modifications that a chain relates to `h`. A corollary of statement 2; finiteness, a
+hypothesis of the statement, gives the finitely many modifications in between. On such a
 graph the interval reading and the reading by chains give the same members. -/
 theorem rsMember_iff_chain (hfin : Finite E) (h1 : G.RfWF) (h2 : G.MoTotal) (h3 : G.RmwAtomic)
     {u : U} {h m : E} : (G.RSMember u h m ∧ m ≠ h) ↔ (G.AtomicRMWOn m u ∧ G.Chain u h m) := by

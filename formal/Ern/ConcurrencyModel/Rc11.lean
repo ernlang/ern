@@ -12,9 +12,12 @@ Sources:
   `herd/libdir/rc11.cat`, 40 lines, SHA-256
   `62a095a30700722d4cf08a5ca4ee5bf6e76466a4c056bea1047c4ea8cd4d6128`. Each definition below is a
   transcription of its line, without the fence factors of `sw` and the fence branches of `psc`;
-* for what `rc11.cat` does not say (which events herd puts in `R`, `W`, `RMW`, `A`, `IW`, and their
-  annotations: `herd/CAction.ml`, `herd/CSem.ml`, `lib/memOrder.ml`, `herd/mem.ml` at the same
-  tag), the facts given by the brief of the tranche; that source is not available locally;
+* for what `rc11.cat` does not say, the herdtools7 source at the same tag (`herd/CAction.ml`,
+  `herd/CSem.ml`, `lib/memOrder.ml`, `herd/mem.ml`), which is not part of this formalization and
+  was not checked against it: `R` holds the reads, `W` the writes and the initial writes, `IW` the
+  initial writes, `A` the events carrying an order annotation; with `-variant normw` an RMW is a
+  read and a write related by `rmw`, both in `RMW`, the read carrying the read part of the order and
+  the write its write part (`extract_read`, `extract_write`, `cxchg`); a failed CAS is a read;
 * for the amended middle term of `scb`, the corrigendum named by C34 (O. Lahav, December 2025):
   `(sb \ rmw) ; hb ; (sb \ rmw)` in place of `sb|≠loc ; hb ; sb|≠loc`.
 
@@ -137,12 +140,13 @@ def ext (a b : E) : Prop := (G.lab a).thread? ≠ (G.lab b).thread?
 
 /-! ## The fragment -/
 
-/-- The five pair rows of the table of the brief (`extract_read`, `extract_write` of herd). -/
+/-- The five pair rows: the annotations of the read and write components of an RMW of order
+`relaxed`, `acquire`, `release`, `acq_rel`, `seq_cst` (`extract_read`, `extract_write` of herd). -/
 def PairAnn : Ann → Ann → Prop
   | .rlx, .rlx | .acq, .rlx | .rlx, .rel | .acq, .rel | .sc, .sc => True
   | _, _ => False
 
-/-- The declared fragment, by its conditions and by them only (brief of the tranche, task 8):
+/-- The declared fragment, by its conditions and by them only:
 
 * one initial write per location used, outside every thread, with no annotation;
 * a read carries `RLX`, `ACQ` or `SC`; a write `RLX`, `REL` or `SC`; no event carries `ACQ_REL`;

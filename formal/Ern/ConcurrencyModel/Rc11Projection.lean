@@ -5,7 +5,7 @@ import Ern.ConcurrencyModel.EventLemmas
 # Theorem 10e: the canonical projection of the RC11 fragment to ERN graphs (C34; `OB-C23`,
 `OB-C26`)
 
-`proj` is the canonical projection `π` of the brief of the tranche, from the fragment of `Rc11` to
+`proj` is the canonical projection `π`, from the fragment of `Rc11` to
 the event graphs of `EventGraph`, entirely determined:
 
 * events: one ERN event per event of the fragment outside a pair, one per pair `(r, w)`; the pair
@@ -18,7 +18,7 @@ the event graphs of `EventGraph`, entirely determined:
   a modification, through its read component as a target of `rf` (`wc`);
 * values: those of the components; the image of a pair carries the value read by `r` and the value
   written by `w`;
-* orders, by the table of the brief: a read `RLX`, `ACQ`, `SC` to `relaxed`, `acquire`, `seq_cst`;
+* orders, by the order table: a read `RLX`, `ACQ`, `SC` to `relaxed`, `acquire`, `seq_cst`;
   a write `RLX`, `REL`, `SC` to `relaxed`, `release`, `seq_cst`; the five pair rows to the five
   RMW orders; an initial write to a non-atomic write designating the unit (C31), with no order;
 * no `sync` event, no `validity` event, no marker: the `sw` of the image reduces to its atomic
@@ -54,20 +54,20 @@ def IsPairW (e : E) : Prop := ∃ r, G.partner r = some e
 /-- The events of the image: every event but the write components of pairs. -/
 abbrev PE := {e : E // ¬ G.IsPairW e}
 
-/-- The order of the image of a read (table of the brief). -/
+/-- The order of the image of a read (order table of the module header). -/
 def ordR : Ann → MemOrder
   | .acq => .acquire
   | .sc => .seqCst
   | _ => .relaxed
 
-/-- The order of the image of a write (table of the brief). -/
+/-- The order of the image of a write (order table of the module header). -/
 def ordW : Ann → MemOrder
   | .rel => .release
   | .sc => .seqCst
   | _ => .relaxed
 
 /-- The order of the image of a pair, from the annotations of its read and write components (the
-five pair rows of the table of the brief). -/
+five pair rows of the order table of the module header). -/
 def ordPair : Ann → Ann → MemOrder
   | .rlx, .rlx => .relaxed
   | .acq, .rlx => .acquire
@@ -76,7 +76,7 @@ def ordPair : Ann → Ann → MemOrder
   | .sc, .sc => .seqCst
   | _, _ => .relaxed
 
-/-- The access of the image of an event (C27, C31, C40; table of the brief). -/
+/-- The access of the image of an event (C27, C31, C40; order table of the module header). -/
 def accOf (e : E) : Events.Acc Nat V :=
   match G.lab e with
   | .init l v => .unit l (.write v)
@@ -134,7 +134,7 @@ theorem ctxOf_inl {e : E} {t : T} : G.ctxOf e = .inl t ↔ (G.lab e).thread? = s
 theorem ctxOf_inr {e x : E} (h : G.ctxOf e = .inr x) : x = e := by
   unfold ctxOf at h; cases hl : G.lab e <;> simp_all
 
-/-- The image of a fragment graph (`π` of the brief). -/
+/-- The image of a fragment graph, the canonical projection `π` of the module header. -/
 def proj (hF : G.Frag) : Events.Graph G.PE (T ⊕ E) Nat V Unit where
   ev a := ⟨G.ctxOf a.1, ⟨0, 0⟩, .marks (some (G.accOf a.1)) none⟩
   uRange l := ⟨l, 1⟩
@@ -228,7 +228,7 @@ theorem loc_wc (e : E) : (G.lab (G.wc e)).loc = (G.lab e).loc := by
 /-! ## The attributes of the image -/
 
 omit hF in
-/-- The access of the image of an event (table of the brief). -/
+/-- The access of the image of an event (order table of the module header). -/
 theorem proj_acc (hF : G.Frag) (a : G.PE) : (G.proj hF).acc? a = some (G.accOf a.1) := rfl
 
 /-- The unit of the image of an event is its location. -/
@@ -278,8 +278,8 @@ theorem proj_isRMW_iff (a : G.PE) : (G.proj hF).IsRMW a ↔ ∃ w, G.partner a.1
   · simp [Events.UKind.kind, hp]
   · simp [Events.UKind.kind, hp]
 
-/-- The value written by the image of an event is the value of its write component (table of the
-brief). -/
+/-- The value written by the image of an event is the value of its write component (order table
+of the module header). -/
 theorem proj_valW (a : G.PE) (h : G.W (G.wc a.1)) :
     (G.proj hF).valW a = some (G.lab (G.wc a.1)).val := by
   unfold Events.Graph.valW; rw [proj_acc hF]
@@ -291,7 +291,7 @@ theorem proj_valW (a : G.PE) (h : G.W (G.wc a.1)) :
   · simp [W, hl, Lab.isW] at h
   · rw [hlw]; rfl
 
-/-- The value read by the image of a read is its value (table of the brief). -/
+/-- The value read by the image of a read is its value (order table of the module header). -/
 theorem proj_valR (a : G.PE) (h : G.R a.1) : (G.proj hF).valR a = some (G.lab a.1).val := by
   unfold Events.Graph.valR; rw [proj_acc hF]
   rcases shape hF a.1 with ⟨l, v, hl, hacc, -⟩ | ⟨t, l, v, o, hl, hacc, -⟩ |
