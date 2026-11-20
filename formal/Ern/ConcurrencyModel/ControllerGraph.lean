@@ -192,7 +192,6 @@ theorem controller_graph (hr : EncapRun ks L σ lbls) {n c g : Nat}
       G.acc? e = some (ctlAcc x R v₀ v₁ lbl) := fun e lbl hl => by
     show some (accAt lbls x R v₀ v₁ e.1) = _
     unfold accAt; rw [hl]
-  have hsync : ∀ e : CtlEv L σ lbls i x, G.sync? e = none := fun _ => rfl
   obtain ⟨hhb, hrb, heco⟩ := ctlGraph_lt (L := L) (σ := σ) (lbls := lbls) (i := i) (x := x)
     (R := R) (v₀ := v₀) (v₁ := v₁)
   -- the last controller step before an `acquire`, and the value it writes
@@ -263,7 +262,7 @@ theorem controller_graph (hr : EncapRun ks L σ lbls) {n c g : Nat}
     · exact hhb _ _ h
     · exact h
     · exact hrb _ _ h
-  refine ⟨⟨hv, fun k lbl hl hk => ⟨⟨k, hk⟩, ctlK_ev.2 rfl, hacc ⟨k, hk⟩ lbl hl, .inl rfl⟩,
+  refine ⟨⟨hv, fun k lbl hl hk => ⟨⟨k, hk⟩, ctlK_ev.2 rfl, hacc ⟨k, hk⟩ lbl hl⟩,
     fun k k' e e' _ _ he he' => ?_, fun w _ => ⟨w.1, w.2, ctlK_ev.2 rfl⟩⟩, ?_,
     ⟨hrfwf, hmo, hrmw, hcoh, hhbi, hnta, hsc⟩, ?_⟩
   · rw [← ctlK_ev.1 he, ← ctlK_ev.1 he']; exact Iff.rfl

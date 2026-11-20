@@ -12,7 +12,7 @@ of `OB-C05`).
   steps of an entry (`CtlStep`): `newMutex` of the entry and the protocol steps on it whose
   controller is the unit `x`.
 * 13d (C48, C49): the invariant on the recorded grant (`grant_invariant`), the bridge from an
-  `acquire` to its `rf` source (`acquire_rf_source`), the synchronization (`acquire_sw_iff`), the
+  `acquire` to its `rf` source (`acquire_rf_source`), the synchronization (`acquire_sw`), the
   converse (`rf_no_between`); the construction of the controller graph is in `ControllerGraph`.
 * 13e (C49; `OB-C04`): the lock order under its conditions (`lock_order`).
 * 13f (C48, fifth paragraph; C49, second paragraph): recovery (`recovery_sw`).
@@ -24,8 +24,7 @@ non-atomic write of `v₀` on the controller unit; a successful `acquire` is an 
 parameters (`CtlOrders`), `acq` in the RMW row, `rel` and `reset` in the store row of C40, the
 reference triple being `(acquire, release, release)`; on the controller unit, `mo` orders these
 events as the trace orders their steps and the unit has no other modification; failed attempts are
-not steps. The event of a controller step carries no lifecycle role (C28: the lifecycle markers are
-those of `spawn`, `terminate` and `join`).
+not steps.
 
 Units of the graph are leaves (C38: an `Atomic` unit is one logical leaf); values are numbers.
 -/
@@ -204,9 +203,9 @@ def ctlAcc (x : Nat) (R : CtlOrders) (v₀ v₁ : Nat) : Label → Events.Acc Na
 
 /-- Realization R of the reference controller of entry `i` on the unit `x` in the graph `G` under
 the correspondence `K`, with the orders `R` and the values `v₀ ≠ v₁` (C13, C31, C48; formalization
-hypothesis, `OB-C05`): the event of every controller step has the access `ctlAcc` and no lifecycle
-role; `mo` orders the events of the controller steps as the trace orders the steps; every
-modification of `x` is the event of a controller step. -/
+hypothesis, `OB-C05`): the event of every controller step has the access `ctlAcc` (kind,
+atomicity, order and values); `mo` orders the events of the controller steps as the trace orders
+the steps; every modification of `x` is the event of a controller step. -/
 structure Realizes {E S : Type} (G : Events.Graph E Nat Nat Nat S) (L : MutexLayout)
     (σ : Nat → SC × SyncReg × ArenaReg) (lbls : List Label) (K : StepEvents E) (i x : Nat)
     (R : CtlOrders) (v₀ v₁ : Nat) : Prop where
@@ -214,7 +213,7 @@ structure Realizes {E S : Type} (G : Events.Graph E Nat Nat Nat S) (L : MutexLay
   values : v₀ ≠ v₁
   /-- The event of each controller step. -/
   ev : ∀ k lbl, lbls[k]? = some lbl → CtlStep L σ lbls i x k → ∃ e, K.ev k = some e ∧
-    G.acc? e = some (ctlAcc x R v₀ v₁ lbl) ∧ (G.sync? e = none ∨ G.sync? e = some .protocol)
+    G.acc? e = some (ctlAcc x R v₀ v₁ lbl)
   /-- Linearization on `x`: `mo` is the trace order of the controller steps. -/
   mo : ∀ k k' e e', CtlStep L σ lbls i x k → CtlStep L σ lbls i x k' → K.ev k = some e →
     K.ev k' = some e' → (G.mo e e' ↔ k < k')
@@ -245,7 +244,7 @@ theorem acquire_readOn (hR : Realizes G L σ lbls K i x R v₀ v₁) {k c j : Na
     (hl : lbls[k]? = some (.acquire c j)) (hk : CtlStep L σ lbls i x k) :
     ∃ q, K.ev k = some q ∧ G.ReadOn q x ∧
       G.acc? q = some (.atomic x R.acq (.rmw v₀ v₁)) := by
-  obtain ⟨q, hq, hacc, -⟩ := hR.ev k _ hl hk
+  obtain ⟨q, hq, hacc⟩ := hR.ev k _ hl hk
   refine ⟨q, hq, ⟨?_, ?_⟩, hacc⟩
   · unfold Events.Graph.unitOf; rw [hacc]; rfl
   · exact ⟨.rmw, by unfold Events.Graph.kind?; rw [hacc]; rfl, trivial⟩
@@ -273,7 +272,7 @@ theorem acquire_rf_source (hR : Realizes G L σ lbls K i x R v₀ v₁) (h1 : G.
   refine Decidable.byContradiction fun hn => ?_
   obtain ⟨lw, hlw⟩ : ∃ lw, lbls[w']? = some lw := by
     unfold CtlStep at hw'; split at hw' <;> simp_all
-  obtain ⟨e', he', -, -⟩ := hR.ev w' lw hlw hw'
+  obtain ⟨e', he', -⟩ := hR.ev w' lw hlw hw'
   exact hnb e' ⟨(hR.mo k' w' w e' hk' hw' hw he').2 (by omega),
     (hR.mo w' k e' q hw' hk he' hq).2 hlt⟩
 
@@ -289,61 +288,65 @@ theorem acquire_rf_last (hR : Realizes G L σ lbls K i x R v₀ v₁) (h1 : G.Rf
   subst this
   rw [hw''] at hw; cases hw; exact hrf
 
-/-- The event of a controller step carries no lifecycle role (R), so an `sw` edge between two of
-them is an edge of the atomic source of C32.1. -/
-theorem sw_ctl_iff (hR : Realizes G L σ lbls K i x R v₀ v₁) {k k' : Nat} {lbl lbl' : Label}
-    (hl : lbls[k]? = some lbl) (hl' : lbls[k']? = some lbl') (hk : CtlStep L σ lbls i x k)
-    (hk' : CtlStep L σ lbls i x k') {w q : E} (hw : K.ev k = some w) (hq : K.ev k' = some q) :
-    G.SW w q ↔ ∃ u m, G.RelCap w u ∧ G.AcqCap q u ∧ G.RSMember u w m ∧ G.rf m q := by
-  obtain ⟨w', hw', -, hsw⟩ := hR.ev k lbl hl hk
-  obtain ⟨q', hq', -, hsq⟩ := hR.ev k' lbl' hl' hk'
-  rw [hw] at hw'; cases hw'
-  rw [hq] at hq'; cases hq'
-  refine ⟨fun h => ?_, .inl⟩
-  rcases h with h | ⟨c, h, -⟩ | ⟨c, h, -⟩
-  · exact h
-  · rcases hsw with e | e <;> rw [e] at h <;> cases h
-  · rcases hsw with e | e <;> rw [e] at h <;> cases h
+/-- The atomic source of `sw` (C32.1, C48): `w` is release-capable and `q` acquire-capable on the
+same unit, and `q` reads by `rf` a member of the release sequence of `w`. It is the first source of
+`Events.Graph.SW`; the other two are the lifecycle sources of C32.2 and C32.3. -/
+def AtomicSW {E C U V S : Type} (G : Events.Graph E C U V S) (w q : E) : Prop :=
+  ∃ u m, G.RelCap w u ∧ G.AcqCap q u ∧ G.RSMember u w m ∧ G.rf m q
+
+/-- The atomic source is a source of `sw` (C32). -/
+theorem AtomicSW.sw {E C U V S : Type} {G : Events.Graph E C U V S} {w q : E}
+    (h : AtomicSW G w q) : G.SW w q :=
+  .inl h
 
 /-- **Theorem 13d.4**, synchronization (C48: "When a later acquiring RMW **directly reads** this
 release modification (`rf`), the protocol yields the requisite `sw`"; C49; C31: the initializing
-write is non-atomic and "does not itself establish `sw`"): for an `acquire` controller step `k`
-whose last preceding controller step is `k'`, in every graph that satisfies R and the conjuncts 1
-and 3: if `k'` is an `unlock` (a `resetLock`), `sw` relates their events exactly when the order of
-the publication is release-capable and that of the acquire is acquire-capable; if `k'` is the
-`newMutex`, never. -/
+write is non-atomic and "does not itself establish `sw`"), as proved: for an `acquire` controller
+step `k` whose last preceding controller step is `k'`, in every graph that satisfies R and the
+conjuncts 1 and 3:
+
+* if `k'` is an `unlock` (a `resetLock`), a release-capable publication order and an
+  acquire-capable acquisition order give `sw` between their events; and the atomic source of `sw`
+  (C32.1) relates them exactly when the orders are so;
+* if `k'` is the `newMutex`, the atomic source of `sw` never relates them.
+
+Realization R does not fix the `sync` attribute of the events: that `sw` relates them only through
+its atomic source, the converse for the whole of `sw`, is not established. -/
 theorem acquire_sw (hR : Realizes G L σ lbls K i x R v₀ v₁) (h1 : G.RfWF) (h3 : G.RmwAtomic)
     {k c j k' : Nat} (hl : lbls[k]? = some (.acquire c j)) (hk : CtlStep L σ lbls i x k) {q : E}
     (hq : K.ev k = some q) (hlast : LastCtl L σ lbls i x k k') {w : E}
     (hw : K.ev k' = some w) :
     (∀ c' j', lbls[k']? = some (.unlock c' j') →
-      (G.SW w q ↔ ReleaseOrder R.rel ∧ AcquireOrder R.acq)) ∧
+      (ReleaseOrder R.rel ∧ AcquireOrder R.acq → G.SW w q) ∧
+      (AtomicSW G w q ↔ ReleaseOrder R.rel ∧ AcquireOrder R.acq)) ∧
     (∀ c' j', lbls[k']? = some (.resetLock c' j') →
-      (G.SW w q ↔ ReleaseOrder R.reset ∧ AcquireOrder R.acq)) ∧
-    (∀ c' g, lbls[k']? = some (.newMutex c' g) → ¬ G.SW w q) := by
+      (ReleaseOrder R.reset ∧ AcquireOrder R.acq → G.SW w q) ∧
+      (AtomicSW G w q ↔ ReleaseOrder R.reset ∧ AcquireOrder R.acq)) ∧
+    (∀ c' g, lbls[k']? = some (.newMutex c' g) → ¬ AtomicSW G w q) := by
   have hrf := acquire_rf_last hR h1 h3 hl hk hq hlast hw
-  obtain ⟨q', hq', hqacc, -⟩ := hR.ev k _ hl hk
+  obtain ⟨q', hq', hqacc⟩ := hR.ev k _ hl hk
   rw [hq] at hq'; cases hq'
   have pub : ∀ (lbl : Label) (o : MemOrder), lbls[k']? = some lbl →
       ctlAcc x R v₀ v₁ lbl = .atomic x o (.write v₀) →
-      (G.SW w q ↔ ReleaseOrder o ∧ AcquireOrder R.acq) := by
+      (ReleaseOrder o ∧ AcquireOrder R.acq → G.SW w q) ∧
+      (AtomicSW G w q ↔ ReleaseOrder o ∧ AcquireOrder R.acq) := by
     intro lbl o hl' hacc
-    obtain ⟨w', hw', hwacc, -⟩ := hR.ev k' lbl hl' hlast.1
+    obtain ⟨w', hw', hwacc⟩ := hR.ev k' lbl hl' hlast.1
     rw [hw] at hw'; cases hw'
     rw [hacc] at hwacc
-    rw [sw_ctl_iff hR hl' hl hlast.1 hk hw hq]
-    constructor
-    · rintro ⟨u, m, ⟨o₁, k₁, h₁, -, ho₁⟩, ⟨o₂, k₂, h₂, -, ho₂⟩, -, -⟩
-      rw [hwacc] at h₁; cases h₁
-      rw [hqacc] at h₂; cases h₂
-      exact ⟨ho₁, ho₂⟩
-    · rintro ⟨ho, ha⟩
-      exact ⟨x, w, ⟨o, _, hwacc, trivial, ho⟩, ⟨R.acq, _, hqacc, trivial, ha⟩, .inl rfl, hrf⟩
+    have hiff : AtomicSW G w q ↔ ReleaseOrder o ∧ AcquireOrder R.acq := by
+      constructor
+      · rintro ⟨u, m, ⟨o₁, k₁, h₁, -, ho₁⟩, ⟨o₂, k₂, h₂, -, ho₂⟩, -, -⟩
+        rw [hwacc] at h₁; cases h₁
+        rw [hqacc] at h₂; cases h₂
+        exact ⟨ho₁, ho₂⟩
+      · rintro ⟨ho, ha⟩
+        exact ⟨x, w, ⟨o, _, hwacc, trivial, ho⟩, ⟨R.acq, _, hqacc, trivial, ha⟩, .inl rfl, hrf⟩
+    exact ⟨fun h => (hiff.2 h).sw, hiff⟩
   refine ⟨fun c' j' hl' => pub _ R.rel hl' rfl, fun c' j' hl' => pub _ R.reset hl' rfl,
     fun c' g hl' hsw => ?_⟩
-  obtain ⟨w', hw', hwacc, -⟩ := hR.ev k' _ hl' hlast.1
+  obtain ⟨w', hw', hwacc⟩ := hR.ev k' _ hl' hlast.1
   rw [hw] at hw'; cases hw'
-  rw [sw_ctl_iff hR hl' hl hlast.1 hk hw hq] at hsw
   obtain ⟨u, m, ⟨o₁, k₁, h₁, -, -⟩, -⟩ := hsw
   rw [hwacc] at h₁; cases h₁
 
@@ -522,7 +525,7 @@ theorem first_ctl_after {w a : Nat} (hwa : w < a) (ha : CtlStep L σ lbls i x a)
   refine ⟨r + 1, hwk, Nat.succ_le_of_lt h2, hck, fun k hk1 hk2 hc => ?_⟩
   exact h4 k (by omega) (by omega) ⟨k, List.mem_range.2 (Nat.lt_succ_self k), hk1, hc⟩
 
-/-- Every `rf` source of an `acquire` event writes `v₀` (13d.2: "each RMW reads `v₀`"): under the
+/-- **Theorem 13d.2**, reads (C31, C48): every `rf` source of an `acquire` event writes `v₀`: under the
 hypotheses of `grant_invariant`, in every graph that satisfies R and the conjuncts 1 and 3, the
 source of the event of an `acquire` controller step is the event of a `newMutex`, `unlock` or
 `resetLock` step, which writes `v₀`. -/
@@ -558,7 +561,7 @@ theorem acquire_reads_v0 (hr : EncapRun ks L σ lbls) (hR : Realizes G L σ lbls
   have hnone := ((lstep_reg hs j).2.2.1 c' rfl).1
   have hnacq := hiff.1 hnone
   obtain ⟨lbl, hlbl⟩ := hlast.1.label
-  obtain ⟨w'', hw'', hacc, -⟩ := hR.ev k₀ lbl hlbl hlast.1
+  obtain ⟨w'', hw'', hacc⟩ := hR.ev k₀ lbl hlbl hlast.1
   rw [hw₀] at hw''; cases hw''
   unfold Events.Graph.valW; rw [hacc]
   cases lbl with
@@ -666,8 +669,8 @@ theorem lock_order (hr : EncapRun ks L σ lbls) (hK : Corresponds G σ lbls K)
     have hsw : G.SW ew ep := by
       obtain ⟨hsu, hsr, -⟩ := acquire_sw hR h1 h3 hpl' hp hep hlast hew
       obtain ⟨c, hc | hc⟩ := hwkind
-      · exact (hsu c i hc).2 ⟨hrel, hacq⟩
-      · exact (hsr c i hc).2 ⟨hreset, hacq⟩
+      · exact (hsu c i hc).1 ⟨hrel, hacq⟩
+      · exact (hsr c i hc).1 ⟨hreset, hacq⟩
     have hup : G.HB eu ep := by
       rcases hrel_uw with rfl | h
       · exact .single (.inr hsw)
@@ -724,15 +727,16 @@ reads that publication ..., `rf` and the selected memory orders establish `sw(re
 "Any `sw` from the `release` recovery publication must be justified by actual `rf` and the chosen
 memory orders"): when an `acquire` controller step `p` is the first protocol step on `i` after a
 `resetLock` controller step `r`, its event reads the publication of `r`; under the reference
-triple, `sw` relates them; with `o_reset = relaxed`, outside the reference, `rf` holds without
-`sw`. -/
+triple, `sw` relates them; with `o_reset = relaxed`, outside the reference, `rf` holds and the
+atomic source of `sw` (C32.1) does not relate them. Realization R does not fix the `sync` attribute
+of the events: that no `sw` edge at all relates them is not established. -/
 theorem recovery_sw (hr : EncapRun ks L σ lbls) (hR : Realizes G L σ lbls K i x R v₀ v₁)
     (h1 : G.RfWF) (h3 : G.RmwAtomic) {r p cr cp : Nat} (hrp : r < p)
     (hrl : lbls[r]? = some (.resetLock cr i)) (hrc : CtlStep L σ lbls i x r)
     (hpl : lbls[p]? = some (.acquire cp i)) (hpc : CtlStep L σ lbls i x p)
     (hfirst : ∀ k, r < k → k < p → ¬ ProtoOn lbls i k) {er ep : E} (her : K.ev r = some er)
     (hep : K.ev p = some ep) :
-    G.rf er ep ∧ (R = refOrders → G.SW er ep) ∧ (R.reset = .relaxed → ¬ G.SW er ep) := by
+    G.rf er ep ∧ (R = refOrders → G.SW er ep) ∧ (R.reset = .relaxed → ¬ AtomicSW G er ep) := by
   have hpl' : p < lbls.length := (List.getElem?_eq_some_iff.1 hpl).1
   have hir : i < (σ r).2.1.length := by
     unfold CtlStep at hrc; rw [hrl] at hrc
@@ -748,10 +752,10 @@ theorem recovery_sw (hr : EncapRun ks L σ lbls) (hR : Realizes G L σ lbls K i 
     exact hfirst w' (by omega) h (proto_of_ctlStep hw' hiw)
   have hrf := acquire_rf_last hR h1 h3 hpl hpc hep hlast her
   obtain ⟨-, hsr, -⟩ := acquire_sw hR h1 h3 hpl hpc hep hlast her
-  refine ⟨hrf, fun e => (hsr cr i hrl).2 ⟨?_, ?_⟩, fun e hsw => ?_⟩
+  refine ⟨hrf, fun e => (hsr cr i hrl).1 ⟨?_, ?_⟩, fun e hsw => ?_⟩
   · rw [e]; exact .inl rfl
   · rw [e]; exact .inl rfl
-  · obtain ⟨ho, -⟩ := (hsr cr i hrl).1 hsw
+  · obtain ⟨ho, -⟩ := ((hsr cr i hrl).2).1 hsw
     rw [e] at ho
     rcases ho with h | h | h <;> cases h
 
