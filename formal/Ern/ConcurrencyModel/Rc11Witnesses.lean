@@ -11,6 +11,10 @@ import Ern.ConcurrencyModel.EventDecide
   inconsistent for RC11 in both forms (check `coherence1`): `rs` lets the `relaxed` write of the
   same thread enter the release sequence (`(sb & loc)?`), which C48 does not. This is the difference
   that C34 announces between C48 and the published `rc11.cat`.
+* (b) **A graph with a pair**: `Gp`, message passing through an `acq/rel` RMW, satisfies the
+  hypotheses of (b) and its projection the conclusion; it exercises the pair branch of `π`. Its
+  twin `Gpt`, whose last read returns the initial value, is inconsistent for RC11 in both forms and
+  its projection is rejected by conjunct 4 alone.
 
 Each location has its initial write of value `0`. Both witnesses are given without and with `sb`
 edges from the initial writes to every event of a thread (`fromInit`); the expected verdicts hold in
@@ -298,5 +302,129 @@ theorem gc_rc11 (f : Bool) : ¬ (Gc f).toGraph.Coherence1 ∧ (Gc f).toGraph.Coh
 stores, including same-thread non-RMW stores, do **not** extend the sequence"). -/
 theorem gc_proj (f : Bool) : ((Gc f).toGraph.proj (gc_frag f)).EventConsistent := by
   cases f <;> decide +kernel
+
+/-! ## A graph with a pair, for (b) -/
+
+/-- The labels and the `rf`, `mo` edges of `Gp`. Locations: `f = 0`, `d = 1`. Thread 0: `W(d,1)`
+`RLX` (event 2), then `W(f,1)` `REL` (3). Thread 1: the pair `R(f)=1` `ACQ` (4) / `W(f,2)` `REL`
+(5). Thread 2: `R(f)=2` `ACQ` (6), then `R(d)=1` `RLX` (7). `rf`: `W(f,1)` to the read of the
+pair, the write of the pair to `R(f)=2`, `W(d,1)` to `R(d)=1`. `mo`: on `f`, initial, `W(f,1)`, the
+write of the pair; on `d`, initial, `W(d,1)`. No `sb` edge from the initial writes. -/
+def Wp : LG 8 (Fin 3) Nat where
+  lab
+    | 0 => .init 0 0
+    | 1 => .init 1 0
+    | 2 => .write 0 1 1 .rlx
+    | 3 => .write 0 0 1 .rel
+    | 4 => .read 1 0 1 .acq
+    | 5 => .write 1 0 2 .rel
+    | 6 => .read 2 0 2 .acq
+    | 7 => .read 2 1 1 .rlx
+  rf := [(3, 4), (5, 6), (2, 7)]
+  mo := [(0, 3), (0, 5), (3, 5), (1, 2)]
+  fromInit := false
+
+/-- `Gp`: `Wp` with the single pair `(4, 5)` of `rmw`, of row `acq/rel`. -/
+def Gp : Graph (Fin 8) (Fin 3) Nat :=
+  { Wp.toGraph with partner := fun e => if e = 4 then some 5 else none }
+
+instance : DecidableRel Gp.sb := fun a b => inferInstanceAs (Decidable (Wp.toGraph.sb a b))
+instance : DecidableRel Gp.rf := fun a b => inferInstanceAs (Decidable (Wp.toGraph.rf a b))
+instance : DecidableRel Gp.mo := fun a b => inferInstanceAs (Decidable (Wp.toGraph.mo a b))
+
+/-- The only pair of `Gp` is `(4, 5)`. -/
+theorem gp_rmw_only : ∀ r w : Fin 8, Gp.rmw r w → r = 4 ∧ w = 5 := by decide +kernel
+
+/-- **`Gp`, fact 1**: `Gp` is a graph of the fragment, its pair conditions included. -/
+theorem gp_frag : Gp.Frag :=
+  { (Wp.frag (by decide +kernel)) with
+    rmw_read := by decide +kernel
+    rmw_write := by decide +kernel
+    rmw_thread := by decide +kernel
+    rmw_loc := by decide +kernel
+    rmw_sb := by decide +kernel
+    rmw_imm := by decide +kernel
+    rmw_inj := by decide +kernel
+    rmw_ann := by
+      intro r w a a' h ha hw
+      obtain ⟨rfl, rfl⟩ := gp_rmw_only r w h
+      simp [Gp, Wp, LG.toGraph, Lab.ann?] at ha hw
+      subst ha hw; trivial }
+
+/-- **`Gp`, fact 2**: `Gp` is consistent for RC11, amended and published. -/
+theorem gp_rc11 : Gp.ConsistentAm ∧ Gp.ConsistentPub := ⟨by decide +kernel, by decide +kernel⟩
+
+/-- **`Gp`, fact 3**: `dr` is empty on `Gp` (`dr_empty`). -/
+theorem gp_dr : ∀ a b, ¬ Gp.dr a b := Gp.dr_empty
+
+/-- **`Gp`, fact 4**: the write component of the pair has no image, and the image of the pair is a
+single atomic RMW of the unit `f`, of order `acq_rel`, which reads `1` and writes `2`. -/
+theorem gp_pair_image : Gp.IsPairW 5 ∧
+    (Gp.proj gp_frag).acc? ⟨4, by decide⟩ = some (.atomic 0 .acqRel (.rmw 1 2)) :=
+  ⟨⟨4, rfl⟩, by decide +kernel⟩
+
+/-- **`Gp`, fact 5**: the projection of `Gp` satisfies `EventConsistent`, and its `sw` is exactly:
+`W(f,1)` to the RMW, the RMW to `R(f)=2`, and `W(f,1)` to `R(f)=2` (the RMW is a member of the
+release sequence of `W(f,1)`, retained reading 5). -/
+theorem gp_proj : (Gp.proj gp_frag).EventConsistent ∧
+    ∀ a b, (Gp.proj gp_frag).SW a b ↔
+      (a.1 = 3 ∧ b.1 = 4) ∨ (a.1 = 4 ∧ b.1 = 6) ∨ (a.1 = 3 ∧ b.1 = 6) :=
+  ⟨by decide +kernel, by decide +kernel⟩
+
+/-- **`Gp`, fact 6**: `Gp` satisfies the hypotheses of (b) (the fragment, finiteness, consistency
+for RC11 amended), and (b) applies to it (`proj_consistent`). -/
+theorem gp_b : (Gp.Frag ∧ Events.Finite (Fin 8) ∧ Gp.ConsistentAm) ∧
+    (Gp.proj gp_frag).EventConsistent :=
+  ⟨⟨gp_frag, ⟨List.finRange 8, List.mem_finRange⟩, gp_rc11.1⟩,
+    Graph.proj_consistent gp_frag ⟨List.finRange 8, List.mem_finRange⟩ gp_rc11.1⟩
+
+/-! ## The rejected twin of `Gp` -/
+
+/-- The labels of the twin `Gpt`: `Gp` where the last read of thread 2 returns `0` and reads the
+initial write of `d`. -/
+def Wpt : LG 8 (Fin 3) Nat :=
+  { Wp with
+    lab := fun e => if e = 7 then .read 2 1 0 .rlx else Wp.lab e
+    rf := [(3, 4), (5, 6), (1, 7)] }
+
+/-- `Gpt`: `Wpt` with the pair `(4, 5)`. -/
+def Gpt : Graph (Fin 8) (Fin 3) Nat :=
+  { Wpt.toGraph with partner := fun e => if e = 4 then some 5 else none }
+
+instance : DecidableRel Gpt.sb := fun a b => inferInstanceAs (Decidable (Wpt.toGraph.sb a b))
+instance : DecidableRel Gpt.rf := fun a b => inferInstanceAs (Decidable (Wpt.toGraph.rf a b))
+instance : DecidableRel Gpt.mo := fun a b => inferInstanceAs (Decidable (Wpt.toGraph.mo a b))
+
+/-- The only pair of `Gpt` is `(4, 5)`. -/
+theorem gpt_rmw_only : ∀ r w : Fin 8, Gpt.rmw r w → r = 4 ∧ w = 5 := by decide +kernel
+
+/-- `Gpt` is a graph of the fragment. -/
+theorem gpt_frag : Gpt.Frag :=
+  { (Wpt.frag (by decide +kernel)) with
+    rmw_read := by decide +kernel
+    rmw_write := by decide +kernel
+    rmw_thread := by decide +kernel
+    rmw_loc := by decide +kernel
+    rmw_sb := by decide +kernel
+    rmw_imm := by decide +kernel
+    rmw_inj := by decide +kernel
+    rmw_ann := by
+      intro r w a a' h ha hw
+      obtain ⟨rfl, rfl⟩ := gpt_rmw_only r w h
+      simp [Gpt, Wpt, Wp, LG.toGraph, Lab.ann?] at ha hw
+      subst ha hw; trivial }
+
+/-- **Twin of `Gp`** (C34, C48): `Gpt` is inconsistent for RC11 in both forms, by `coherence1`
+(the write of `d` is `hb`-before the read of thread 2 through the `sw` edge of the release sequence,
+and the read reads an earlier modification). -/
+theorem gpt_rc11 : ¬ Gpt.Coherence1 ∧ ¬ Gpt.ConsistentAm ∧ ¬ Gpt.ConsistentPub :=
+  ⟨by decide +kernel, by decide +kernel, by decide +kernel⟩
+
+/-- **Twin of `Gp`**: the projection of `Gpt` is rejected by conjunct 4 alone. -/
+theorem gpt_proj :
+    (Gpt.proj gpt_frag).RfWF ∧ (Gpt.proj gpt_frag).MoTotal ∧ (Gpt.proj gpt_frag).RmwAtomic ∧
+    ¬ (Gpt.proj gpt_frag).Coherence ∧ (Gpt.proj gpt_frag).HbIrrefl ∧
+    (Gpt.proj gpt_frag).NoThinAir ∧ (Gpt.proj gpt_frag).SCConsistent := by
+  refine ⟨?_, ?_, ?_, ?_, ?_, ?_, ?_⟩ <;> decide +kernel
 
 end Ern.ConcurrencyModel.Rc11
