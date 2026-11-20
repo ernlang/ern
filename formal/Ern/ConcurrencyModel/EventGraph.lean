@@ -9,8 +9,10 @@ Events (C27), the base relations `po`, `rf`, `mo` (C28, C31), `sw` (C32, C48), `
 (C33), conflicts (C30), and the consistency predicate `EventConsistent` with its seven conjuncts
 (C34); the legality of memory orders (C40) is a separate predicate.
 
-The type of events is arbitrary: a graph may be infinite, and no well-foundedness is assumed on
-`po`, `rf` or `mo` (C26: "a finite or potentially unbounded trace"). Finiteness is a hypothesis of a
+The type of events is arbitrary: a graph may be infinite (C26: "a finite or potentially unbounded
+trace"). No well-foundedness of `po`, `rf` or `mo` is part of the type of graphs or of
+`EventConsistent`; C34 requires of an admissible graph, in addition, a finite causal past,
+`PrefixFinite((po ∪ sw ∪ rf)⁺)` (`FiniteCausalPast`, `EventFinitePast`). Finiteness is a hypothesis of a
 statement only where C34 names it ("For a finite event graph"), and in the statements that state it
 as a hypothesis: statement 3 on release sequences (`rsMember_iff_chain`) and the comparison with
 RC11 (`proj_consistent`).
@@ -25,8 +27,9 @@ Formalization hypotheses (retained readings, not rules of the specification):
    execution context").
 4. No map from steps to events is defined.
 5. The release sequence of C48 is read as the interval `RSMember`: on a total `mo`, the maximal
-   convex set of atomic RMW modifications following the head. What C48 means when `mo` is not well
-   founded is the open point on infinite graphs; this reading is not a rule (`RSMember`).
+   convex set of atomic RMW modifications following the head. On a graph with a finite causal past
+   it agrees with the finite `rf` chains of atomic RMWs (`rsMember_iff_chain_fcp`); this reading is
+   not a rule (`RSMember`).
 
 Not proven by the event-model modules: that a graph comes from an execution or that an
 execution has a consistent graph; the events of a composite step; the physical classification of
@@ -283,11 +286,11 @@ modifications on that unit. Ordinary atomic stores, including same-thread non-RM
 This formalization reads it as an interval: `m` is a member when `m = h`, or when `m` is an atomic
 RMW modification of `u` with `mo(h, m)` and every modification `x` of `u` with `mo(h, x)` and
 `mo(x, m)` is an atomic RMW modification of `u`. On a total `mo` it is a convex segment, maximal
-(`rsMember_between`, `not_rsMember_after`). The specification states no finiteness or
-well-foundedness condition on `po`, `rf` or `mo` (C26, C34), and what the rule of C48 means when
-`mo` is not well founded is not determined; this definition does not settle it, and the
-infinite witness of `EventInfinite` shows where it can give more members than the atomic RMWs
-reached from `h` by `rf` chains. A non-atomic write is neither a head nor a member (C31). -/
+(`rsMember_between`, `not_rsMember_after`). C34 requires of an admissible graph a finite causal
+past (`FiniteCausalPast`); on such a graph, under conjuncts 1 to 3, the interval and the finite `rf`
+chains of atomic RMWs give the same members (`rsMember_iff_chain_fcp`). The infinite witness of
+`EventInfinite`, where they differ, violates that condition (`witness_g1`). A non-atomic write is
+neither a head nor a member (C31). -/
 def RSMember (u : U) (h m : E) : Prop :=
   m = h ∨ (G.AtomicRMWOn m u ∧ G.mo h m ∧
     ∀ x, G.ModOn x u → G.mo h x → G.mo x m → G.AtomicRMWOn x u)

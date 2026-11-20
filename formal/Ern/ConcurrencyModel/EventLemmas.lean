@@ -8,10 +8,12 @@ Lemmas on the event graph of `EventGraph`, each with its clause and with its hyp
 entails conjunct 5 (C34); the total order `S` on a finite graph (C34); the consequences of `psc`
 (C34); `rb` (C34); the segment of C48 and the `rf` chains of the release sequence (C31, C48).
 
-The release sequence is `RSMember`, retained reading 5 (a formalization hypothesis, open when `mo`
-is not well founded). Statements 1 and 2 on chains hold on every graph; statement 3 assumes a finite
-graph, a hypothesis it states; the infinite witness of `EventInfinite` shows that the
-finiteness condition of statement 2 is needed.
+The release sequence is `RSMember`, retained reading 5 (a formalization hypothesis; on a graph with
+the finite causal past of C34 it agrees with the `rf` chains, `rsMember_iff_chain_fcp`). Statements 1
+and 2 on chains hold on every graph; statement 3 assumes a finite graph, a hypothesis it states, and
+is also a corollary of the finite-causal-past statements (`rsMember_iff_chain_of_finite`); the
+infinite witness of `EventInfinite` shows that the finiteness condition of statement 2 is needed, and
+it violates the finite causal past of C34 (`witness_g1`).
 -/
 
 namespace Ern.ConcurrencyModel.Events
