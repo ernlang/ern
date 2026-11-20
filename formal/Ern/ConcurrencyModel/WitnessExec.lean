@@ -204,4 +204,80 @@ theorem firstCompatible_of_check {Inc : Option Mode → Mode → Prop} [∀ v m,
   have := hrange (k - i) (by omega)
   rwa [Nat.add_sub_cancel' hk1] at this
 
+/-! ## Bounded quantifiers -/
+
+/-- A property of every index from `a` to `b`, from a check on that range. -/
+theorem forall_between {P : Nat → Prop} [DecidablePred P] {a b : Nat}
+    (h : (List.range (b + 1 - a)).all (fun k => decide (P (a + k))) = true) :
+    ∀ k, a ≤ k → k ≤ b → P k := by
+  intro k hk1 hk2
+  simp only [List.all_eq_true, List.mem_range, decide_eq_true_eq] at h
+  have := h (k - a) (by omega)
+  rwa [Nat.add_sub_cancel' hk1] at this
+
+/-! ## Realization R of a list correspondence -/
+
+/-- The Boolean check of realization R for a list correspondence (C13, C27, C31, C48): the event
+of each controller step has the access `ctlAcc` and the `sync` attribute `ctlSync`; `mo` is the
+trace order between them; every modification of `x` is one of them. -/
+def rcheck {n : Nat} {S : Type} (G : ListGraph n Nat Nat Nat S) (L : MutexLayout)
+    (σ : Nat → SC × SyncReg × ArenaReg) (lbls : List Label) (evs : List (Fin n)) (i x : Nat)
+    (R : CtlOrders) (v₀ v₁ : Nat) : Bool :=
+  decide (v₀ ≠ v₁) &&
+  (List.range lbls.length).all (fun k => match lbls[k]? with
+    | some lbl => !(decide (CtlStep L σ lbls i x k)) || (match evs[k]? with
+      | some e => decide (G.toGraph.acc? e = some (ctlAcc x R v₀ v₁ lbl)) &&
+          decide (G.toGraph.sync? e = ctlSync lbl)
+      | none => false)
+    | none => true) &&
+  (List.range lbls.length).all (fun k => (List.range lbls.length).all fun k' =>
+    match evs[k]?, evs[k']? with
+    | some e, some e' => !(decide (CtlStep L σ lbls i x k) && decide (CtlStep L σ lbls i x k')) ||
+        decide (G.toGraph.mo e e' ↔ k < k')
+    | _, _ => true) &&
+  (List.finRange n).all (fun w => !(decide (G.toGraph.ModOn w x)) ||
+    (List.range lbls.length).any fun k => decide (CtlStep L σ lbls i x k) && evs[k]? == some w)
+
+/-- Soundness of the check of realization R. -/
+theorem realizes_of_check {n : Nat} {S : Type} (G : ListGraph n Nat Nat Nat S) (L : MutexLayout)
+    (σ : Nat → SC × SyncReg × ArenaReg) (lbls : List Label) (evs : List (Fin n))
+    (starts completes : List (Nat × Fin n)) (i x : Nat) (R : CtlOrders) (v₀ v₁ : Nat)
+    (h : rcheck G L σ lbls evs i x R v₀ v₁ = true) :
+    Realizes G.toGraph L σ lbls (listK evs starts completes) i x R v₀ v₁ := by
+  simp only [rcheck, Bool.and_eq_true, List.all_eq_true, decide_eq_true_eq] at h
+  obtain ⟨⟨⟨hv, hev⟩, hmo⟩, honly⟩ := h
+  have hlt : ∀ k, CtlStep L σ lbls i x k → k < lbls.length := fun k hk => by
+    unfold CtlStep at hk; split at hk
+    all_goals first
+      | (rename_i h; exact (List.getElem?_eq_some_iff.1 h).1)
+      | exact hk.elim
+  refine ⟨hv, fun k lbl hl hk => ?_, fun k k' e e' hk hk' he he' => ?_, fun w hw => ?_⟩
+  · have := hev k (List.mem_range.2 (hlt k hk))
+    rw [hl] at this
+    simp only [Bool.or_eq_true, Bool.not_eq_true', decide_eq_false_iff_not] at this
+    rcases this with h | h
+    · exact absurd hk h
+    · revert h
+      simp only [listK]
+      cases evs[k]? with
+      | none => simp
+      | some e =>
+        simp only [Bool.and_eq_true, decide_eq_true_eq]
+        exact fun ⟨h1, h2⟩ => ⟨e, rfl, h1, h2⟩
+  · have := hmo k (List.mem_range.2 (hlt k hk)) k' (List.mem_range.2 (hlt k' hk'))
+    simp only [listK] at he he'
+    rw [he, he'] at this
+    simp only [Bool.or_eq_true, Bool.not_eq_true', Bool.and_eq_false_iff,
+      decide_eq_false_iff_not, decide_eq_true_eq] at this
+    rcases this with (h | h) | h
+    · exact absurd hk h
+    · exact absurd hk' h
+    · exact h
+  · have := honly w (List.mem_finRange w)
+    simp only [Bool.or_eq_true, Bool.not_eq_true', decide_eq_false_iff_not, List.any_eq_true,
+      Bool.and_eq_true, decide_eq_true_eq, beq_iff_eq] at this
+    rcases this with h | ⟨k, -, hk, he⟩
+    · exact absurd hw h
+    · exact ⟨k, hk, he⟩
+
 end Ern.ConcurrencyModel
