@@ -7,7 +7,7 @@ import Ern.ConcurrencyModel.Legality
 For an execution in which a `newMutex` step creates an entry whose controller stays the same leaf
 until the end, and a legal order triple, the graph made of the `newMutex` write and of the events
 of the protocol steps on the entry, in the order of the trace, each RMW reading the modification
-that precedes it, satisfies realization R, `OrderLegal` and `EventConsistent`, with a
+that precedes it, with the roles of R, satisfies realization R, `OrderLegal` and `EventConsistent`, with a
 correspondence of fragment F (`controller_graph`). This is the non-vacuity of R on every execution
 of this fragment (`OB-C05`, abstract part).
 -/
@@ -33,11 +33,19 @@ def accAt (k : Nat) : Events.Acc Nat Nat :=
   | some lbl => ctlAcc x R v₀ v₁ lbl
   | none => .unit x (.write v₀)
 
+/-- The `sync` attribute of the event of step `k` under realization R (`ctlSync`). -/
+def syncAt (k : Nat) : Option (Events.SyncRole Nat) :=
+  match lbls[k]? with
+  | some lbl => ctlSync lbl
+  | none => none
+
 /-- The controller graph (C26, C31, C48): one event per controller step, of context the context of
-its label and of access `ctlAcc`, with no `sync` role; `po` is the trace order within a context;
+its label, of access `ctlAcc` and of `sync` attribute `ctlSync`; `po` is the trace order within a
+context;
 `rf` relates the last controller step before an `acquire` to it; `mo` is the trace order. -/
 def ctlGraph : Events.Graph (CtlEv L σ lbls i x) Nat Nat Nat Unit where
-  ev k := ⟨requesterAt lbls k.1, ⟨k.1, 0⟩, .marks (some (accAt lbls x R v₀ v₁ k.1)) none⟩
+  ev k := ⟨requesterAt lbls k.1, ⟨k.1, 0⟩,
+    .marks (some (accAt lbls x R v₀ v₁ k.1)) (syncAt lbls k.1)⟩
   uRange _ := ⟨0, 1⟩
   po a b := requesterAt lbls a.1 = requesterAt lbls b.1 ∧ a.1 < b.1
   rf a b := (∃ c j, lbls[b.1]? = some (.acquire c j)) ∧ LastCtl L σ lbls i x b.1 a.1
@@ -145,8 +153,16 @@ theorem ctlGraph_lt :
         rcases hm with rfl | ⟨-, hmo, -⟩
         · exact hmb
         · exact Nat.lt_trans hmo hmb
-      · cases h
-      · cases h
+      · exact absurd h (by
+          show syncAt lbls a.1 ≠ _
+          unfold syncAt; split
+          · rename_i lbl _; cases lbl <;> simp [ctlSync]
+          · simp)
+      · exact absurd h (by
+          show syncAt lbls a.1 ≠ _
+          unfold syncAt; split
+          · rename_i lbl _; cases lbl <;> simp [ctlSync]
+          · simp)
   have hhb : ∀ a b, G.HB a b → a.1 < b.1 := fun a b h => by
     induction h with
     | single h' => exact hposw _ _ h'
@@ -262,7 +278,12 @@ theorem controller_graph (hr : EncapRun ks L σ lbls) {n c g : Nat}
     · exact hhb _ _ h
     · exact h
     · exact hrb _ _ h
-  refine ⟨⟨hv, fun k lbl hl hk => ⟨⟨k, hk⟩, ctlK_ev.2 rfl, hacc ⟨k, hk⟩ lbl hl⟩,
+  have hsyn : ∀ (e : CtlEv L σ lbls i x) lbl, lbls[e.1]? = some lbl → G.sync? e = ctlSync lbl :=
+    fun e lbl hl => by
+      show syncAt lbls e.1 = _
+      unfold syncAt; rw [hl]
+  refine ⟨⟨hv, fun k lbl hl hk => ⟨⟨k, hk⟩, ctlK_ev.2 rfl, hacc ⟨k, hk⟩ lbl hl,
+    hsyn ⟨k, hk⟩ lbl hl⟩,
     fun k k' e e' _ _ he he' => ?_, fun w _ => ⟨w.1, w.2, ctlK_ev.2 rfl⟩⟩, ?_,
     ⟨hrfwf, hmo, hrmw, hcoh, hhbi, hnta, hsc⟩, ?_⟩
   · rw [← ctlK_ev.1 he, ← ctlK_ev.1 he']; exact Iff.rfl
