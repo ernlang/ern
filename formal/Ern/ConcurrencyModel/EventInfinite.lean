@@ -164,7 +164,7 @@ theorem infinite_consistent : G.EventConsistent := by
   · intro a b c _ _ _ h₁ h₂; exact mo_trans h₁ h₂
   · intro a b _ _ hne
     cases a <;> cases b <;> simp_all [G, mo] <;> omega
-  · intro w r _ h
+  · intro w r _ _ h
     refine ⟨rf_mo h, fun x ⟨h₁, h₂⟩ => ?_⟩
     cases w <;> cases r <;> cases x <;> simp_all [G, rf, mo] <;> omega
   · intro a b h; exact (not_hb a b h).elim

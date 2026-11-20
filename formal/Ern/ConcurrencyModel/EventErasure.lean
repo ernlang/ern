@@ -319,11 +319,11 @@ include hrf hmo in
 events that no `rf` or `mo` edge touches (C34, erasure premises). -/
 theorem erase_rmwAtomic_iff : (G.erase X).RmwAtomic ↔ G.RmwAtomic := by
   constructor
-  · intro h w r hr hrfwr
-    obtain ⟨hm, himm⟩ := h ⟨w, (hrf w r hrfwr).1⟩ ⟨r, (hrf w r hrfwr).2⟩ hr hrfwr
+  · intro h w r hr ha hrfwr
+    obtain ⟨hm, himm⟩ := h ⟨w, (hrf w r hrfwr).1⟩ ⟨r, (hrf w r hrfwr).2⟩ hr ha hrfwr
     exact ⟨hm, fun x ⟨h₁, h₂⟩ => himm ⟨x, (hmo _ _ h₁).2⟩ ⟨h₁, h₂⟩⟩
-  · intro h w r hr hrfwr
-    obtain ⟨hm, himm⟩ := h w.1 r.1 hr hrfwr
+  · intro h w r hr ha hrfwr
+    obtain ⟨hm, himm⟩ := h w.1 r.1 hr ha hrfwr
     exact ⟨hm, fun x hx => himm x.1 hx⟩
 
 /-- `rb` of the erased graph is the restriction of `rb`. -/

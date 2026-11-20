@@ -70,6 +70,11 @@ theorem isRMW_of_rmw {e : E} {u : U} (h : G.AtomicRMWOn e u) : G.IsRMW e := by
   obtain ⟨o, vr, vw, h⟩ := h
   exact G.kind?_atomic h
 
+/-- An atomic RMW is atomic. -/
+theorem atomic_of_rmw {e : E} {u : U} (h : G.AtomicRMWOn e u) : G.Atomic e := by
+  obtain ⟨o, vr, vw, h⟩ := h
+  exact ⟨u, o, _, h⟩
+
 /-- A modification designates its unit. -/
 theorem ModOn.unit {e : E} {u : U} (h : G.ModOn e u) : G.unitOf e = some u := h.1
 
@@ -417,10 +422,10 @@ theorem chain_mo (h2 : G.MoTotal) (h3 : G.RmwAtomic) {u : U} {h m : E} (hc : G.C
     G.mo h m ∧ G.ModOn h u := by
   induction hc with
   | one hm hrf =>
-    have hmo := (h3 _ _ (G.isRMW_of_rmw hm) hrf).1
+    have hmo := (h3 _ _ (G.isRMW_of_rmw hm) (G.atomic_of_rmw hm) hrf).1
     exact ⟨hmo, (G.modOn_of_mo h2 hmo (G.modOn_of_rmw hm)).1⟩
   | step _ hm hrf ih =>
-    have hmo := (h3 _ _ (G.isRMW_of_rmw hm) hrf).1
+    have hmo := (h3 _ _ (G.isRMW_of_rmw hm) (G.atomic_of_rmw hm) hrf).1
     have hx := (G.modOn_of_mo' h2 ih.1 ih.2).2
     exact ⟨G.mo_trans h2 hx ih.1 hmo, ih.2⟩
 
@@ -431,10 +436,10 @@ theorem rsMember_of_chain (h2 : G.MoTotal) (h3 : G.RmwAtomic) {u : U} {h m : E}
     (hc : G.Chain u h m) : G.RSMember u h m := by
   induction hc with
   | @one m hm hrf =>
-    have ⟨hmo, himm⟩ := h3 _ _ (G.isRMW_of_rmw hm) hrf
+    have ⟨hmo, himm⟩ := h3 _ _ (G.isRMW_of_rmw hm) (G.atomic_of_rmw hm) hrf
     exact .inr ⟨hm, hmo, fun x _ h₁ h₂ => (himm x ⟨h₁, h₂⟩).elim⟩
   | @step x m hcx hm hrf ih =>
-    have ⟨hmo, himm⟩ := h3 _ _ (G.isRMW_of_rmw hm) hrf
+    have ⟨hmo, himm⟩ := h3 _ _ (G.isRMW_of_rmw hm) (G.atomic_of_rmw hm) hrf
     have ⟨hhx, hh⟩ := G.chain_mo h2 h3 hcx
     have hxm := G.modOn_of_rmw (G.chain_atomicRMW hcx)
     refine .inr ⟨hm, G.mo_trans h2 hxm hhx hmo, fun y hy h₁ h₂ => ?_⟩
@@ -456,11 +461,11 @@ theorem finiteBetween_of_chain (h2 : G.MoTotal) (h3 : G.RmwAtomic) {u : U} {h m 
     (hc : G.Chain u h m) : G.FiniteBetween u h m := by
   induction hc with
   | @one m hm hrf =>
-    obtain ⟨-, himm⟩ := h3 _ _ (G.isRMW_of_rmw hm) hrf
+    obtain ⟨-, himm⟩ := h3 _ _ (G.isRMW_of_rmw hm) (G.atomic_of_rmw hm) hrf
     exact ⟨[], fun x _ h₁ h₂ => (himm x ⟨h₁, h₂⟩).elim⟩
   | @step x m hcx hm hrf ih =>
     obtain ⟨l, hl⟩ := ih
-    obtain ⟨-, himm⟩ := h3 _ _ (G.isRMW_of_rmw hm) hrf
+    obtain ⟨-, himm⟩ := h3 _ _ (G.isRMW_of_rmw hm) (G.atomic_of_rmw hm) hrf
     have hxm := G.modOn_of_rmw (G.chain_atomicRMW hcx)
     refine ⟨x :: l, fun y hy h₁ h₂ => ?_⟩
     by_cases hyx : y = x
@@ -479,7 +484,7 @@ private theorem chain_of_rsMember (h1 : G.RfWF) (h2 : G.MoTotal) (h3 : G.RmwAtom
     rcases hm with rfl | ⟨hmr, hhm, hall⟩
     · exact (hne rfl).elim
     obtain ⟨⟨w, hrf⟩, -⟩ := h1.2.1 m u (G.readOn_of_rmw hmr)
-    have ⟨hwm, himm⟩ := h3 _ _ (G.isRMW_of_rmw hmr) hrf
+    have ⟨hwm, himm⟩ := h3 _ _ (G.isRMW_of_rmw hmr) (G.atomic_of_rmw hmr) hrf
     have hmm := G.modOn_of_rmw hmr
     have hw := (G.modOn_of_mo h2 hwm hmm).1
     have hh := (G.modOn_of_mo h2 hhm hmm).1

@@ -371,10 +371,10 @@ def MoTotal : Prop :=
     (∀ a b c, G.ModOn a u → G.ModOn b u → G.ModOn c u → G.mo a b → G.mo b c → G.mo a c) ∧
     (∀ a b, G.ModOn a u → G.ModOn b u → a ≠ b → G.mo a b ∨ G.mo b a)
 
-/-- Conjunct 3, RMW atomicity (C34.3, C31): the `rf` source of a successful RMW is its immediate
-`mo`-predecessor. -/
+/-- Conjunct 3, RMW atomicity (C34.3, C31): "the `rf` source of a successful atomic RMW is its
+immediate `mo`-predecessor". A non-atomic RMW is not constrained by this conjunct. -/
 def RmwAtomic : Prop :=
-  ∀ w r, G.IsRMW r → G.rf w r → G.mo w r ∧ ∀ x, ¬ (G.mo w x ∧ G.mo x r)
+  ∀ w r, G.IsRMW r → G.Atomic r → G.rf w r → G.mo w r ∧ ∀ x, ¬ (G.mo w x ∧ G.mo x r)
 
 /-- Conjunct 4, coherence (C34.4): `hb ; eco?` is irreflexive. -/
 def Coherence : Prop := ∀ a b, G.HB a b → ¬ (b = a ∨ G.ECO b a)

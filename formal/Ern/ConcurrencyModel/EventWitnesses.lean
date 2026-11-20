@@ -3,7 +3,8 @@ import Ern.ConcurrencyModel.EventErasure
 /-!
 # Theorem 10d: witness graphs and non-vacuity (C30–C34, C48; `OB-C26`)
 
-Witness graphs T1 to T14, each with its admitted twin, and the two witnesses of 10a on conflicts.
+Witness graphs T1 to T14, each with its admitted twin; T15, a non-atomic RMW that conjunct 3 does
+not constrain, with its atomic twin (C34.3); and the two witnesses of 10a on conflicts.
 A witness replaces no general proof. Each verdict is computed on the definitions of C34 by
 evaluation (`decide +kernel`, through `EventDecide`); the expected verdicts are drawn from the
 clauses (C30–C34, C48).
@@ -386,6 +387,32 @@ theorem noRace_t14 : ∀ a b, ¬ T14.toGraph.Race a b := by decide +kernel
 /-- **T14, erased** (C34, 10c): admitted. -/
 theorem t14_erased_consistent : T14.toGraph.erasePure.EventConsistent :=
   (Graph.erasePure_consistent_iff (by decide +kernel) (by decide +kernel)).2 t14_consistent
+
+/-! ## T15: conjunct 3 constrains atomic RMWs only (C34.3) -/
+
+/-- T15. c1: `W_rlx(x,1)`. c2: a **non-atomic** RMW of `x`, `0 → 2`, designating the unit, which
+reads `ix`. `mo`: `ix < W_rlx(x,1) < RMW`: the source of the RMW is not its immediate
+`mo`-predecessor. -/
+def T15 : ListGraph 7 (Fin 3) (Fin 1) Nat Unit := lg 7
+  [ini 0 0, sy 0 (.spawn 1), sy 0 (.spawn 2), sy 1 (.start 1), wr 1 0 .relaxed 1,
+   sy 2 (.start 2), ⟨2, ⟨0, 0⟩, .marks (some (.unit 0 (.rmw 0 2))) none⟩]
+  [(0, 6)] [(0, 4), (0, 6), (4, 6)]
+
+/-- **T15** (C34.3: "the `rf` source of a successful atomic RMW is its immediate
+`mo`-predecessor"): the non-atomic RMW is not constrained by conjunct 3, and the seven conjuncts
+hold. The two writes of `x` are in a race (C33), which is not a conjunct. -/
+theorem t15_consistent : T15.toGraph.RmwAtomic ∧ T15.toGraph.EventConsistent ∧
+    T15.toGraph.Race 4 6 := by decide +kernel
+
+/-- The atomic twin of T15: the RMW is an atomic `U_rlx(x: 0 → 2)`. -/
+def T15a : ListGraph 7 (Fin 3) (Fin 1) Nat Unit := lg 7
+  [ini 0 0, sy 0 (.spawn 1), sy 0 (.spawn 2), sy 1 (.start 1), wr 1 0 .relaxed 1,
+   sy 2 (.start 2), up 2 0 .relaxed 0 2]
+  [(0, 6)] [(0, 4), (0, 6), (4, 6)]
+
+/-- **Atomic twin of T15** (C34.3): rejected by conjunct 3 alone. -/
+theorem t15a_verdict : Verdict T15a.toGraph true true false true true true true := by
+  decide +kernel
 
 /-! ## Conflicts do not depend on `hb` (C30; 10a) -/
 

@@ -368,7 +368,7 @@ theorem pair_src (hF : G.Frag) (hcr : G.CoherenceRmw) (hat : G.Atomicity) {z r w
 /-- **Conjunct 3 of the image** (C34.3): from the fragment, `coherencermw` and `atomicity`. -/
 theorem proj_rmwAtomic (hcr : G.CoherenceRmw) (hat : G.Atomicity) :
     (G.proj hF).RmwAtomic := by
-  intro w r hr hrf
+  intro w r hr _ hrf
   obtain ⟨pw, hp⟩ := (proj_isRMW_iff hF r).1 hr
   have ⟨hmo, himm⟩ := pair_src hF hcr hat hrf hp
   refine ⟨show G.mo (G.wc w.1) (G.wc r.1) by rw [G.wc_some hp]; exact hmo, fun x hx => ?_⟩
