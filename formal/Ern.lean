@@ -45,6 +45,7 @@ import Ern.ConcurrencyModel.RefinementRights
 import Ern.ConcurrencyModel.RefinementSafeReads
 import Ern.ConcurrencyModel.RefinementState
 import Ern.ConcurrencyModel.RunRefinement
+import Ern.ConcurrencyModel.SafeTrace
 import Ern.ConcurrencyModel.SequentialConservativity
 import Ern.ConcurrencyModel.SpawnValue
 import Ern.ConcurrencyModel.SpawnValuePreserve
