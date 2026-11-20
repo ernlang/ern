@@ -10,6 +10,7 @@ import Ern.ConcurrencyModel.Classification
 import Ern.ConcurrencyModel.CompositeRmw
 import Ern.ConcurrencyModel.Conservativity
 import Ern.ConcurrencyModel.Contract
+import Ern.ConcurrencyModel.Correspondence
 import Ern.ConcurrencyModel.DeriveSync
 import Ern.ConcurrencyModel.Encapsulation
 import Ern.ConcurrencyModel.EventDecide
