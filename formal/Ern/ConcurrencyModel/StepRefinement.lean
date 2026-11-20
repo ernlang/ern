@@ -33,10 +33,6 @@ Not proven here, by any statement of this module:
   operations of C48 for `acquire`, `unlock` and `resetLock` (`OB-C05`);
 * the indivisibility of atomic units and the compilation of memory orders (C38, C39, C50;
   `OB-C12`, concrete part; `OB-C27`); a raw read followed by a raw write does not show it;
-* what an RMW over more than one leaf, admitted under a composite contract (C38), reads: `rawOps`
-  reads every leaf of its region, an auxiliary construction whose read obligations restrict the
-  translated runs (`composite_rmw_restricts`); the faithful correspondence of a composite RMW
-  stays open;
 * the consistency of an observed value with the bytes read (C31–C34);
 * the correspondence of physical events, the internal order of compound steps, `rf`, `mo`, `hb`
   (C26–C34, `OB-C20`);
@@ -371,13 +367,9 @@ carried by the step and the two states, nothing chosen per step. The sort of eac
 * A successful concurrent `writeShared` of kind store (C36, C39): those of O11.
 * An RMW and a successful CAS (C38, C39): the raw reads of the leaves of the region, as O9, then
   those of O11; the indivisibility of the read and the write is not shown. The observed value
-  carried by the label is bound to no byte here (C31–C34). For an RMW on a single `Atomic` leaf
-  (C39) and for a CAS, this is the read of that leaf. For an RMW over more than one leaf, admitted
-  only under a composite contract (C38; `rmw_discipline_cases`), the clauses do not say what the
-  step reads: the reads of every leaf of the region are an auxiliary construction of the
-  refinement at the grain of abstract steps, which defines neither the reads nor the physical
-  events of a composite RMW. Their read obligations restrict the translated runs
-  (`composite_rmw_restricts`). -/
+  carried by the label is bound to no byte here (C31–C34). The region of an admitted RMW is a single
+  `Atomic` leaf (C39; `rmw_discipline_cases`), as is that of a CAS: this is the read of that
+  leaf. -/
 def rawOps {Ty : Type} (π : Params Ty) (w : WriteRepr) :
     Label → SC × SyncReg × ArenaReg → Machine.State → List (Machine.Op Ty)
   | .kernel c op, st, m => opsOf π (kopOf op w) (st.1.view c) m
@@ -652,12 +644,9 @@ theorem writeSharedStore_rawOps {ks : KShared} {s : SC} {c a : Nat} {region : Li
 /-- An RMW and a successful CAS (C38, C39), abstract effect only (`rawSort`): the raw reads of the
 leaves of the region, as O9, then the raw operations of O11, from the O11 preconditions and the
 initialized leaves of the RMW (`WriteSharedCPre.rmwInit`). The indivisibility of the read and the
-write is not shown; the observed value is bound to no byte here (C31–C34). For an RMW over more
-than one leaf, admitted only under a composite contract (C38), the reads of every leaf of the
-region are an auxiliary construction of the refinement at the grain of abstract steps: they define
-neither the reads nor the physical events of a composite RMW, and the clauses do not say what such
-a step reads. Their read obligations are hypotheses here and restrict the translated runs
-(`composite_rmw_restricts`); the faithful correspondence of a composite RMW stays open. -/
+write is not shown; the observed value is bound to no byte here (C31–C34). The region of an
+admitted RMW is a single `Atomic` leaf (C39; `rmw_discipline_cases`): the raw read is that of the
+leaf the step modifies. -/
 theorem rmw_rawOps {ks : KShared} {s : SC} {c a : Nat} {region : List Nat}
     {ord : Option MemOrder} {v : Nat} {m : Machine.State} (hR : ReprC π.L π.rtok s m)
     (hk : KInvCA s) (hpre : WriteSharedCPre ks s c a region ord (.rmw v))
@@ -705,10 +694,6 @@ Not proven by this statement:
   operations of C48 for `acquire`, `unlock` and `resetLock` (`OB-C05`);
 * the indivisibility of atomic units and the compilation of memory orders (C38, C39, C50;
   `OB-C12`, concrete part; `OB-C27`); a raw read followed by a raw write does not show it;
-* what an RMW over more than one leaf, admitted under a composite contract (C38), reads: `rawOps`
-  reads every leaf of its region, an auxiliary construction whose read obligations restrict the
-  translated runs (`composite_rmw_restricts`); the faithful correspondence of a composite RMW
-  stays open;
 * the consistency of an observed value with the bytes read (C31–C34);
 * the correspondence of physical events, the internal order of compound steps, `rf`, `mo`, `hb`
   (C26–C34, `OB-C20`);

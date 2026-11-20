@@ -21,7 +21,7 @@ def frameStatics : Statics := [((none, none, 0), true)]
 theorem frameStatics_ok : StaticsOK frameStatics := by decide
 
 /-- The contract of the frame witnesses: every place is ordinary; no `SharedMutable` leaf. -/
-abbrev kFrames : KShared := testKS [] (fun _ => none) false
+abbrev kFrames : KShared := testKS [] (fun _ => none) (fun _ => none)
 
 /-- Initial single-context state (Spec 1 §47). -/
 def f0 : SC := SC.ofS3 (S3.init frameStatics)

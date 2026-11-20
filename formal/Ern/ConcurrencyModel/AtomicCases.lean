@@ -87,11 +87,14 @@ theorem atomic_order_rejected {ks : KShared} {s : SC} {c a l sz al : Nat} {o : M
     (ho : ¬ WriteOrderOK kind o) :
     WriteSharedCRel ks s c a [l] (some o) kind .reject := by
   refine .reject fun hp => ?_
-  rcases hp.discipline with ⟨l', sz', al', o', e1, e2, e3, e4⟩ | ⟨-, -, hs | hs⟩ | ⟨hm, -, -⟩
-  · cases e3; rw [List.singleton_inj.1 e1] at hd; exact ho e4
-  · rw [hs l (List.mem_singleton_self _)] at hd; cases hd
-  · rw [hs l (List.mem_singleton_self _)] at hd; cases hd
-  · exact hm.2 (singleClass_singleton (by rw [hd]; exact Option.some_ne_none _))
+  have hd' := hp.discipline
+  cases kind with
+  | store =>
+    obtain ⟨-, -, -, hann, -, -⟩ := hd'
+    exact ho (hann ⟨l, List.mem_singleton_self _, by unfold AtomicLeaf; rw [hd]; rfl⟩)
+  | rmw v =>
+    obtain ⟨-, -, -, -, -, -, hann⟩ := hd'
+    exact ho hann
 
 /-- **Theorem 8** (C38): a `writeShared` whose region contains more than one `Atomic` leaf is
 `reject`, whatever the order and the kind, a composite contract included. -/
@@ -100,31 +103,37 @@ theorem multi_atomic_rejected {ks : KShared} {s : SC} {c a : Nat} {region : List
     (h₁ : l₁ ∈ region) (h₂ : l₂ ∈ region) (ha₁ : AtomicLeaf ks l₁) (ha₂ : AtomicLeaf ks l₂) :
     WriteSharedCRel ks s c a region ord kind .reject := by
   refine .reject fun hp => ?_
-  rcases hp.discipline with ⟨l, sz, al, o, e1, -, -, -⟩ | ⟨-, -, hs | hs⟩ | ⟨-, hle, -⟩
-  · subst e1
-    rw [List.mem_singleton] at h₁ h₂; exact h12 (h₁.trans h₂.symm)
-  · have := hs l₁ h₁; unfold AtomicLeaf at ha₁; rw [this] at ha₁; cases ha₁
-  · have := hs l₁ h₁; unfold AtomicLeaf at ha₁; rw [this] at ha₁; cases ha₁
-  · have := two_le_length_filter (p := fun l => decide (AtomicLeaf ks l)) h12 h₁ h₂
+  have hd' := hp.discipline
+  cases kind with
+  | store =>
+    obtain ⟨-, -, hle, -, -, -⟩ := hd'
+    have := two_le_length_filter (p := fun l => decide (AtomicLeaf ks l)) h12 h₁ h₂
       (decide_eq_true ha₁) (decide_eq_true ha₂)
     omega
+  | rmw v =>
+    obtain ⟨l, -, -, e1, -, -, -⟩ := hd'
+    subst e1
+    rw [List.mem_singleton] at h₁ h₂; exact h12 (h₁.trans h₂.symm)
 
-/-- **Theorem 8** (C38): a region that combines `SharedDiscipline` classes, without a composite
-contract admitting it, is `reject`. -/
+/-- **Theorem 8** (C38): a region that combines `SharedDiscipline` classes, which the composite
+contract does not admit, is `reject`, whatever the order and the kind. -/
 theorem mixed_rejected {ks : KShared} {s : SC} {c a : Nat} {region : List Nat}
     {ord : Option MemOrder} {kind : WriteKind} (hm : MixedClasses ks region)
-    (hc : ¬ ks.CompositeContract region ord kind) :
+    (hc : ¬ CompositeAdmits ks region) :
     WriteSharedCRel ks s c a region ord kind .reject := by
   refine .reject fun hp => ?_
-  rcases hp.discipline with ⟨l, sz, al, o, e1, e2, -, -⟩ | ⟨-, -, hs | hs⟩ | ⟨-, -, hcc⟩
-  · subst e1; exact hm.2 (singleClass_singleton (by rw [e2]; exact Option.some_ne_none _))
-  · exact hm.2 (singleClass_const hs)
-  · exact hm.2 (singleClass_const hs)
-  · exact hc hcc
+  have hd' := hp.discipline
+  cases kind with
+  | store =>
+    obtain ⟨-, -, -, -, -, hcc⟩ := hd'
+    exact hc (hcc hm)
+  | rmw v =>
+    obtain ⟨l, sz, al, e1, e2, -, -⟩ := hd'
+    subst e1; exact hm.2 (singleClass_singleton (by rw [e2]; exact Option.some_ne_none _))
 
-/-- **Theorem 8** (C39, "Applicability of atomic memory-order annotations"): for a concurrent
-`writeShared` whose region is governed by a single `K_C.SharedDiscipline` class, the class of its
-leaf `l` (the region is not empty):
+/-- **Theorem 8** (C39, "Operation kind and atomic memory-order annotations"): for a concurrent
+`writeShared` whose region is of a single `K_C.SharedDiscipline` class, the class of its leaf `l`
+(the region is not empty):
 
 1. on `Atomic` storage the annotation is required: without one, the outcome is `reject`;
 2. on `Synchronized` or `Confined` storage the annotation does not apply: with one, the outcome is
@@ -144,16 +153,20 @@ theorem annotation_rejected {ks : KShared} {s : SC} {c a : Nat} {region : List N
       | reject => rfl,
      fun e => by subst e; exact .reject fun hp => hn hp.discipline⟩
   refine ⟨fun hat => key ?_, fun hd ord => key ?_⟩
-  · rintro (⟨l', sz, al, o, -, -, e, -⟩ | ⟨-, -, hs | hs⟩ | ⟨hm, -, -⟩)
-    · cases e
-    · unfold AtomicLeaf at hat; rw [hs l hl] at hat; cases hat
-    · unfold AtomicLeaf at hat; rw [hs l hl] at hat; cases hat
-    · exact hm.2 hsc
-  · rintro (⟨l', sz, al, o, e1, e2, -, -⟩ | ⟨e, -, -⟩ | ⟨hm, -, -⟩)
-    · subst e1; rw [List.mem_singleton.1 hl] at hd
-      rcases hd with hd | hd <;> rw [e2] at hd <;> cases hd
-    · cases e
-    · exact hm.2 hsc
+  · intro hdo
+    cases kind with
+    | store => exact hdo.2.2.2.1 ⟨l, hl, hat⟩
+    | rmw v => exact hdo.choose_spec.choose_spec.choose_spec.2.2.2
+  · intro hdo
+    have hcls : (ks.SharedDiscipline l).map Discipline.cls ≠ some 0 := by
+      rcases hd with hd | hd <;> rw [hd] <;> simp [Discipline.cls]
+    cases kind with
+    | store =>
+      have hnone := hdo.2.2.2.2.1 fun l' hl' hat' => hcls (by rw [hsc.2 l hl l' hl']; exact hat')
+      cases hnone
+    | rmw v =>
+      obtain ⟨l', sz, al, e1, e2, -, -⟩ := hdo
+      subst e1; rw [List.mem_singleton.1 hl] at hcls; rw [e2] at hcls; exact hcls rfl
 
 /-- **Theorem 8** (C39): the concurrent `writeShared` has no `fail` outcome. -/
 theorem writeSharedC_no_fail {ks : KShared} {s : SC} {c a : Nat} {region : List Nat}

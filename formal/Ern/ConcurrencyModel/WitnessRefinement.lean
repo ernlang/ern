@@ -163,7 +163,7 @@ theorem witness_refinement :
     (.acquire (st' := (w6, [⟨3, some 6⟩])) ⟨⟨3, none⟩, rfl, by decide, by decide, rfl⟩) o7
   have h8 := TransRun.step (w := wv) (lbl := .readShared 1 4 2 .acquire 0)
     (st' := (w6, [⟨3, some 6⟩], [])) h7
-    (.readShared (.ok ⟨by decide, by decide, ⟨4, 4, rfl⟩, trivial⟩)) o8
+    (.readShared (.ok ⟨by decide, by decide, ⟨4, 4, rfl⟩, by decide, trivial⟩)) o8
   have h9 := TransRun.step (w := wv) (lbl := .unlock 1 0) (st' := (w7, [⟨3, none⟩], [])) h8
     (.unlock (st' := (w7, [⟨3, none⟩]))
       ⟨⟨3, some 6⟩, 6, rfl, by decide, rfl, by decide, by decide, by decide, rfl⟩) o9

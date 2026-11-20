@@ -14,9 +14,20 @@ operation coverage"):
 * the compare-and-exchange (C39, C40): its success is a `writeShared` RMW, its failure a
   `readShared` observation; the branch is part of the label, not decided by the state (C39).
 
-The definitions this needs from C35, C38 and C40: the per-operation order table, the single-leaf
-atomic unit, the rejection of regions with more than one `Atomic` leaf and of regions combining
-classes without a composite contract.
+The definitions this needs from C35, C38, C39 and C40: the per-operation order table, the
+single-leaf atomic unit, the classification of every targeted leaf, the rejection of zero-size
+`Atomic` leaves, of regions with more than one `Atomic` leaf and of regions combining classes
+without a composite contract, and the rules on the kind and the annotation of C39.
+
+Formalization hypotheses (readings, not rules of the specification):
+
+* reading 6 (C38, "zero physical size"): for a leaf `Atomic(size, align)`, zero physical size is
+  `size = 0`; C38 makes the byte range of the leaf a single unit, of size `size` (`ZeroAtomic`);
+* reading 7 (C28, C38, declared order of a composite contract): the composite contract reads only
+  the region; admitting a mixed-class region is giving its declared order, an enumeration of the
+  leaves of the region, each once, the order of the leaf writes in the step; a contract that gives
+  no order does not admit (`CompositeAdmits`). The authority and validity markers that C28 also
+  names are not represented, and no consequence on events is proved here.
 -/
 
 namespace Ern.ConcurrencyModel
@@ -76,6 +87,65 @@ def AtomicLeaf (ks : KShared) (l : Nat) : Prop := (ks.SharedDiscipline l).map Di
 instance (ks : KShared) (l : Nat) : Decidable (AtomicLeaf ks l) := by
   unfold AtomicLeaf; infer_instance
 
+/-- The annotation is present and in the C40 row of the kind (C39, C40). -/
+def AnnotatedOK (kind : WriteKind) : Option MemOrder → Prop
+  | some o => WriteOrderOK kind o
+  | none => False
+
+instance (kind : WriteKind) (ord : Option MemOrder) : Decidable (AnnotatedOK kind ord) := by
+  cases ord <;> unfold AnnotatedOK <;> infer_instance
+
+/-- An `Atomic` leaf of zero physical size (C38: "An `Atomic(size, align)` leaf with zero physical
+size cannot satisfy the supported atomic-unit requirement"; reading 6: `size = 0`). -/
+def ZeroAtomic (ks : KShared) (l : Nat) : Prop := ∃ al, ks.SharedDiscipline l = some (.atomic 0 al)
+
+/-- `ZeroAtomic` on the discipline. -/
+def zeroB : Option Discipline → Bool
+  | some (.atomic 0 _) => true
+  | _ => false
+
+theorem zeroAtomic_iff (ks : KShared) (l : Nat) : ZeroAtomic ks l ↔ zeroB (ks.SharedDiscipline l) = true := by
+  unfold ZeroAtomic
+  cases ks.SharedDiscipline l with
+  | none => simp [zeroB]
+  | some d => cases d with
+    | atomic sz al => cases sz <;> simp [zeroB]
+    | synchronized => simp [zeroB]
+    | confined => simp [zeroB]
+
+instance (ks : KShared) (l : Nat) : Decidable (ZeroAtomic ks l) :=
+  decidable_of_iff _ (zeroAtomic_iff ks l).symm
+
+/-- The declared order enumerates the leaves of the region, each once (C28, C38; reading 7). -/
+def Enumerates (order region : List Nat) : Prop :=
+  order.Nodup ∧ (∀ l ∈ order, l ∈ region) ∧ ∀ l ∈ region, l ∈ order
+
+instance (order region : List Nat) : Decidable (Enumerates order region) := by
+  unfold Enumerates; infer_instance
+
+/-- The composite contract admits `region`: it gives a declared order that enumerates the leaves of
+the region (C38: a region combining classes "requires a separately established composite
+contract"; C28: the contract determines the within-step order, and one that leaves it undetermined
+does not admit the step; reading 7). -/
+def CompositeAdmits (ks : KShared) (region : List Nat) : Prop :=
+  ∃ order, ks.CompositeContract region = some order ∧ Enumerates order region
+
+/-- `CompositeAdmits` on the contract. -/
+def admitsB (o : Option (List Nat)) (region : List Nat) : Bool :=
+  match o with
+  | some order => decide (Enumerates order region)
+  | none => false
+
+theorem compositeAdmits_iff (ks : KShared) (region : List Nat) :
+    CompositeAdmits ks region ↔ admitsB (ks.CompositeContract region) region = true := by
+  unfold CompositeAdmits
+  cases ks.CompositeContract region with
+  | none => simp [admitsB]
+  | some o => simp [admitsB]
+
+instance (ks : KShared) (region : List Nat) : Decidable (CompositeAdmits ks region) :=
+  decidable_of_iff _ (compositeAdmits_iff ks region).symm
+
 /-- Every leaf of `region` has a selected discipline, all of the same class (C38: "classified
 consistently"). -/
 def SingleClass (ks : KShared) (region : List Nat) : Prop :=
@@ -88,32 +158,48 @@ region that combines incompatible `SharedDiscipline` classes"). -/
 def MixedClasses (ks : KShared) (region : List Nat) : Prop :=
   (∀ l ∈ region, ks.SharedDiscipline l ≠ none) ∧ ¬ SingleClass ks region
 
+instance (ks : KShared) (region : List Nat) : Decidable (SingleClass ks region) := by
+  unfold SingleClass; infer_instance
+
+instance (ks : KShared) (region : List Nat) : Decidable (MixedClasses ks region) := by
+  unfold MixedClasses; infer_instance
+
 /-- The discipline acceptance of a concurrent `writeShared` over `region`, with order annotation
 `ord` and modification kind `kind` (C35, C38–C40):
 
-* a single `Atomic` leaf (C38: one atomic unit is one logical leaf), with an order annotation (C39,
-  "Applicability of atomic memory-order annotations": required for `Atomic` storage) of its C40
-  row; an RMW is an atomic modification (C39);
-* a region classified consistently `Synchronized` or `Confined` (C38: eligible under O11 and its
-  contract), with no order annotation (C39, "Applicability of atomic memory-order annotations": it
-  does not apply to `Synchronized` or `Confined` storage, and one supplied is `reject`), and a
-  plain write;
-* a region that combines classes, has at most one `Atomic` leaf (C38: more than one `Atomic` leaf
-  is `reject`) and is admitted by a separately established composite contract (C38), which
-  determines whether the step carries an annotation (C39, "Applicability of atomic memory-order
-  annotations": the paragraph does not govern such a region); the annotation is that of the whole
-  step, handed to the composite contract.
+* kind RMW (C39, "Operation kind and atomic memory-order annotations"): the region consists of
+  exactly one `Atomic` leaf, not of zero physical size (C38), with an annotation in the atomic RMW
+  row of C40; any other region, the empty one included, is `reject`;
+* kind `store`:
+  - every targeted leaf has a selected `K_C.SharedDiscipline` class (C35: a nonempty region with a
+    leaf lacking one is `reject`, "even when a composite contract would otherwise admit the
+    region");
+  - no targeted leaf is an `Atomic` leaf of zero physical size (C38);
+  - at most one `Atomic` leaf (C38: more than one is `reject`, unconditionally);
+  - with an `Atomic` leaf, an annotation in the store row of C40; with none, no annotation (C39:
+    "exactly one `Atomic` leaf requires an atomic memory-order annotation, whether it is the entire
+    region or part of a mixed-class composite"; "With no `Atomic` leaf, the annotation must be
+    absent");
+  - a region that combines classes is admitted by the composite contract (C38, C28; reading 7).
 
-Any other region is `reject` (C38, C39, C40). -/
-def WriteDisciplineOK (ks : KShared) (region : List Nat) (ord : Option MemOrder)
-    (kind : WriteKind) : Prop :=
-  (∃ l sz al o, region = [l] ∧ ks.SharedDiscipline l = some (.atomic sz al) ∧ ord = some o ∧
-      WriteOrderOK kind o) ∨
-    (ord = none ∧ kind = .store ∧
-      ((∀ l ∈ region, ks.SharedDiscipline l = some .synchronized) ∨
-        (∀ l ∈ region, ks.SharedDiscipline l = some .confined))) ∨
-    (MixedClasses ks region ∧ (region.filter fun l => decide (AtomicLeaf ks l)).length ≤ 1 ∧
-      ks.CompositeContract region ord kind)
+The empty region of kind `store` is admitted exactly without annotation (C39, "Empty region"). The
+composite contract plays no part in the rules on the kind and the annotation (C39: "A composite
+contract (C38) cannot override these rules"). -/
+def WriteDisciplineOK (ks : KShared) (region : List Nat) (ord : Option MemOrder) :
+    WriteKind → Prop
+  | .rmw v => ∃ l sz al, region = [l] ∧ ks.SharedDiscipline l = some (.atomic sz al) ∧ sz ≠ 0 ∧
+      AnnotatedOK (.rmw v) ord
+  | .store =>
+    (∀ l ∈ region, ks.SharedDiscipline l ≠ none) ∧
+    (∀ l ∈ region, ¬ ZeroAtomic ks l) ∧
+    (region.filter fun l => decide (AtomicLeaf ks l)).length ≤ 1 ∧
+    ((∃ l ∈ region, AtomicLeaf ks l) → AnnotatedOK .store ord) ∧
+    ((∀ l ∈ region, ¬ AtomicLeaf ks l) → ord = none) ∧
+    (MixedClasses ks region → CompositeAdmits ks region)
+
+instance (ks : KShared) (region : List Nat) (ord : Option MemOrder) :
+    Decidable (WriteDisciplineOK ks region ord .store) := by
+  unfold WriteDisciplineOK; infer_instance
 
 /-! ## `readShared` (C37) -/
 
@@ -124,8 +210,9 @@ def WriteDisciplineOK (ks : KShared) (region : List Nat) (ord : Option MemOrder)
   usable place and is `Init`; its validity and dependency conditions hold; `access` is
   exercisable in `Observe` and its effective mode on the leaf is present;
 * C37.3: the leaf is declared `K.SharedMutable` and its companion discipline is
-  `Atomic(size, align)` for this single leaf; the concrete representation required by C38 is a
-  realization obligation, outside the abstract state;
+  `Atomic(size, align)` for this single leaf; it is not of zero physical size (C38: "`readShared`
+  ... targeting that leaf is `reject`"; reading 6); the rest of the concrete representation
+  required by C38 is a realization obligation, outside the abstract state;
 * C37.4: `order` is permitted for an atomic read (C40). -/
 structure ReadSharedPre (ks : KShared) (s : SC) (c a l : Nat) (order : MemOrder) : Prop where
   /-- C37.1, C37.2 (Spec 1 §66.1–§66.3 on the single leaf). -/
@@ -134,6 +221,8 @@ structure ReadSharedPre (ks : KShared) (s : SC) (c a l : Nat) (order : MemOrder)
   shared : ks.SharedMutable l
   /-- C37.3: the discipline of the leaf is `Atomic(size, align)`. -/
   atomic : ∃ sz al, ks.SharedDiscipline l = some (.atomic sz al)
+  /-- C37.3, C38: the `Atomic` leaf is not of zero physical size (reading 6). -/
+  nonzero : ¬ ZeroAtomic ks l
   /-- C37.4, C40. -/
   order : LoadOrderOK order
 

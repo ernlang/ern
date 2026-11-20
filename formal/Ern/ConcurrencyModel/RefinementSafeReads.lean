@@ -32,10 +32,8 @@ context (C2):
 
 What these statements say is about the bytes the raw read returns. They say nothing of the observed
 value carried by the label of a `readShared`, a CAS or an RMW: no statement of the formalization
-links it to the bytes read, and the link depends on C31 to C34. For an RMW over more than one leaf, admitted under a
-composite contract (C38), the reads of every leaf of the region are an auxiliary construction of
-`rawOps`, not physical events; the clauses do not say what such a step reads, and that reserve
-stays open (`composite_rmw_restricts`).
+links it to the bytes read, and the link depends on C31 to C34. The region of an admitted RMW is a
+single `Atomic` leaf (C39), whose raw read is the read of the leaf the step modifies.
 -/
 
 namespace Ern.ConcurrencyModel
@@ -225,9 +223,7 @@ of the read itself (Spec 1 §15). Fragment: every state satisfying these hypothe
 context, every label but `spawnVal`.
 
 The statement is about the bytes the raw read returns. It says nothing of the observed value
-carried by the label of a `readShared`, a CAS or an RMW (C31–C34). For an RMW over more than one
-leaf (C38), the reads of every leaf are an auxiliary construction of `rawOps`, not physical
-events. -/
+carried by the label of a `readShared`, a CAS or an RMW (C31–C34). -/
 theorem safe_read_direct {ks : KShared} {ML : MutexLayout} {lbl : Label}
     {st st' : SC × SyncReg × ArenaReg} {m : Machine.State} (hR : ReprC π.L π.rtok st.1 m)
     (hfr : FramesC st.1) (hw : WF3 st.1.flat) (h : LStep ks ML lbl st st')
@@ -449,8 +445,7 @@ by-value composite (Spec 1 §82.1, §23), and the obligations of the raw operati
 the by-value composite.
 
 The statement is about the bytes the raw read returns, not about the observed value of a label
-(C31–C34); for an RMW over more than one leaf (C38), the reads are an auxiliary construction of
-`rawOps`, not physical events. -/
+(C31–C34). -/
 theorem safe_read {ks : KShared} {ML : MutexLayout} {lbl : Label}
     {st st' : SC × SyncReg × ArenaReg} {m : Machine.State} (hpl : PlacementOK π.pl)
     (hg : GeomOK π.geom) (hR : ReprC π.L π.rtok st.1 m) (hk : KInvCA st.1)

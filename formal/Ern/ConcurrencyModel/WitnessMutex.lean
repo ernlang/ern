@@ -30,7 +30,8 @@ theorem mutexStatics_ok : StaticsOK mutexStatics := by decide
 /-- The contract of the mutex witnesses: the controller `lock` (place 2) is the only
 `SharedMutable` leaf, of discipline `Atomic(4, 4)` (C35: one discipline for each applicable
 `SharedMutable` leaf). -/
-abbrev kMutex : KShared := testKS [2] (fun l => if l = 2 then some (.atomic 4 4) else none) false
+abbrev kMutex : KShared := testKS [2] (fun l => if l = 2 then some (.atomic 4 4) else none)
+  (fun _ => none)
 
 /-- Initial single-context state (Spec 1 §47). -/
 def m0 : SC := SC.ofS3 (S3.init mutexStatics)

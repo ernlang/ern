@@ -48,12 +48,17 @@ deriving DecidableEq, Repr
 * `toK`: the projection to the unchanged Spec 1 contract `K` (C2).
 * `SharedDiscipline l`: the discipline the companion contract `K_C.SharedDiscipline` selects for
   leaf `l` (C35), `none` when it selects none. `K.SharedMutable` keeps its Spec 1 meaning (C35).
-* `CompositeContract region order kind`: a separately established composite contract admitting a
-  `writeShared` over a region that combines `SharedDiscipline` classes (C38). It is opaque: C38
-  says only that such a region requires one. -/
+* `CompositeContract region`: a separately established composite contract (C38) for a region that
+  combines `SharedDiscipline` classes. It returns the declared within-step order of the region it
+  admits (C28: the contract "must determine the within-step `po` order of its actual access
+  events"; "a composite contract that leaves their relative order undetermined does not admit the
+  step"), `none` when it does not admit the region. It receives neither the memory-order
+  annotation nor the kind of the step (C39: "A composite contract (C38) cannot override these
+  rules"). That the contract reads only the region and that the declared order is an enumeration
+  of the leaves of the region is a formalization hypothesis (reading 7, module `Atomic`). -/
 structure KShared extends K where
   SharedDiscipline : Nat → Option Discipline
-  CompositeContract : List Nat → Option MemOrder → WriteKind → Prop
+  CompositeContract : List Nat → Option (List Nat)
 
 /-- External contract `K_C` (C2, C14, C35): `KShared` with the opaque predicate
 `SyncAuthorized(state, sync_registry, guarded, requesting_frame)` of C14, the registry being an

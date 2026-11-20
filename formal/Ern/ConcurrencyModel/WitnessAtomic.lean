@@ -12,26 +12,41 @@ namespace Ern.ConcurrencyModel
 
 open Ern.MemoryModel.Access
 
-/-- Statics (Spec 1 §47): `0` a value `V` with four `Init` fields: `1` and `2` (`Atomic`), `3`
-(`Synchronized`), `4` (`Confined`). Root authority `0` of `V`, held by frame 0. -/
+/-- Statics (Spec 1 §47): `0` a value `V` with six `Init` fields: `1` and `2` (`Atomic`), `3`
+(`Synchronized`), `4` (`Confined`), `5` (`SharedMutable` with no class), `6` (`Atomic` of zero
+physical size). Root authority `0` of `V`, held by frame 0. -/
 def atomicStatics : Statics :=
   [((none, none, 0), true), ((some 0, none, 0), true), ((some 0, none, 0), true),
-   ((some 0, none, 0), true), ((some 0, none, 0), true)]
+   ((some 0, none, 0), true), ((some 0, none, 0), true), ((some 0, none, 0), true),
+   ((some 0, none, 0), true)]
 
 /-- The statics are well formed (Spec 1 §47). -/
 theorem atomicStatics_ok : StaticsOK atomicStatics := by decide
 
 /-- The disciplines selected by the test contract (C35): `Atomic(4, 4)` for leaves 1 and 2,
-`Synchronized` for 3, `Confined` for 4. -/
+`Synchronized` for 3, `Confined` for 4, none for 5, `Atomic(0, 4)` for 6 (zero physical size,
+reading 6 of `Atomic`). -/
 def atomicDisc (l : Nat) : Option Discipline :=
   if l = 1 ∨ l = 2 then some (.atomic 4 4) else if l = 3 then some .synchronized
-  else if l = 4 then some .confined else none
+  else if l = 4 then some .confined else if l = 6 then some (.atomic 0 4) else none
 
-/-- The test contract of the atomic witnesses: the four fields are `SharedMutable` (C35); no
+/-- The two regions hold the same leaves. -/
+def sameLeaves (r r' : List Nat) : Bool := r.all (· ∈ r') && r'.all (· ∈ r)
+
+/-- The composite contract of the witnesses (C38; reading 7): it admits `{1, 3}` (`Atomic`,
+`Synchronized`) in the declared order `3` then `1`, and `{3, 4}` (`Synchronized`, `Confined`) in
+the order `3` then `4`; no other region. -/
+def compositeOrder (r : List Nat) : Option (List Nat) :=
+  if sameLeaves r [1, 3] then some [3, 1] else if sameLeaves r [3, 4] then some [3, 4] else none
+
+/-- The test contract of the atomic witnesses: the six fields are `SharedMutable` (C35); no
 composite contract (C38). -/
-abbrev kAtomic : KShared := testKS [1, 2, 3, 4] atomicDisc false
-/-- The same contract with a composite contract admitting every region (C38). -/
-abbrev kComposite : KShared := testKS [1, 2, 3, 4] atomicDisc true
+abbrev kAtomic : KShared := testKS [1, 2, 3, 4, 5, 6] atomicDisc (fun _ => none)
+/-- The same contract with the composite contract `compositeOrder` (C38). -/
+abbrev kComposite : KShared := testKS [1, 2, 3, 4, 5, 6] atomicDisc compositeOrder
+/-- The same contract with a composite contract that admits every region, in the order of its
+leaves (C38). -/
+abbrev kAll : KShared := testKS [1, 2, 3, 4, 5, 6] atomicDisc (fun r => some r.eraseDups)
 
 /-- Initial single-context state (Spec 1 §47). -/
 def v0 : SC := SC.ofS3 (S3.init atomicStatics)
@@ -47,7 +62,8 @@ theorem not_atomic_disc {ks : KShared} {l : Nat} (h : ¬ AtomicLeaf ks l) :
 observed value. -/
 theorem witness_6a : ReadSharedPre kAtomic v0 0 0 1 .acquire ∧
     ∀ v, LStep kAtomic mutexLayout (.readShared 0 0 1 .acquire v) (v0, [], []) (v0, [], []) :=
-  have hp : ReadSharedPre kAtomic v0 0 0 1 .acquire := ⟨by decide, by decide, ⟨4, 4, rfl⟩, trivial⟩
+  have hp : ReadSharedPre kAtomic v0 0 0 1 .acquire :=
+    ⟨by decide, by decide, ⟨4, 4, rfl⟩, by decide, trivial⟩
   ⟨hp, fun _ => .readShared (.ok hp)⟩
 
 /-- **Witness 6b** (C37, `reject`): `readShared` on the `Synchronized` leaf 3, then on the `Confined`
@@ -79,7 +95,7 @@ theorem witness_6d : WriteSharedCPre kAtomic v0 0 0 [1] (some .release) .store �
     LStep kAtomic mutexLayout (.writeShared 0 0 [1] (some .release) .store) (v0, [], [])
       (writeSharedCEff v0 0 [1], [], []) :=
   have hp : WriteSharedCPre kAtomic v0 0 0 [1] (some .release) .store :=
-    ⟨by decide, .inl ⟨1, 4, 4, .release, rfl, rfl, rfl, trivial⟩, fun h => absurd rfl h⟩
+    ⟨by decide, by decide, fun h => absurd rfl h⟩
   ⟨hp, .writeShared (.ok hp)⟩
 
 /-- **Witness 6e** (C38, `reject`): `writeShared(root_V, {1, 2}, release)` over two `Atomic` leaves.
@@ -96,25 +112,18 @@ theorem witness_6e : WriteSharedPre kAtomic.toK (v0.view 0) 0 [1, 2] ∧ AtomicL
     | reject hn => exact hn ⟨by decide, hd, fun h => absurd rfl h⟩, hr⟩
 
 /-- **Witness 6f** (C38, `reject`): `writeShared(root_V, {1, 3}, release)` over an `Atomic` and a
-`Synchronized` leaf, with no composite contract. Single cause: the composite contract of C38 is
-missing; the classes are mixed with at most one `Atomic` leaf, and the O11 preconditions hold.
-Positive twin: the same request under the test contract `kComposite`, whose composite contract
-admits every region, `ok`. The twin rests on that test contract admitting the step; it does not
-establish that such a composite contract is justified under C38–C40. The rejection without a
-composite contract is grounded by C38. -/
+`Synchronized` leaf, with no composite contract. Single cause: no composite contract admits the
+region (C38); the classes are mixed with at most one `Atomic` leaf, the annotation is in the store
+row, and the O11 preconditions hold. Positive twin: witness D1, the same request under a composite
+contract that admits the region with its declared order. -/
 theorem witness_6f : WriteSharedPre kAtomic.toK (v0.view 0) 0 [1, 3] ∧
     MixedClasses kAtomic [1, 3] ∧
     ([1, 3].filter fun l => decide (AtomicLeaf kAtomic l)).length ≤ 1 ∧
-    ¬ kAtomic.CompositeContract [1, 3] (some .release) .store ∧
-    WriteSharedCStep kAtomic v0 0 0 [1, 3] (some .release) .store .reject ∧
-    LStep kComposite mutexLayout (.writeShared 0 0 [1, 3] (some .release) .store) (v0, [], [])
-      (writeSharedCEff v0 0 [1, 3], [], []) :=
-  have hm : MixedClasses kAtomic [1, 3] := by unfold MixedClasses SingleClass; decide
-  have hc : ¬ kAtomic.CompositeContract [1, 3] (some .release) .store := by decide
-  ⟨by decide, hm, by decide, hc, mixed_rejected hm hc,
-    .writeShared (.ok ⟨by decide,
-      .inr (.inr ⟨by unfold MixedClasses SingleClass; decide, by decide, rfl⟩),
-      fun h => absurd rfl h⟩)⟩
+    ¬ CompositeAdmits kAtomic [1, 3] ∧
+    WriteSharedCStep kAtomic v0 0 0 [1, 3] (some .release) .store .reject :=
+  have hm : MixedClasses kAtomic [1, 3] := by decide
+  have hc : ¬ CompositeAdmits kAtomic [1, 3] := by decide
+  ⟨by decide, hm, by decide, hc, mixed_rejected hm hc⟩
 
 /-- **Witness 6g** (C40, `reject`): a compare-and-exchange on leaf 1 with the failure order `release`.
 Single cause: `release` is not in the CAS-failure row; the success order `acq_rel` is in the RMW
@@ -132,7 +141,8 @@ theorem witness_6h : CasOrdersOK .acqRel .acquire ∧
     ∀ v, LStep kAtomic mutexLayout (.cas 0 0 1 .acqRel .acquire (.failure v)) (v0, [], [])
       (v0, [], []) :=
   have ho : CasOrdersOK .acqRel .acquire := ⟨trivial, trivial⟩
-  have hp : ReadSharedPre kAtomic v0 0 0 1 .acquire := ⟨by decide, by decide, ⟨4, 4, rfl⟩, trivial⟩
+  have hp : ReadSharedPre kAtomic v0 0 0 1 .acquire :=
+    ⟨by decide, by decide, ⟨4, 4, rfl⟩, by decide, trivial⟩
   ⟨ho, fun _ => (cas_failure_case (L := mutexLayout) (reg := []) (ar := [])
       (st' := (v0, [], []))).1 ho,
     fun _ => .cas (.inr ⟨ho, .ok hp⟩)⟩
@@ -140,7 +150,7 @@ theorem witness_6h : CasOrdersOK .acqRel .acquire ∧
 /-- **Witness 6i, C38 third paragraph, C39** (`ok`): a concurrent `writeShared(root_V, {3})` over
 the `Synchronized` leaf 3, then `writeShared(root_V, {4})` over the `Confined` leaf 4, each without
 a memory-order annotation: the O11 preconditions hold (Spec 1 §68), the region is of a single class
-(C38) and the annotation does not apply (C39, "Applicability of atomic memory-order
+(C38) and the annotation does not apply (C39, "Operation kind and atomic memory-order
 annotations"). The step is the O11 step with its effect. -/
 theorem witness_6i : WriteSharedCPre kAtomic v0 0 0 [3] none .store ∧
     LStep kAtomic mutexLayout (.writeShared 0 0 [3] none .store) (v0, [], [])
@@ -149,14 +159,14 @@ theorem witness_6i : WriteSharedCPre kAtomic v0 0 0 [3] none .store ∧
     LStep kAtomic mutexLayout (.writeShared 0 0 [4] none .store) (v0, [], [])
       (writeSharedCEff v0 0 [4], [], []) :=
   have h3 : WriteSharedCPre kAtomic v0 0 0 [3] none .store :=
-    ⟨by decide, .inr (.inl ⟨rfl, rfl, .inl (by decide)⟩), fun h => absurd rfl h⟩
+    ⟨by decide, by decide, fun h => absurd rfl h⟩
   have h4 : WriteSharedCPre kAtomic v0 0 0 [4] none .store :=
-    ⟨by decide, .inr (.inl ⟨rfl, rfl, .inr (by decide)⟩), fun h => absurd rfl h⟩
+    ⟨by decide, by decide, fun h => absurd rfl h⟩
   ⟨h3, .writeShared (.ok h3), h4, .writeShared (.ok h4)⟩
 
 /-- **Witness 6j, C39** (`reject`): the requests of witness 6i with the memory-order annotation
 `release`, which is in the store row of C40. Single cause: an annotation is supplied on
-`Synchronized` (then `Confined`) storage (C39, "Applicability of atomic memory-order annotations");
+`Synchronized` (then `Confined`) storage (C39, "Operation kind and atomic memory-order annotations");
 the O11 preconditions hold and the region is of a single class. No labelled step. Positive twin:
 witness 6i. -/
 theorem witness_6j : StoreOrderOK .release ∧
@@ -187,7 +197,7 @@ theorem witness_6j : StoreOrderOK .release ∧
 
 /-- **Witness 6k, C39** (`reject`): a concurrent `writeShared(root_V, {1})` over the `Atomic` leaf 1
 without a memory-order annotation. Single cause: the annotation required on `Atomic` storage is
-missing (C39, "Applicability of atomic memory-order annotations"); the O11 preconditions hold and
+missing (C39, "Operation kind and atomic memory-order annotations"); the O11 preconditions hold and
 the region is a single `Atomic` leaf. No labelled step. Positive twin: witness 6d, the same store
 annotated `release`. -/
 theorem witness_6k : WriteSharedPre kAtomic.toK (v0.view 0) 0 [1] ∧ AtomicLeaf kAtomic 1 ∧

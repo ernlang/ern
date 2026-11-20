@@ -24,39 +24,37 @@ def testK (sm : List Nat) : K :=
     fun _ _ => True, fun _ _ _ => True⟩
 
 /-- Test contract `K_C` without `SyncAuthorized` (C2, C35, C38): `testK sm`, the discipline `d`
-selected by `K_C.SharedDiscipline` (C35), and a composite contract (C38) admitting every
-region when `cc` holds and none otherwise. -/
-def testKS (sm : List Nat) (d : Nat → Option Discipline) (cc : Bool) : KShared :=
-  { testK sm with SharedDiscipline := d, CompositeContract := fun _ _ _ => cc = true }
+selected by `K_C.SharedDiscipline` (C35), and the composite contract `cc` (C38), which gives the
+declared order of each region it admits (C28; reading 7 of `Atomic`). -/
+def testKS (sm : List Nat) (d : Nat → Option Discipline) (cc : List Nat → Option (List Nat)) :
+    KShared :=
+  { testK sm with SharedDiscipline := d, CompositeContract := cc }
 
-instance (sm : List Nat) (d : Nat → Option Discipline) (cc : Bool) :
+instance (sm : List Nat) (d : Nat → Option Discipline) (cc : List Nat → Option (List Nat)) :
     ∀ r r', Decidable ((testKS sm d cc).toK.DeclaredDisjoint r r') :=
   fun _ _ => inferInstanceAs (Decidable False)
-instance (sm : List Nat) (d : Nat → Option Discipline) (cc : Bool) :
+instance (sm : List Nat) (d : Nat → Option Discipline) (cc : List Nat → Option (List Nat)) :
     DecidablePred (testKS sm d cc).toK.SharedMutable :=
   fun l => inferInstanceAs (Decidable (l ∈ sm))
-instance (sm : List Nat) (d : Nat → Option Discipline) (cc : Bool) :
+instance (sm : List Nat) (d : Nat → Option Discipline) (cc : List Nat → Option (List Nat)) :
     DecidablePred (testKS sm d cc).toK.Pinned :=
   fun _ => inferInstanceAs (Decidable False)
-instance (sm : List Nat) (d : Nat → Option Discipline) (cc : Bool) :
+instance (sm : List Nat) (d : Nat → Option Discipline) (cc : List Nat → Option (List Nat)) :
     DecidablePred (testKS sm d cc).toK.ExternalDone :=
   fun _ => inferInstanceAs (Decidable True)
-instance (sm : List Nat) (d : Nat → Option Discipline) (cc : Bool) :
+instance (sm : List Nat) (d : Nat → Option Discipline) (cc : List Nat → Option (List Nat)) :
     DecidablePred (testKS sm d cc).toK.Deallocable :=
   fun _ => inferInstanceAs (Decidable True)
-instance (sm : List Nat) (d : Nat → Option Discipline) (cc : Bool) :
+instance (sm : List Nat) (d : Nat → Option Discipline) (cc : List Nat → Option (List Nat)) :
     ∀ p a, Decidable ((testKS sm d cc).toK.FreeCompat p a) :=
   fun _ _ => inferInstanceAs (Decidable True)
-instance (sm : List Nat) (d : Nat → Option Discipline) (cc : Bool) :
+instance (sm : List Nat) (d : Nat → Option Discipline) (cc : List Nat → Option (List Nat)) :
     ∀ p ls s, Decidable ((testKS sm d cc).toK.Satisfiable p ls s) :=
   fun _ _ _ => inferInstanceAs (Decidable True)
-instance (sm : List Nat) (d : Nat → Option Discipline) (cc : Bool) :
-    ∀ r o w, Decidable ((testKS sm d cc).CompositeContract r o w) :=
-  fun _ _ _ => inferInstanceAs (Decidable (cc = true))
 
 /-- `DDSound` of the test contract (Spec 1 §80): nothing is declared disjoint. -/
-theorem testKS_dd (sm : List Nat) (d : Nat → Option Discipline) (cc : Bool) :
-    DDSound (testKS sm d cc).toK :=
+theorem testKS_dd (sm : List Nat) (d : Nat → Option Discipline)
+    (cc : List Nat → Option (List Nat)) : DDSound (testKS sm d cc).toK :=
   fun _ _ h => h.elim
 
 /-- The positional layout of the reference mutex (C12): `guarded` is held by the first field of
