@@ -54,7 +54,9 @@ import Ern.ConcurrencyModel.SyncInit
 import Ern.ConcurrencyModel.SyncPreserve
 import Ern.ConcurrencyModel.WitnessAtomic
 import Ern.ConcurrencyModel.WitnessBase
+import Ern.ConcurrencyModel.WitnessExec
 import Ern.ConcurrencyModel.WitnessFrames
+import Ern.ConcurrencyModel.WitnessHandoff
 import Ern.ConcurrencyModel.WitnessLegality
 import Ern.ConcurrencyModel.WitnessMutex
 import Ern.ConcurrencyModel.WitnessRefinement
