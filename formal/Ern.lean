@@ -66,6 +66,9 @@ import Ern.ConcurrencyModel.WitnessLock
 import Ern.ConcurrencyModel.WitnessMutex
 import Ern.ConcurrencyModel.WitnessRefinement
 import Ern.ConcurrencyModel.WitnessRoles
+import Ern.ConcurrencyModel.WitnessSafe
+import Ern.ConcurrencyModel.WitnessSafeExec
+import Ern.ConcurrencyModel.WitnessSafeShared
 import Ern.Corpus.DataStack
 import Ern.Corpus.Lib
 import Ern.Corpus.LibRunner
