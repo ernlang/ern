@@ -58,6 +58,7 @@ import Ern.ConcurrencyModel.WitnessFrames
 import Ern.ConcurrencyModel.WitnessLegality
 import Ern.ConcurrencyModel.WitnessMutex
 import Ern.ConcurrencyModel.WitnessRefinement
+import Ern.ConcurrencyModel.WitnessRoles
 import Ern.Corpus.DataStack
 import Ern.Corpus.Lib
 import Ern.Corpus.LibRunner
