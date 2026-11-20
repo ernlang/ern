@@ -4,8 +4,8 @@ import Ern.ConcurrencyModel.EventGraph
 /-!
 # Theorem 11: legality of the shared-discipline operations and of memory orders (C35–C40)
 
-Theorem 11 of `formal/DESIGN.md`, Milestone 4, target theorems, on the authority machine; no event
-is involved. Fragment: every state, every contract `K_C`, unless stated.
+Theorem 11 of `formal/DESIGN.md`, Milestone 4, target theorems (`OB-C03`, `OB-C21`), on the
+authority machine; no event is involved. Fragment: every state, every contract `K_C`, unless stated.
 
 * 11a (C35, C38, C39): the outcomes of the concurrent `writeShared`, one rejection statement per
   row of the discipline acceptance `WriteDisciplineOK`, each sufficient whatever the composite
@@ -40,7 +40,8 @@ theorem reject_of_not_discipline {ks : KShared} {s : SC} {c a : Nat} {region : L
 outcome is `ok` exactly when the unchanged O11 preconditions on the view of `c` (Spec 1 §68; C35),
 the initialization condition of an RMW (C39) and the discipline acceptance (C35, C38–C40) hold,
 and its state is then the O11 effect; it is `reject` exactly when they do not; it is never
-`fail`; and one of the two outcomes exists for every request. -/
+`fail`; and one of the two outcomes exists for every request.
+Obligation: `OB-C03`. -/
 theorem writeSharedC_outcomes {ks : KShared} {s : SC} {c a : Nat} {region : List Nat}
     {ord : Option MemOrder} {kind : WriteKind} :
     (∀ s', WriteSharedCStep ks s c a region ord kind (.ok s') ↔
@@ -107,7 +108,8 @@ theorem zero_atomic_rejected {ks : KShared} {s : SC} {c a : Nat} {region : List 
 
 /-- **Theorem 11a**, row "more than one `Atomic` leaf" (C38: such a region is `reject`; C39: a
 composite contract cannot have more than one `Atomic` leaf admitted): `multi_atomic_rejected`
-under every composite contract. -/
+under every composite contract.
+Obligation: `OB-C03`. -/
 theorem multi_atomic_rejected_any {ks : KShared} {s : SC} {c a : Nat} {region : List Nat}
     {ord : Option MemOrder} {kind : WriteKind} {l₁ l₂ : Nat} (h12 : l₁ ≠ l₂)
     (h₁ : l₁ ∈ region) (h₂ : l₂ ∈ region) (ha₁ : AtomicLeaf ks l₁) (ha₂ : AtomicLeaf ks l₂)
@@ -119,7 +121,8 @@ theorem multi_atomic_rejected_any {ks : KShared} {s : SC} {c a : Nat} {region : 
 requires an atomic memory-order annotation, whether it is the entire region or part of a
 mixed-class composite"; it "must be permitted for a `store` by C40"; "A missing required
 annotation ... or an order illegal for the event kind is `reject`"): `reject` whatever the
-composite contract. -/
+composite contract.
+Obligation: `OB-C03`. -/
 theorem atomic_annotation_rejected {ks : KShared} {s : SC} {c a : Nat} {region : List Nat}
     {ord : Option MemOrder} {l : Nat} (hl : l ∈ region) (ha : AtomicLeaf ks l)
     (hn : ¬ AnnotatedOK .store ord) (cc : List Nat → Option (List Nat)) :
@@ -129,7 +132,8 @@ theorem atomic_annotation_rejected {ks : KShared} {s : SC} {c a : Nat} {region :
 /-- **Theorem 11a**, rows "empty region" and "no `Atomic` leaf", kind `store` (C39: "With no
 `Atomic` leaf, the annotation must be absent"; "a supplied annotation where none applies ... is
 `reject`"; "Empty region": "An annotation ... makes this concurrent step `reject`"): `reject`
-whatever the composite contract. -/
+whatever the composite contract.
+Obligation: `OB-C03`. -/
 theorem no_atomic_annotation_rejected {ks : KShared} {s : SC} {c a : Nat} {region : List Nat}
     {o : MemOrder} (hn : ∀ l ∈ region, ¬ AtomicLeaf ks l) (cc : List Nat → Option (List Nat)) :
     WriteSharedCStep { ks with CompositeContract := cc } s c a region (some o) .store .reject :=
@@ -138,7 +142,8 @@ theorem no_atomic_annotation_rejected {ks : KShared} {s : SC} {c a : Nat} {regio
 /-- **Theorem 11a**, kind RMW on a region other than exactly one `Atomic` leaf (C39: "Any other
 region, including an empty region, a multi-leaf region, or a non-`Atomic` single leaf, is `reject`
 for `RMW`"; "Empty region": "An annotation or `RMW` kind makes this concurrent step `reject`"):
-`reject` whatever the order and the composite contract. -/
+`reject` whatever the order and the composite contract.
+Obligation: `OB-C03`. -/
 theorem rmw_region_rejected {ks : KShared} {s : SC} {c a : Nat} {region : List Nat}
     {ord : Option MemOrder} {v : Nat}
     (hn : ¬ ∃ l sz al, region = [l] ∧ ks.SharedDiscipline l = some (.atomic sz al))
@@ -149,7 +154,8 @@ theorem rmw_region_rejected {ks : KShared} {s : SC} {c a : Nat} {region : List N
 /-- **Theorem 11a**, kind RMW without annotation (C39: an RMW "carries an explicit memory-order
 annotation permitted by the atomic RMW row of C40; absence of that annotation or an illegal order
 is `reject`"; every order is in that row, `order_rows`): `reject` whatever the region and the
-composite contract. -/
+composite contract.
+Obligation: `OB-C03`. -/
 theorem rmw_annotation_rejected {ks : KShared} {s : SC} {c a : Nat} {region : List Nat}
     {v : Nat} (cc : List Nat → Option (List Nat)) :
     WriteSharedCStep { ks with CompositeContract := cc } s c a region none (.rmw v) .reject :=
@@ -173,7 +179,8 @@ cannot override these rules"):
 2. two contracts that select the same disciplines give the same verdict on these rules, whatever
    their composite contracts;
 3. a request that breaks them is `reject` under every contract that selects the same
-   disciplines, whatever its composite contract. -/
+   disciplines, whatever its composite contract.
+Obligation: `OB-C03`. -/
 theorem kindAnnotation_independent {ks : KShared} {s : SC} {c a : Nat} {region : List Nat}
     {ord : Option MemOrder} {kind : WriteKind} :
     (WriteDisciplineOK ks region ord kind → KindAnnotationOK ks region ord kind) ∧
@@ -207,7 +214,8 @@ theorem kindAnnotation_independent {ks : KShared} {s : SC} {c a : Nat} {region :
 `ok` exactly under C37.1–C37.4 with a leaf not of zero physical size (`ReadSharedPre`), with the
 state unchanged; `reject` exactly otherwise; never `fail`; one of the two for every request. In
 particular `reject` on `Synchronized` or `Confined` storage, by the operation's own rule (C37.3,
-not O11.3), and on an `Atomic` leaf of zero physical size (C38; reading 6 of `Atomic`). -/
+not O11.3), and on an `Atomic` leaf of zero physical size (C38; reading 6 of `Atomic`).
+Obligation: `OB-C03`. -/
 theorem readShared_outcomes {ks : KShared} {s : SC} {c a l : Nat} {order : MemOrder} :
     (∀ s', ReadSharedStep ks s c a l order (.ok s') ↔ ReadSharedPre ks s c a l order ∧ s' = s) ∧
     (ReadSharedStep ks s c a l order .reject ↔ ¬ ReadSharedPre ks s c a l order) ∧
@@ -228,7 +236,8 @@ theorem readShared_outcomes {ks : KShared} {s : SC} {c a l : Nat} {order : MemOr
 
 /-- **Theorem 11c** (C40), the five rows of the per-operation legality table, by enumeration:
 `readShared` atomic load; atomic `writeShared` store; atomic RMW; CAS success, which is the atomic
-RMW row in `CasOrdersOK`; CAS failure. -/
+RMW row in `CasOrdersOK`; CAS failure.
+Obligation: `OB-C03`. -/
 theorem order_rows :
     (∀ o, LoadOrderOK o ↔ o = .relaxed ∨ o = .acquire ∨ o = .seqCst) ∧
     (∀ o, StoreOrderOK o ↔ o = .relaxed ∨ o = .release ∨ o = .seqCst) ∧
@@ -247,7 +256,8 @@ concurrency contract"): for each step that carries an order, an order outside it
 step `reject`: the load, the store on a region with an `Atomic` leaf (whatever the composite
 contract, `atomic_annotation_rejected`), the RMW, and both orders of a compare-and-exchange,
 whatever its branch. The atomic RMW and CAS success rows contain every order (`order_rows`), so
-their hypotheses are never met. -/
+their hypotheses are never met.
+Obligation: `OB-C03`. -/
 theorem order_out_of_row_rejected {ks : KShared} {s : SC} {c a l : Nat} :
     (∀ order, ¬ LoadOrderOK order → ReadSharedStep ks s c a l order .reject) ∧
     (∀ region o, l ∈ region → AtomicLeaf ks l → ¬ StoreOrderOK o →
@@ -263,7 +273,8 @@ theorem order_out_of_row_rejected {ks : KShared} {s : SC} {c a l : Nat} :
 /-- **Theorem 11c** (C40: "A CAS may choose its success and failure orders independently: no
 strength relation between them is imposed"): the order legality of a compare-and-exchange is the
 conjunction of its two rows; a failure order stronger than the success order, and the converse,
-are both legal. -/
+are both legal.
+Obligation: `OB-C03`. -/
 theorem cas_orders_independent :
     (∀ succ fail, CasOrdersOK succ fail ↔ RMWOrderOK succ ∧ CasFailureOrderOK fail) ∧
     CasOrdersOK .relaxed .seqCst ∧ CasOrdersOK .seqCst .relaxed :=
@@ -271,7 +282,8 @@ theorem cas_orders_independent :
 
 /-- **Theorem 11c** (C40), agreement of each row with the order legality of the event model
 (`Events.Graph.OrderOK`, C40 on events) for the kind of its event: the load and the CAS failure
-are reads (C37, C39), the store is a write (C39), the RMW and the CAS success are RMWs (C39). -/
+are reads (C37, C39), the store is a write (C39), the RMW and the CAS success are RMWs (C39).
+Obligation: `OB-C03`. -/
 theorem rows_agree_orderOK (o : MemOrder) :
     (LoadOrderOK o ↔ Events.Graph.OrderOK .read o) ∧
     (StoreOrderOK o ↔ Events.Graph.OrderOK .write o) ∧
@@ -301,7 +313,8 @@ theorem writeShared_conservative {ks : KShared} {L : MutexLayout} {c a : Nat}
 on an initialized `Atomic` leaf is a `writeShared` mutation"; C35; `OB-C21`), relative to the
 memory model formalization, which does not represent the type and storage contract of Spec 1
 §68.3: a successful CAS is an `ok` O11 step on its single leaf, on the projection `ks.toK`, taking
-the same labelled transition. -/
+the same labelled transition.
+Obligation: `OB-C03`. -/
 theorem cas_success_conservative {ks : KShared} {L : MutexLayout} {c a l v : Nat}
     {succ fail : MemOrder} {st st' : SC × SyncReg × ArenaReg}
     (h : LStep ks L (.cas c a l succ fail (.success v)) st st') :

@@ -145,7 +145,8 @@ theorem ctlAccess_length (L : MutexLayout) (st : SC × SyncReg × ArenaReg) (i :
 theorem atomics_length_le (acc : List LeafAccess) : (atomics acc).length ≤ acc.length :=
   List.length_filter_le _ _
 
-/-- **Theorem 11e** (C38, C39, C48): every admitted step has at most one atomic access. -/
+/-- **Theorem 11e** (C38, C39, C48): every admitted step has at most one atomic access.
+Obligation: `OB-C03`. -/
 theorem classify_atomic_le_one {ks : KShared} {L : MutexLayout} {R : CtlOrders} {lbl : Label}
     {st st' : SC × SyncReg × ArenaReg} {acc : List LeafAccess} (h : LStep ks L lbl st st')
     (hc : classify ks L R st lbl = some acc) : (atomics acc).length ≤ 1 := by
@@ -204,7 +205,8 @@ theorem classify_atomic_le_one {ks : KShared} {L : MutexLayout} {R : CtlOrders} 
 `Atomic` leaf, the annotation must be absent"): an admitted concurrent `writeShared` carries an
 annotation exactly when it has an atomic access. `readShared` and the compare-and-exchange always
 carry their orders and always have exactly one atomic access; the protocol operations of the
-mutex carry no annotation, their orders being those of the realization (`CtlOrders`). -/
+mutex carry no annotation, their orders being those of the realization (`CtlOrders`).
+Obligation: `OB-C03`. -/
 theorem writeShared_annotation_iff {ks : KShared} {L : MutexLayout} {R : CtlOrders} {c a : Nat}
     {region : List Nat} {ord : Option MemOrder} {kind : WriteKind}
     {st st' : SC × SyncReg × ArenaReg} (h : LStep ks L (.writeShared c a region ord kind) st st') :
