@@ -386,7 +386,10 @@ theorem R37 : EncapsulatedTrace kMutex mutexLayout (m0, [], []) refMutexL (m2, r
 owner = lock′)` of one leaf. Expected: `ok`, excluded by C22.4: the metadata of the provider may
 write the controller. Obtained: `ok`, failing `ControllerRestriction`, because `ActualFootprint`
 counts every leaf of the provider as affected by `alloc`; the test contract fixes nothing on the
-metadata of a provider. Twin: `R36`. -/
+metadata of a provider. MISMATCH, class indeterminate: the expected and obtained verdicts agree,
+but the exclusion rests on that reading of `ActualFootprint` alone; neither C22.4 nor the test
+contract fixes which leaves of the provider carry its metadata (C22.4: the restriction "is
+evaluated against the leaves actually affected by an operation"). Twin: `R36`. -/
 theorem R38 : EncapsulatedTrace kMutex mutexLayout (p0, [], []) pL (p2, pReg, []) ∧
     LStep kMutex mutexLayout (.kernel 0 (.alloc 0 6 [(none, 0)])) (p2, pReg, [])
       (p2.set (allocEff (p2.view 0) 6 [(none, 0)]), pReg, []) ∧
