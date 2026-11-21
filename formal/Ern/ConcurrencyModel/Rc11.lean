@@ -18,7 +18,8 @@ Sources:
   initial writes, `A` the events carrying an order annotation; with `-variant normw` an RMW is a
   read and a write related by `rmw`, both in `RMW`, the read carrying the read part of the order and
   the write its write part (`extract_read`, `extract_write`, `cxchg`); a failed CAS is a read;
-* for the amended middle term of `scb`, the corrigendum named by C34 (O. Lahav, December 2025):
+* for the amended middle term of `scb`, the corrigendum named by C34 (Ori Lahav, December 2025,
+  to *Repairing Sequential Consistency in C/C++11*):
   `(sb \ rmw) ; hb ; (sb \ rmw)` in place of `sb|≠loc ; hb ; sb|≠loc`.
 
 Nothing here is a claim about herd or about a compiler: the comparison is between definitions

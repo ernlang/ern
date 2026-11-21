@@ -4,6 +4,9 @@ import Ern.ConcurrencyModel.EventDecide
 /-!
 # Theorem 10e: the witnesses of statements (a) and (c) (C34; `OB-C23`, `OB-C26`)
 
+`rc11.cat` and the corrigendum named below are the sources identified in the header of `Rc11`:
+`rc11.cat` of herdtools7 7.58 and the corrigendum named by C34.
+
 * (a) **The published model is not included**: `Ga`, the example of the corrigendum with its
   non-atomic read removed, is consistent for the published `rc11.cat`, its projection is rejected
   by conjunct 7 alone, and it is inconsistent for RC11 amended (check `SC`).

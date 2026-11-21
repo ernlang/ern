@@ -5,6 +5,9 @@ import Ern.ConcurrencyModel.EventLemmas
 # Theorem 10e: the canonical projection of the RC11 fragment to ERN graphs (C34; `OB-C23`,
 `OB-C26`)
 
+`rc11.cat` and the corrigendum named below are the sources identified in the header of `Rc11`:
+`rc11.cat` of herdtools7 7.58 and the corrigendum named by C34.
+
 `proj` is the canonical projection `π`, from the fragment of `Rc11` to
 the event graphs of `EventGraph`, entirely determined:
 
