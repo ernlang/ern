@@ -26,28 +26,30 @@ namespace Ern.ConcurrencyModel
 
 open Ern.MemoryModel Ern.MemoryModel.Access
 
+variable {pm : ProviderMeta}
+
 /-! ## Executions with named states -/
 
 /-- An `EncapsulatedTrace` (C51.1) with named states: step `i` of `lbls` goes from `σ i` to
 `σ (i + 1)` and satisfies `EncapStep`. -/
-def EncapRun (ks : KShared) (L : MutexLayout) (σ : Nat → SC × SyncReg × ArenaReg)
-    (lbls : List Label) : Prop :=
+def EncapRun (pm : ProviderMeta) (ks : KShared) (L : MutexLayout)
+    (σ : Nat → SC × SyncReg × ArenaReg) (lbls : List Label) : Prop :=
   ∀ i (h : i < lbls.length),
-    EncapStep ks L (σ i) lbls[i] (σ (i + 1)) ∧ LStep ks L lbls[i] (σ i) (σ (i + 1))
+    EncapStep pm ks L (σ i) lbls[i] (σ (i + 1)) ∧ LStep ks L lbls[i] (σ i) (σ (i + 1))
 
 /-- Appending a step to an `EncapsulatedTrace` (C51.1). -/
 theorem EncapsulatedTrace.snoc {ks : KShared} {L : MutexLayout}
     {st st₁ st₂ : SC × SyncReg × ArenaReg} {lbls : List Label} {lbl : Label}
-    (h : EncapsulatedTrace ks L st lbls st₁) (he : EncapStep ks L st₁ lbl st₂)
-    (hs : LStep ks L lbl st₁ st₂) : EncapsulatedTrace ks L st (lbls ++ [lbl]) st₂ := by
+    (h : EncapsulatedTrace pm ks L st lbls st₁) (he : EncapStep pm ks L st₁ lbl st₂)
+    (hs : LStep ks L lbl st₁ st₂) : EncapsulatedTrace pm ks L st (lbls ++ [lbl]) st₂ := by
   induction h with
   | nil => exact .cons he hs .nil
   | cons he' hs' _ ih => exact .cons he' hs' (ih he hs)
 
 /-- Every `EncapsulatedTrace` has named states. -/
 theorem encapRun_of_trace {ks : KShared} {L : MutexLayout} {st st' : SC × SyncReg × ArenaReg}
-    {lbls : List Label} (h : EncapsulatedTrace ks L st lbls st') :
-    ∃ σ, σ 0 = st ∧ EncapRun ks L σ lbls ∧ σ lbls.length = st' := by
+    {lbls : List Label} (h : EncapsulatedTrace pm ks L st lbls st') :
+    ∃ σ, σ 0 = st ∧ EncapRun pm ks L σ lbls ∧ σ lbls.length = st' := by
   induction h with
   | @nil st => exact ⟨fun _ => st, rfl, fun i h => absurd h (Nat.not_lt_zero _), rfl⟩
   | @cons st st₁ st₂ lbl lbls he hs _ ih =>
@@ -59,8 +61,8 @@ theorem encapRun_of_trace {ks : KShared} {L : MutexLayout} {st st' : SC × SyncR
 
 /-- Every state of an `EncapRun` is reached by an `EncapsulatedTrace` from its first state. -/
 theorem encapRun_reach {ks : KShared} {L : MutexLayout} {σ : Nat → SC × SyncReg × ArenaReg}
-    {lbls : List Label} (hr : EncapRun ks L σ lbls) :
-    ∀ k, k ≤ lbls.length → ∃ pre, EncapsulatedTrace ks L (σ 0) pre (σ k)
+    {lbls : List Label} (hr : EncapRun pm ks L σ lbls) :
+    ∀ k, k ≤ lbls.length → ∃ pre, EncapsulatedTrace pm ks L (σ 0) pre (σ k)
   | 0, _ => ⟨[], .nil⟩
   | k + 1, hk => by
     obtain ⟨pre, hpre⟩ := encapRun_reach hr k (by omega)
@@ -147,7 +149,7 @@ theorem loss_marker_of {Inc : Option Mode → Mode → Prop} [∀ v m, Decidable
     (hdrop : ∀ {v v' : Option Mode} {m : Mode}, Inc v m → ¬ Inc v' m → capRank v' < capRank v)
     {ks : KShared} {L : MutexLayout} {statics : Statics} {σ : Nat → SC × SyncReg × ArenaReg}
     {lbls : List Label} (hdd : DDSound ks.toK) (hst : StaticsOK statics)
-    (h0 : σ 0 = (SC.ofS3 (S3.init statics), [], [])) (hr : EncapRun ks L σ lbls)
+    (h0 : σ 0 = (SC.ofS3 (S3.init statics), [], [])) (hr : EncapRun pm ks L σ lbls)
     {i j c' l : Nat} {m : Mode} (hij : i < j) (hj : j ≤ lbls.length)
     (hi : Inc (cap (σ i).1 (σ i).2.1 c' l) m) (hjc : ¬ Inc (cap (σ j).1 (σ j).2.1 c' l) m) :
     ∃ r, FirstCompatible Inc σ i c' l m r ∧ (∀ r', FirstCompatible Inc σ i c' l m r' → r' = r) ∧
@@ -173,7 +175,7 @@ step `r ≥ i` at the end of which `cap(·, c', l)` is compatible with `m`; it i
 theorem loss_marker_modify {ks : KShared} {L : MutexLayout} {statics : Statics}
     {σ : Nat → SC × SyncReg × ArenaReg} {lbls : List Label} (hdd : DDSound ks.toK)
     (hst : StaticsOK statics) (h0 : σ 0 = (SC.ofS3 (S3.init statics), [], []))
-    (hr : EncapRun ks L σ lbls) {i j c c' l : Nat} {m : Mode} (hij : i < j)
+    (hr : EncapRun pm ks L σ lbls) {i j c c' l : Nat} {m : Mode} (hij : i < j)
     (hj : j ≤ lbls.length) (hcc : c ≠ c') (hm : Allows (cap (σ j).1 (σ j).2.1 c l) m)
     (hi : IncompatModify (cap (σ i).1 (σ i).2.1 c' l) m) :
     ∃ r, FirstCompatible IncompatModify σ i c' l m r ∧
@@ -207,7 +209,7 @@ present capability on the same leaf is a premise of the safe-storage contract (C
 theorem loss_marker_confined {ks : KShared} {L : MutexLayout} {statics : Statics}
     {σ : Nat → SC × SyncReg × ArenaReg} {lbls : List Label} (hdd : DDSound ks.toK)
     (hst : StaticsOK statics) (h0 : σ 0 = (SC.ofS3 (S3.init statics), [], []))
-    (hr : EncapRun ks L σ lbls) {i j c c' l : Nat} {m : Mode}
+    (hr : EncapRun pm ks L σ lbls) {i j c c' l : Nat} {m : Mode}
     (hconf : ∀ k, k ≤ lbls.length → ∀ d d', d ≠ d' → cap (σ k).1 (σ k).2.1 d l ≠ none →
       cap (σ k).1 (σ k).2.1 d' l = none)
     (hij : i < j) (hj : j ≤ lbls.length) (hcc : c ≠ c')
@@ -272,7 +274,7 @@ def UsesModify (ks : KShared) (st : SC × SyncReg × ArenaReg) (lbl : Label) (x 
 (C43, C42), on a state satisfying the invariants of theorem 2. -/
 theorem cap_of_usesModify {ks : KShared} {L : MutexLayout} {R : CtlOrders} {lbl : Label}
     {st st' : SC × SyncReg × ArenaReg} {acc : List LeafAccess} {x : LeafAccess}
-    (hk : KInvCA st.1) (he : EncapStep ks L st lbl st') (h : LStep ks L lbl st st')
+    (hk : KInvCA st.1) (he : EncapStep pm ks L st lbl st') (h : LStep ks L lbl st st')
     (hc : classify ks L R st lbl = some acc) (hx : x ∈ acc) (hu : UsesModify ks st lbl x) :
     Allows (cap st.1 st.2.1 lbl.requester x.leaf) .modify := by
   have hF : FramesC st.1 := hk.1.1.1
@@ -295,7 +297,7 @@ capability is compatible with `m`, unique, with `i ≤ r < j`, is a step of the 
 theorem access_pair_marker {ks : KShared} {L : MutexLayout} {R : CtlOrders} {statics : Statics}
     {σ : Nat → SC × SyncReg × ArenaReg} {lbls : List Label} (hdd : DDSound ks.toK)
     (hst : StaticsOK statics) (h0 : σ 0 = (SC.ofS3 (S3.init statics), [], []))
-    (hr : EncapRun ks L σ lbls) {i j l : Nat} (hij : i < j) (hj : j < lbls.length)
+    (hr : EncapRun pm ks L σ lbls) {i j l : Nat} (hij : i < j) (hj : j < lbls.length)
     {acc acc' : List LeafAccess} {x y : LeafAccess}
     (hci : classify ks L R (σ i) lbls[i] = some acc) (hx : x ∈ acc) (hxl : x.leaf = l)
     (hcj : classify ks L R (σ j) lbls[j] = some acc') (hy : y ∈ acc') (hyl : y.leaf = l)

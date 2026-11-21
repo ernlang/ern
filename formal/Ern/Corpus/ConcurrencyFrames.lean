@@ -50,8 +50,9 @@ theorem r01_run : LRun kFrames mutexLayout (r01s0, [], []) r01L (r01s4, [], []) 
 
 /-- **R01** (`reject`). Context 0 enters frame 1 with a local `X`, initializes it, derives
 `a := derive(root_X, Modify)` and spawns context 1 yielding `a`; then context 0 exits frame 1.
-Expected: `reject`, C6.1 by O7.2: a surviving active authority is attached to a local that dies
-(Spec 1 §73.2, §54). Obtained: `reject`. Twin: `R01_twin`. -/
+Expected: `reject`, C6.1 by O7.2 and O7.4: a surviving active authority is attached to a local
+that dies, and its origin chain reaches a root of the exiting frame (Spec 1 §73.2, §73.4, §54).
+Obtained: `reject`. Twin: `R01_twin`. -/
 theorem R01 : LRun kFrames mutexLayout (r01s0, [], []) r01L (r01s4, [], []) ∧
     opStepC kFrames.toK .exit 0 r01s4 .reject :=
   ⟨r01_run, .reject (by decide)⟩
@@ -144,7 +145,8 @@ def r03s6 : SC := spawnValEff f5 0 [4] [(none, 0)] [(1, 4)]
 `p`, both initialized, and `a := derive(root_p, Modify)`; context 0 spawns context 1 by value,
 moving `v` into the fresh local `d` and yielding `a`; then context 0 exits frame 1. Expected: the
 `spawn` `ok` by C5 (no parameter covers a leaf of the source, C5 item 5); the exit `reject`, C6.1
-by O7.2, as in `R01`. Obtained: the `spawn` `ok`; the exit `reject`. Twin: `R03_twin`. -/
+by O7.2 and O7.4 (Spec 1 §73.2, §73.4), as in `R01`. Obtained: the `spawn` `ok`; the exit
+`reject`. Twin: `R03_twin`. -/
 theorem R03 : LRun kFrames mutexLayout (f0, [], []) r03L (f5, [], []) ∧
     SpawnValStep kFrames.toK f5 0 [4] [(none, 0)] [(1, 4)] (.ok r03s6) ∧
     opStepC kFrames.toK .exit 0 r03s6 .reject :=

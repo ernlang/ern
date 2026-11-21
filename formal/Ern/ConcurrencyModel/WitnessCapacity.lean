@@ -18,6 +18,8 @@ namespace Ern.ConcurrencyModel
 
 open Ern.MemoryModel Ern.MemoryModel.Access Events
 
+variable {pm : ProviderMeta}
+
 /-! ## W11 -/
 
 /-- `c0 : acquire(e)` after block M (grant, authority 4). -/
@@ -34,20 +36,20 @@ def w11σ : Nat → SC × SyncReg × ArenaReg
   | 4 => (m3, regFree, []) | 5 => (m4, regFree, []) | _ => (w11s6, regTaken, [])
 
 /-- W11 is an `EncapsulatedTrace` with named states from the initial state (C51.1). -/
-theorem w11_run : EncapRun kMutex mutexLayout w11σ w11L := by
+theorem w11_run : EncapRun pm kMutex mutexLayout w11σ w11L := by
   refine encapRun_of_steps fun i hi lbl hl => ?_
   match i, hi with
-  | 0, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 0, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 1, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 1, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel (.ok (by decide))⟩
-  | 2, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 2, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .newMutex (st' := (m2, regFree)) ⟨by decide, rfl⟩⟩
-  | 3, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 3, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 4, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 4, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .spawn (.ok (by decide))⟩
-  | 5, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 5, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .acquire (st' := (w11s6, regTaken)) ⟨⟨2, none⟩, rfl, by decide, by decide, rfl⟩⟩
 
 /-- **Witness W11** (C43: `cap` is "not `ExercisableAt`", and excludes "attribution through live
@@ -56,7 +58,7 @@ theorem w11_run : EncapRun kMutex mutexLayout w11σ w11L := by
 (state 6), `cap(c0, T)` is `Modify`, through the grant (authority 4), held by the frame of `c0`,
 attributable in `Modify` and of effective `Modify` on `T`. -/
 theorem witness_w11 :
-    w11σ 0 = (SC.ofS3 (S3.init mutexStatics), [], []) ∧ EncapRun kMutex mutexLayout w11σ w11L ∧
+    w11σ 0 = (SC.ofS3 (S3.init mutexStatics), [], []) ∧ EncapRun pm kMutex mutexLayout w11σ w11L ∧
     ((w11σ 5).1.view 1).ExercisableAt 2 .observe ∧ cap (w11σ 5).1 (w11σ 5).2.1 1 3 = none ∧
     cap (w11σ 6).1 (w11σ 6).2.1 0 3 = some .modify ∧
     ((w11σ 6).1.A[4]?).map (·.holder) = some (.frame 0) ∧
@@ -121,31 +123,31 @@ def w12σ : Nat → SC × SyncReg × ArenaReg
 
 /-- W12 is an `EncapsulatedTrace` with named states from the initial state (C51.1): every step is
 `ok`. -/
-theorem w12_run : EncapRun kMutex mutexLayout w12σ w12L := by
+theorem w12_run : EncapRun pm kMutex mutexLayout w12σ w12L := by
   refine encapRun_of_steps fun i hi lbl hl => ?_
   match i, hi with
-  | 0, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 0, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 1, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 1, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel (.ok (by decide))⟩
-  | 2, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 2, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .newMutex (st' := (y2, regY)) ⟨by decide, rfl⟩⟩
-  | 3, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 3, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 4, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 4, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .spawn (.ok (by decide))⟩
-  | 5, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 5, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .acquire (st' := (y5, regY5)) ⟨⟨3, none⟩, rfl, by decide, by decide, rfl⟩⟩
-  | 6, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 6, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 7, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 7, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .unlock (st' := (y7, regY)) ⟨⟨3, some 5⟩, 5, rfl, by decide, rfl, by decide, by decide,
         by decide, rfl⟩⟩
-  | 8, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 8, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 9, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 9, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel (.ok (by decide))⟩
-  | 10, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 10, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .acquire (st' := (y10, regY6)) ⟨⟨3, none⟩, rfl, by decide, by decide, rfl⟩⟩
 
 /-- **Witness W12** (C49, last paragraph: "`ControlOf(entry)` becoming undefined or designating
@@ -157,7 +159,7 @@ stability hypothesis of 13e fails for the `unlock` of step 7 and that `acquire`,
 controller unit. -/
 theorem witness_w12 :
     w12σ 0 = (SC.ofS3 (S3.init mutexStatics3), [], []) ∧
-    EncapRun kMutex mutexLayout w12σ w12L ∧
+    EncapRun pm kMutex mutexLayout w12σ w12L ∧
     ctlOf mutexLayout (w12σ 7) 0 = some 2 ∧ ctlOf mutexLayout (w12σ 9) 0 = some 2 ∧
     ctlOf mutexLayout (w12σ 10) 0 = some 6 ∧
     ¬ ∃ x, ∀ k, 7 ≤ k → k ≤ 10 → ProtoOn w12L 0 k → ctlOf mutexLayout (w12σ k) 0 = some x := by

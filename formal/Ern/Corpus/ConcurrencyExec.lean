@@ -26,6 +26,8 @@ namespace Ern.Corpus.Concurrency
 
 open Ern.MemoryModel Ern.MemoryModel.Access Ern.ConcurrencyModel Events
 
+variable {pm : ProviderMeta}
+
 set_option synthInstance.maxSize 4096
 set_option synthInstance.maxHeartbeats 400000
 
@@ -48,22 +50,22 @@ def r46σ : Nat → SC × SyncReg × ArenaReg
   | _ => (r46s7, [], [])
 
 /-- `R46` is an `EncapsulatedTrace` with named states from the initial state (C51.1). -/
-theorem r46_run : EncapRun kX mutexLayout r46σ r46L := by
+theorem r46_run : EncapRun pm kX mutexLayout r46σ r46L := by
   refine encapRun_of_steps fun i hi lbl hl => ?_
   match i, hi with
-  | 0, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 0, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 1, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 1, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 2, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 2, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 3, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 3, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .spawn (.ok (by decide))⟩
-  | 4, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 4, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 5, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 5, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 6, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 6, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
 
 /-- The graph of `R46`: the initializing write of `c0`, the two derivations, `spawn(c1)`,
@@ -89,7 +91,7 @@ Obtained: the execution is an `EncapsulatedTrace`; the loss marker of the pair o
 `HandoffOrdered` fails for that pair; every other condition of the safe trace holds, and Q1–Q3
 and reading 12 hold; the two writes (events 5 and 7) race. Twin: `R46_twin`. -/
 theorem R46 :
-    r46σ 0 = (SC.ofS3 (S3.init oneLocal), [], []) ∧ EncapRun kX mutexLayout r46σ r46L ∧
+    r46σ 0 = (SC.ofS3 (S3.init oneLocal), [], []) ∧ EncapRun pm kX mutexLayout r46σ r46L ∧
     Corresponds r46G.toGraph r46σ r46L r46K ∧ r46G.toGraph.EventConsistent ∧
     r46G.toGraph.FiniteCausalPast ∧ OrdinaryAtomicOK kX r46σ r46L ∧ ConfinedExcl kX r46σ r46L ∧
     ConfinedHandoff kX mutexLayout refOrders r46σ r46L r46G.toGraph r46K ∧
@@ -103,7 +105,7 @@ theorem R46 :
     CtlAtomic kX mutexLayout r46σ r46L ∧
     FirstCompatible IncompatModify r46σ 4 0 0 .modify 5 ∧
     r46L[5]? = some (.kernel 0 (.release 2)) ∧ r46G.toGraph.Race 5 7 ∧
-    ¬ SafeConcurrentTrace kX mutexLayout refOrders r46σ r46L r46G.toGraph r46K unitData := by
+    ¬ SafeConcurrentTrace pm kX mutexLayout refOrders r46σ r46L r46G.toGraph r46K unitData := by
   have hK : Corresponds r46G.toGraph r46σ r46L r46K :=
     corresponds_of_check _ _ _ [(3, 1)] _ _ _ (by decide +kernel) (by decide)
   have hno : ¬ HandoffOrdered kX mutexLayout refOrders r46σ r46L r46G.toGraph r46K := fun h =>
@@ -142,22 +144,22 @@ def r46Tσ : Nat → SC × SyncReg × ArenaReg
   | _ => (r46t7, [], [])
 
 /-- The twin of `R46` is an `EncapsulatedTrace` with named states from the initial state. -/
-theorem r46T_run : EncapRun kX mutexLayout r46Tσ r46TL := by
+theorem r46T_run : EncapRun pm kX mutexLayout r46Tσ r46TL := by
   refine encapRun_of_steps fun i hi lbl hl => ?_
   match i, hi with
-  | 0, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 0, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 1, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 1, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 2, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 2, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 3, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 3, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 4, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 4, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 5, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 5, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .spawn (.ok (by decide))⟩
-  | 6, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 6, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
 
 /-- The graph of the twin of `R46`. -/
@@ -178,7 +180,7 @@ Obtained: `SafeConcurrentTrace`, Q1–Q3 and reading 12 hold; the loss marker of
 write of `c0` through `b` (step 3) and that of `c1` (step 6) is the `spawn` (step 5); 14d applies:
 no pair of events races. -/
 theorem R46_twin :
-    SafeConcurrentTrace kX mutexLayout refOrders r46Tσ r46TL r46TG.toGraph r46TK unitData ∧
+    SafeConcurrentTrace pm kX mutexLayout refOrders r46Tσ r46TL r46TG.toGraph r46TK unitData ∧
     CorrQ1 r46TG.toGraph r46TL r46TK unitData ∧
     CorrQ2 kX mutexLayout refOrders r46Tσ r46TL r46TG.toGraph r46TK unitData ∧
     CorrQ3 (unitData (G := r46TG.toGraph) (lbls := r46TL) (K := r46TK)) ∧
@@ -186,7 +188,7 @@ theorem R46_twin :
     FirstCompatible IncompatModify r46Tσ 3 0 0 .modify 5 ∧ ∀ a b, ¬ r46TG.toGraph.Race a b := by
   have hK : Corresponds r46TG.toGraph r46Tσ r46TL r46TK :=
     corresponds_of_check _ _ _ [(5, 1)] _ _ _ (by decide +kernel) (by decide)
-  have hS : SafeConcurrentTrace kX mutexLayout refOrders r46Tσ r46TL r46TG.toGraph r46TK
+  have hS : SafeConcurrentTrace pm kX mutexLayout refOrders r46Tσ r46TL r46TG.toGraph r46TK
       unitData :=
     ⟨r46T_run, by decide +kernel, finitePast_fin _, by decide, confinedExcl_none kX_noConf,
       confinedHandoff_of_check (by decide +kernel), syncOrdered_of_check (by decide +kernel),
@@ -222,30 +224,30 @@ def r47σ : Nat → SC × SyncReg × ArenaReg
   | _ => (r47s11, [], [])
 
 /-- `R47` is an `EncapsulatedTrace` with named states from the initial state (C51.1). -/
-theorem r47_run : EncapRun kX mutexLayout r47σ r47L := by
+theorem r47_run : EncapRun pm kX mutexLayout r47σ r47L := by
   refine encapRun_of_steps fun i hi lbl hl => ?_
   match i, hi with
-  | 0, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 0, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 1, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 1, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 2, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 2, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .spawn (.ok (by decide))⟩
-  | 3, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 3, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 4, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 4, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .spawn (.ok (by decide))⟩
-  | 5, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 5, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 6, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 6, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 7, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 7, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 8, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 8, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .terminate (.ok (by decide))⟩
-  | 9, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 9, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .join (.ok (by decide) (by decide))⟩
-  | 10, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 10, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
 
 /-- The graph of `R47`. -/
@@ -275,7 +277,7 @@ pair (steps 5 and 10) is `release(a₂)` (step 6, `FirstCompatible`); `HandoffOr
 every other condition of the safe trace holds, and Q1–Q3 and reading 12 hold; the two writes
 (events 7 and 13) race. Twin: `R47_twin`. -/
 theorem R47 :
-    r47σ 0 = (SC.ofS3 (S3.init oneLocal), [], []) ∧ EncapRun kX mutexLayout r47σ r47L ∧
+    r47σ 0 = (SC.ofS3 (S3.init oneLocal), [], []) ∧ EncapRun pm kX mutexLayout r47σ r47L ∧
     Corresponds r47G.toGraph r47σ r47L r47K ∧ r47G.toGraph.EventConsistent ∧
     r47G.toGraph.FiniteCausalPast ∧ OrdinaryAtomicOK kX r47σ r47L ∧ ConfinedExcl kX r47σ r47L ∧
     ConfinedHandoff kX mutexLayout refOrders r47σ r47L r47G.toGraph r47K ∧
@@ -289,7 +291,7 @@ theorem R47 :
     CtlAtomic kX mutexLayout r47σ r47L ∧
     FirstCompatible IncompatModify r47σ 5 2 0 .modify 6 ∧
     r47L[6]? = some (.kernel 2 (.release 2)) ∧ r47G.toGraph.Race 7 13 ∧
-    ¬ SafeConcurrentTrace kX mutexLayout refOrders r47σ r47L r47G.toGraph r47K unitData := by
+    ¬ SafeConcurrentTrace pm kX mutexLayout refOrders r47σ r47L r47G.toGraph r47K unitData := by
   have hK : Corresponds r47G.toGraph r47σ r47L r47K :=
     corresponds_of_check _ _ _ [(2, 1), (4, 2)] _ _ _ (by decide +kernel) (by decide)
   have hno : ¬ HandoffOrdered kX mutexLayout refOrders r47σ r47L r47G.toGraph r47K := fun h =>
@@ -331,34 +333,34 @@ def r47Tσ : Nat → SC × SyncReg × ArenaReg
   | 11 => (r47t11, [], []) | 12 => (r47t11, [], []) | _ => (r47t13, [], [])
 
 /-- The twin of `R47` is an `EncapsulatedTrace` with named states from the initial state. -/
-theorem r47T_run : EncapRun kX mutexLayout r47Tσ r47TL := by
+theorem r47T_run : EncapRun pm kX mutexLayout r47Tσ r47TL := by
   refine encapRun_of_steps fun i hi lbl hl => ?_
   match i, hi with
-  | 0, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 0, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 1, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 1, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 2, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 2, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .spawn (.ok (by decide))⟩
-  | 3, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 3, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 4, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 4, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .spawn (.ok (by decide))⟩
-  | 5, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 5, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 6, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 6, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 7, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 7, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .terminate (.ok (by decide))⟩
-  | 8, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 8, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .join (.ok (by decide) (by decide))⟩
-  | 9, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 9, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 10, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 10, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .terminate (.ok (by decide))⟩
-  | 11, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 11, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .join (.ok (by decide) (by decide))⟩
-  | 12, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 12, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
 
 /-- The graph of the twin of `R47`. -/
@@ -382,14 +384,14 @@ def r47TK : StepEvents (Fin 17) :=
 before its own `release`; then the rest of `R47`. Expected: a safe trace. Obtained:
 `SafeConcurrentTrace`, Q1–Q3 and reading 12 hold; 14d applies: no pair of events races. -/
 theorem R47_twin :
-    SafeConcurrentTrace kX mutexLayout refOrders r47Tσ r47TL r47TG.toGraph r47TK unitData ∧
+    SafeConcurrentTrace pm kX mutexLayout refOrders r47Tσ r47TL r47TG.toGraph r47TK unitData ∧
     CorrQ1 r47TG.toGraph r47TL r47TK unitData ∧
     CorrQ2 kX mutexLayout refOrders r47Tσ r47TL r47TG.toGraph r47TK unitData ∧
     CorrQ3 (unitData (G := r47TG.toGraph) (lbls := r47TL) (K := r47TK)) ∧
     CtlAtomic kX mutexLayout r47Tσ r47TL ∧ ∀ a b, ¬ r47TG.toGraph.Race a b := by
   have hK : Corresponds r47TG.toGraph r47Tσ r47TL r47TK :=
     corresponds_of_check _ _ _ [(2, 1), (4, 2)] _ _ _ (by decide +kernel) (by decide)
-  have hS : SafeConcurrentTrace kX mutexLayout refOrders r47Tσ r47TL r47TG.toGraph r47TK
+  have hS : SafeConcurrentTrace pm kX mutexLayout refOrders r47Tσ r47TL r47TG.toGraph r47TK
       unitData :=
     ⟨r47T_run, by decide +kernel, finitePast_fin _, by decide, confinedExcl_none kX_noConf,
       confinedHandoff_of_check (by decide +kernel), syncOrdered_of_check (by decide +kernel),
@@ -419,37 +421,37 @@ def r48σ : Nat → SC × SyncReg × ArenaReg
   | 13 => (r22s10, r22reg, []) | _ => (r22s11, r22reg, [])
 
 /-- `R48` is an `EncapsulatedTrace` with named states from the initial state (C51.1). -/
-theorem r48_run : EncapRun kMutex mutexLayout r48σ r48L := by
+theorem r48_run : EncapRun pm kMutex mutexLayout r48σ r48L := by
   refine encapRun_of_steps fun i hi lbl hl => ?_
   match i, hi with
-  | 0, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 0, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel mutex_steps.1⟩
-  | 1, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 1, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel mutex_steps.2.1⟩
-  | 2, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 2, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .newMutex (st' := (m2, regFree)) mutex_steps.2.2.1⟩
-  | 3, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 3, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 4, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 4, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel (.ok (by decide))⟩
-  | 5, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 5, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .acquire (st' := (r22s3, regTaken)) ⟨⟨2, none⟩, rfl, by decide, by decide, rfl⟩⟩
-  | 6, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 6, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 7, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 7, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .spawn (.ok (by decide))⟩
-  | 8, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 8, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel (.ok (by decide))⟩
-  | 9, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 9, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 10, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 10, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 11, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 11, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .resetLock (st' := (r22s8, regFree))
         ⟨⟨2, some 4⟩, rfl, by decide, by decide, by decide, by decide, rfl⟩⟩
-  | 12, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 12, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .acquire (st' := (r22s10, r22reg)) ⟨⟨2, none⟩, rfl, by decide, by decide, rfl⟩⟩
-  | 13, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 13, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
 
 /-- The graph of `R48` under the orders `R`: the controller write of `newMutex`, the `acquire` of
@@ -479,7 +481,7 @@ fails for it; the `acquire` of step 10 reads by `rf` the `resetLock` (events 12,
 of `LockOrder` holds by 14e; every other condition of the safe trace holds, and Q1–Q3 and reading
 12 hold; the two writes (events 10 and 14) race. Twin: `R48_twin`. -/
 theorem R48 :
-    r48σ 0 = (SC.ofS3 (S3.init mutexStatics), [], []) ∧ EncapRun kMutex mutexLayout r48σ r48L ∧
+    r48σ 0 = (SC.ofS3 (S3.init mutexStatics), [], []) ∧ EncapRun pm kMutex mutexLayout r48σ r48L ∧
     Corresponds (r48G refOrders).toGraph r48σ r48L r48K ∧
     (r48G refOrders).toGraph.EventConsistent ∧
     Realizes (r48G refOrders).toGraph mutexLayout r48σ r48L r48K 0 2 refOrders 0 1 ∧
@@ -498,7 +500,7 @@ theorem R48 :
     CtlAtomic kMutex mutexLayout r48σ r48L ∧
     FirstCompatible IncompatModify r48σ 9 1 3 .modify 10 ∧
     r48L[10]? = some (.kernel 1 (.release 5)) ∧ (r48G refOrders).toGraph.Race 10 14 ∧
-    ¬ SafeConcurrentTrace kMutex mutexLayout refOrders r48σ r48L (r48G refOrders).toGraph r48K
+    ¬ SafeConcurrentTrace pm kMutex mutexLayout refOrders r48σ r48L (r48G refOrders).toGraph r48K
       unitData := by
   have hK : Corresponds (r48G refOrders).toGraph r48σ r48L r48K :=
     corresponds_of_check _ _ _ [(7, 1)] _ _ _ (by decide +kernel) (by decide)
@@ -541,41 +543,41 @@ def r48Tσ : Nat → SC × SyncReg × ArenaReg
   | _ => (r48t15, r22reg, [])
 
 /-- The twin of `R48` is an `EncapsulatedTrace` with named states from the initial state. -/
-theorem r48T_run : EncapRun kMutex mutexLayout r48Tσ r48TL := by
+theorem r48T_run : EncapRun pm kMutex mutexLayout r48Tσ r48TL := by
   refine encapRun_of_steps fun i hi lbl hl => ?_
   match i, hi with
-  | 0, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 0, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel mutex_steps.1⟩
-  | 1, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 1, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel mutex_steps.2.1⟩
-  | 2, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 2, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .newMutex (st' := (m2, regFree)) mutex_steps.2.2.1⟩
-  | 3, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 3, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 4, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 4, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel (.ok (by decide))⟩
-  | 5, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 5, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .acquire (st' := (r22s3, regTaken)) ⟨⟨2, none⟩, rfl, by decide, by decide, rfl⟩⟩
-  | 6, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 6, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 7, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 7, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .spawn (.ok (by decide))⟩
-  | 8, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 8, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel (.ok (by decide))⟩
-  | 9, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 9, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 10, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 10, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 11, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 11, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .terminate (.ok (by decide))⟩
-  | 12, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 12, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .join (.ok (by decide) (by decide))⟩
-  | 13, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 13, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .resetLock (st' := (r48t11, regFree))
         ⟨⟨2, some 4⟩, rfl, by decide, by decide, by decide, by decide, rfl⟩⟩
-  | 14, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 14, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .acquire (st' := (r48t14, r22reg)) ⟨⟨2, none⟩, rfl, by decide, by decide, rfl⟩⟩
-  | 15, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 15, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
 
 /-- The graph of the twin of `R48`. -/
@@ -641,7 +643,7 @@ theorem r48T_lock : LockEdge r48TG.toGraph r48TL r48TK :=
 
 /-- The twin of `R48` is a `SafeConcurrentTrace` (C51). -/
 theorem r48T_safe :
-    SafeConcurrentTrace kMutex mutexLayout refOrders r48Tσ r48TL r48TG.toGraph r48TK unitData :=
+    SafeConcurrentTrace pm kMutex mutexLayout refOrders r48Tσ r48TL r48TG.toGraph r48TK unitData :=
   ⟨r48T_run, r48T_consistent, finitePast_fin _, by decide +kernel, confinedExcl_none kMutex_noConf,
     r48T_confined, r48T_sync, by decide +kernel, r48T_handoff, r48T_lifetime,
     r48T_corr.lifecycle, r48T_lock⟩
@@ -650,13 +652,13 @@ theorem r48T_safe :
 steps 9–11. Expected: a safe trace. Obtained: `SafeConcurrentTrace` (the edge of `LockOrder` by
 14e), Q1–Q3 and reading 12 hold; 14d applies: no pair of events races. -/
 theorem R48_twin :
-    SafeConcurrentTrace kMutex mutexLayout refOrders r48Tσ r48TL r48TG.toGraph r48TK unitData ∧
+    SafeConcurrentTrace pm kMutex mutexLayout refOrders r48Tσ r48TL r48TG.toGraph r48TK unitData ∧
     CorrQ1 r48TG.toGraph r48TL r48TK unitData ∧
     CorrQ2 kMutex mutexLayout refOrders r48Tσ r48TL r48TG.toGraph r48TK unitData ∧
     CorrQ3 (unitData (G := r48TG.toGraph) (lbls := r48TL) (K := r48TK)) ∧
     CtlAtomic kMutex mutexLayout r48Tσ r48TL ∧ ∀ a b, ¬ r48TG.toGraph.Race a b :=
   ⟨r48T_safe, r48T_q1, r48T_q2, r48T_q3, r48T_ctl,
-    no_race (testKS_dd _ _ _) mutexStatics_ok rfl r48T_corr r48T_safe r48T_q1 r48T_q2 r48T_q3
+    no_race (testKS_dd _ _ _) mutexStatics_ok rfl r48T_corr (r48T_safe (pm := pm)) r48T_q1 r48T_q2 r48T_q3
       r48T_ctl⟩
 
 end Ern.Corpus.Concurrency

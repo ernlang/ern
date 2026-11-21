@@ -23,6 +23,8 @@ namespace Ern.ConcurrencyModel
 
 open Ern.MemoryModel Ern.MemoryModel.Access Events
 
+variable {pm : ProviderMeta}
+
 set_option synthInstance.maxSize 4096
 set_option synthInstance.maxHeartbeats 400000
 
@@ -114,16 +116,16 @@ def s4G : ListGraph 5 Nat Nat Nat Nat :=
   pairG 1 0 (.plain (rLeaf 5) .write) (.plain (rLeaf 5) .write) []
 
 /-- S4 is an `EncapsulatedTrace` with named states from the initial state (C51.1). -/
-theorem s4_run : EncapRun kAtomic mutexLayout s4σ s4L := by
+theorem s4_run : EncapRun pm kAtomic mutexLayout s4σ s4L := by
   refine encapRun_of_steps fun i hi lbl hl => ?_
   match i, hi with
-  | 0, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 0, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 1, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 1, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .spawn (.ok (by decide))⟩
-  | 2, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 2, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 3, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 3, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
 
 /-- **Witness S4** (C35: "concurrent evaluation of `writeShared` over a nonempty region is `reject`
@@ -134,7 +136,7 @@ for both writes; every other condition of the safe trace holds; Q1, Q3 and readi
 fails: an inherited `writeShared` outside the table has no access in 11e. The two writes race.
 Admitted twin: `witness_s4_twin`. -/
 theorem witness_s4 :
-    EncapRun kAtomic mutexLayout s4σ s4L ∧ s4G.toGraph.EventConsistent ∧
+    EncapRun pm kAtomic mutexLayout s4σ s4L ∧ s4G.toGraph.EventConsistent ∧
     s4G.toGraph.FiniteCausalPast ∧ OrdinaryAtomicOK kAtomic s4σ s4L ∧
     ConfinedExcl kAtomic s4σ s4L ∧
     ConfinedHandoff kAtomic mutexLayout refOrders s4σ s4L s4G.toGraph pairK ∧
@@ -147,7 +149,7 @@ theorem witness_s4 :
     ¬ CorrQ2 kAtomic mutexLayout refOrders s4σ s4L s4G.toGraph pairK (leafData 5) ∧
     CorrQ3 (leafData (G := s4G.toGraph) (lbls := s4L) (K := pairK) 5) ∧
     CtlAtomic kAtomic mutexLayout s4σ s4L ∧ s4G.toGraph.Race 3 4 ∧
-    ¬ SafeConcurrentTrace kAtomic mutexLayout refOrders s4σ s4L s4G.toGraph pairK
+    ¬ SafeConcurrentTrace pm kAtomic mutexLayout refOrders s4σ s4L s4G.toGraph pairK
       (leafData 5) := by
   have hK : Corresponds s4G.toGraph s4σ s4L pairK :=
     corresponds_of_check _ _ _ [(1, 1)] _ _ _ (by decide +kernel) (by decide)
@@ -192,22 +194,22 @@ def s4tσ : Nat → SC × SyncReg × ArenaReg :=
 def s4tG : ListGraph 9 Nat Nat Nat Nat := joinG (.plain (rLeaf 3) .write) (.plain (rLeaf 3) .write)
 
 /-- S4's twin is an `EncapsulatedTrace` with named states from the initial state (C51.1). -/
-theorem s4t_run : EncapRun kAtomic mutexLayout s4tσ s4tL := by
+theorem s4t_run : EncapRun pm kAtomic mutexLayout s4tσ s4tL := by
   refine encapRun_of_steps fun i hi lbl hl => ?_
   match i, hi with
-  | 0, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 0, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 1, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 1, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .spawn (.ok (by decide))⟩
-  | 2, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 2, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 3, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 3, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 4, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 4, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .terminate (.ok (by decide))⟩
-  | 5, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 5, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .join (.ok (by decide) (by decide))⟩
-  | 6, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 6, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
 
 /-- **Witness S4**, admitted twin (C35–C38; C51, C52): the inherited `writeShared` of S4 on the
@@ -215,7 +217,7 @@ theorem s4t_run : EncapRun kAtomic mutexLayout s4tσ s4tL := by
 the inherited steps satisfy the table (e); the execution is a `SafeConcurrentTrace`; Q1–Q3 and
 reading 12 hold; 14d applies: no pair of events races. -/
 theorem witness_s4_twin :
-    SafeConcurrentTrace kAtomic mutexLayout refOrders s4tσ s4tL s4tG.toGraph joinK
+    SafeConcurrentTrace pm kAtomic mutexLayout refOrders s4tσ s4tL s4tG.toGraph joinK
       (leafData 3) ∧
     CorrQ1 s4tG.toGraph s4tL joinK (leafData 3) ∧
     CorrQ2 kAtomic mutexLayout refOrders s4tσ s4tL s4tG.toGraph joinK (leafData 3) ∧
@@ -223,7 +225,7 @@ theorem witness_s4_twin :
     CtlAtomic kAtomic mutexLayout s4tσ s4tL ∧ ∀ a b, ¬ s4tG.toGraph.Race a b := by
   have hK : Corresponds s4tG.toGraph s4tσ s4tL joinK :=
     corresponds_of_check _ _ _ [(1, 1)] _ _ _ (by decide +kernel) (by decide)
-  have hS : SafeConcurrentTrace kAtomic mutexLayout refOrders s4tσ s4tL s4tG.toGraph joinK
+  have hS : SafeConcurrentTrace pm kAtomic mutexLayout refOrders s4tσ s4tL s4tG.toGraph joinK
       (leafData 3) :=
     ⟨s4t_run, by decide +kernel, finitePast_fin _, by decide,
       confinedExcl_of_check [4] 2 kAtomic_conf (by decide) (by decide +kernel),
@@ -257,16 +259,16 @@ def s5G : ListGraph 5 Nat Nat Nat Nat :=
   pairG 1 0 (.plain (rLeaf 3) .write) (.plain (rLeaf 3) .write) []
 
 /-- S5 is an `EncapsulatedTrace` with named states from the initial state (C51.1). -/
-theorem s5_run : EncapRun kAtomic mutexLayout s5σ s5L := by
+theorem s5_run : EncapRun pm kAtomic mutexLayout s5σ s5L := by
   refine encapRun_of_steps fun i hi lbl hl => ?_
   match i, hi with
-  | 0, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 0, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 1, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 1, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .spawn (.ok (by decide))⟩
-  | 2, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 2, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .writeShared (.ok ⟨by decide, by decide, fun h => absurd rfl h⟩)⟩
-  | 3, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 3, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .writeShared (.ok ⟨by decide, by decide, fun h => absurd rfl h⟩)⟩
 
 /-- **Witness S5** (C44: "Conflicting **non-atomic** `writeShared` operations on `Synchronized`
@@ -277,7 +279,7 @@ annotation on `{S}`, through `o` and through `root`. (d) fails: the two writes f
 non-exclusive pair in conflict on `S` not ordered by `hb`. Every other condition holds; Q1–Q3 and
 reading 12 hold. The two writes race. Admitted twin: `witness_s5_twin`. -/
 theorem witness_s5 :
-    EncapRun kAtomic mutexLayout s5σ s5L ∧ s5G.toGraph.EventConsistent ∧
+    EncapRun pm kAtomic mutexLayout s5σ s5L ∧ s5G.toGraph.EventConsistent ∧
     s5G.toGraph.FiniteCausalPast ∧ OrdinaryAtomicOK kAtomic s5σ s5L ∧
     ConfinedExcl kAtomic s5σ s5L ∧
     ConfinedHandoff kAtomic mutexLayout refOrders s5σ s5L s5G.toGraph pairK ∧
@@ -290,7 +292,7 @@ theorem witness_s5 :
     CorrQ2 kAtomic mutexLayout refOrders s5σ s5L s5G.toGraph pairK (leafData 3) ∧
     CorrQ3 (leafData (G := s5G.toGraph) (lbls := s5L) (K := pairK) 3) ∧
     CtlAtomic kAtomic mutexLayout s5σ s5L ∧ s5G.toGraph.Race 3 4 ∧
-    ¬ SafeConcurrentTrace kAtomic mutexLayout refOrders s5σ s5L s5G.toGraph pairK
+    ¬ SafeConcurrentTrace pm kAtomic mutexLayout refOrders s5σ s5L s5G.toGraph pairK
       (leafData 3) := by
   have hK : Corresponds s5G.toGraph s5σ s5L pairK :=
     corresponds_of_check _ _ _ [(1, 1)] _ _ _ (by decide +kernel) (by decide)
@@ -320,29 +322,29 @@ def s5tσ : Nat → SC × SyncReg × ArenaReg :=
   joinσ 3 .observe (fun s => wrS s 1 3) (fun s => wrS s 0 3)
 
 /-- S5's twin is an `EncapsulatedTrace` with named states from the initial state (C51.1). -/
-theorem s5t_run : EncapRun kAtomic mutexLayout s5tσ s5tL := by
+theorem s5t_run : EncapRun pm kAtomic mutexLayout s5tσ s5tL := by
   refine encapRun_of_steps fun i hi lbl hl => ?_
   match i, hi with
-  | 0, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 0, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 1, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 1, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .spawn (.ok (by decide))⟩
-  | 2, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 2, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .writeShared (.ok ⟨by decide, by decide, fun h => absurd rfl h⟩)⟩
-  | 3, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 3, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 4, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 4, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .terminate (.ok (by decide))⟩
-  | 5, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 5, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .join (.ok (by decide) (by decide))⟩
-  | 6, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 6, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .writeShared (.ok ⟨by decide, by decide, fun h => absurd rfl h⟩)⟩
 
 /-- **Witness S5**, admitted twin (C47, C51 item 2(d), C52): with `c1 : terminate` and `c0 :
 join(c1)` before the write of `c0`, the two writes of `S` are ordered by `hb`; the execution is a
 `SafeConcurrentTrace`; Q1–Q3 and reading 12 hold; 14d applies: no pair of events races. -/
 theorem witness_s5_twin :
-    SafeConcurrentTrace kAtomic mutexLayout refOrders s5tσ s5tL s4tG.toGraph joinK
+    SafeConcurrentTrace pm kAtomic mutexLayout refOrders s5tσ s5tL s4tG.toGraph joinK
       (leafData 3) ∧
     CorrQ1 s4tG.toGraph s5tL joinK (leafData 3) ∧
     CorrQ2 kAtomic mutexLayout refOrders s5tσ s5tL s4tG.toGraph joinK (leafData 3) ∧
@@ -350,7 +352,7 @@ theorem witness_s5_twin :
     CtlAtomic kAtomic mutexLayout s5tσ s5tL ∧ ∀ a b, ¬ s4tG.toGraph.Race a b := by
   have hK : Corresponds s4tG.toGraph s5tσ s5tL joinK :=
     corresponds_of_check _ _ _ [(1, 1)] _ _ _ (by decide +kernel) (by decide)
-  have hS : SafeConcurrentTrace kAtomic mutexLayout refOrders s5tσ s5tL s4tG.toGraph joinK
+  have hS : SafeConcurrentTrace pm kAtomic mutexLayout refOrders s5tσ s5tL s4tG.toGraph joinK
       (leafData 3) :=
     ⟨s5t_run, by decide +kernel, finitePast_fin _, by decide,
       confinedExcl_of_check [4] 2 kAtomic_conf (by decide) (by decide +kernel),
@@ -385,16 +387,16 @@ def s6G : ListGraph 5 Nat Nat Nat Nat :=
   pairG 0 1 (.atomic 1 .release (.write 1)) (.unit 1 (.read 1)) [(3, 4)]
 
 /-- S6 is an `EncapsulatedTrace` with named states from the initial state (C51.1). -/
-theorem s6_run : EncapRun kAtomic mutexLayout s6σ s6L := by
+theorem s6_run : EncapRun pm kAtomic mutexLayout s6σ s6L := by
   refine encapRun_of_steps fun i hi lbl hl => ?_
   match i, hi with
-  | 0, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 0, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 1, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 1, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .spawn (.ok (by decide))⟩
-  | 2, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 2, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .writeShared (.ok ⟨by decide, by decide, fun h => absurd rfl h⟩)⟩
-  | 3, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 3, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
 
 /-- **Witness S6** (C42: "an ordinary `read3` or `write3` on an `Atomic` leaf requires an
@@ -404,7 +406,7 @@ with `release`; `c1 : read3(A)` through `o`, whose event reads the write of `c0`
 are `ok`; (b) fails at the `read3`; every other condition holds; Q1–Q3 and reading 12 hold. The
 atomic write and the non-atomic read race. Admitted twin: `witness_s6_twin`. -/
 theorem witness_s6 :
-    EncapRun kAtomic mutexLayout s6σ s6L ∧ s6G.toGraph.EventConsistent ∧
+    EncapRun pm kAtomic mutexLayout s6σ s6L ∧ s6G.toGraph.EventConsistent ∧
     s6G.toGraph.FiniteCausalPast ∧ ¬ OrdinaryAtomicOK kAtomic s6σ s6L ∧
     ConfinedExcl kAtomic s6σ s6L ∧
     ConfinedHandoff kAtomic mutexLayout refOrders s6σ s6L s6G.toGraph pairK ∧
@@ -417,7 +419,7 @@ theorem witness_s6 :
     CorrQ2 kAtomic mutexLayout refOrders s6σ s6L s6G.toGraph pairK (leafData 1) ∧
     CorrQ3 (leafData (G := s6G.toGraph) (lbls := s6L) (K := pairK) 1) ∧
     CtlAtomic kAtomic mutexLayout s6σ s6L ∧ s6G.toGraph.rf 3 4 ∧ s6G.toGraph.Race 3 4 ∧
-    ¬ SafeConcurrentTrace kAtomic mutexLayout refOrders s6σ s6L s6G.toGraph pairK
+    ¬ SafeConcurrentTrace pm kAtomic mutexLayout refOrders s6σ s6L s6G.toGraph pairK
       (leafData 1) := by
   have hK : Corresponds s6G.toGraph s6σ s6L pairK :=
     corresponds_of_check _ _ _ [(1, 1)] _ _ _ (by decide +kernel) (by decide)
@@ -447,23 +449,23 @@ def s6tG : ListGraph 5 Nat Nat Nat Nat :=
   pairG 0 1 (.atomic 1 .release (.write 1)) (.atomic 1 .acquire (.read 1)) [(3, 4)]
 
 /-- S6's twin is an `EncapsulatedTrace` with named states from the initial state (C51.1). -/
-theorem s6t_run : EncapRun kAtomic mutexLayout s6tσ s6tL := by
+theorem s6t_run : EncapRun pm kAtomic mutexLayout s6tσ s6tL := by
   refine encapRun_of_steps fun i hi lbl hl => ?_
   match i, hi with
-  | 0, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 0, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 1, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 1, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .spawn (.ok (by decide))⟩
-  | 2, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 2, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .writeShared (.ok ⟨by decide, by decide, fun h => absurd rfl h⟩)⟩
-  | 3, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 3, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .readShared (.ok ⟨by decide, by decide, ⟨4, 4, rfl⟩, by decide, by decide⟩)⟩
 
 /-- **Witness S6**, admitted twin (C37, C32.1, C42; C51, C52): with `readShared(A)` in `acquire`
 instead of `read3`, `sw` relates the write to the read; the execution is a
 `SafeConcurrentTrace`; Q1–Q3 and reading 12 hold; 14d applies: no pair of events races. -/
 theorem witness_s6_twin :
-    SafeConcurrentTrace kAtomic mutexLayout refOrders s6tσ s6tL s6tG.toGraph pairK
+    SafeConcurrentTrace pm kAtomic mutexLayout refOrders s6tσ s6tL s6tG.toGraph pairK
       (leafData 1) ∧
     CorrQ1 s6tG.toGraph s6tL pairK (leafData 1) ∧
     CorrQ2 kAtomic mutexLayout refOrders s6tσ s6tL s6tG.toGraph pairK (leafData 1) ∧
@@ -472,7 +474,7 @@ theorem witness_s6_twin :
     ∀ a b, ¬ s6tG.toGraph.Race a b := by
   have hK : Corresponds s6tG.toGraph s6tσ s6tL pairK :=
     corresponds_of_check _ _ _ [(1, 1)] _ _ _ (by decide +kernel) (by decide)
-  have hS : SafeConcurrentTrace kAtomic mutexLayout refOrders s6tσ s6tL s6tG.toGraph pairK
+  have hS : SafeConcurrentTrace pm kAtomic mutexLayout refOrders s6tσ s6tL s6tG.toGraph pairK
       (leafData 1) :=
     ⟨s6t_run, by decide +kernel, finitePast_fin _, by decide,
       confinedExcl_of_check [4] 2 kAtomic_conf (by decide) (by decide +kernel),
@@ -506,16 +508,16 @@ def s7G : ListGraph 5 Nat Nat Nat Nat :=
   pairG 1 0 (.plain (rLeaf 4) .write) (.plain (rLeaf 4) .read) []
 
 /-- S7 is an `EncapsulatedTrace` with named states from the initial state (C51.1). -/
-theorem s7_run : EncapRun kAtomic mutexLayout s7σ s7L := by
+theorem s7_run : EncapRun pm kAtomic mutexLayout s7σ s7L := by
   refine encapRun_of_steps fun i hi lbl hl => ?_
   match i, hi with
-  | 0, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 0, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 1, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 1, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .spawn (.ok (by decide))⟩
-  | 2, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 2, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .writeShared (.ok ⟨by decide, by decide, fun h => absurd rfl h⟩)⟩
-  | 3, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 3, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
 
 /-- **Witness S7** (C35: "On a `Confined` leaf, simultaneous `Observe` capabilities in two contexts
@@ -527,7 +529,7 @@ under the `Confined` criterion (the capability of `c1` never becomes `none`). Ev
 holds; Q1–Q3 and reading 12 hold. The write and the read race. Admitted twin:
 `witness_s7_twin`. -/
 theorem witness_s7 :
-    EncapRun kAtomic mutexLayout s7σ s7L ∧ s7G.toGraph.EventConsistent ∧
+    EncapRun pm kAtomic mutexLayout s7σ s7L ∧ s7G.toGraph.EventConsistent ∧
     s7G.toGraph.FiniteCausalPast ∧ OrdinaryAtomicOK kAtomic s7σ s7L ∧
     ¬ ConfinedExcl kAtomic s7σ s7L ∧
     ¬ ConfinedHandoff kAtomic mutexLayout refOrders s7σ s7L s7G.toGraph pairK ∧
@@ -540,7 +542,7 @@ theorem witness_s7 :
     CorrQ2 kAtomic mutexLayout refOrders s7σ s7L s7G.toGraph pairK (leafData 4) ∧
     CorrQ3 (leafData (G := s7G.toGraph) (lbls := s7L) (K := pairK) 4) ∧
     CtlAtomic kAtomic mutexLayout s7σ s7L ∧ s7G.toGraph.Race 3 4 ∧
-    ¬ SafeConcurrentTrace kAtomic mutexLayout refOrders s7σ s7L s7G.toGraph pairK
+    ¬ SafeConcurrentTrace pm kAtomic mutexLayout refOrders s7σ s7L s7G.toGraph pairK
       (leafData 4) := by
   have hK : Corresponds s7G.toGraph s7σ s7L pairK :=
     corresponds_of_check _ _ _ [(1, 1)] _ _ _ (by decide +kernel) (by decide)
@@ -574,22 +576,22 @@ def s7tσ : Nat → SC × SyncReg × ArenaReg :=
 def s7tG : ListGraph 9 Nat Nat Nat Nat := joinG (.plain (rLeaf 4) .write) (.plain (rLeaf 4) .read)
 
 /-- S7's twin is an `EncapsulatedTrace` with named states from the initial state (C51.1). -/
-theorem s7t_run : EncapRun kAtomic mutexLayout s7tσ s7tL := by
+theorem s7t_run : EncapRun pm kAtomic mutexLayout s7tσ s7tL := by
   refine encapRun_of_steps fun i hi lbl hl => ?_
   match i, hi with
-  | 0, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 0, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 1, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 1, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .spawn (.ok (by decide))⟩
-  | 2, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 2, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .writeShared (.ok ⟨by decide, by decide, fun h => absurd rfl h⟩)⟩
-  | 3, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 3, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 4, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 4, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .terminate (.ok (by decide))⟩
-  | 5, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 5, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .join (.ok (by decide) (by decide))⟩
-  | 6, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 6, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
 
 /-- **Witness S7**, admitted twin (C35, C43, C46, C47; C51, C52): with `m := derive(root, Modify,
@@ -599,7 +601,7 @@ read, at most one context has a capability on `C` at every state; the loss marke
 `hb`-before the read; the execution is a `SafeConcurrentTrace`; Q1–Q3 and reading 12 hold; 14d
 applies: no pair of events races. -/
 theorem witness_s7_twin :
-    SafeConcurrentTrace kAtomic mutexLayout refOrders s7tσ s7tL s7tG.toGraph joinK
+    SafeConcurrentTrace pm kAtomic mutexLayout refOrders s7tσ s7tL s7tG.toGraph joinK
       (leafData 4) ∧
     CorrQ1 s7tG.toGraph s7tL joinK (leafData 4) ∧
     CorrQ2 kAtomic mutexLayout refOrders s7tσ s7tL s7tG.toGraph joinK (leafData 4) ∧
@@ -610,7 +612,7 @@ theorem witness_s7_twin :
     ∀ a b, ¬ s7tG.toGraph.Race a b := by
   have hK : Corresponds s7tG.toGraph s7tσ s7tL joinK :=
     corresponds_of_check _ _ _ [(1, 1)] _ _ _ (by decide +kernel) (by decide)
-  have hS : SafeConcurrentTrace kAtomic mutexLayout refOrders s7tσ s7tL s7tG.toGraph joinK
+  have hS : SafeConcurrentTrace pm kAtomic mutexLayout refOrders s7tσ s7tL s7tG.toGraph joinK
       (leafData 4) :=
     ⟨s7t_run, by decide +kernel, finitePast_fin _, by decide,
       confinedExcl_of_check [4] 2 kAtomic_conf (by decide) (by decide +kernel),
@@ -673,24 +675,24 @@ def s8K : StepEvents (Fin 9) := listK [0, 1, 2, 4, 5, 6, 7, 8] [(1, 3)] []
 def s8D : AccessData s8G.toGraph s8L s8K := noInit fun e => if e.val = 4 then 7 else 8
 
 /-- S8 is an `EncapsulatedTrace` with named states from the initial state (C51.1). -/
-theorem s8_run : EncapRun kAtomic mutexLayout s8σ s8L := by
+theorem s8_run : EncapRun pm kAtomic mutexLayout s8σ s8L := by
   refine encapRun_of_steps fun i hi lbl hl => ?_
   match i, hi with
-  | 0, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 0, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel (.ok (by decide))⟩
-  | 1, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 1, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 2, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 2, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .spawn (.ok (by decide))⟩
-  | 3, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 3, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 4, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 4, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 5, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 5, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel (.ok (by decide))⟩
-  | 6, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 6, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel (.ok (by decide))⟩
-  | 7, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 7, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
 
 /-- **Witness S8** (C51, `LifetimeOrdered`: "If bytes are reused for a distinct logical storage
@@ -704,7 +706,7 @@ fails by L2: the write of `c1` is not `hb`-before the end of validity of `X`. Ev
 condition holds; Q1–Q3 and reading 12 hold. The two writes race. Admitted twin:
 `witness_s8_twin`. -/
 theorem witness_s8 :
-    EncapRun kAtomic mutexLayout s8σ s8L ∧ s8G.toGraph.EventConsistent ∧
+    EncapRun pm kAtomic mutexLayout s8σ s8L ∧ s8G.toGraph.EventConsistent ∧
     s8G.toGraph.FiniteCausalPast ∧ OrdinaryAtomicOK kAtomic s8σ s8L ∧
     ConfinedExcl kAtomic s8σ s8L ∧
     ConfinedHandoff kAtomic mutexLayout refOrders s8σ s8L s8G.toGraph s8K ∧
@@ -716,7 +718,7 @@ theorem witness_s8 :
     CorrQ1 s8G.toGraph s8L s8K s8D ∧
     CorrQ2 kAtomic mutexLayout refOrders s8σ s8L s8G.toGraph s8K s8D ∧ CorrQ3 s8D ∧
     CtlAtomic kAtomic mutexLayout s8σ s8L ∧ s8G.toGraph.Race 4 8 ∧
-    ¬ SafeConcurrentTrace kAtomic mutexLayout refOrders s8σ s8L s8G.toGraph s8K s8D := by
+    ¬ SafeConcurrentTrace pm kAtomic mutexLayout refOrders s8σ s8L s8G.toGraph s8K s8D := by
   have hK : Corresponds s8G.toGraph s8σ s8L s8K :=
     corresponds_of_check _ _ _ [(2, 1)] _ _ _ (by decide +kernel) (by decide)
   have hno : ¬ LifetimeOrdered s8G.toGraph s8D := fun h =>
@@ -763,28 +765,28 @@ def s8tK : StepEvents (Fin 12) := listK [0, 1, 2, 4, 5, 6, 8, 9, 10, 11] [(1, 3)
 def s8tD : AccessData s8tG.toGraph s8tL s8tK := noInit fun e => if e.val = 4 then 7 else 8
 
 /-- S8's twin is an `EncapsulatedTrace` with named states from the initial state (C51.1). -/
-theorem s8t_run : EncapRun kAtomic mutexLayout s8tσ s8tL := by
+theorem s8t_run : EncapRun pm kAtomic mutexLayout s8tσ s8tL := by
   refine encapRun_of_steps fun i hi lbl hl => ?_
   match i, hi with
-  | 0, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 0, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel (.ok (by decide))⟩
-  | 1, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 1, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 2, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 2, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .spawn (.ok (by decide))⟩
-  | 3, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 3, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 4, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 4, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 5, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 5, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .terminate (.ok (by decide))⟩
-  | 6, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 6, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .join (.ok (by decide) (by decide))⟩
-  | 7, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 7, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel (.ok (by decide))⟩
-  | 8, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 8, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel (.ok (by decide))⟩
-  | 9, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 9, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
 
 /-- **Witness S8**, admitted twin (C47, C51, C52): with `c1 : terminate` after its `release` and
@@ -793,7 +795,7 @@ which is `hb`-before the begin of validity of `Y`; the two writes are ordered by
 execution is a `SafeConcurrentTrace`; Q1–Q3 and reading 12 hold; 14d applies: no pair of events
 races. -/
 theorem witness_s8_twin :
-    SafeConcurrentTrace kAtomic mutexLayout refOrders s8tσ s8tL s8tG.toGraph s8tK s8tD ∧
+    SafeConcurrentTrace pm kAtomic mutexLayout refOrders s8tσ s8tL s8tG.toGraph s8tK s8tD ∧
     CorrQ1 s8tG.toGraph s8tL s8tK s8tD ∧
     CorrQ2 kAtomic mutexLayout refOrders s8tσ s8tL s8tG.toGraph s8tK s8tD ∧ CorrQ3 s8tD ∧
     CtlAtomic kAtomic mutexLayout s8tσ s8tL ∧ s8tG.toGraph.HB 4 11 ∧
@@ -802,7 +804,7 @@ theorem witness_s8_twin :
     corresponds_of_check _ _ _ [(2, 1)] _ _ _ (by decide +kernel) (by decide)
   have hL : LifetimeOrdered s8tG.toGraph s8tD :=
     ⟨by decide +kernel, by decide +kernel, by decide +kernel⟩
-  have hS : SafeConcurrentTrace kAtomic mutexLayout refOrders s8tσ s8tL s8tG.toGraph s8tK s8tD :=
+  have hS : SafeConcurrentTrace pm kAtomic mutexLayout refOrders s8tσ s8tL s8tG.toGraph s8tK s8tD :=
     ⟨s8t_run, by decide +kernel, finitePast_fin _, by decide,
       confinedExcl_of_check [4] 2 kAtomic_conf (by decide) (by decide +kernel),
       confinedHandoff_of_check (by decide +kernel), syncOrdered_of_check (by decide +kernel),

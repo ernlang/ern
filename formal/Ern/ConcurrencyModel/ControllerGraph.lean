@@ -16,6 +16,8 @@ namespace Ern.ConcurrencyModel
 
 open Ern.MemoryModel Ern.MemoryModel.Access
 
+variable {pm : ProviderMeta}
+
 section Construction
 
 variable (L : MutexLayout) (σ : Nat → SC × SyncReg × ArenaReg) (lbls : List Label) (i x : Nat)
@@ -99,7 +101,7 @@ theorem ctlGraph_access (e : CtlEv L σ lbls i x) :
     | _ => cases hk; exact hr.elim
 
 /-- Every controller step is at or after the `newMutex` step `n` that creates the entry. -/
-theorem ctl_ge (hr : EncapRun ks L σ lbls) {n c g : Nat} (hn : lbls[n]? = some (.newMutex c g))
+theorem ctl_ge (hr : EncapRun pm ks L σ lbls) {n c g : Nat} (hn : lbls[n]? = some (.newMutex c g))
     (hnc : CtlStep L σ lbls i x n) {w : Nat} (hw : CtlStep L σ lbls i x w) : n ≤ w := by
   have hnl : n < lbls.length := (List.getElem?_eq_some_iff.1 hn).1
   have hlen : (σ n).2.1.length = i := by unfold CtlStep at hnc; rw [hn] at hnc; exact hnc.1
@@ -195,7 +197,7 @@ which the `newMutex` step `n` creates entry `i` with controller `x`, every later
 legal order triple and values `v₀ ≠ v₁`, the controller graph with its correspondence satisfies
 realization R, `OrderLegal` (C40), `EventConsistent` (C34), and the correspondence of fragment F
 (K1–K4): R is not vacuous on any execution of this fragment. -/
-theorem controller_graph (hr : EncapRun ks L σ lbls) {n c g : Nat}
+theorem controller_graph (hr : EncapRun pm ks L σ lbls) {n c g : Nat}
     (hn : lbls[n]? = some (.newMutex c g)) (hnc : CtlStep L σ lbls i x n)
     (hstab : ∀ k, n < k → ProtoOn lbls i k → ctlOf L (σ k) i = some x) (hlegal : R.Legal)
     (hv : v₀ ≠ v₁) :

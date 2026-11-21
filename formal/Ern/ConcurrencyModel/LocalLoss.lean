@@ -19,6 +19,8 @@ namespace Ern.ConcurrencyModel
 
 open Ern.MemoryModel Ern.MemoryModel.Access
 
+variable {pm : ProviderMeta}
+
 /-! ## Unrestricted attribution (C43) -/
 
 /-- `x` is attributable to context `c` in mode `m` without the `guarded` exclusion (C43:
@@ -307,7 +309,7 @@ theorem inert_effect {ks : KShared} {L : MutexLayout} {lbl : Label} {st st' : SC
 step lowers no `cap`, so the implication of `local_loss` holds for it. -/
 theorem local_loss_inert {ks : KShared} {L : MutexLayout} {statics : Statics} {lbls : List Label}
     {st st' : SC × SyncReg × ArenaReg} {lbl : Label} (hdd : DDSound ks.toK) (hst : StaticsOK statics)
-    (htr : EncapsulatedTrace ks L (SC.ofS3 (S3.init statics), [], []) lbls st) (hi : lbl.Inert)
+    (htr : EncapsulatedTrace pm ks L (SC.ofS3 (S3.init statics), [], []) lbls st) (hi : lbl.Inert)
     (h : LStep ks L lbl st st') (c l : Nat)
     (hd : capRank (cap st'.1 st'.2.1 c l) < capRank (cap st.1 st.2.1 c l)) : lbl.requester = c := by
   obtain ⟨⟨-, hw⟩, -⟩ := (encapsulated_inv hdd hst htr).1.1
@@ -407,7 +409,7 @@ step that strictly lowers `cap` of `c` is a step of `c`. -/
 theorem local_loss_derive {ks : KShared} {L : MutexLayout} {statics : Statics} {lbls : List Label}
     {st st' : SC × SyncReg × ArenaReg} {c' src : Nat} {region : List Nat} {mo : Mode}
     (hdd : DDSound ks.toK) (hst : StaticsOK statics)
-    (htr : EncapsulatedTrace ks L (SC.ofS3 (S3.init statics), [], []) lbls st)
+    (htr : EncapsulatedTrace pm ks L (SC.ofS3 (S3.init statics), [], []) lbls st)
     (h : LStep ks L (.kernel c' (.derive src region mo)) st st') (c l : Nat)
     (hd : capRank (cap st'.1 st'.2.1 c l) < capRank (cap st.1 st.2.1 c l)) :
     (Label.kernel c' (.derive src region mo)).requester = c := by
@@ -524,7 +526,7 @@ kept. Under `DDSound` (Spec 1 §80), from a state reached by an `EncapsulatedTra
 state (Spec 1 §47). -/
 theorem local_loss_store {ks : KShared} {L : MutexLayout} {statics : Statics} {lbls : List Label}
     {st st' : SC × SyncReg × ArenaReg} {c' a p : Nat} (hdd : DDSound ks.toK) (hst : StaticsOK statics)
-    (htr : EncapsulatedTrace ks L (SC.ofS3 (S3.init statics), [], []) lbls st)
+    (htr : EncapsulatedTrace pm ks L (SC.ofS3 (S3.init statics), [], []) lbls st)
     (h : LStep ks L (.kernel c' (.store a p)) st st') (c l : Nat)
     (hd : capRank (cap st'.1 st'.2.1 c l) < capRank (cap st.1 st.2.1 c l)) :
     (Label.kernel c' (.store a p)).requester = c := by
@@ -567,7 +569,7 @@ an `EncapsulatedTrace` from an initial state (Spec 1 §47). -/
 theorem local_loss_transfer {ks : KShared} {L : MutexLayout} {statics : Statics} {lbls : List Label}
     {st st' : SC × SyncReg × ArenaReg} {c' src dst : Nat} (hdd : DDSound ks.toK)
     (hst : StaticsOK statics)
-    (htr : EncapsulatedTrace ks L (SC.ofS3 (S3.init statics), [], []) lbls st)
+    (htr : EncapsulatedTrace pm ks L (SC.ofS3 (S3.init statics), [], []) lbls st)
     (h : LStep ks L (.kernel c' (.transfer src dst)) st st') (c l : Nat)
     (hd : capRank (cap st'.1 st'.2.1 c l) < capRank (cap st.1 st.2.1 c l)) :
     (Label.kernel c' (.transfer src dst)).requester = c := by
@@ -656,7 +658,7 @@ the live `guarded`, which `CapAttr` attributes to no context, and the ancestors 
 a state reached by an `EncapsulatedTrace` from an initial state (Spec 1 §47). -/
 theorem local_loss_acquire {ks : KShared} {L : MutexLayout} {statics : Statics} {lbls : List Label}
     {st st' : SC × SyncReg × ArenaReg} {c' i : Nat} (hdd : DDSound ks.toK) (hst : StaticsOK statics)
-    (htr : EncapsulatedTrace ks L (SC.ofS3 (S3.init statics), [], []) lbls st)
+    (htr : EncapsulatedTrace pm ks L (SC.ofS3 (S3.init statics), [], []) lbls st)
     (h : LStep ks L (.acquire c' i) st st') (c l : Nat)
     (hd : capRank (cap st'.1 st'.2.1 c l) < capRank (cap st.1 st.2.1 c l)) :
     (Label.acquire c' i).requester = c := by
@@ -704,7 +706,7 @@ theorem local_loss_acquire {ks : KShared} {L : MutexLayout} {statics : Statics} 
 `SyncAuthorized` of the library holds only for the `guarded` of a live entry (C14, `libKC_sound`)
 and C22.2 excludes it. -/
 theorem local_loss_deriveSync {ks : KShared} {L : MutexLayout} {st st' : SC × SyncReg × ArenaReg}
-    {c' g : Nat} (he : EncapStep ks L st (.deriveSync c' g) st')
+    {c' g : Nat} (he : EncapStep pm ks L st (.deriveSync c' g) st')
     (h : LStep ks L (.deriveSync c' g) st st') (c : Nat) : (Label.deriveSync c' g).requester = c := by
   exfalso
   cases h with
@@ -830,7 +832,7 @@ theorem release_cap_mono {s : SC} {reg reg' : SyncReg} (hF : FramesC s) (hI : I1
 state reached by an `EncapsulatedTrace` from an initial state (Spec 1 §47). -/
 theorem local_loss_release {ks : KShared} {L : MutexLayout} {statics : Statics} {lbls : List Label}
     {st st' : SC × SyncReg × ArenaReg} {c' a : Nat} (hdd : DDSound ks.toK) (hst : StaticsOK statics)
-    (htr : EncapsulatedTrace ks L (SC.ofS3 (S3.init statics), [], []) lbls st)
+    (htr : EncapsulatedTrace pm ks L (SC.ofS3 (S3.init statics), [], []) lbls st)
     (h : LStep ks L (.kernel c' (.release a)) st st') (c l : Nat)
     (hd : capRank (cap st'.1 st'.2.1 c l) < capRank (cap st.1 st.2.1 c l)) :
     (Label.kernel c' (.release a)).requester = c := by
@@ -853,7 +855,7 @@ C17.3) and the registry keeps its `guarded` identities. Under `DDSound` (Spec 1 
 reached by an `EncapsulatedTrace` from an initial state (Spec 1 §47). -/
 theorem local_loss_unlock {ks : KShared} {L : MutexLayout} {statics : Statics} {lbls : List Label}
     {st st' : SC × SyncReg × ArenaReg} {c' i : Nat} (hdd : DDSound ks.toK) (hst : StaticsOK statics)
-    (htr : EncapsulatedTrace ks L (SC.ofS3 (S3.init statics), [], []) lbls st)
+    (htr : EncapsulatedTrace pm ks L (SC.ofS3 (S3.init statics), [], []) lbls st)
     (h : LStep ks L (.unlock c' i) st st') (c l : Nat)
     (hd : capRank (cap st'.1 st'.2.1 c l) < capRank (cap st.1 st.2.1 c l)) :
     (Label.unlock c' i).requester = c := by
@@ -886,7 +888,7 @@ attributable, and it is attributable to no context but the actor, which exercise
 reached by an `EncapsulatedTrace` from an initial state (Spec 1 §47). -/
 theorem local_loss_newMutex {ks : KShared} {L : MutexLayout} {statics : Statics} {lbls : List Label}
     {st st' : SC × SyncReg × ArenaReg} {c' g : Nat} (hdd : DDSound ks.toK) (hst : StaticsOK statics)
-    (htr : EncapsulatedTrace ks L (SC.ofS3 (S3.init statics), [], []) lbls st)
+    (htr : EncapsulatedTrace pm ks L (SC.ofS3 (S3.init statics), [], []) lbls st)
     (h : LStep ks L (.newMutex c' g) st st') (c l : Nat)
     (hd : capRank (cap st'.1 st'.2.1 c l) < capRank (cap st.1 st.2.1 c l)) :
     (Label.newMutex c' g).requester = c := by
@@ -1293,7 +1295,7 @@ state reached by an `EncapsulatedTrace` from an initial state (Spec 1 §47). -/
 theorem local_loss_split {ks : KShared} {L : MutexLayout} {statics : Statics} {lbls : List Label}
     {st st' : SC × SyncReg × ArenaReg} {c' src : Nat} {rs : List (List Nat)} (hdd : DDSound ks.toK)
     (hst : StaticsOK statics)
-    (htr : EncapsulatedTrace ks L (SC.ofS3 (S3.init statics), [], []) lbls st)
+    (htr : EncapsulatedTrace pm ks L (SC.ofS3 (S3.init statics), [], []) lbls st)
     (h : LStep ks L (.kernel c' (.split src rs)) st st') (c l : Nat)
     (hd : capRank (cap st'.1 st'.2.1 c l) < capRank (cap st.1 st.2.1 c l)) :
     (Label.kernel c' (.split src rs)).requester = c := by
@@ -1315,7 +1317,7 @@ state reached by an `EncapsulatedTrace` from an initial state (Spec 1 §47). -/
 theorem local_loss_alloc {ks : KShared} {L : MutexLayout} {statics : Statics} {lbls : List Label}
     {st st' : SC × SyncReg × ArenaReg} {c' pr ow : Nat} {ls : LocalShape} (hdd : DDSound ks.toK)
     (hst : StaticsOK statics)
-    (htr : EncapsulatedTrace ks L (SC.ofS3 (S3.init statics), [], []) lbls st)
+    (htr : EncapsulatedTrace pm ks L (SC.ofS3 (S3.init statics), [], []) lbls st)
     (h : LStep ks L (.kernel c' (.alloc pr ow ls)) st st') (c l : Nat)
     (hd : capRank (cap st'.1 st'.2.1 c l) < capRank (cap st.1 st.2.1 c l)) :
     (Label.kernel c' (.alloc pr ow ls)).requester = c := by
@@ -1334,7 +1336,7 @@ from a state reached by an `EncapsulatedTrace` from an initial state (Spec 1 §4
 theorem local_loss_enter {ks : KShared} {L : MutexLayout} {statics : Statics} {lbls : List Label}
     {st st' : SC × SyncReg × ArenaReg} {c' : Nat} {ps : List Nat} {ls : LocalShape}
     (hdd : DDSound ks.toK) (hst : StaticsOK statics)
-    (htr : EncapsulatedTrace ks L (SC.ofS3 (S3.init statics), [], []) lbls st)
+    (htr : EncapsulatedTrace pm ks L (SC.ofS3 (S3.init statics), [], []) lbls st)
     (h : LStep ks L (.kernel c' (.enter ps ls)) st st') (c l : Nat)
     (hd : capRank (cap st'.1 st'.2.1 c l) < capRank (cap st.1 st.2.1 c l)) :
     (Label.kernel c' (.enter ps ls)).requester = c := by
@@ -1357,7 +1359,7 @@ reached by an `EncapsulatedTrace` from an initial state (Spec 1 §47). -/
 theorem local_loss_spawn {ks : KShared} {L : MutexLayout} {statics : Statics} {lbls : List Label}
     {st st' : SC × SyncReg × ArenaReg} {c' : Nat} {ps : List Nat} {ls : LocalShape}
     (hdd : DDSound ks.toK) (hst : StaticsOK statics)
-    (htr : EncapsulatedTrace ks L (SC.ofS3 (S3.init statics), [], []) lbls st)
+    (htr : EncapsulatedTrace pm ks L (SC.ofS3 (S3.init statics), [], []) lbls st)
     (h : LStep ks L (.spawn c' ps ls) st st') (c l : Nat)
     (hd : capRank (cap st'.1 st'.2.1 c l) < capRank (cap st.1 st.2.1 c l)) :
     (Label.spawn c' ps ls).requester = c := by
@@ -1388,7 +1390,7 @@ the `split` (theorem 2, `opStepC_preservesC`). Under `DDSound` (Spec 1 §80), fr
 theorem local_loss_issue {ks : KShared} {L : MutexLayout} {statics : Statics} {lbls : List Label}
     {st st' : SC × SyncReg × ArenaReg} {c' i dst : Nat} {region : List Nat} (hdd : DDSound ks.toK)
     (hst : StaticsOK statics)
-    (htr : EncapsulatedTrace ks L (SC.ofS3 (S3.init statics), [], []) lbls st)
+    (htr : EncapsulatedTrace pm ks L (SC.ofS3 (S3.init statics), [], []) lbls st)
     (h : LStep ks L (.issue c' i region dst) st st') (c l : Nat)
     (hd : capRank (cap st'.1 st'.2.1 c l) < capRank (cap st.1 st.2.1 c l)) :
     (Label.issue c' i region dst).requester = c := by
@@ -1421,7 +1423,7 @@ invariants holding after the `derive` (theorem 2). Under `DDSound` (Spec 1 §80)
 an `EncapsulatedTrace` from an initial state (Spec 1 §47). -/
 theorem local_loss_reset {ks : KShared} {L : MutexLayout} {statics : Statics} {lbls : List Label}
     {st st' : SC × SyncReg × ArenaReg} {c' i : Nat} (hdd : DDSound ks.toK) (hst : StaticsOK statics)
-    (htr : EncapsulatedTrace ks L (SC.ofS3 (S3.init statics), [], []) lbls st)
+    (htr : EncapsulatedTrace pm ks L (SC.ofS3 (S3.init statics), [], []) lbls st)
     (h : LStep ks L (.reset c' i) st st') (c l : Nat)
     (hd : capRank (cap st'.1 st'.2.1 c l) < capRank (cap st.1 st.2.1 c l)) :
     (Label.reset c' i).requester = c := by
@@ -1625,7 +1627,7 @@ theorem exit_cap_mono {s s' : SC} {reg : SyncReg} (hF : FramesC s) (hw : WF3 s.f
 §80), from a state reached by an `EncapsulatedTrace` from an initial state (Spec 1 §47). -/
 theorem local_loss_exit {ks : KShared} {L : MutexLayout} {statics : Statics} {lbls : List Label}
     {st st' : SC × SyncReg × ArenaReg} {c' : Nat} (hdd : DDSound ks.toK) (hst : StaticsOK statics)
-    (htr : EncapsulatedTrace ks L (SC.ofS3 (S3.init statics), [], []) lbls st)
+    (htr : EncapsulatedTrace pm ks L (SC.ofS3 (S3.init statics), [], []) lbls st)
     (h : LStep ks L (.kernel c' .exit) st st') (c l : Nat)
     (hd : capRank (cap st'.1 st'.2.1 c l) < capRank (cap st.1 st.2.1 c l)) :
     (Label.kernel c' .exit).requester = c := by
@@ -1648,7 +1650,7 @@ popped as by `exitFrame` (Spec 1 §73). Under `DDSound` (Spec 1 §80), from a st
 `EncapsulatedTrace` from an initial state (Spec 1 §47). -/
 theorem local_loss_terminate {ks : KShared} {L : MutexLayout} {statics : Statics} {lbls : List Label}
     {st st' : SC × SyncReg × ArenaReg} {c' : Nat} (hdd : DDSound ks.toK) (hst : StaticsOK statics)
-    (htr : EncapsulatedTrace ks L (SC.ofS3 (S3.init statics), [], []) lbls st)
+    (htr : EncapsulatedTrace pm ks L (SC.ofS3 (S3.init statics), [], []) lbls st)
     (h : LStep ks L (.terminate c') st st') (c l : Nat)
     (hd : capRank (cap st'.1 st'.2.1 c l) < capRank (cap st.1 st.2.1 c l)) :
     (Label.terminate c').requester = c := by
@@ -1764,7 +1766,7 @@ theorem endUse_keeps {k : K} {s s' : SC} {reg : SyncReg} (hF : FramesC s) (hI : 
 state reached by an `EncapsulatedTrace` from an initial state (Spec 1 §47). -/
 theorem local_loss_endUse {ks : KShared} {L : MutexLayout} {statics : Statics} {lbls : List Label}
     {st st' : SC × SyncReg × ArenaReg} {c' p : Nat} (hdd : DDSound ks.toK) (hst : StaticsOK statics)
-    (htr : EncapsulatedTrace ks L (SC.ofS3 (S3.init statics), [], []) lbls st)
+    (htr : EncapsulatedTrace pm ks L (SC.ofS3 (S3.init statics), [], []) lbls st)
     (h : LStep ks L (.kernel c' (.endUse p)) st st') (c l : Nat)
     (hd : capRank (cap st'.1 st'.2.1 c l) < capRank (cap st.1 st.2.1 c l)) :
     (Label.kernel c' (.endUse p)).requester = c := by
@@ -1985,7 +1987,7 @@ state reached by an `EncapsulatedTrace` from an initial state (Spec 1 §47). -/
 theorem local_loss_free {ks : KShared} {L : MutexLayout} {statics : Statics} {lbls : List Label}
     {st st' : SC × SyncReg × ArenaReg} {c' p auth : Nat} (hdd : DDSound ks.toK)
     (hst : StaticsOK statics)
-    (htr : EncapsulatedTrace ks L (SC.ofS3 (S3.init statics), [], []) lbls st)
+    (htr : EncapsulatedTrace pm ks L (SC.ofS3 (S3.init statics), [], []) lbls st)
     (h : LStep ks L (.kernel c' (.free p auth)) st st') (c l : Nat)
     (hd : capRank (cap st'.1 st'.2.1 c l) < capRank (cap st.1 st.2.1 c l)) :
     (Label.kernel c' (.free p auth)).requester = c := by
@@ -2145,7 +2147,7 @@ had no `cap` before the step. Under `DDSound` (Spec 1 §80), from a state reache
 theorem local_loss_spawnVal {ks : KShared} {L : MutexLayout} {statics : Statics} {lbls : List Label}
     {st st' : SC × SyncReg × ArenaReg} {c' : Nat} {ps : List Nat} {ls : LocalShape}
     {vs : List (Nat × Nat)} (hdd : DDSound ks.toK) (hst : StaticsOK statics)
-    (htr : EncapsulatedTrace ks L (SC.ofS3 (S3.init statics), [], []) lbls st)
+    (htr : EncapsulatedTrace pm ks L (SC.ofS3 (S3.init statics), [], []) lbls st)
     (h : LStep ks L (.spawnVal c' ps ls vs) st st') (c l : Nat)
     (hd : capRank (cap st'.1 st'.2.1 c l) < capRank (cap st.1 st.2.1 c l)) :
     (Label.spawnVal c' ps ls vs).requester = c := by
@@ -2225,8 +2227,8 @@ operation coverage"); one lemma per label. -/
 theorem local_loss {ks : KShared} {L : MutexLayout} {statics : Statics} {lbls : List Label}
     {st st' : SC × SyncReg × ArenaReg} {lbl : Label} (hdd : DDSound ks.toK)
     (hst : StaticsOK statics)
-    (htr : EncapsulatedTrace ks L (SC.ofS3 (S3.init statics), [], []) lbls st)
-    (he : EncapStep ks L st lbl st') (h : LStep ks L lbl st st') (c l : Nat)
+    (htr : EncapsulatedTrace pm ks L (SC.ofS3 (S3.init statics), [], []) lbls st)
+    (he : EncapStep pm ks L st lbl st') (h : LStep ks L lbl st st') (c l : Nat)
     (hd : capRank (cap st'.1 st'.2.1 c l) < capRank (cap st.1 st.2.1 c l)) :
     lbl.requester = c := by
   cases lbl with

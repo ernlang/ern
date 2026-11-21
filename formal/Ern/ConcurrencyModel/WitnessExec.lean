@@ -14,15 +14,17 @@ namespace Ern.ConcurrencyModel
 
 open Ern.MemoryModel Ern.MemoryModel.Access Events
 
+variable {pm : ProviderMeta}
+
 /-- An execution with named states is an `EncapsulatedTrace` from its first state to its last
 (C51.1). -/
 theorem trace_of_run {ks : KShared} {L : MutexLayout} :
-    ∀ {σ : Nat → SC × SyncReg × ArenaReg} {lbls : List Label}, EncapRun ks L σ lbls →
-      EncapsulatedTrace ks L (σ 0) lbls (σ lbls.length)
+    ∀ {σ : Nat → SC × SyncReg × ArenaReg} {lbls : List Label}, EncapRun pm ks L σ lbls →
+      EncapsulatedTrace pm ks L (σ 0) lbls (σ lbls.length)
   | _, [], _ => .nil
   | σ, lbl :: lbls, hr => by
     obtain ⟨he, hs⟩ := hr 0 (by simp)
-    have hr' : EncapRun ks L (fun k => σ (k + 1)) lbls := fun k hk => by
+    have hr' : EncapRun pm ks L (fun k => σ (k + 1)) lbls := fun k hk => by
       have := hr (k + 1) (by simp; omega)
       simpa using this
     have ih := trace_of_run hr'
@@ -32,8 +34,8 @@ theorem trace_of_run {ks : KShared} {L : MutexLayout} :
 theorem encapRun_of_steps {ks : KShared} {L : MutexLayout} {σ : Nat → SC × SyncReg × ArenaReg}
     {lbls : List Label}
     (h : ∀ i, i < lbls.length → ∀ lbl, lbls[i]? = some lbl →
-      EncapStep ks L (σ i) lbl (σ (i + 1)) ∧ LStep ks L lbl (σ i) (σ (i + 1))) :
-    EncapRun ks L σ lbls := fun i hi => h i hi _ (List.getElem?_eq_getElem hi)
+      EncapStep pm ks L (σ i) lbl (σ (i + 1)) ∧ LStep ks L lbl (σ i) (σ (i + 1))) :
+    EncapRun pm ks L σ lbls := fun i hi => h i hi _ (List.getElem?_eq_getElem hi)
 
 /-! ## A correspondence given by lists -/
 

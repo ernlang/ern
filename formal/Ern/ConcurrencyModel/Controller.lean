@@ -34,6 +34,8 @@ namespace Ern.ConcurrencyModel
 
 open Ern.MemoryModel Ern.MemoryModel.Access
 
+variable {pm : ProviderMeta}
+
 /-! ## 13c: `LockOrder`, direct form (C49, C48, C32.1) -/
 
 /-- **Theorem 13c** (C49: "the protected accesses in an earlier critical section of one mutex are
@@ -410,7 +412,7 @@ section Trace
 variable {ks : KShared} {L : MutexLayout} {σ : Nat → SC × SyncReg × ArenaReg} {lbls : List Label}
 
 /-- The registry does not shrink along an execution (C12, C13). -/
-theorem encapRun_reg_mono (hr : EncapRun ks L σ lbls) {a b : Nat} (hab : a ≤ b)
+theorem encapRun_reg_mono (hr : EncapRun pm ks L σ lbls) {a b : Nat} (hab : a ≤ b)
     (hb : b ≤ lbls.length) : (σ a).2.1.length ≤ (σ b).2.1.length := by
   induction b with
   | zero => have : a = 0 := by omega
@@ -422,7 +424,7 @@ theorem encapRun_reg_mono (hr : EncapRun ks L σ lbls) {a b : Nat} (hab : a ≤ 
 
 /-- A step that is not a protocol step on `i` keeps the recorded grant of an existing entry `i`
 (C12, C16–C18). -/
-theorem grant_keep (hr : EncapRun ks L σ lbls) {i k : Nat} (hk : k < lbls.length)
+theorem grant_keep (hr : EncapRun pm ks L σ lbls) {i k : Nat} (hk : k < lbls.length)
     (hp : ¬ ProtoOn lbls i k) (hi : i < (σ k).2.1.length) :
     grantOf (σ (k + 1)).2.1 i = grantOf (σ k).2.1 i := by
   refine (lstep_reg (hr k hk).2 i).2.1 (fun c => ⟨fun e => hp ?_, fun e => hp ?_, fun e => hp ?_⟩)
@@ -430,7 +432,7 @@ theorem grant_keep (hr : EncapRun ks L σ lbls) {i k : Nat} (hk : k < lbls.lengt
 
 /-- Across steps that are not protocol steps on `i`, the recorded grant of an existing entry `i`
 is kept (C12, C16–C18). -/
-theorem grant_const (hr : EncapRun ks L σ lbls) {i a b : Nat} (hab : a ≤ b)
+theorem grant_const (hr : EncapRun pm ks L σ lbls) {i a b : Nat} (hab : a ≤ b)
     (hb : b ≤ lbls.length) (hp : ∀ k, a ≤ k → k < b → ¬ ProtoOn lbls i k)
     (hi : i < (σ a).2.1.length) : grantOf (σ b).2.1 i = grantOf (σ a).2.1 i := by
   induction b with
@@ -468,7 +470,7 @@ with controller `x` and every later protocol step on `i` is taken while the cont
 every later state `k` the last controller step `w` before `k` exists, and the recorded grant of `i`
 is `none` exactly when `w` is not an `acquire`, that is when the event of `w` writes `v₀` under
 realization R. -/
-theorem grant_invariant (hr : EncapRun ks L σ lbls) {i x n c g : Nat}
+theorem grant_invariant (hr : EncapRun pm ks L σ lbls) {i x n c g : Nat}
     (hn : lbls[n]? = some (.newMutex c g)) (hnc : CtlStep L σ lbls i x n)
     (hstab : ∀ k, n < k → ProtoOn lbls i k → ctlOf L (σ k) i = some x) :
     ∀ k, n < k → k ≤ lbls.length → ∃ w, LastCtl L σ lbls i x k w ∧
@@ -560,7 +562,7 @@ theorem first_ctl_after {w a : Nat} (hwa : w < a) (ha : CtlStep L σ lbls i x a)
 hypotheses of `grant_invariant`, in every graph that satisfies R and the conjuncts 1 and 3, the
 source of the event of an `acquire` controller step is the event of a `newMutex`, `unlock` or
 `resetLock` step, which writes `v₀`. -/
-theorem acquire_reads_v0 (hr : EncapRun ks L σ lbls) (hR : Realizes G L σ lbls K i x R v₀ v₁)
+theorem acquire_reads_v0 (hr : EncapRun pm ks L σ lbls) (hR : Realizes G L σ lbls K i x R v₀ v₁)
     (h1 : G.RfWF) (h3 : G.RmwAtomic) {n c g : Nat} (hn : lbls[n]? = some (.newMutex c g))
     (hnc : CtlStep L σ lbls i x n)
     (hstab : ∀ k, n < k → ProtoOn lbls i k → ctlOf L (σ k) i = some x)
@@ -615,7 +617,7 @@ an `acquire` controller step of `i` such that
 
 Then the event of `u` is `hb`-before that of `a`; hence the event of every step `≤ u` of the context
 of `u` is `hb`-before that of every step `≥ a` of the context of `a`. -/
-theorem lock_order (hr : EncapRun ks L σ lbls) (hK : Corresponds G σ lbls K)
+theorem lock_order (hr : EncapRun pm ks L σ lbls) (hK : Corresponds G σ lbls K)
     (hR : Realizes G L σ lbls K i x R v₀ v₁) (hrel : ReleaseOrder R.rel)
     (hreset : ReleaseOrder R.reset) (hacq : AcquireOrder R.acq) (h1 : G.RfWF)
     (h3 : G.RmwAtomic) {u a : Nat} (hua : u < a) (hu : CtlStep L σ lbls i x u)
@@ -761,7 +763,7 @@ memory orders"): when an `acquire` controller step `p` is the first protocol ste
 `resetLock` controller step `r`, its event reads the publication of `r`; under the reference
 triple, `sw` relates them; with `o_reset = relaxed`, outside the reference, `rf` holds without
 `sw`. -/
-theorem recovery_sw (hr : EncapRun ks L σ lbls) (hR : Realizes G L σ lbls K i x R v₀ v₁)
+theorem recovery_sw (hr : EncapRun pm ks L σ lbls) (hR : Realizes G L σ lbls K i x R v₀ v₁)
     (h1 : G.RfWF) (h3 : G.RmwAtomic) {r p cr cp : Nat} (hrp : r < p)
     (hrl : lbls[r]? = some (.resetLock cr i)) (hrc : CtlStep L σ lbls i x r)
     (hpl : lbls[p]? = some (.acquire cp i)) (hpc : CtlStep L σ lbls i x p)

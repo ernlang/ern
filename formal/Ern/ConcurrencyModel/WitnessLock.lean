@@ -26,6 +26,8 @@ namespace Ern.ConcurrencyModel
 
 open Ern.MemoryModel Ern.MemoryModel.Access Events
 
+variable {pm : ProviderMeta}
+
 /-- The relaxed order triple, outside the reference (C40). -/
 def rlxOrders : CtlOrders := ⟨.relaxed, .relaxed, .relaxed⟩
 
@@ -73,31 +75,31 @@ def w7σ : Nat → SC × SyncReg × ArenaReg
   | 10 => (q9, regT5, []) | _ => (q10, regT5, [])
 
 /-- W7 is an `EncapsulatedTrace` with named states from the initial state (C51.1). -/
-theorem w7_run : EncapRun kMutex mutexLayout w7σ w7L := by
+theorem w7_run : EncapRun pm kMutex mutexLayout w7σ w7L := by
   refine encapRun_of_steps fun i hi lbl hl => ?_
   match i, hi with
-  | 0, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 0, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 1, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 1, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel (.ok (by decide))⟩
-  | 2, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 2, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .newMutex (st' := (m2, regFree)) ⟨by decide, rfl⟩⟩
-  | 3, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 3, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 4, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 4, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .spawn (.ok (by decide))⟩
-  | 5, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 5, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .acquire (st' := (m5, regTaken)) ⟨⟨2, none⟩, rfl, by decide, by decide, rfl⟩⟩
-  | 6, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 6, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 7, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 7, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .unlock (st' := (p7, regFree)) ⟨⟨2, some 4⟩, 4, rfl, by decide, rfl, by decide, by decide,
         by decide, rfl⟩⟩
-  | 8, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 8, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 9, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 9, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .acquire (st' := (q9, regT5)) ⟨⟨2, none⟩, rfl, by decide, by decide, rfl⟩⟩
-  | 10, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 10, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
 
 /-- The graph of W7 under the orders `R`. -/
@@ -123,7 +125,7 @@ markers are `unlock(e)` (step 7 of `c1`) and the `derive` of `o1` (step 3 of `c0
 race; realization R holds, and 13e (`lock_order`) orders the `unlock` before the `acquire` of
 `c0`. -/
 theorem witness_w7 :
-    w7σ 0 = (SC.ofS3 (S3.init mutexStatics), [], []) ∧ EncapRun kMutex mutexLayout w7σ w7L ∧
+    w7σ 0 = (SC.ofS3 (S3.init mutexStatics), [], []) ∧ EncapRun pm kMutex mutexLayout w7σ w7L ∧
     Corresponds (w7G refOrders).toGraph w7σ w7L w7K ∧ (w7G refOrders).toGraph.EventConsistent ∧
     Realizes (w7G refOrders).toGraph mutexLayout w7σ w7L w7K 0 2 refOrders 0 1 ∧
     (w7G refOrders).toGraph.rf 2 6 ∧ (w7G refOrders).toGraph.rf 8 10 ∧
@@ -136,7 +138,7 @@ theorem witness_w7 :
     w7L[3]? = some (.kernel 0 (.derive 0 [1, 2] .observe)) ∧
     cap (w7σ 3).1 (w7σ 3).2.1 0 2 = some .modify ∧ cap (w7σ 4).1 (w7σ 4).2.1 0 2 = some .observe ∧
     (∀ eu ea, w7K.ev 7 = some eu → w7K.ev 9 = some ea → (w7G refOrders).toGraph.HB eu ea) := by
-  have hr := w7_run
+  have hr := w7_run (pm := pm)
   have hK : Corresponds (w7G refOrders).toGraph w7σ w7L w7K :=
     corresponds_of_check _ _ _ [(4, 1)] _ _ _ (by decide +kernel) (by decide)
   have hc : (w7G refOrders).toGraph.EventConsistent := by decide +kernel
@@ -173,34 +175,34 @@ def w8σ : Nat → SC × SyncReg × ArenaReg
   | 10 => (p8, regFree, []) | 11 => (q9, regT5, []) | _ => (q10, regT5, [])
 
 /-- W8 is an `EncapsulatedTrace` with named states from the initial state (C51.1). -/
-theorem w8_run : EncapRun kMutex mutexLayout w8σ w8L := by
+theorem w8_run : EncapRun pm kMutex mutexLayout w8σ w8L := by
   refine encapRun_of_steps fun i hi lbl hl => ?_
   match i, hi with
-  | 0, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 0, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 1, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 1, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel (.ok (by decide))⟩
-  | 2, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 2, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .newMutex (st' := (m2, regFree)) ⟨by decide, rfl⟩⟩
-  | 3, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 3, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 4, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 4, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .spawn (.ok (by decide))⟩
-  | 5, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 5, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .acquire (st' := (m5, regTaken)) ⟨⟨2, none⟩, rfl, by decide, by decide, rfl⟩⟩
-  | 6, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 6, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 7, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 7, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .unlock (st' := (p7, regFree)) ⟨⟨2, some 4⟩, 4, rfl, by decide, rfl, by decide, by decide,
         by decide, rfl⟩⟩
-  | 8, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 8, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 9, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 9, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .resetLock (st' := (p8, regFree)) ⟨⟨2, none⟩, rfl, by decide, by decide, by decide, by decide,
         rfl⟩⟩
-  | 10, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 10, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .acquire (st' := (q9, regT5)) ⟨⟨2, none⟩, rfl, by decide, by decide, rfl⟩⟩
-  | 11, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 11, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
 
 /-- The graph of W8 under the orders `R`. -/
@@ -224,7 +226,7 @@ reads the `resetLock`; `sw` is the edge from `spawn(c1)` to `start(c1)` and the 
 `T`, which race; the loss marker is `unlock(e)` (step 7); `HandoffOrdered` is false; the recorded
 grant is `none` at the `resetLock`. -/
 theorem witness_w8 :
-    w8σ 0 = (SC.ofS3 (S3.init mutexStatics), [], []) ∧ EncapRun kMutex mutexLayout w8σ w8L ∧
+    w8σ 0 = (SC.ofS3 (S3.init mutexStatics), [], []) ∧ EncapRun pm kMutex mutexLayout w8σ w8L ∧
     Corresponds (w8G refOrders).toGraph w8σ w8L w8K ∧ (w8G refOrders).toGraph.EventConsistent ∧
     Realizes (w8G refOrders).toGraph mutexLayout w8σ w8L w8K 0 2 refOrders 0 1 ∧
     (w8G refOrders).toGraph.rf 10 11 ∧
@@ -265,38 +267,38 @@ def w9σ : Nat → SC × SyncReg × ArenaReg
   | 13 => (t12, regT5, []) | _ => (t13, regT5, [])
 
 /-- W9 is an `EncapsulatedTrace` with named states from the initial state (C51.1). -/
-theorem w9_run : EncapRun kMutex mutexLayout w9σ w9L := by
+theorem w9_run : EncapRun pm kMutex mutexLayout w9σ w9L := by
   refine encapRun_of_steps fun i hi lbl hl => ?_
   match i, hi with
-  | 0, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 0, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 1, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 1, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel (.ok (by decide))⟩
-  | 2, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 2, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .newMutex (st' := (m2, regFree)) ⟨by decide, rfl⟩⟩
-  | 3, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 3, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 4, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 4, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .spawn (.ok (by decide))⟩
-  | 5, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 5, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .acquire (st' := (m5, regTaken)) ⟨⟨2, none⟩, rfl, by decide, by decide, rfl⟩⟩
-  | 6, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 6, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 7, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 7, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .unlock (st' := (p7, regFree)) ⟨⟨2, some 4⟩, 4, rfl, by decide, rfl, by decide, by decide,
         by decide, rfl⟩⟩
-  | 8, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 8, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
-  | 9, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 9, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .terminate (.ok (by decide))⟩
-  | 10, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 10, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .join (.ok (by decide) (by decide))⟩
-  | 11, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 11, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .resetLock (st' := (t9, regFree)) ⟨⟨2, none⟩, rfl, by decide, by decide, by decide, by decide,
         rfl⟩⟩
-  | 12, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 12, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .acquire (st' := (t12, regT5)) ⟨⟨2, none⟩, rfl, by decide, by decide, rfl⟩⟩
-  | 13, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  | 13, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
 
 /-- The graph of W9. -/
@@ -319,7 +321,7 @@ def w9K : StepEvents (Fin 16) :=
 `resetLock`, the writes of `T` are ordered by the `join`; `sw` is the edges from `spawn(c1)`,
 from `complete(c1)` and from the `resetLock`; `HandoffOrdered` holds; no race. -/
 theorem witness_w9 :
-    w9σ 0 = (SC.ofS3 (S3.init mutexStatics), [], []) ∧ EncapRun kMutex mutexLayout w9σ w9L ∧
+    w9σ 0 = (SC.ofS3 (S3.init mutexStatics), [], []) ∧ EncapRun pm kMutex mutexLayout w9σ w9L ∧
     Corresponds w9G.toGraph w9σ w9L w9K ∧ w9G.toGraph.EventConsistent ∧
     Realizes w9G.toGraph mutexLayout w9σ w9L w9K 0 2 refOrders 0 1 ∧
     (∀ a b, w9G.toGraph.SW a b ↔ (a = 4 ∧ b = 5) ∨ (a = 11 ∧ b = 12) ∨ (a = 13 ∧ b = 14)) ∧

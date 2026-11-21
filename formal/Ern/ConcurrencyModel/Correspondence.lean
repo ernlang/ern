@@ -30,6 +30,8 @@ namespace Ern.ConcurrencyModel
 
 open Ern.MemoryModel Ern.MemoryModel.Access
 
+variable {pm : ProviderMeta}
+
 /-! ## The lifecycle of contexts along a step (C4, C5, C7) -/
 
 /-- The lifecycle state of context `d` in `s`, if it exists (C1, C2). -/
@@ -284,7 +286,7 @@ theorem handoff_no_race {ks : KShared} {L : MutexLayout} {statics : Statics}
     {σ : Nat → SC × SyncReg × ArenaReg} {lbls : List Label} {E U V S : Type}
     {G : Events.Graph E Nat U V S} {K : StepEvents E} (hdd : DDSound ks.toK)
     (hst : StaticsOK statics) (h0 : σ 0 = (SC.ofS3 (S3.init statics), [], []))
-    (hr : EncapRun ks L σ lbls) (hK : Corresponds G σ lbls K) {i j c c' l : Nat} {m : Mode}
+    (hr : EncapRun pm ks L σ lbls) (hK : Corresponds G σ lbls K) {i j c c' l : Nat} {m : Mode}
     (hij : i < j) (hj : j < lbls.length) (hcc : c ≠ c')
     (hm : Allows (cap (σ j).1 (σ j).2.1 c l) m)
     (hi : IncompatModify (cap (σ i).1 (σ i).2.1 c' l) m)
@@ -301,7 +303,7 @@ theorem handoff_no_race {ks : KShared} {L : MutexLayout} {statics : Statics}
 
 /-- The context list does not shrink along an execution (C4, C5). -/
 theorem encapRun_C_mono {ks : KShared} {L : MutexLayout} {σ : Nat → SC × SyncReg × ArenaReg}
-    {lbls : List Label} (hr : EncapRun ks L σ lbls) {i j : Nat} (hij : i ≤ j)
+    {lbls : List Label} (hr : EncapRun pm ks L σ lbls) {i j : Nat} (hij : i ≤ j)
     (hj : j ≤ lbls.length) : (σ i).1.C.length ≤ (σ j).1.C.length := by
   induction j with
   | zero => have : i = 0 := by omega
@@ -323,7 +325,7 @@ step that creates `c`, with event `es` and the marker `start(c)` = `x`.
    (K3). -/
 theorem spawn_hb {ks : KShared} {L : MutexLayout} {σ : Nat → SC × SyncReg × ArenaReg}
     {lbls : List Label} {E U V S : Type} {G : Events.Graph E Nat U V S} {K : StepEvents E}
-    (hr : EncapRun ks L σ lbls) (hK : Corresponds G σ lbls K) {s c : Nat}
+    (hr : EncapRun pm ks L σ lbls) (hK : Corresponds G σ lbls K) {s c : Nat}
     (hcr : Creates σ lbls s c) {x es : E} (hx : K.start c = some x) (hes : K.ev s = some es) :
     (∀ j (hj : j < lbls.length), lbls[j].requester = c → s < j) ∧
     ∀ p (hp : p < lbls.length) j (hj : j < lbls.length) a d, p ≤ s →
@@ -359,7 +361,7 @@ theorem lifeOf_init (t : S3) (d : Nat) : lifeOf (SC.ofS3 t) d ≠ some .done := 
 /-- A `done` context stays `done` (C7: only `terminate(d)` changes the lifecycle state of an
 existing context `d`, to `done`). -/
 theorem encapRun_done_stays {ks : KShared} {L : MutexLayout} {σ : Nat → SC × SyncReg × ArenaReg}
-    {lbls : List Label} (hr : EncapRun ks L σ lbls) {d i : Nat}
+    {lbls : List Label} (hr : EncapRun pm ks L σ lbls) {d i : Nat}
     (hi : lifeOf (σ i).1 d = some .done) : ∀ k, i ≤ k → k ≤ lbls.length →
       lifeOf (σ k).1 d = some .done := by
   intro k hik hk
@@ -397,7 +399,7 @@ the marker `complete(d)` = `x`.
 theorem join_hb {ks : KShared} {L : MutexLayout} {statics : Statics}
     {σ : Nat → SC × SyncReg × ArenaReg} {lbls : List Label} {E U V S : Type}
     {G : Events.Graph E Nat U V S} {K : StepEvents E}
-    (h0 : σ 0 = (SC.ofS3 (S3.init statics), [], [])) (hr : EncapRun ks L σ lbls)
+    (h0 : σ 0 = (SC.ofS3 (S3.init statics), [], [])) (hr : EncapRun pm ks L σ lbls)
     (hK : Corresponds G σ lbls K) {q c d : Nat} (hq : q < lbls.length)
     (hlq : lbls[q] = .join c d) {x eq : E} (hx : K.complete d = some x)
     (heq : K.ev q = some eq) :

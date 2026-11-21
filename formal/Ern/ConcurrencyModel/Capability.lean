@@ -31,6 +31,8 @@ namespace Ern.ConcurrencyModel
 
 open Ern.MemoryModel Ern.MemoryModel.Access
 
+variable {pm : ProviderMeta}
+
 /-! ## The capability of a context (C43) -/
 
 /-- `x` is attributable to context `c` in mode `m` in `s`, under the registry `reg` (C43): `x` is
@@ -319,7 +321,7 @@ theorem cap_compat_state {s : SC} {reg : SyncReg} (hnd : s.frames.Nodup) (hI : I
 initial state of Spec 1 §47, under `DDSound` (Spec 1 §80) and well-formed statics (§47). -/
 theorem encapsulated_inv {ks : KShared} {L : MutexLayout} {statics : Statics} {lbls : List Label}
     {st : SC × SyncReg × ArenaReg} (hdd : DDSound ks.toK) (hst : StaticsOK statics)
-    (h : EncapsulatedTrace ks L (SC.ofS3 (S3.init statics), [], []) lbls st) :
+    (h : EncapsulatedTrace pm ks L (SC.ofS3 (S3.init statics), [], []) lbls st) :
     KInvCA st.1 ∧ LibInv L st := by
   obtain ⟨hk, hs⟩ := init_inv hdd hst L
   exact trace_inv hdd h.restricted hk hs
@@ -331,7 +333,7 @@ under `DDSound` and well-formed statics, a present capability of `c` on `l` is n
 under the `Modify` criterion, with that of another context `c'`. -/
 theorem cap_l2 {ks : KShared} {L : MutexLayout} {statics : Statics} {lbls : List Label}
     {st : SC × SyncReg × ArenaReg} (hdd : DDSound ks.toK) (hst : StaticsOK statics)
-    (h : EncapsulatedTrace ks L (SC.ofS3 (S3.init statics), [], []) lbls st) {c c' l : Nat}
+    (h : EncapsulatedTrace pm ks L (SC.ofS3 (S3.init statics), [], []) lbls st) {c c' l : Nat}
     {m : Mode} (hcc : c ≠ c') (hm : cap st.1 st.2.1 c l = some m) :
     ¬ IncompatModify (cap st.1 st.2.1 c' l) m := by
   obtain ⟨hk, -⟩ := encapsulated_inv hdd hst h
@@ -398,7 +400,7 @@ preconditions give their effective modes (Spec 1 §66.2, §67.1, §68.2; C37.2; 
 C18.4). -/
 theorem cap_covers {ks : KShared} {L : MutexLayout} {R : CtlOrders} {lbl : Label}
     {st st' : SC × SyncReg × ArenaReg} {acc : List LeafAccess} (hF : FramesC st.1)
-    (he : EncapStep ks L st lbl st') (h : LStep ks L lbl st st')
+    (he : EncapStep pm ks L st lbl st') (h : LStep ks L lbl st st')
     (hc : classify ks L R st lbl = some acc) :
     ∀ x ∈ acc, Allows (cap st.1 st.2.1 lbl.requester x.leaf) x.mode := by
   obtain ⟨-, -, hr⟩ := he

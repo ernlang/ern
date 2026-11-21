@@ -15,6 +15,8 @@ namespace Ern.ConcurrencyModel
 
 open Ern.MemoryModel Ern.MemoryModel.Access
 
+variable {pm : ProviderMeta}
+
 /-! ## The reference mutex -/
 
 /-- Statics (Spec 1 §47): `0` the mutex value `M`, `1` its field `slot` (`Uninit`), `2` its field
@@ -68,20 +70,20 @@ theorem mutex_steps : opStepC kMutex.toK (.derive 1 [3] .modify) 0 m0 (.ok m1) �
 /-- Non-vacuity of `EncapStep` (C22, C51.1): the construction of the reference mutex, the
 `acquire(e)` of context 1 and its `unlock(e)` form an `EncapsulatedTrace` from the initial state
 of Spec 1 §47 (the six requirements of C22 hold at every step). -/
-theorem mutex_encapsulated : EncapsulatedTrace kMutex mutexLayout (m0, [], [])
+theorem mutex_encapsulated : EncapsulatedTrace pm kMutex mutexLayout (m0, [], [])
     [.kernel 0 (.derive 1 [3] .modify), .kernel 0 (.store 2 1), .newMutex 0 2,
      .kernel 0 (.derive 0 [1, 2] .observe), .spawn 0 [3] [], .acquire 1 0, .unlock 1 0]
     (m6, regFree, []) :=
-  .cons ⟨by unfold RestrictedStep; decide, by decide, by decide⟩ (.kernel mutex_steps.1) <|
-  .cons ⟨by unfold RestrictedStep; decide, by decide, by decide⟩ (.kernel mutex_steps.2.1) <|
-  .cons ⟨by unfold RestrictedStep; decide, by decide, by decide⟩
+  .cons ⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩ (.kernel mutex_steps.1) <|
+  .cons ⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩ (.kernel mutex_steps.2.1) <|
+  .cons ⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩
     (.newMutex (st' := (m2, regFree)) mutex_steps.2.2.1) <|
-  .cons ⟨by unfold RestrictedStep; decide, by decide, by decide⟩ (.kernel mutex_steps.2.2.2.1) <|
-  .cons ⟨by unfold RestrictedStep; decide, by decide, by decide⟩
+  .cons ⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩ (.kernel mutex_steps.2.2.2.1) <|
+  .cons ⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩
     (.spawn mutex_steps.2.2.2.2.1) <|
-  .cons ⟨by unfold RestrictedStep; decide, by decide, by decide⟩
+  .cons ⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩
     (.acquire (st' := (m5, regTaken)) mutex_steps.2.2.2.2.2.1) <|
-  .cons ⟨by unfold RestrictedStep; decide, by decide, by decide⟩
+  .cons ⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩
     (.unlock (st' := (m6, regFree)) mutex_steps.2.2.2.2.2.2) .nil
 
 /-- C22 ("It is not implied by structural exclusivity I1 alone"): from the constructed mutex,
@@ -211,10 +213,10 @@ the abstract step is `ProtocolStepOf` the entry (C22.4) and is an `EncapStep`. -
 theorem witness_2a : EntryAuth mutexLayout m4 ⟨2, none⟩ (m4.view 1).top ∧
     DeriveSyncPre (libKC kMutex mutexLayout) regFree m4 1 2 ∧ AcquireOkClass mutexLayout m4 regFree 1 0 ∧
     LStep kMutex mutexLayout (.acquire 1 0) (m4, regFree, []) (m5, regTaken, []) ∧
-    EncapStep kMutex mutexLayout (m4, regFree, []) (.acquire 1 0) (m5, regTaken, []) :=
+    EncapStep pm kMutex mutexLayout (m4, regFree, []) (.acquire 1 0) (m5, regTaken, []) :=
   ⟨by decide, by decide, (acquireOk_iff.1 mutex_steps.2.2.2.2.2.1).1,
     .acquire (st' := (m5, regTaken)) mutex_steps.2.2.2.2.2.1,
-    ⟨by unfold RestrictedStep; decide, by decide, by decide⟩⟩
+    ⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩⟩
 
 /-- **Witness 2b** (C16.2, not enabled): the request of context 0 is legal and the recorded grant 4 is
 active: no outcome, no labelled step. -/

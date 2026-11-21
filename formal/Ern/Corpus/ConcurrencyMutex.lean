@@ -26,6 +26,8 @@ namespace Ern.Corpus.Concurrency
 
 open Ern.MemoryModel Ern.MemoryModel.Access Ern.ConcurrencyModel
 
+variable {pm : ProviderMeta}
+
 /-! ## The constructions of the reference mutex -/
 
 /-- The construction of the reference mutex in frame 0, not shared (O1, O8, C13). -/
@@ -36,26 +38,28 @@ def sharedMutexL : List Label := refMutexL ++ [.kernel 0 (.derive 0 [1, 2] .obse
 
 /-- The construction of the reference mutex is an `EncapsulatedTrace` from the initial state of
 Spec 1 §47 (C22, C51.1). -/
-theorem refMutex_encap : EncapsulatedTrace kMutex mutexLayout (m0, [], []) refMutexL (m2, regFree, []) :=
-  .cons ⟨by unfold RestrictedStep; decide, by decide, by decide⟩ (.kernel mutex_steps.1) <|
-  .cons ⟨by unfold RestrictedStep; decide, by decide, by decide⟩ (.kernel mutex_steps.2.1) <|
-  .cons ⟨by unfold RestrictedStep; decide, by decide, by decide⟩
+theorem refMutex_encap : EncapsulatedTrace pm kMutex mutexLayout (m0, [], []) refMutexL (m2, regFree, []) :=
+  .cons ⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩ (.kernel mutex_steps.1) <|
+  .cons ⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩ (.kernel mutex_steps.2.1) <|
+  .cons ⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩
     (.newMutex (st' := (m2, regFree)) mutex_steps.2.2.1) .nil
 
 /-- The construction and sharing of the reference mutex is an `EncapsulatedTrace` from the initial
 state of Spec 1 §47 (C22, C51.1). -/
-theorem sharedMutex_encap : EncapsulatedTrace kMutex mutexLayout (m0, [], []) sharedMutexL (m4, regFree, []) :=
-  .cons ⟨by unfold RestrictedStep; decide, by decide, by decide⟩ (.kernel mutex_steps.1) <|
-  .cons ⟨by unfold RestrictedStep; decide, by decide, by decide⟩ (.kernel mutex_steps.2.1) <|
-  .cons ⟨by unfold RestrictedStep; decide, by decide, by decide⟩
+theorem sharedMutex_encap : EncapsulatedTrace pm kMutex mutexLayout (m0, [], []) sharedMutexL (m4, regFree, []) :=
+  .cons ⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩ (.kernel mutex_steps.1) <|
+  .cons ⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩ (.kernel mutex_steps.2.1) <|
+  .cons ⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩
     (.newMutex (st' := (m2, regFree)) mutex_steps.2.2.1) <|
-  .cons ⟨by unfold RestrictedStep; decide, by decide, by decide⟩ (.kernel mutex_steps.2.2.2.1) <|
-  .cons ⟨by unfold RestrictedStep; decide, by decide, by decide⟩
+  .cons ⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩ (.kernel mutex_steps.2.2.2.1) <|
+  .cons ⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩
     (.spawn mutex_steps.2.2.2.2.1) .nil
 
 /-- The shared reference mutex is reached by `ok` steps. -/
 theorem sharedMutex_run : LRun kMutex mutexLayout (m0, [], []) sharedMutexL (m4, regFree, []) :=
-  (EncapsulatedTrace.restricted sharedMutex_encap).run
+  .cons (.kernel mutex_steps.1) <| .cons (.kernel mutex_steps.2.1) <|
+  .cons (.newMutex (st' := (m2, regFree)) mutex_steps.2.2.1) <|
+  .cons (.kernel mutex_steps.2.2.2.1) <| .cons (.spawn mutex_steps.2.2.2.2.1) .nil
 
 /-! ## R13: a grant not yielded to the entered frame -/
 
@@ -300,16 +304,16 @@ def r15L : List Label :=
 
 /-- The setup of `R15` is an `EncapsulatedTrace` (C22, C51.1). -/
 theorem r15_encap :
-    EncapsulatedTrace kMutex mutexLayout (m0, [], []) (refMutexL ++ r15L) (r15s3, regG, []) :=
-  .cons ⟨by unfold RestrictedStep; decide, by decide, by decide⟩ (.kernel mutex_steps.1) <|
-  .cons ⟨by unfold RestrictedStep; decide, by decide, by decide⟩ (.kernel mutex_steps.2.1) <|
-  .cons ⟨by unfold RestrictedStep; decide, by decide, by decide⟩
+    EncapsulatedTrace pm kMutex mutexLayout (m0, [], []) (refMutexL ++ r15L) (r15s3, regG, []) :=
+  .cons ⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩ (.kernel mutex_steps.1) <|
+  .cons ⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩ (.kernel mutex_steps.2.1) <|
+  .cons ⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩
     (.newMutex (st' := (m2, regFree)) mutex_steps.2.2.1) <|
-  .cons ⟨by unfold RestrictedStep; decide, by decide, by decide⟩
+  .cons ⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩
     (.acquire (st' := (mG, regG)) ⟨⟨2, none⟩, rfl, by decide, by decide, rfl⟩) <|
-  .cons ⟨by unfold RestrictedStep; decide, by decide, by decide⟩
+  .cons ⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩
     (.kernel ⟨_, .ok (by decide), rfl⟩) <|
-  .cons ⟨by unfold RestrictedStep; decide, by decide, by decide⟩
+  .cons ⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩
     (.kernel (.ok (by decide))) .nil
 
 /-- **R15** (`ok` admitted; `reject`; `ok`; `ok`). The reference mutex, not shared; context 0
@@ -320,14 +324,14 @@ transfer of the whole mutex); 2 `reject` by Spec 1 §73.4: no surviving origin f
 the leaves of `M` are `Moved` (§63.3); 4 `ok`. Obtained: 1 `ok` and `EncapStep`; 2 `reject`; 3
 `ok`; 4 `ok`. Twin: `R15_twin`. -/
 theorem R15 :
-    EncapsulatedTrace kMutex mutexLayout (m0, [], []) (refMutexL ++ r15L) (r15s3, regG, []) ∧
+    EncapsulatedTrace pm kMutex mutexLayout (m0, [], []) (refMutexL ++ r15L) (r15s3, regG, []) ∧
     LStep kMutex mutexLayout (.kernel 0 (.transfer 0 4)) (r15s3, regG, []) (r15s4, regG, []) ∧
-    EncapStep kMutex mutexLayout (r15s3, regG, []) (.kernel 0 (.transfer 0 4)) (r15s4, regG, []) ∧
+    EncapStep pm kMutex mutexLayout (r15s3, regG, []) (.kernel 0 (.transfer 0 4)) (r15s4, regG, []) ∧
     opStepC kMutex.toK .exit 0 r15s4 .reject ∧
     opStepC kMutex.toK (.transfer 4 0) 0 r15s4 (.ok r15s5) ∧
     opStepC kMutex.toK .exit 0 r15s5 (.ok (exitEffC r15s5 0)) :=
   ⟨r15_encap, .kernel (.ok (by decide)),
-    ⟨by unfold RestrictedStep; decide, by decide, by decide⟩, .reject (by decide),
+    ⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩, .reject (by decide),
     .ok (by decide), .ok (by decide)⟩
 
 /-- Statics of the reference mutex with a second value `M′ = {slot′, lock′}` in frame 0, without
@@ -351,11 +355,11 @@ def pReg : SyncReg := [⟨3, none⟩]
 def pL : List Label := [.kernel 0 (.derive 1 [3] .modify), .kernel 0 (.store 3 1), .newMutex 0 3]
 
 /-- The construction of the reference mutex beside `M′` is an `EncapsulatedTrace` (C22, C51.1). -/
-theorem p_encap : EncapsulatedTrace kMutex mutexLayout (p0, [], []) pL (p2, pReg, []) :=
-  .cons ⟨by unfold RestrictedStep; decide, by decide, by decide⟩
+theorem p_encap : EncapsulatedTrace pm kMutex mutexLayout (p0, [], []) pL (p2, pReg, []) :=
+  .cons ⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩
     (.kernel ⟨_, .ok (by decide), rfl⟩) <|
-  .cons ⟨by unfold RestrictedStep; decide, by decide, by decide⟩ (.kernel (.ok (by decide))) <|
-  .cons ⟨by unfold RestrictedStep; decide, by decide, by decide⟩
+  .cons ⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩ (.kernel (.ok (by decide))) <|
+  .cons ⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩
     (.newMutex (st' := (p2, pReg)) ⟨by decide, rfl⟩) .nil
 
 /-- `acquire(e)` by context 0: the grant 4, held by frame 0 (C16). -/
@@ -404,15 +408,15 @@ Expected: (a) `ok`, admitted by O4 and C22.3; after the step `guarded` is held b
 `ControlOf(e) = lock′` (C12); (b) `reject` by Spec 1 §63.1 and §63.4: `o1`, active and held
 outside the source, covers leaves of the source. Obtained: (a) `ok` and `EncapStep`, `guarded`
 held by `slot′`, `ControlOf(e) = lock′`; (b) `reject`. Twin: (a) is the twin of (b). -/
-theorem R19 : EncapsulatedTrace kMutex mutexLayout (p0, [], []) pL (p2, pReg, []) ∧
+theorem R19 : EncapsulatedTrace pm kMutex mutexLayout (p0, [], []) pL (p2, pReg, []) ∧
     LStep kMutex mutexLayout (.kernel 0 (.transfer 0 4)) (p2, pReg, []) (p3t, pReg, []) ∧
-    EncapStep kMutex mutexLayout (p2, pReg, []) (.kernel 0 (.transfer 0 4)) (p3t, pReg, []) ∧
+    EncapStep pm kMutex mutexLayout (p2, pReg, []) (.kernel 0 (.transfer 0 4)) (p3t, pReg, []) ∧
     (p3t.A[3]?).map (·.holder) = some (.place 5) ∧
     ControlOf mutexLayout p3t ⟨3, none⟩ = some 6 ∧
     opStepC kMutex.toK (.derive 0 [1, 2] .observe) 0 p2 (.ok p3o) ∧
     SpawnStep p3o 0 [4] [] (.ok p4o) ∧
     opStepC kMutex.toK (.transfer 0 4) 0 p4o .reject :=
-  ⟨p_encap, .kernel (.ok (by decide)), ⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+  ⟨p_encap, .kernel (.ok (by decide)), ⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
     by decide, by decide, ⟨_, .ok (by decide), rfl⟩, .ok (by decide), .reject (by decide)⟩
 
 /-! ## R21: an arena administered under a mutex -/
@@ -551,31 +555,31 @@ def r22L' : List Label := [.resetLock 0 0, .acquire 0 0, .kernel 0 (.write 6 [3]
 
 /-- The construction of the reference mutex and steps 1–11 of `R22` form an `EncapsulatedTrace`
 (C22, C51.1). -/
-theorem r22_encap : EncapsulatedTrace kMutex mutexLayout (m0, [], []) (refMutexL ++ r22L ++ r22L')
+theorem r22_encap : EncapsulatedTrace pm kMutex mutexLayout (m0, [], []) (refMutexL ++ r22L ++ r22L')
     (r22s11, r22reg, []) :=
-  .cons ⟨by unfold RestrictedStep; decide, by decide, by decide⟩ (.kernel mutex_steps.1) <|
-  .cons ⟨by unfold RestrictedStep; decide, by decide, by decide⟩ (.kernel mutex_steps.2.1) <|
-  .cons ⟨by unfold RestrictedStep; decide, by decide, by decide⟩
+  .cons ⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩ (.kernel mutex_steps.1) <|
+  .cons ⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩ (.kernel mutex_steps.2.1) <|
+  .cons ⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩
     (.newMutex (st' := (m2, regFree)) mutex_steps.2.2.1) <|
-  .cons ⟨by unfold RestrictedStep; decide, by decide, by decide⟩
+  .cons ⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩
     (.kernel ⟨_, .ok (by decide), rfl⟩) <|
-  .cons ⟨by unfold RestrictedStep; decide, by decide, by decide⟩ (.kernel (.ok (by decide))) <|
-  .cons ⟨by unfold RestrictedStep; decide, by decide, by decide⟩
+  .cons ⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩ (.kernel (.ok (by decide))) <|
+  .cons ⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩
     (.acquire (st' := (r22s3, regTaken)) ⟨⟨2, none⟩, rfl, by decide, by decide, rfl⟩) <|
-  .cons ⟨by unfold RestrictedStep; decide, by decide, by decide⟩
+  .cons ⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩
     (.kernel ⟨_, .ok (by decide), rfl⟩) <|
-  .cons ⟨by unfold RestrictedStep; decide, by decide, by decide⟩ (.spawn (.ok (by decide))) <|
-  .cons ⟨by unfold RestrictedStep; decide, by decide, by decide⟩ (.kernel (.ok (by decide))) <|
-  .cons ⟨by unfold RestrictedStep; decide, by decide, by decide⟩
+  .cons ⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩ (.spawn (.ok (by decide))) <|
+  .cons ⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩ (.kernel (.ok (by decide))) <|
+  .cons ⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩
     (.kernel ⟨_, .ok (by decide), rfl⟩) <|
-  .cons ⟨by unfold RestrictedStep; decide, by decide, by decide⟩
+  .cons ⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩
     (.kernel ⟨_, .ok (by decide), rfl⟩) <|
-  .cons ⟨by unfold RestrictedStep; decide, by decide, by decide⟩
+  .cons ⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩
     (.resetLock (st' := (r22s8, regFree))
       ⟨⟨2, some 4⟩, rfl, by decide, by decide, by decide, by decide, rfl⟩) <|
-  .cons ⟨by unfold RestrictedStep; decide, by decide, by decide⟩
+  .cons ⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩
     (.acquire (st' := (r22s10, r22reg)) ⟨⟨2, none⟩, rfl, by decide, by decide, rfl⟩) <|
-  .cons ⟨by unfold RestrictedStep; decide, by decide, by decide⟩
+  .cons ⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩
     (.kernel ⟨_, .ok (by decide), rfl⟩) .nil
 
 /-- **R22** (steps 1–7 `ok`; a. not enabled; b, c, d `reject`). The reference mutex, not shared.
@@ -590,7 +594,7 @@ re-anchored on `guarded`, the registry keeps `grant = some g` (C18); a. not enab
 of the `EncapsulatedTrace` `r22_encap`); after 6, `g` and `o` inactive, `x` active of origin
 `guarded`, the registry unchanged; a. legal and not enabled, no outcome and no labelled step; b,
 c, d `reject`. Twin: `R22_twin`. -/
-theorem R22 : EncapsulatedTrace kMutex mutexLayout (m0, [], []) (refMutexL ++ r22L ++ r22L')
+theorem R22 : EncapsulatedTrace pm kMutex mutexLayout (m0, [], []) (refMutexL ++ r22L ++ r22L')
       (r22s11, r22reg, []) ∧
     ¬ r22s6.flat.Active 4 ∧ ¬ r22s6.flat.Active 3 ∧ r22s6.flat.Active 5 ∧
     r22s6.flat.org 5 = some 2 ∧
@@ -617,11 +621,11 @@ Obtained: each step `ok`; step 9 satisfies `EncapStep`, from the state reached b
 `EncapsulatedTrace` `r22_encap` up to step 8. -/
 theorem R22_twin : opStepC kMutex.toK (.release 5) 1 r22s7 (.ok r22s8) ∧
     ResetLockOk mutexLayout r22s8 regTaken 0 0 (r22s8, regFree) ∧
-    EncapStep kMutex mutexLayout (r22s8, regTaken, []) (.resetLock 0 0) (r22s8, regFree, []) ∧
+    EncapStep pm kMutex mutexLayout (r22s8, regTaken, []) (.resetLock 0 0) (r22s8, regFree, []) ∧
     AcquireOk kMutex mutexLayout r22s8 regFree 0 0 (r22s10, r22reg) ∧
     opStepC kMutex.toK (.write 6 [3]) 0 r22s10 (.ok r22s11) :=
   ⟨⟨_, .ok (by decide), rfl⟩, ⟨⟨2, some 4⟩, rfl, by decide, by decide, by decide, by decide, rfl⟩,
-    ⟨by unfold RestrictedStep; decide, by decide, by decide⟩,
+    ⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
     ⟨⟨2, none⟩, rfl, by decide, by decide, rfl⟩, ⟨_, .ok (by decide), rfl⟩⟩
 
 /-- A1: `y := derive(x, Modify, footprint(T))` by context 1, authority 6 (O1). -/

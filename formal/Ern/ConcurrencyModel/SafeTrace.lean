@@ -48,6 +48,8 @@ namespace Ern.ConcurrencyModel
 
 open Ern.MemoryModel Ern.MemoryModel.Access Events
 
+variable {pm : ProviderMeta}
+
 /-! ## Validity events (C27) -/
 
 namespace Events.Graph
@@ -319,10 +321,11 @@ correspondence `K` and the data `D` of reading 9: the execution is an `Encapsula
 * (e) (C35–C40): `InheritedLegal`;
 * (f) (C44–C47, C49, C51): `HandoffOrdered`, `LifetimeOrdered`, the lifecycle conditions K3 and K4,
   the edge of `LockOrder`. -/
-structure SafeConcurrentTrace {E U V S : Type} (ks : KShared) (L : MutexLayout) (R : CtlOrders)
-    (σ : Nat → SC × SyncReg × ArenaReg) (lbls : List Label) (G : Events.Graph E Nat U V S)
+structure SafeConcurrentTrace {E U V S : Type} (pm : ProviderMeta) (ks : KShared) (L : MutexLayout)
+    (R : CtlOrders) (σ : Nat → SC × SyncReg × ArenaReg) (lbls : List Label)
+    (G : Events.Graph E Nat U V S)
     (K : StepEvents E) (D : AccessData G lbls K) : Prop where
-  run : EncapRun ks L σ lbls
+  run : EncapRun pm ks L σ lbls
   /-- (a). -/
   consistent : G.EventConsistent
   /-- (a). -/
@@ -470,8 +473,8 @@ theorem lifetime_reuse {E U V S : Type} {G : Events.Graph E Nat U V S} {lbls : L
 theorem SafeConcurrentTrace.encapsulated {E U V S : Type} {ks : KShared} {L : MutexLayout}
     {R : CtlOrders} {σ : Nat → SC × SyncReg × ArenaReg} {lbls : List Label}
     {G : Events.Graph E Nat U V S} {K : StepEvents E} {D : AccessData G lbls K}
-    (h : SafeConcurrentTrace ks L R σ lbls G K D) :
-    EncapsulatedTrace ks L (σ 0) lbls (σ lbls.length) :=
+    (h : SafeConcurrentTrace pm ks L R σ lbls G K D) :
+    EncapsulatedTrace pm ks L (σ 0) lbls (σ lbls.length) :=
   trace_of_run h.run
 
 /-! ## 14c: cases on the pair (C44, C52) -/
@@ -484,7 +487,7 @@ variable {ks : KShared} {L : MutexLayout} {R : CtlOrders} {statics : Statics}
 
 /-- The invariants of theorem 2 at every state of the execution. -/
 theorem run_inv (hdd : DDSound ks.toK) (hst : StaticsOK statics)
-    (h0 : σ 0 = (SC.ofS3 (S3.init statics), [], [])) (hr : EncapRun ks L σ lbls) {k : Nat}
+    (h0 : σ 0 = (SC.ofS3 (S3.init statics), [], [])) (hr : EncapRun pm ks L σ lbls) {k : Nat}
     (hk : k ≤ lbls.length) : KInvCA (σ k).1 := by
   obtain ⟨pre, hpre⟩ := encapRun_reach hr k hk
   rw [h0] at hpre
@@ -492,7 +495,7 @@ theorem run_inv (hdd : DDSound ks.toK) (hst : StaticsOK statics)
 
 /-- The access of a step is covered by the capability of its context (12a, `cap_covers`). -/
 theorem cap_of_access (hdd : DDSound ks.toK) (hst : StaticsOK statics)
-    (h0 : σ 0 = (SC.ofS3 (S3.init statics), [], [])) (hr : EncapRun ks L σ lbls) {i : Nat}
+    (h0 : σ 0 = (SC.ofS3 (S3.init statics), [], [])) (hr : EncapRun pm ks L σ lbls) {i : Nat}
     {x : LeafAccess} (hx : StepAccess ks L R σ lbls i x) :
     Allows (cap (σ i).1 (σ i).2.1 (ctxAt lbls i) x.leaf) x.mode := by
   obtain ⟨hi, acc, hc, hxa⟩ := hx
@@ -502,7 +505,7 @@ theorem cap_of_access (hdd : DDSound ks.toK) (hst : StaticsOK statics)
 
 /-- An access whose step uses `Modify` is covered by a `Modify` capability (`cap_of_usesModify`). -/
 theorem cap_of_usesModifyAt (hdd : DDSound ks.toK) (hst : StaticsOK statics)
-    (h0 : σ 0 = (SC.ofS3 (S3.init statics), [], [])) (hr : EncapRun ks L σ lbls) {i : Nat}
+    (h0 : σ 0 = (SC.ofS3 (S3.init statics), [], [])) (hr : EncapRun pm ks L σ lbls) {i : Nat}
     {x : LeafAccess} (hx : StepAccess ks L R σ lbls i x) (hu : UsesModifyAt ks σ lbls i x) :
     cap (σ i).1 (σ i).2.1 (ctxAt lbls i) x.leaf = some .modify := by
   obtain ⟨hi, acc, hc, hxa⟩ := hx
@@ -514,7 +517,7 @@ theorem cap_of_usesModifyAt (hdd : DDSound ks.toK) (hst : StaticsOK statics)
 
 /-- The capability of the context of step `j` permits the mode used by its access. -/
 theorem allows_usedMode (hdd : DDSound ks.toK) (hst : StaticsOK statics)
-    (h0 : σ 0 = (SC.ofS3 (S3.init statics), [], [])) (hr : EncapRun ks L σ lbls) {j : Nat}
+    (h0 : σ 0 = (SC.ofS3 (S3.init statics), [], [])) (hr : EncapRun pm ks L σ lbls) {j : Nat}
     {y : LeafAccess} (hy : StepAccess ks L R σ lbls j y) :
     Allows (cap (σ j).1 (σ j).2.1 (ctxAt lbls j) y.leaf) (usedMode ks σ lbls j y) := by
   unfold usedMode
@@ -543,7 +546,7 @@ theorem pair_atomic {E C U V S : Type} {G : Events.Graph E C U V S} {a d : E} {x
 fragment F, for a pair in conflict on a `Confined` leaf with events `a` and `d`: `hb(a, d)`. -/
 theorem pair_confined {D : AccessData G lbls K} (hdd : DDSound ks.toK) (hst : StaticsOK statics)
     (h0 : σ 0 = (SC.ofS3 (S3.init statics), [], [])) (hK : Corresponds G σ lbls K)
-    (hS : SafeConcurrentTrace ks L R σ lbls G K D) {i j : Nat} {x y : LeafAccess}
+    (hS : SafeConcurrentTrace pm ks L R σ lbls G K D) {i j : Nat} {x y : LeafAccess}
     (hp : ConflictPair ks L R σ lbls i j x y) (hc : ConfinedLeaf ks x.leaf) {a d : E}
     (ha : K.ev i = some a) (hd : K.ev j = some d) : G.HB a d := by
   obtain ⟨r, hrj, hfc, b, hb, hbd⟩ := hS.confinedHandoff i j x y hp hc a d ha hd
@@ -565,7 +568,7 @@ theorem pair_confined {D : AccessData G lbls K} (hdd : DDSound ks.toK) (hst : St
 an exclusive writer), with events `a` and `d`: `hb(a, d)`. -/
 theorem pair_exclusive {D : AccessData G lbls K} (hdd : DDSound ks.toK) (hst : StaticsOK statics)
     (h0 : σ 0 = (SC.ofS3 (S3.init statics), [], [])) (hK : Corresponds G σ lbls K)
-    (hS : SafeConcurrentTrace ks L R σ lbls G K D) {i j : Nat} {x y : LeafAccess}
+    (hS : SafeConcurrentTrace pm ks L R σ lbls G K D) {i j : Nat} {x y : LeafAccess}
     (hp : ConflictPair ks L R σ lbls i j x y) (hx : ExclusivePair ks σ lbls i j x y)
     (hc : ¬ ConfinedLeaf ks x.leaf) {a d : E} (ha : K.ev i = some a) (hd : K.ev j = some d) :
     G.HB a d := by
@@ -596,7 +599,7 @@ theorem pair_exclusive {D : AccessData G lbls K} (hdd : DDSound ks.toK) (hst : S
 protocol"; C52: "the required `hb` order is a premise of `SafeConcurrentTrace` (C51, item 2(d)),
 not a consequence of this theorem"): for a non-exclusive pair in conflict on a `Synchronized`
 leaf, the events are ordered by `hb` in one direction or the other, by premise (d). -/
-theorem pair_synchronized {D : AccessData G lbls K} (hS : SafeConcurrentTrace ks L R σ lbls G K D)
+theorem pair_synchronized {D : AccessData G lbls K} (hS : SafeConcurrentTrace pm ks L R σ lbls G K D)
     {i j : Nat} {x y : LeafAccess} (hp : ConflictPair ks L R σ lbls i j x y)
     (hx : ¬ ExclusivePair ks σ lbls i j x y) (hs : SyncLeaf ks x.leaf) {a d : E}
     (ha : K.ev i = some a) (hd : K.ev j = some d) : G.HB a d ∨ G.HB d a :=
@@ -725,7 +728,7 @@ theorem access_class {lbl : Label} {st st' : SC × SyncReg × ArenaReg} {acc : L
 `SafeConcurrentTrace`, under the hypothesis of reading 12, a non-exclusive pair in conflict is on a
 `Synchronized` or `Confined` leaf. Only the execution and (b) are used. Reading 12 is used for a
 pair one of whose accesses is a protocol access of `acquire`, `unlock` or `resetLock`. -/
-theorem pair_exhaustive {D : AccessData G lbls K} (hS : SafeConcurrentTrace ks L R σ lbls G K D)
+theorem pair_exhaustive {D : AccessData G lbls K} (hS : SafeConcurrentTrace pm ks L R σ lbls G K D)
     (h12 : CtlAtomic ks L σ lbls) {i j : Nat} {x y : LeafAccess}
     (hp : ConflictPair ks L R σ lbls i j x y) (hx : ¬ ExclusivePair ks σ lbls i j x y) :
     SyncLeaf ks x.leaf ∨ ConfinedLeaf ks x.leaf := by
@@ -757,7 +760,7 @@ atomicity of 11e are ordered by `hb` in one direction or the other (14c.2–14c.
 `SafeConcurrentTrace` on fragment F under reading 12. -/
 theorem pair_ordered {D : AccessData G lbls K} (hdd : DDSound ks.toK) (hst : StaticsOK statics)
     (h0 : σ 0 = (SC.ofS3 (S3.init statics), [], [])) (hK : Corresponds G σ lbls K)
-    (hS : SafeConcurrentTrace ks L R σ lbls G K D) (h12 : CtlAtomic ks L σ lbls) {i j : Nat}
+    (hS : SafeConcurrentTrace pm ks L R σ lbls G K D) (h12 : CtlAtomic ks L σ lbls) {i j : Nat}
     {x y : LeafAccess} (hp : ConflictPair ks L R σ lbls i j x y) {a d : E}
     (ha : K.ev i = some a) (hd : K.ev j = some d) : G.HB a d ∨ G.HB d a := by
   by_cases hc : ConfinedLeaf ks x.leaf
@@ -797,7 +800,7 @@ theorem no_race {E U V S : Type} {ks : KShared} {L : MutexLayout} {R : CtlOrders
     {G : Events.Graph E Nat U V S} {K : StepEvents E} {D : AccessData G lbls K}
     (hdd : DDSound ks.toK) (hst : StaticsOK statics)
     (h0 : σ 0 = (SC.ofS3 (S3.init statics), [], [])) (hK : Corresponds G σ lbls K)
-    (hS : SafeConcurrentTrace ks L R σ lbls G K D) (hq1 : CorrQ1 G lbls K D)
+    (hS : SafeConcurrentTrace pm ks L R σ lbls G K D) (hq1 : CorrQ1 G lbls K D)
     (hq2 : CorrQ2 ks L R σ lbls G K D) (hq3 : CorrQ3 D) (h12 : CtlAtomic ks L σ lbls)
     (a d : E) : ¬ G.Race a d := by
   rintro ⟨hctx, hconf, hna, hab, hba⟩

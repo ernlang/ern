@@ -430,10 +430,11 @@ def Dying (s s' : SC) (l : Nat) : Prop := isLeaf s.P l ∧ s.flat.Usable l ∧ �
 instance (s s' : SC) (l : Nat) : Decidable (Dying s s' l) := by unfold Dying; infer_instance
 
 /-- The leaves of the places a step from `st` names as accessed or changed, each named place
-counted by its leaves. C22.4 is read on `ActualFootprint`, which differs only for the owner of
-`alloc`, counted here by its leaves (C22.4: "Merely naming a structural place containing the
-controller does not establish that the controller leaf itself is accessed or modified"); the
-other cases are described on `ActualFootprint`. -/
+counted by its leaves. C22.4 is read on `ActualFootprint`, which differs only for `alloc`: the
+provider counted here by its leaves, there by the datum of the provider metadata
+(`ProviderMeta`), and the owner counted here by its leaves (C22.4: "Merely naming a structural
+place containing the controller does not establish that the controller leaf itself is accessed
+or modified"); the other cases are described on `ActualFootprint`. -/
 def StepFootprint (L : MutexLayout) (st : SC × SyncReg × ArenaReg) : Label → Nat → Prop
   | .kernel _ (.read _ ls), l | .kernel _ (.write _ ls), l | .kernel _ (.writeShared _ ls), l =>
     l ∈ ls
@@ -464,6 +465,15 @@ instance (L : MutexLayout) (st : SC × SyncReg × ArenaReg) (lbl : Label) (l : N
     Decidable (StepFootprint L st lbl l) := by
   unfold StepFootprint; split <;> infer_instance
 
+/-- The datum of the provider metadata of `alloc` (C22.4: "`alloc` whose provider-metadata accesses
+may write the controller leaf"; Spec 1 §71): for a step `alloc(pr, ow, ls)` executed by context
+`c` from the state `st`, the leaves `l` with `pm st c pr ow ls l = true` are the leaves that the
+accesses of that step to the metadata of the provider may write. It is a parameter of
+`ActualFootprint` and of every definition and statement built on it, quantified over; no instance
+is fixed. See `ActualFootprint` for what the specification leaves open about it. -/
+abbrev ProviderMeta : Type :=
+  SC × SyncReg × ArenaReg → (c pr ow : Nat) → LocalShape → Nat → Bool
+
 /-- The leaves a step from `st` actually affects (C22.4: "evaluated against the leaves actually
 affected by an operation, including relevant physical metadata accesses"), counting the three
 kinds of effect C22.4 names: physical reads and writes, changes to the initialization state, and
@@ -477,11 +487,13 @@ changes that make a leaf itself the holder or owner of an authority or allocated
   controller leaf").
 * `issue` (Spec 1 §77): its destination, written and made the holder of the block (C22.4:
   "`issue` using the controller leaf as its destination").
-* `alloc` (Spec 1 §71): the leaves of the provider, whose metadata may be written (C22.4:
-  "`alloc` whose provider-metadata accesses may write the controller leaf"); the owner as the
-  place itself, the owner of the new root (C22.4: "`alloc` using the controller leaf itself as the
-  owner"; "`alloc(owner = M)` is not excluded solely because `ControlOf(entry)` is a structural
-  leaf of `M`"); the fresh leaves.
+* `alloc` (Spec 1 §71): the leaves that the datum `pm` designates for the step, those its
+  accesses to the metadata of the provider may write (C22.4: "`alloc` whose provider-metadata
+  accesses may write the controller leaf"; "Merely naming a structural place containing the
+  controller does not establish that the controller leaf itself is accessed or modified"); the
+  owner as the place itself, the owner of the new root (C22.4: "`alloc` using the controller leaf
+  itself as the owner"; "`alloc(owner = M)` is not excluded solely because `ControlOf(entry)` is a
+  structural leaf of `M`"); the fresh leaves.
 * `transfer` (Spec 1 §63): the leaves of the source (moved) and of the destination (written).
 * by-value `spawn` (C5): the fresh locals and the leaves of each transfer source.
 * `endUse` (Spec 1 §69): the leaves of the place (made `Uninit`) and the leaves that die with it;
@@ -494,15 +506,40 @@ changes that make a leaf itself the holder or owner of an authority or allocated
   that fact alone, constitute an access or effect on the controller"). `depend`: no leaf (C22.4:
   "A change solely to a dependency relation ... is not excluded by this item"). `join`,
   `deriveSync`, `newArena`, `reset` (Spec 1 §78: "No leaf is made `Init` by `reset`"): no
-  leaf. -/
-def ActualFootprint (L : MutexLayout) (st : SC × SyncReg × ArenaReg) : Label → Nat → Prop
-  | .kernel _ (.alloc pr ow _), l => l ∈ footprint st.1.P pr ∨ l = ow ∨ st.1.P.length ≤ l
+  leaf.
+
+The datum `pm` (`ProviderMeta`) represents, for each `alloc` step, the leaves that its accesses to
+the metadata of the provider may write. The specification does not fix it: C22.4 evaluates the
+restriction against the leaves actually affected, "including relevant physical metadata
+accesses", without saying which leaves those accesses write, and Spec 1 §81 leaves the
+representation of library metadata open. It may depend on the state before the step, on the
+context that executes it and on its arguments, and it is not bounded by the leaves of the
+provider (Spec 1 §71.2 requires rights over the provider, not that its metadata lie in its
+leaves). That the datum covers the actual physical accesses of the provider is an open part of
+`OB-C20` (C27–C29, C50): no write of provider metadata is represented by the concrete machine. -/
+def ActualFootprint (pm : ProviderMeta) (L : MutexLayout) (st : SC × SyncReg × ArenaReg) :
+    Label → Nat → Prop
+  | .kernel c (.alloc pr ow ls), l => pm st c pr ow ls l = true ∨ l = ow ∨ st.1.P.length ≤ l
   | lbl, l => StepFootprint L st lbl l
 
 /-- Decidability of `ActualFootprint` (C22.4). -/
-instance (L : MutexLayout) (st : SC × SyncReg × ArenaReg) (lbl : Label) (l : Nat) :
-    Decidable (ActualFootprint L st lbl l) := by
+instance (pm : ProviderMeta) (L : MutexLayout) (st : SC × SyncReg × ArenaReg) (lbl : Label)
+    (l : Nat) : Decidable (ActualFootprint pm L st lbl l) := by
   unfold ActualFootprint; split <;> infer_instance
+
+/-- Off `alloc`, the leaves a step actually affects do not depend on the datum of the provider
+metadata: they are those of `StepFootprint` (C22.4). -/
+theorem actualFootprint_of_not_alloc {pm : ProviderMeta} {L : MutexLayout}
+    {st : SC × SyncReg × ArenaReg} {lbl : Label}
+    (h : ∀ c pr ow ls, lbl ≠ .kernel c (.alloc pr ow ls)) :
+    ActualFootprint pm L st lbl = StepFootprint L st lbl := by
+  funext l
+  cases lbl with
+  | kernel c op =>
+    cases op with
+    | alloc pr ow ls => exact absurd rfl (h c pr ow ls)
+    | _ => rfl
+  | _ => rfl
 
 /-- The steps of the validated controller protocol of entry `i` (C22.4: "Valid internal controller
 operations performed by `acquire`, `unlock`, or authorized `resetLock` remain within their
@@ -545,16 +582,24 @@ the step actually affects contain `ControlOf(i)`, the step is a step of the cont
 of entry `i`, a move of the whole mutex value admissible under C22.3 (`WholeValueMove`), or entry
 `i` is dead after it (C22.4: "Operations that make the entry dead remain eligible"). A predicate on
 steps of the safe abstraction, not a precondition of a kernel transition (C22.4). -/
-def ControllerRestriction (L : MutexLayout) (st : SC × SyncReg × ArenaReg) (lbl : Label)
-    (st' : SC × SyncReg × ArenaReg) : Prop :=
+def ControllerRestriction (pm : ProviderMeta) (L : MutexLayout) (st : SC × SyncReg × ArenaReg)
+    (lbl : Label) (st' : SC × SyncReg × ArenaReg) : Prop :=
   ∀ i ∈ List.range st.2.1.length, OptP (st.2.1[i]?) (fun x => x.Live st.1 →
-    OptP (ControlOf L st.1 x) (fun ctl => ActualFootprint L st lbl ctl →
+    OptP (ControlOf L st.1 x) (fun ctl => ActualFootprint pm L st lbl ctl →
       ProtocolStepOf i lbl ∨ WholeValueMove L (st.1, st.2.1) x lbl ∨ ¬ x.Live st'.1) True) True
 
 /-- Decidability of `ControllerRestriction` (C22.4). -/
-instance (L : MutexLayout) (st : SC × SyncReg × ArenaReg) (lbl : Label)
-    (st' : SC × SyncReg × ArenaReg) : Decidable (ControllerRestriction L st lbl st') := by
+instance (pm : ProviderMeta) (L : MutexLayout) (st : SC × SyncReg × ArenaReg) (lbl : Label)
+    (st' : SC × SyncReg × ArenaReg) : Decidable (ControllerRestriction pm L st lbl st') := by
   unfold ControllerRestriction; infer_instance
+
+/-- Decides `ControllerRestriction` or its negation for a step that is not an `alloc`, once the
+datum of the provider metadata is removed by `actualFootprint_of_not_alloc` (C22.4). -/
+macro "decide_ctl" : tactic => `(tactic| (
+  unfold ControllerRestriction
+  rw [actualFootprint_of_not_alloc]
+  · decide
+  · intro _ _ _ _ h; cases h))
 
 /-! ## The rights a step reads (C22.6) -/
 
@@ -1001,25 +1046,25 @@ theorem rightsRead_of_step {ks : KShared} {L : MutexLayout} {lbl : Label}
 and C22.5 (`RestrictedStep`), C22.4 (`ControllerRestriction`) and C22.6 (`RightsReadFree`). A
 predicate on steps of the safe abstraction, not a precondition of a kernel transition (C22,
 C51.1). -/
-def EncapStep (ks : KShared) (L : MutexLayout) (st : SC × SyncReg × ArenaReg) (lbl : Label)
-    (st' : SC × SyncReg × ArenaReg) : Prop :=
-  RestrictedStep L st lbl ∧ ControllerRestriction L st lbl st' ∧ RightsReadFree ks L st lbl
+def EncapStep (pm : ProviderMeta) (ks : KShared) (L : MutexLayout) (st : SC × SyncReg × ArenaReg)
+    (lbl : Label) (st' : SC × SyncReg × ArenaReg) : Prop :=
+  RestrictedStep L st lbl ∧ ControllerRestriction pm L st lbl st' ∧ RightsReadFree ks L st lbl
 
 /-- `EncapsulatedTrace` (C51.1: "the safe **reference-mutex** trace contract of C22"): a run every
 step of which satisfies `EncapStep`, the six requirements of C22, in the state where it is
 taken. -/
-inductive EncapsulatedTrace (ks : KShared) (L : MutexLayout) :
+inductive EncapsulatedTrace (pm : ProviderMeta) (ks : KShared) (L : MutexLayout) :
     SC × SyncReg × ArenaReg → List Label → SC × SyncReg × ArenaReg → Prop where
-  | nil {st : SC × SyncReg × ArenaReg} : EncapsulatedTrace ks L st [] st
+  | nil {st : SC × SyncReg × ArenaReg} : EncapsulatedTrace pm ks L st [] st
   | cons {st st₁ st₂ : SC × SyncReg × ArenaReg} {lbl : Label} {lbls : List Label} :
-      EncapStep ks L st lbl st₁ → LStep ks L lbl st st₁ → EncapsulatedTrace ks L st₁ lbls st₂ →
-      EncapsulatedTrace ks L st (lbl :: lbls) st₂
+      EncapStep pm ks L st lbl st₁ → LStep ks L lbl st st₁ →
+      EncapsulatedTrace pm ks L st₁ lbls st₂ → EncapsulatedTrace pm ks L st (lbl :: lbls) st₂
 
 /-- An `EncapsulatedTrace` is a `RestrictedTrace` (C22, C23, C51.1): the results stated along
 `RestrictedTrace` apply to it. -/
-theorem EncapsulatedTrace.restricted {ks : KShared} {L : MutexLayout}
+theorem EncapsulatedTrace.restricted {pm : ProviderMeta} {ks : KShared} {L : MutexLayout}
     {st st' : SC × SyncReg × ArenaReg} {lbls : List Label}
-    (h : EncapsulatedTrace ks L st lbls st') : RestrictedTrace ks L st lbls st' := by
+    (h : EncapsulatedTrace pm ks L st lbls st') : RestrictedTrace ks L st lbls st' := by
   induction h with
   | nil => exact .nil
   | cons he hs _ ih => exact .cons he.1 hs ih

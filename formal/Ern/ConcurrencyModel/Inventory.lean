@@ -21,6 +21,8 @@ namespace Ern.ConcurrencyModel
 
 open Ern.MemoryModel.Access
 
+variable {pm : ProviderMeta}
+
 /-- **Theorem 6** (C22.6; `OB-C28`, abstract part): every right of the inventory holds for an `ok`
 labelled step, in the state where the step relation reads it, so no listed right is fictitious;
 and every guard-free form of C22.6 implies the ordinary right it replaces. Fragment: every labelled
@@ -75,7 +77,7 @@ well-formed statics (Spec 1 §47). -/
 theorem synchronization_encapsulated {ks : KShared} {L : MutexLayout} {statics : Statics}
     {lbls : List Label} {st' : SC × SyncReg × ArenaReg} (hdd : DDSound ks.toK)
     (hst : StaticsOK statics)
-    (h : EncapsulatedTrace ks L (SC.ofS3 (S3.init statics), [], []) lbls st') :
+    (h : EncapsulatedTrace pm ks L (SC.ofS3 (S3.init statics), [], []) lbls st') :
     SyncInv L st'.1 st'.2.1 st'.2.2 ∧ GrantDiscipline st'.1 st'.2.1 ∧
       (∀ e ∈ st'.2.1, e.Live st'.1 → ∀ g, e.grant = some g → st'.1.flat.Active g →
         ∀ j, CoveringDesc st'.1 e.guarded j → j = g ∨ g ∈ st'.1.flat.ancs j) ∧

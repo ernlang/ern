@@ -20,6 +20,8 @@ namespace Ern.ConcurrencyModel
 
 open Ern.MemoryModel Ern.MemoryModel.Access Events
 
+variable {pm : ProviderMeta}
+
 set_option synthInstance.maxSize 4096
 set_option synthInstance.maxHeartbeats 400000
 
@@ -43,7 +45,7 @@ the `write3` of `c1` (step 2) and that of `c0` (step 4) on `X`: their loss marke
 and its event is not `hb`-before the write of `c0`. Every other condition of the safe trace holds,
 and Q1–Q3 and reading 12 hold. The two writes race. -/
 theorem witness_s1 :
-    EncapRun kX mutexLayout w1σ w1L ∧ w1G.toGraph.EventConsistent ∧
+    EncapRun pm kX mutexLayout w1σ w1L ∧ w1G.toGraph.EventConsistent ∧
     w1G.toGraph.FiniteCausalPast ∧ OrdinaryAtomicOK kX w1σ w1L ∧ ConfinedExcl kX w1σ w1L ∧
     ConfinedHandoff kX mutexLayout refOrders w1σ w1L w1G.toGraph w1K ∧
     SyncOrdered kX mutexLayout refOrders w1σ w1L w1G.toGraph w1K ∧ InheritedLegal kX w1L ∧
@@ -54,8 +56,8 @@ theorem witness_s1 :
     CorrQ2 kX mutexLayout refOrders w1σ w1L w1G.toGraph w1K unitData ∧
     CorrQ3 (unitData (G := w1G.toGraph) (lbls := w1L) (K := w1K)) ∧
     CtlAtomic kX mutexLayout w1σ w1L ∧ w1G.toGraph.Race 3 5 ∧
-    ¬ SafeConcurrentTrace kX mutexLayout refOrders w1σ w1L w1G.toGraph w1K unitData := by
-  have hw := witness_w1
+    ¬ SafeConcurrentTrace pm kX mutexLayout refOrders w1σ w1L w1G.toGraph w1K unitData := by
+  have hw := witness_w1 (pm := pm)
   have hno : ¬ HandoffOrdered kX mutexLayout refOrders w1σ w1L w1G.toGraph w1K := fun h =>
     absurd (h 2 4 ⟨0, .write, none, .modify⟩ ⟨0, .write, none, .modify⟩
       (conflictPair_of (by decide) (by decide) (by decide) rfl (by decide) (by decide)
@@ -75,13 +77,13 @@ theorem witness_s1 :
 terminate` and `c0 : join(c1)`, is a `SafeConcurrentTrace` from the initial state; Q1–Q3 and
 reading 12 hold; 14d applies: no pair of events races. -/
 theorem witness_s2_w2 :
-    SafeConcurrentTrace kX mutexLayout refOrders w2σ w2L w2G.toGraph w2K unitData ∧
+    SafeConcurrentTrace pm kX mutexLayout refOrders w2σ w2L w2G.toGraph w2K unitData ∧
     CorrQ1 w2G.toGraph w2L w2K unitData ∧
     CorrQ2 kX mutexLayout refOrders w2σ w2L w2G.toGraph w2K unitData ∧
     CorrQ3 (unitData (G := w2G.toGraph) (lbls := w2L) (K := w2K)) ∧
     CtlAtomic kX mutexLayout w2σ w2L ∧ ∀ a b, ¬ w2G.toGraph.Race a b := by
-  have hw := witness_w2
-  have hS : SafeConcurrentTrace kX mutexLayout refOrders w2σ w2L w2G.toGraph w2K unitData :=
+  have hw := witness_w2 (pm := pm)
+  have hS : SafeConcurrentTrace pm kX mutexLayout refOrders w2σ w2L w2G.toGraph w2K unitData :=
     ⟨hw.2.1, hw.2.2.2.1, finitePast_fin _, by decide, confinedExcl_none kX_noConf,
       confinedHandoff_of_check (by decide +kernel), syncOrdered_of_check (by decide +kernel),
       by decide, handoffOrdered_of_check (by decide +kernel),
@@ -113,14 +115,14 @@ reference triple, is a `SafeConcurrentTrace` from the initial state; its edge of
 by 14e; Q1–Q3 and reading 12 hold (the contract classes `lock` `Atomic(4, 4)`); 14d applies: no
 pair of events races. -/
 theorem witness_s2_w7 :
-    SafeConcurrentTrace kMutex mutexLayout refOrders w7σ w7L (w7G refOrders).toGraph w7K
+    SafeConcurrentTrace pm kMutex mutexLayout refOrders w7σ w7L (w7G refOrders).toGraph w7K
       unitData ∧
     CorrQ1 (w7G refOrders).toGraph w7L w7K unitData ∧
     CorrQ2 kMutex mutexLayout refOrders w7σ w7L (w7G refOrders).toGraph w7K unitData ∧
     CorrQ3 (unitData (G := (w7G refOrders).toGraph) (lbls := w7L) (K := w7K)) ∧
     CtlAtomic kMutex mutexLayout w7σ w7L ∧ ∀ a b, ¬ (w7G refOrders).toGraph.Race a b := by
-  have hw := witness_w7
-  have hS : SafeConcurrentTrace kMutex mutexLayout refOrders w7σ w7L (w7G refOrders).toGraph w7K
+  have hw := witness_w7 (pm := pm)
+  have hS : SafeConcurrentTrace pm kMutex mutexLayout refOrders w7σ w7L (w7G refOrders).toGraph w7K
       unitData :=
     ⟨hw.2.1, hw.2.2.2.1, finitePast_fin _, by decide, confinedExcl_none kMutex_noConf,
       confinedHandoff_of_check (by decide +kernel), syncOrdered_of_check (by decide +kernel),
@@ -145,7 +147,7 @@ that of `c0` (step 11): their loss marker is `unlock(e)`, whose event is not `hb
 of `c0`. Every other condition holds, the edge of `LockOrder` by 14e; Q1–Q3 and reading 12 hold.
 The two writes race. Admitted twin: W9 (`witness_s3_w9`). -/
 theorem witness_s3_w8 :
-    EncapRun kMutex mutexLayout w8σ w8L ∧ (w8G refOrders).toGraph.EventConsistent ∧
+    EncapRun pm kMutex mutexLayout w8σ w8L ∧ (w8G refOrders).toGraph.EventConsistent ∧
     (w8G refOrders).toGraph.FiniteCausalPast ∧ OrdinaryAtomicOK kMutex w8σ w8L ∧
     ConfinedExcl kMutex w8σ w8L ∧
     ConfinedHandoff kMutex mutexLayout refOrders w8σ w8L (w8G refOrders).toGraph w8K ∧
@@ -158,9 +160,9 @@ theorem witness_s3_w8 :
     CorrQ2 kMutex mutexLayout refOrders w8σ w8L (w8G refOrders).toGraph w8K unitData ∧
     CorrQ3 (unitData (G := (w8G refOrders).toGraph) (lbls := w8L) (K := w8K)) ∧
     CtlAtomic kMutex mutexLayout w8σ w8L ∧ (w8G refOrders).toGraph.Race 7 12 ∧
-    ¬ SafeConcurrentTrace kMutex mutexLayout refOrders w8σ w8L (w8G refOrders).toGraph w8K
+    ¬ SafeConcurrentTrace pm kMutex mutexLayout refOrders w8σ w8L (w8G refOrders).toGraph w8K
       unitData := by
-  have hw := witness_w8
+  have hw := witness_w8 (pm := pm)
   have hno : ¬ HandoffOrdered kMutex mutexLayout refOrders w8σ w8L (w8G refOrders).toGraph w8K :=
     fun h => absurd (h 6 11 ⟨3, .write, none, .modify⟩ ⟨3, .write, none, .modify⟩
       (conflictPair_of (by decide) (by decide) (by decide) rfl (by decide) (by decide)
@@ -179,13 +181,13 @@ theorem witness_s3_w8 :
 `c0 : join(c1)` before the `resetLock`, is a `SafeConcurrentTrace`; Q1–Q3 and reading 12 hold; 14d
 applies: no pair of events races. -/
 theorem witness_s3_w9 :
-    SafeConcurrentTrace kMutex mutexLayout refOrders w9σ w9L w9G.toGraph w9K unitData ∧
+    SafeConcurrentTrace pm kMutex mutexLayout refOrders w9σ w9L w9G.toGraph w9K unitData ∧
     CorrQ1 w9G.toGraph w9L w9K unitData ∧
     CorrQ2 kMutex mutexLayout refOrders w9σ w9L w9G.toGraph w9K unitData ∧
     CorrQ3 (unitData (G := w9G.toGraph) (lbls := w9L) (K := w9K)) ∧
     CtlAtomic kMutex mutexLayout w9σ w9L ∧ ∀ a b, ¬ w9G.toGraph.Race a b := by
-  have hw := witness_w9
-  have hS : SafeConcurrentTrace kMutex mutexLayout refOrders w9σ w9L w9G.toGraph w9K unitData :=
+  have hw := witness_w9 (pm := pm)
+  have hS : SafeConcurrentTrace pm kMutex mutexLayout refOrders w9σ w9L w9G.toGraph w9K unitData :=
     ⟨hw.2.1, hw.2.2.2.1, finitePast_fin _, by decide, confinedExcl_none kMutex_noConf,
       confinedHandoff_of_check (by decide +kernel), syncOrdered_of_check (by decide +kernel),
       by decide, handoffOrdered_of_check (by decide +kernel),
@@ -207,7 +209,7 @@ the write of `c0`; the edge of `LockOrder` fails: the `acquire` of `c0` (step 9)
 `unlock` of `c1` (step 7), which is not `hb`-before it. Every other condition holds; Q1–Q3 and
 reading 12 hold. The two writes race. Admitted twin: W7 (`witness_s2_w7`). -/
 theorem witness_s3_w10 :
-    EncapRun kMutex mutexLayout w7σ w7L ∧ (w7G rlxOrders).toGraph.EventConsistent ∧
+    EncapRun pm kMutex mutexLayout w7σ w7L ∧ (w7G rlxOrders).toGraph.EventConsistent ∧
     (w7G rlxOrders).toGraph.FiniteCausalPast ∧ OrdinaryAtomicOK kMutex w7σ w7L ∧
     ConfinedExcl kMutex w7σ w7L ∧
     ConfinedHandoff kMutex mutexLayout rlxOrders w7σ w7L (w7G rlxOrders).toGraph w7K ∧
@@ -221,7 +223,7 @@ theorem witness_s3_w10 :
     CorrQ2 kMutex mutexLayout rlxOrders w7σ w7L (w7G rlxOrders).toGraph w7K unitData ∧
     CorrQ3 (unitData (G := (w7G rlxOrders).toGraph) (lbls := w7L) (K := w7K)) ∧
     CtlAtomic kMutex mutexLayout w7σ w7L ∧ (w7G rlxOrders).toGraph.Race 7 11 ∧
-    ¬ SafeConcurrentTrace kMutex mutexLayout rlxOrders w7σ w7L (w7G rlxOrders).toGraph w7K
+    ¬ SafeConcurrentTrace pm kMutex mutexLayout rlxOrders w7σ w7L (w7G rlxOrders).toGraph w7K
       unitData := by
   have hw := witness_w10.1
   have hno : ¬ HandoffOrdered kMutex mutexLayout rlxOrders w7σ w7L (w7G rlxOrders).toGraph w7K :=
