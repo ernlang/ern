@@ -178,7 +178,9 @@ theorem not_X_of_sc (hX : ∀ e, X e → G.Pure e) {e : E} (h : G.SC e) : ¬ X e
 /-! ## `sw` and `hb` (10b) -/
 
 /-- On surviving events, `sw` is unchanged by the erasure of pure authority markers (C29, C32): the
-members of a release sequence and the events between them are accesses. -/
+members of a release sequence and the events between them are accesses. Exported obligation `OB-C19`
+(C29), stated part: the premise `hX` (`X ⊆ Pure`) classifies the erased events as pure authority
+markers. The obligation is exported and remains open (`ExportedObligations`). -/
 theorem erase_sw_iff (hX : ∀ e, X e → G.Pure e) (a b : {e // ¬ X e}) :
     (G.erase X).SW a b ↔ G.SW a.1 b.1 := by
   have hmem : ∀ (u : U) (m : {e // ¬ X e}), (G.erase X).RSMember u a m ↔ G.RSMember u a.1 m.1 := by
@@ -223,7 +225,9 @@ theorem erase_posw_eq (hX : ∀ e, X e → G.Pure e) :
 authority markers, `hb` between surviving events is the same before and after the erasure of `X`.
 The premises of C29: the erased events are pure authority markers (`hX`); no `sw` edge touches them
 (`sw_not_pure`, derived); the projection of `po` keeps the order of the surviving events (`po` is
-transitive). -/
+transitive). Exported obligation `OB-C19` (C29), stated part: the premise `hX` (`X ⊆ Pure`)
+classifies the erased events as pure authority markers. The obligation is exported and remains
+open (`ExportedObligations`). -/
 theorem erase_hb_iff (hX : ∀ e, X e → G.Pure e) (a b : {e // ¬ X e}) :
     (G.erase X).HB a b ↔ G.HB a.1 b.1 := by
   unfold HB
@@ -264,8 +268,10 @@ theorem hb_cycle (hX : ∀ e, X e → G.Pure e) {x : E} (h : G.HB x x) :
 theorem erase_conflict_iff (a b : {e // ¬ X e}) :
     (G.erase X).Conflict a b ↔ G.Conflict a.1 b.1 := Iff.rfl
 
-/-- **Corollary of 10b** (C30, C33): races between surviving events are unchanged by the erasure
-of pure authority markers. -/
+/-- **Corollary of 10b** (C30, C33): races between surviving events are unchanged by the erasure of
+pure authority markers. Exported obligation `OB-C19` (C29), stated part: the premise `hX` (`X ⊆
+Pure`) classifies the erased events as pure authority markers. The obligation is exported and
+remains open (`ExportedObligations`). -/
 theorem erase_race_iff (hX : ∀ e, X e → G.Pure e) (a b : {e // ¬ X e}) :
     (G.erase X).Race a b ↔ G.Race a.1 b.1 := by
   unfold Race
@@ -481,10 +487,14 @@ end Conjuncts
 
 section ErasePure
 
-/-- The premise of C34 on `rf`: no pure authority marker is an endpoint of an `rf` edge. -/
+/-- The premise of C34 on `rf`: no pure authority marker is an endpoint of an `rf` edge. Exported
+obligation `OB-C19` (C29), stated part. The obligation is exported and remains open
+(`ExportedObligations`). -/
 def RfAvoidsPure : Prop := ∀ x y, G.rf x y → ¬ G.Pure x ∧ ¬ G.Pure y
 
-/-- The premise of C34 on `mo`: no pure authority marker is an endpoint of an `mo` edge. -/
+/-- The premise of C34 on `mo`: no pure authority marker is an endpoint of an `mo` edge. Exported
+obligation `OB-C19` (C29), stated part. The obligation is exported and remains open
+(`ExportedObligations`). -/
 def MoAvoidsPure : Prop := ∀ x y, G.mo x y → ¬ G.Pure x ∧ ¬ G.Pure y
 
 variable {G}

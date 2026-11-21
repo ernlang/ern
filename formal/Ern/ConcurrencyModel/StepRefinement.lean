@@ -425,7 +425,9 @@ theorem rawOps_issue {Ty : Type} (π : Params Ty) (w : WriteRepr) {st : SC × Sy
 (the parametric obligations of its reads and writes, §15, §16, §20.3; the layout of new places,
 §82.1, §23; the instantiation of `K.FreeCompat`, §80, §70.2, §82.4); for `spawn` and the by-value
 composite, the parametric obligations of their raw operations and the layout of the new locals
-(§82.1, §23); for the other labels, the parametric obligations of their raw operations. -/
+(§82.1, §23); for the other labels, the parametric obligations of their raw operations. Exported
+obligation `OB-C12` (C25, C50; Spec 1 §82), stated part (`ExportedObligations`); the obligation is
+exported and remains open. -/
 def StepOblC {Ty : Type} (k : K) (C : Nat → Nat → Prop) (ObR : Machine.ReadOblSpec Ty)
     (ObW : Machine.WriteOblSpec Ty) (π : Params Ty) (w : WriteRepr) :
     Label → SC × SyncReg × ArenaReg → Machine.State → Prop

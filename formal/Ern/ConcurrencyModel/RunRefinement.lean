@@ -34,15 +34,16 @@ open Ern.MemoryModel Ern.MemoryModel.Access Ern.MemoryModel.Refinement
 
 /-! ## Translated runs (Spec 1 §20.3, §82 preamble) -/
 
-/-- Translated runs from the initial state of Spec 1 §47 (one context, empty registries; C3,
-C12), with the contract `ks`, the mutex layout `ML`, the deallocation compatibility `C`, the
-obligations `ObR`, `ObW` and the parameters `π` fixed once for the run (Spec 1 §20.3 ¶3, §82; as
+/-- Translated runs from the initial state of Spec 1 §47 (one context, empty registries; C3, C12),
+with the contract `ks`, the mutex layout `ML`, the deallocation compatibility `C`, the obligations
+`ObR`, `ObW` and the parameters `π` fixed once for the run (Spec 1 §20.3 ¶3, §82; as
 `Refinement.SimRun`): the initial state with the creations and writes of the statics, under their
 obligations (`Refinement.repr_init`); then each labelled step `LStep` with the written
 representation `w` it carries, taken under the obligations of that step (`StepOblC`), followed by
-its raw operations (`rawOps`). The index lists the steps with their written representations and
-the raw operations performed, in order. No trace restriction and no invariant hypothesis on the
-states of the run: they are reached (`lrun_kInvCA`). -/
+its raw operations (`rawOps`). The index lists the steps with their written representations and the
+raw operations performed, in order. No trace restriction and no invariant hypothesis on the states
+of the run: they are reached (`lrun_kInvCA`). Exported obligation `OB-C12` (C25, C50; Spec 1 §82),
+stated part (`ExportedObligations`); the obligation is exported and remains open. -/
 inductive TransRun {Ty : Type} (ks : KShared) (ML : MutexLayout) (C : Nat → Nat → Prop)
     (ObR : Machine.ReadOblSpec Ty) (ObW : Machine.WriteOblSpec Ty) (statics : Statics)
     (π : Params Ty) :

@@ -1045,14 +1045,18 @@ theorem rightsRead_of_step {ks : KShared} {L : MutexLayout} {lbl : Label}
 /-- A step from `st` to `st'` of the safe reference-mutex abstraction (C22, C51.1): C22.1–C22.3
 and C22.5 (`RestrictedStep`), C22.4 (`ControllerRestriction`) and C22.6 (`RightsReadFree`). A
 predicate on steps of the safe abstraction, not a precondition of a kernel transition (C22,
-C51.1). -/
+C51.1). Exported obligation `OB-C08` (C22), stated part (`ExportedObligations`): a property of the
+executions of the safe abstraction; it does not establish that the safe interfaces and the
+library produce only such executions. The obligation is exported and remains open. -/
 def EncapStep (pm : ProviderMeta) (ks : KShared) (L : MutexLayout) (st : SC × SyncReg × ArenaReg)
     (lbl : Label) (st' : SC × SyncReg × ArenaReg) : Prop :=
   RestrictedStep L st lbl ∧ ControllerRestriction pm L st lbl st' ∧ RightsReadFree ks L st lbl
 
 /-- `EncapsulatedTrace` (C51.1: "the safe **reference-mutex** trace contract of C22"): a run every
 step of which satisfies `EncapStep`, the six requirements of C22, in the state where it is
-taken. -/
+taken. Exported obligation `OB-C08` (C22), stated part (`ExportedObligations`): a property of the
+executions of the safe abstraction; it does not establish that the safe interfaces and the
+library produce only such executions. The obligation is exported and remains open. -/
 inductive EncapsulatedTrace (pm : ProviderMeta) (ks : KShared) (L : MutexLayout) :
     SC × SyncReg × ArenaReg → List Label → SC × SyncReg × ArenaReg → Prop where
   | nil {st : SC × SyncReg × ArenaReg} : EncapsulatedTrace pm ks L st [] st

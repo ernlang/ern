@@ -41,7 +41,9 @@ deriving DecidableEq, Repr
 
 /-- The memory orders of the controller operations under realization R (C48, C49; `OB-C05`): the
 order of the controller RMW of a successful `acquire`, and those of the controller writes of
-`unlock` and `resetLock`. Parameters, not fixed by the step relation. -/
+`unlock` and `resetLock`. Parameters, not fixed by the step relation. Exported obligation `OB-C05`
+(C25, C41, C48, C49), stated part (`ExportedObligations`); the obligation is exported and remains
+open. -/
 structure CtlOrders where
   acq : MemOrder
   rel : MemOrder

@@ -30,8 +30,11 @@ variable {pm : ProviderMeta}
 
 /-! ## Executions with named states -/
 
-/-- An `EncapsulatedTrace` (C51.1) with named states: step `i` of `lbls` goes from `σ i` to
-`σ (i + 1)` and satisfies `EncapStep`. -/
+/-- An `EncapsulatedTrace` (C51.1) with named states: step `i` of `lbls` goes from `σ i` to `σ (i +
+1)` and satisfies `EncapStep`. Exported obligation `OB-C08` (C22), stated part
+(`ExportedObligations`): a property of the executions of the safe abstraction; it does not establish
+that the safe interfaces and the library produce only such executions. The obligation is exported
+and remains open. -/
 def EncapRun (pm : ProviderMeta) (ks : KShared) (L : MutexLayout)
     (σ : Nat → SC × SyncReg × ArenaReg) (lbls : List Label) : Prop :=
   ∀ i (h : i < lbls.length),

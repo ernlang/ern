@@ -70,7 +70,8 @@ end Events.Graph
 each access event (`sid`, read on access events only), and the initial writes (`init`): writes of
 `G` that are the event of no step. A represented initial write is the construction write of its
 storage (C31: "Initial writes or initialized storage must have an explicitly represented source";
-C51). -/
+C51). Exported obligation `OB-C12` (C25, C50), stated part. The obligation is exported and remains
+open (`ExportedObligations`). -/
 structure AccessData {E U V S : Type} (G : Events.Graph E Nat U V S) (lbls : List Label)
     (K : StepEvents E) where
   sid : E → S
@@ -320,7 +321,11 @@ correspondence `K` and the data `D` of reading 9: the execution is an `Encapsula
 * (d) (C44, C52): `SyncOrdered`;
 * (e) (C35–C40): `InheritedLegal`;
 * (f) (C44–C47, C49, C51): `HandoffOrdered`, `LifetimeOrdered`, the lifecycle conditions K3 and K4,
-  the edge of `LockOrder`. -/
+  the edge of `LockOrder`.
+
+Exported obligation `OB-C24` (C51, C52), stated part (`ExportedObligations`): a property of
+executions; it does not establish that programs accepted as safe and safe libraries produce only
+such executions. The obligation is exported and remains open. -/
 structure SafeConcurrentTrace {E U V S : Type} (pm : ProviderMeta) (ks : KShared) (L : MutexLayout)
     (R : CtlOrders) (σ : Nat → SC × SyncReg × ArenaReg) (lbls : List Label)
     (G : Events.Graph E Nat U V S)
@@ -356,15 +361,18 @@ C50). -/
 def AccTyped {E C U V S : Type} (G : Events.Graph E C U V S) (e : E) (x : LeafAccess) : Prop :=
   G.kind? e = some x.kind ∧ (G.Atomic e ↔ x.order.isSome = true)
 
-/-- Q1 (C29, C31; `OB-C20`): every event of `G` that carries an access is the event of a step, or
-an initial write. -/
+/-- Q1 (C29, C31; `OB-C20`): every event of `G` that carries an access is the event of a step, or an
+initial write. Exported obligation `OB-C20` (C27–C29, C50), stated part. The obligation is exported
+and remains open (`ExportedObligations`). -/
 def CorrQ1 {E U V S : Type} (G : Events.Graph E Nat U V S) (lbls : List Label) (K : StepEvents E)
     (D : AccessData G lbls K) : Prop :=
   ∀ e, G.IsAcc e → (∃ i, i < lbls.length ∧ K.ev i = some e) ∨ D.init e = true
 
 /-- Q2 (C30, C38, C50; `OB-C12`, `OB-C20`): when the events `a`, `d` of two steps conflict (C30)
 and have the same storage identity, there is a leaf that both steps access in the sense of 11e,
-and each event carries the kind and atomicity that 11e gives to its step on that leaf. -/
+and each event carries the kind and atomicity that 11e gives to its step on that leaf. Exported
+obligations `OB-C12` (C25, C50) and `OB-C20` (C27–C29, C50), stated parts. Both are exported and
+remain open (`ExportedObligations`). -/
 def CorrQ2 {E U V S : Type} (ks : KShared) (L : MutexLayout) (R : CtlOrders)
     (σ : Nat → SC × SyncReg × ArenaReg) (lbls : List Label) (G : Events.Graph E Nat U V S)
     (K : StepEvents E) (D : AccessData G lbls K) : Prop :=
@@ -375,7 +383,8 @@ def CorrQ2 {E U V S : Type} (ks : KShared) (L : MutexLayout) (R : CtlOrders)
 /-- Q3 (C51: "If bytes are reused for a distinct logical storage identity, the prior identity's
 relevant accesses and end-validity must be ordered before new accesses"; C50; `OB-C12`): when two
 conflicting access events have distinct storage identities, an end-validity event of one is
-`hb`-before a begin-validity event of the other. -/
+`hb`-before a begin-validity event of the other. Exported obligation `OB-C12` (C25, C50), stated
+part. The obligation is exported and remains open (`ExportedObligations`). -/
 def CorrQ3 {E U V S : Type} {G : Events.Graph E Nat U V S} {lbls : List Label}
     {K : StepEvents E} (D : AccessData G lbls K) : Prop :=
   ∀ a d, G.Conflict a d → D.sid a ≠ D.sid d →

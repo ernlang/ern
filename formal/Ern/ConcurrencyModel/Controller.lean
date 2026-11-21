@@ -150,8 +150,9 @@ theorem lstep_reg {ks : KShared} {L : MutexLayout} {lbl : Label}
 
 /-! ## Controller steps and realization R (C12, C13, C16–C18, C48) -/
 
-/-- The orders of the controller operations are legal (C40): the acquiring RMW in the RMW row,
-the publications of `unlock` and `resetLock` in the store row. -/
+/-- The orders of the controller operations are legal (C40): the acquiring RMW in the RMW row, the
+publications of `unlock` and `resetLock` in the store row. Exported obligation `OB-C05` (C25, C41,
+C48, C49), stated part (`ExportedObligations`); the obligation is exported and remains open. -/
 def CtlOrders.Legal (R : CtlOrders) : Prop :=
   RMWOrderOK R.acq ∧ StoreOrderOK R.rel ∧ StoreOrderOK R.reset
 
@@ -197,7 +198,8 @@ instance (L : MutexLayout) (σ : Nat → SC × SyncReg × ArenaReg) (lbls : List
 
 /-- The access of the event of a controller step under realization R (C13, C31, C48): `newMutex`
 writes `v₀` non-atomically; `acquire` is an atomic RMW reading `v₀` and writing `v₁`; `unlock` and
-`resetLock` atomically write `v₀`, with the orders of `R`. -/
+`resetLock` atomically write `v₀`, with the orders of `R`. Exported obligation `OB-C05` (C25, C41,
+C48, C49), stated part (`ExportedObligations`); the obligation is exported and remains open. -/
 def ctlAcc (x : Nat) (R : CtlOrders) (v₀ v₁ : Nat) : Label → Events.Acc Nat Nat
   | .acquire _ _ => .atomic x R.acq (.rmw v₀ v₁)
   | .unlock _ _ => .atomic x R.rel (.write v₀)
@@ -207,8 +209,9 @@ def ctlAcc (x : Nat) (R : CtlOrders) (v₀ v₁ : Nat) : Label → Events.Acc Na
 /-- The `sync` attribute of the event of a controller step under realization R, a realization
 hypothesis (C27: "An event may carry both `acc` and `sync`, notably a successful atomic controller
 operation used by the reference mutex"; C31, for the write of `newMutex`: "their inclusion in `mo`
-does not confer atomicity or `sw` on them"; C48; `OB-C05`): role `protocol` for `acquire`,
-`unlock` and `resetLock`; no `sync` for `newMutex`. -/
+does not confer atomicity or `sw` on them"; C48; `OB-C05`): role `protocol` for `acquire`, `unlock`
+and `resetLock`; no `sync` for `newMutex`. Exported obligation `OB-C05` (C25, C41, C48, C49), stated
+part (`ExportedObligations`); the obligation is exported and remains open. -/
 def ctlSync : Label → Option (Events.SyncRole Nat)
   | .acquire _ _ | .unlock _ _ | .resetLock _ _ => some .protocol
   | _ => none
@@ -217,8 +220,9 @@ def ctlSync : Label → Option (Events.SyncRole Nat)
 the correspondence `K`, with the orders `R` and the values `v₀ ≠ v₁` (C13, C27, C31, C48;
 formalization hypothesis, `OB-C05`): the event of every controller step has the access `ctlAcc`
 (kind, atomicity, order and values) and the `sync` attribute `ctlSync` (its role); `mo` orders the
-events of the controller steps as the trace orders the steps; every modification of `x` is the
-event of a controller step. -/
+events of the controller steps as the trace orders the steps; every modification of `x` is the event
+of a controller step. Exported obligation `OB-C05` (C25, C41, C48, C49), stated part
+(`ExportedObligations`); the obligation is exported and remains open. -/
 structure Realizes {E S : Type} (G : Events.Graph E Nat Nat Nat S) (L : MutexLayout)
     (σ : Nat → SC × SyncReg × ArenaReg) (lbls : List Label) (K : StepEvents E) (i x : Nat)
     (R : CtlOrders) (v₀ v₁ : Nat) : Prop where

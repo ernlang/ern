@@ -23,6 +23,7 @@ import Ern.ConcurrencyModel.EventGraph
 import Ern.ConcurrencyModel.EventInfinite
 import Ern.ConcurrencyModel.EventLemmas
 import Ern.ConcurrencyModel.EventWitnesses
+import Ern.ConcurrencyModel.ExportedObligations
 import Ern.ConcurrencyModel.FrameAncestry
 import Ern.ConcurrencyModel.Inventory
 import Ern.ConcurrencyModel.Legality
