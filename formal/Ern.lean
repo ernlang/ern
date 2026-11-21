@@ -70,6 +70,7 @@ import Ern.ConcurrencyModel.WitnessSafe
 import Ern.ConcurrencyModel.WitnessSafeExec
 import Ern.ConcurrencyModel.WitnessSafeShared
 import Ern.Corpus.ConcurrencyEncap
+import Ern.Corpus.ConcurrencyExec
 import Ern.Corpus.ConcurrencyFrames
 import Ern.Corpus.ConcurrencyMutex
 import Ern.Corpus.DataStack
