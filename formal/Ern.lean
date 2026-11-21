@@ -69,6 +69,7 @@ import Ern.ConcurrencyModel.WitnessRoles
 import Ern.ConcurrencyModel.WitnessSafe
 import Ern.ConcurrencyModel.WitnessSafeExec
 import Ern.ConcurrencyModel.WitnessSafeShared
+import Ern.Corpus.ConcurrencyFrames
 import Ern.Corpus.DataStack
 import Ern.Corpus.Lib
 import Ern.Corpus.LibRunner
