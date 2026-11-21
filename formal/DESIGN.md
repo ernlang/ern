@@ -185,8 +185,27 @@ Each is proven on its declared fragment.
 
 ### Exported obligations
 
-Not proven in this milestone. Each is stated as a contract that cites its
-clause and its label, and stays recorded as open:
+The exported obligations are not discharged by this milestone. Each obligation
+remains recorded as open in the formalization, with its clause, label, and
+applicable parts, as follows:
+
+- **Stated:** The applicable part is expressed by an identifiable Lean
+  predicate or hypothesis. The theorems relying on it carry it as a
+  hypothesis, and the corresponding documentation cites the obligation's
+  clause and label.
+- **Documented:** The relevant object is represented in the model, but no Lean
+  predicate or hypothesis states the applicable part as a contract.
+- **Out of scope:** The object required to state the applicable part is not
+  represented in this milestone.
+
+An obligation may have multiple parts with different statuses. Each part must
+be identified by the requirement it covers. A proof of an explicitly
+identified abstract property may be recorded as a result, but it does not
+discharge the exported obligation or establish its unrepresented
+implementation requirements.
+
+All exported obligations remain open regardless of the status or proofs of
+their individual parts. Documentation alone is not a formal contract.
 
 - physical realization of the reference mutex: controller accesses, failed
   attempts, recovery publication (`OB-C05`);
@@ -233,7 +252,14 @@ formalization; its bridge to §68.3 stays outstanding (Scope of proofs).
 Milestone 4 is complete when:
 
 - every target theorem is proven on its declared fragment;
-- every exported obligation is stated as a contract citing its clause;
+- Every exported obligation remains recorded as open in the formalization,
+  with its clause, label, and the status of each applicable part. A part is
+  classified as stated only when an identifiable Lean predicate or hypothesis
+  expresses its contract, the theorems relying on that contract carry it as a
+  hypothesis, and its documentation cites the clause and label. Documented and
+  out-of-scope parts remain explicitly identified as not formally stated.
+  Proofs of abstract properties do not discharge their exported implementation
+  obligations.
 - every limit is listed in the report;
 - the adversarial corpus is replayed against the reconstructed modules.
 
