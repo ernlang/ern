@@ -379,8 +379,8 @@ theorem R36 : EncapsulatedTrace pm kMutex mutexLayout (p0, [], []) pL (p2, pReg,
 
 /-- **R36, twin** (`ok`, admitted). `alloc(provider = slot, owner = lock′)`. Datum of the
 provider metadata: the accesses of this step to the metadata of the provider cannot write `lock`
-(`pm` does not designate leaf 2 at this step). Expected: `ok`, admitted (C22.4). Obtained: `ok`
-and `EncapStep` for every such datum. -/
+(`pm` does not designate leaf 2 at this step). Expected: `ok`, admitted. Obtained: `ok` and
+`EncapStep` for every such datum. -/
 theorem R36_twin (hpm : pm (p2, pReg, []) 0 1 6 [(none, 0)] 2 = false) :
     LStep kMutex mutexLayout (.kernel 0 (.alloc 1 6 [(none, 0)])) (p2, pReg, [])
       (p2.set (allocEff (p2.view 0) 6 [(none, 0)]), pReg, []) ∧
@@ -413,10 +413,9 @@ theorem R37 (hpm : pm (m2, regFree, []) 0 1 0 [(none, 0)] 2 = false) :
 
 /-- **R38** (`ok`, excluded). The reference mutex, not shared, beside `M′`: `alloc(provider = M,
 owner = lock′)` of one leaf. Datum of the provider metadata: the accesses of this step to the
-metadata of the provider may write `lock` (`pm` designates leaf 2 at this step). Expected: `ok`
-by Spec 1 §71, excluded by C22.4 (`alloc` whose provider-metadata accesses may write the
-controller leaf). Obtained: `ok`, failing `ControllerRestriction` for every such datum. Twin:
-`R38_twin`. -/
+metadata of the provider may write `lock` (`pm` designates leaf 2 at this step). Expected: `ok`,
+excluded by C22.4 (`alloc` whose provider-metadata accesses may write the controller leaf).
+Obtained: `ok`, failing `ControllerRestriction` for every such datum. Twin: `R38_twin`. -/
 theorem R38 (hpm : pm (p2, pReg, []) 0 0 6 [(none, 0)] 2 = true) :
     EncapsulatedTrace pm kMutex mutexLayout (p0, [], []) pL (p2, pReg, []) ∧
     LStep kMutex mutexLayout (.kernel 0 (.alloc 0 6 [(none, 0)])) (p2, pReg, [])

@@ -75,16 +75,18 @@ open.
 * By-value passing conventions (C5). **Out of scope**: no calling convention is represented.
 * Cancellation, abnormal termination, cleanup. **Out of scope**: not represented; `terminate` is
   the normal end of a context (C7).
-* Refinement of the protocol of the language to the reference transition of C5. **Out of scope**:
-  the reference transition is represented (`SpawnValStep`), the protocol it refines is not.
+* Refinement of the protocol of the language to the reference transition (C5, contract required of
+  the protocol, items 1–5). **Out of scope**: the reference transition is represented
+  (`SpawnValStep`), the protocol it refines is not.
 
 Results: none for this obligation. The obligation remains open.
 
 ## `OB-C10` (C10): external contexts
 
 * Initial parent, frames, authorities and resource contracts of a context entered from an external
-  environment, through an interoperability mechanism (C10). **Out of scope**: every context of the
-  model is created by `spawn` from the initial state (C3, C4); no external context is represented.
+  environment, through an interoperability mechanism (C10). **Out of scope**: the contexts of the
+  model are the initial context and the contexts created by `spawn` or by-value `spawn` (C3, C4,
+  C5); no external context is represented.
 
 Results: none. The obligation remains open.
 
@@ -192,9 +194,9 @@ Results: none. The obligation remains open.
 ## `OB-C28` (C17, C22, C23): enforcement of the authority premises
 
 * Enforcement by the safe interfaces of the authority premises inventoried by theorem 6 (C22.6,
-  C23). **Out of scope**: no safe interface is represented. The trace property that requires them
+  C23, C51 item 1). **Out of scope**: no safe interface is represented. The trace property that requires them
   (`RightsReadFree` within `EncapStep`) is the stated part of `OB-C08`.
-* Physical coverage of recovery (C17, C18, C48). **Out of scope**: the memory machine represents no
+* Physical coverage of recovery (C18, C48). **Out of scope**: the memory machine represents no
   access of `resetLock` (`rawOps`); its event-level publication is the stated part of `OB-C05`.
 
 Results (abstract part, C22.6, C39): `rights_inventory`, `atomic_inventory` (theorem 6). The
