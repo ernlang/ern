@@ -20,7 +20,9 @@ the conditional composition theorem, proven by cases on the conflicting pair.
 * 14c (C44, C52): the cases on a pair (`pair_atomic`, `pair_confined`, `pair_exclusive`,
   `pair_synchronized`, `pair_exhaustive`).
 * 14d (C52; `OB-C06`): no race, on fragment F (`no_race`).
-* 14e (C48, C49; `OB-C04`): the edge of `LockOrder` under realization R (`lock_edge`).
+* 14e (C48, C49; `OB-C04`): the edge of `LockOrder` under realization R, for an `acquire` whose
+  controller is the unit of R (`lock_edge`, 14e.1) and for the whole entry under the stability of
+  its controller leaf (`lock_edge_entry`, 14e.2).
 
 Fragment F: `DDSound` (Spec 1 §80), well-formed statics (§47), an `EncapsulatedTrace` from the
 initial state of §47 with named states (`EncapRun`), a graph `G` whose contexts are context
@@ -844,26 +846,43 @@ variable {E S : Type} {G : Events.Graph E Nat Nat Nat S} {L : MutexLayout}
   {σ : Nat → SC × SyncReg × ArenaReg} {lbls : List Label} {K : StepEvents E} {e x : Nat}
   {R : CtlOrders} {v₀ v₁ : Nat}
 
-/-- **Theorem 14e** (C48: "When a later acquiring RMW **directly reads** this release modification
-(`rf`), the protocol yields the requisite `sw` and thus `hb`"; C49; `OB-C04`), corollary of 13d.4:
-under realization R for the entry `e` and the unit `x`, with release-capable orders of `unlock` and
-`resetLock` and an acquire-capable order of `acquire`, the edge of reading 11 holds for the
-controller steps of `e` with controller `x`: when the event of an `acquire(e)` reads by `rf` the
-event of an `unlock(e)` or a `resetLock(e)`, that event is `hb`-before it, by `sw`. The conjuncts of
-`EventConsistent` are not used. -/
-theorem lock_edge (hR : Realizes G L σ lbls K e x R v₀ v₁) (hrel : ReleaseOrder R.rel)
+/-- **Theorem 14e.1** (C48: "When a later acquiring RMW **directly reads** this release
+modification (`rf`), the protocol yields the requisite `sw` and thus `hb`"; C49; `OB-C04`),
+corollary of 13d.3 and 13d.4: on a graph with the correspondence K1–K4 and realization R for the
+entry `e` and the unit `x`, under conjuncts 1 and 3 of `EventConsistent`, with release-capable
+orders of `unlock` and `resetLock` and an acquire-capable order of `acquire`, let `q` be an
+`acquire(e)` step at which the controller of `e` is `x`. If its event reads by `rf` the event of an
+`unlock(e)` or `resetLock(e)` step `p`, that event is `hb`-before it, by `sw`. That `p` is a
+controller step of `(e, x)` is not assumed: 13d.3 makes the `rf` source the event of a controller
+step, and K1 identifies that step with `p`.
+
+The condition on the controller of `e` at `q` is that of C49 ("`ControlOf(entry)` becoming
+undefined or designating another leaf"): R speaks only of the steps whose controller is `x`, and
+an `ok` execution can move the controller of a live entry to another leaf (`witness_w12`, a
+`transfer` of the mutex value `M`). Conjunct 2 is not used. -/
+theorem lock_edge (hK : Corresponds G σ lbls K) (hR : Realizes G L σ lbls K e x R v₀ v₁)
+    (h1 : G.RfWF) (h3 : G.RmwAtomic) (hrel : ReleaseOrder R.rel)
     (hreset : ReleaseOrder R.reset) (hacq : AcquireOrder R.acq) {p q : Nat}
-    (hp : PubOn lbls e p) (hq : AcqOn lbls e q) (hpc : CtlStep L σ lbls e x p)
-    (hqc : CtlStep L σ lbls e x q) {b d : E} (hb : K.ev p = some b) (hd : K.ev q = some d)
-    (hrf : G.rf b d) : G.HB b d := by
+    (hp : PubOn lbls e p) (hq : AcqOn lbls e q) (hx : ctlOf L (σ q) e = some x) {b d : E}
+    (hb : K.ev p = some b) (hd : K.ev q = some d) (hrf : G.rf b d) : G.HB b d := by
   obtain ⟨c, hql⟩ := hq
-  obtain ⟨hu, hr, -⟩ := acquire_sw hR hql hqc hd hpc hb hrf
+  have hqc : CtlStep L σ lbls e x q := by unfold CtlStep; rw [hql]; exact ⟨rfl, hx⟩
+  obtain ⟨k', hlast, hk'⟩ := (acquire_rf_source hR h1 h3 hql hqc hd).2 b hrf
+  have := hK.inj p k' b hb hk'
+  subst this
+  obtain ⟨hu, hr, -⟩ := acquire_sw hR hql hqc hd hlast.1 hb hrf
   obtain ⟨c', hpl | hpl⟩ := hp
   · exact .single (.inr ((hu c' e hpl).2 ⟨hrel, hacq⟩))
   · exact .single (.inr ((hr c' e hpl).2 ⟨hreset, hacq⟩))
 
-/-- 14e on all the protocol steps of `e`, when the controller of `e` is `x` at each of them (the
-stability condition of 13e): the edge of reading 11 holds for `e`. -/
+/-- **Theorem 14e.2** (C48, C49; `OB-C04`), corollary of 13d.4: under realization R for the entry
+`e` and the unit `x`, with release-capable orders of `unlock` and `resetLock` and an
+acquire-capable order of `acquire`, if the controller of `e` is `x` at every protocol step on `e`
+(the stability of the controller leaf, condition of 13e), the edge of reading 11 holds for `e`.
+
+The stability condition is that of C49 ("`ControlOf(entry)` becoming undefined or designating
+another leaf"): an `ok` execution can move the controller of a live entry to another leaf
+(`witness_w12`, a `transfer` of the mutex value `M`). -/
 theorem lock_edge_entry (hR : Realizes G L σ lbls K e x R v₀ v₁) (hrel : ReleaseOrder R.rel)
     (hreset : ReleaseOrder R.reset) (hacq : AcquireOrder R.acq)
     (hstab : ∀ k, ProtoOn lbls e k → ctlOf L (σ k) e = some x) :
@@ -874,8 +893,12 @@ theorem lock_edge_entry (hR : Realizes G L σ lbls K e x R v₀ v₁) (hrel : Re
     obtain ⟨c, h | h⟩ := hp <;> (unfold ProtoOn; rw [h])
   have proto_q : ProtoOn lbls e q := by
     obtain ⟨c, h⟩ := hq; unfold ProtoOn; rw [h]
-  exact lock_edge hR hrel hreset hacq hp hq (ctlStep_of_proto proto_p (hstab p proto_p))
-    (ctlStep_of_proto proto_q (hstab q proto_q)) hb hd hrf
+  obtain ⟨c, hql⟩ := hq
+  obtain ⟨hu, hr, -⟩ := acquire_sw hR hql (ctlStep_of_proto proto_q (hstab q proto_q)) hd
+    (ctlStep_of_proto proto_p (hstab p proto_p)) hb hrf
+  obtain ⟨c', hpl | hpl⟩ := hp
+  · exact .single (.inr ((hu c' e hpl).2 ⟨hrel, hacq⟩))
+  · exact .single (.inr ((hr c' e hpl).2 ⟨hreset, hacq⟩))
 
 end Lock
 
