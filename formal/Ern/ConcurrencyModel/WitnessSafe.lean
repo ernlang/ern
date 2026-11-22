@@ -46,7 +46,9 @@ and its event is not `hb`-before the write of `c0`. Every other condition of the
 and Q1–Q3 and reading 12 hold. The two writes race. -/
 theorem witness_s1 :
     EncapRun pm kX mutexLayout w1σ w1L ∧ w1G.toGraph.EventConsistent ∧
-    w1G.toGraph.FiniteCausalPast ∧ OrdinaryAtomicOK kX w1σ w1L ∧ ConfinedExcl kX w1σ w1L ∧
+    w1G.toGraph.FiniteCausalPast ∧ OrdinaryAtomicOK kX w1σ w1L ∧
+    w1G.toGraph.OrderLegal ∧ StepOrders kX mutexLayout refOrders w1σ w1L w1G.toGraph w1K ∧
+    ConfinedExcl kX w1σ w1L ∧
     ConfinedHandoff kX mutexLayout refOrders w1σ w1L w1G.toGraph w1K ∧
     SyncOrdered kX mutexLayout refOrders w1σ w1L w1G.toGraph w1K ∧ InheritedLegal kX w1L ∧
     ¬ HandoffOrdered kX mutexLayout refOrders w1σ w1L w1G.toGraph w1K ∧
@@ -63,7 +65,9 @@ theorem witness_s1 :
       (conflictPair_of (by decide) (by decide) (by decide) rfl (by decide) (by decide)
         (by decide))
       (by decide) (kX_noConf 0)) (by decide +kernel)
-  exact ⟨hw.2.1, hw.2.2.2.1, finitePast_fin _, by decide, confinedExcl_none kX_noConf,
+  exact ⟨hw.2.1, hw.2.2.2.1, finitePast_fin _, by decide,
+    orderLegal_of_check (by decide +kernel),
+    stepOrders_of_check (listK_none (by decide)) (by decide +kernel), confinedExcl_none kX_noConf,
     confinedHandoff_of_check (by decide +kernel), syncOrdered_of_check (by decide +kernel),
     by decide, hno, ⟨by decide +kernel, by decide +kernel, by decide +kernel⟩,
     hw.2.2.1.lifecycle, lockEdge_none (by decide), by unfold CorrQ1; decide +kernel,
@@ -155,6 +159,8 @@ The two writes race. Admitted twin: W9 (`witness_s3_w9`). -/
 theorem witness_s3_w8 :
     EncapRun pm kMutex mutexLayout w8σ w8L ∧ (w8G refOrders).toGraph.EventConsistent ∧
     (w8G refOrders).toGraph.FiniteCausalPast ∧ OrdinaryAtomicOK kMutex w8σ w8L ∧
+    (w8G refOrders).toGraph.OrderLegal ∧
+    StepOrders kMutex mutexLayout refOrders w8σ w8L (w8G refOrders).toGraph w8K ∧
     ConfinedExcl kMutex w8σ w8L ∧
     ConfinedHandoff kMutex mutexLayout refOrders w8σ w8L (w8G refOrders).toGraph w8K ∧
     SyncOrdered kMutex mutexLayout refOrders w8σ w8L (w8G refOrders).toGraph w8K ∧
@@ -174,7 +180,10 @@ theorem witness_s3_w8 :
       (conflictPair_of (by decide) (by decide) (by decide) rfl (by decide) (by decide)
         (by decide))
       (by decide) (kMutex_noConf 3)) (by decide +kernel)
-  exact ⟨hw.2.1, hw.2.2.2.1, finitePast_fin _, by decide, confinedExcl_none kMutex_noConf,
+  exact ⟨hw.2.1, hw.2.2.2.1, finitePast_fin _, by decide,
+    orderLegal_of_check (by decide +kernel),
+    stepOrders_of_check (listK_none (by decide)) (by decide +kernel),
+    confinedExcl_none kMutex_noConf,
     confinedHandoff_of_check (by decide +kernel), syncOrdered_of_check (by decide +kernel),
     by decide, hno, ⟨by decide +kernel, by decide +kernel, by decide +kernel⟩,
     hw.2.2.1.lifecycle, mutex_lockEdge hw.2.2.2.2.1 (by decide) (by decide),
@@ -220,6 +229,8 @@ reading 12 hold. The two writes race. Admitted twin: W7 (`witness_s2_w7`). -/
 theorem witness_s3_w10 :
     EncapRun pm kMutex mutexLayout w7σ w7L ∧ (w7G rlxOrders).toGraph.EventConsistent ∧
     (w7G rlxOrders).toGraph.FiniteCausalPast ∧ OrdinaryAtomicOK kMutex w7σ w7L ∧
+    (w7G rlxOrders).toGraph.OrderLegal ∧
+    StepOrders kMutex mutexLayout rlxOrders w7σ w7L (w7G rlxOrders).toGraph w7K ∧
     ConfinedExcl kMutex w7σ w7L ∧
     ConfinedHandoff kMutex mutexLayout rlxOrders w7σ w7L (w7G rlxOrders).toGraph w7K ∧
     SyncOrdered kMutex mutexLayout rlxOrders w7σ w7L (w7G rlxOrders).toGraph w7K ∧
@@ -242,7 +253,10 @@ theorem witness_s3_w10 :
       (by decide) (kMutex_noConf 3)) (by decide +kernel)
   have hle : ¬ LockEdge (w7G rlxOrders).toGraph w7L w7K := fun h =>
     absurd (h 0 7 9 ⟨1, .inl rfl⟩ ⟨0, rfl⟩ 8 10 rfl rfl (by decide +kernel)) (by decide +kernel)
-  exact ⟨w7_run, hw.1, finitePast_fin _, by decide, confinedExcl_none kMutex_noConf,
+  exact ⟨w7_run, hw.1, finitePast_fin _, by decide,
+    orderLegal_of_check (by decide +kernel),
+    stepOrders_of_check (listK_none (by decide)) (by decide +kernel),
+    confinedExcl_none kMutex_noConf,
     confinedHandoff_of_check (by decide +kernel), syncOrdered_of_check (by decide +kernel),
     by decide, hno, ⟨by decide +kernel, by decide +kernel, by decide +kernel⟩,
     hw.2.1.lifecycle, hle, by unfold CorrQ1; decide +kernel,

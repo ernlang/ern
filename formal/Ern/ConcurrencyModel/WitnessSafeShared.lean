@@ -138,6 +138,7 @@ Admitted twin: `witness_s4_twin`. -/
 theorem witness_s4 :
     EncapRun pm kAtomic mutexLayout s4σ s4L ∧ s4G.toGraph.EventConsistent ∧
     s4G.toGraph.FiniteCausalPast ∧ OrdinaryAtomicOK kAtomic s4σ s4L ∧
+    s4G.toGraph.OrderLegal ∧ StepOrders kAtomic mutexLayout refOrders s4σ s4L s4G.toGraph pairK ∧
     ConfinedExcl kAtomic s4σ s4L ∧
     ConfinedHandoff kAtomic mutexLayout refOrders s4σ s4L s4G.toGraph pairK ∧
     SyncOrdered kAtomic mutexLayout refOrders s4σ s4L s4G.toGraph pairK ∧
@@ -161,6 +162,8 @@ theorem witness_s4 :
       have h2 : stepAcc kAtomic mutexLayout refOrders s4σ s4L 2 = [] := by decide
       rw [h2] at hm; cases hm
   exact ⟨s4_run, by decide +kernel, finitePast_fin _, by decide,
+    orderLegal_of_check (by decide +kernel),
+    stepOrders_of_check (listK_none (by decide)) (by decide +kernel),
     confinedExcl_of_check [4] 2 kAtomic_conf (by decide) (by decide +kernel),
     confinedHandoff_of_check (by decide +kernel), syncOrdered_of_check (by decide +kernel), hne,
     handoffOrdered_of_check (by decide +kernel),
@@ -283,6 +286,7 @@ reading 12 hold. The two writes race. Admitted twin: `witness_s5_twin`. -/
 theorem witness_s5 :
     EncapRun pm kAtomic mutexLayout s5σ s5L ∧ s5G.toGraph.EventConsistent ∧
     s5G.toGraph.FiniteCausalPast ∧ OrdinaryAtomicOK kAtomic s5σ s5L ∧
+    s5G.toGraph.OrderLegal ∧ StepOrders kAtomic mutexLayout refOrders s5σ s5L s5G.toGraph pairK ∧
     ConfinedExcl kAtomic s5σ s5L ∧
     ConfinedHandoff kAtomic mutexLayout refOrders s5σ s5L s5G.toGraph pairK ∧
     ¬ SyncOrdered kAtomic mutexLayout refOrders s5σ s5L s5G.toGraph pairK ∧
@@ -304,6 +308,8 @@ theorem witness_s5 :
         (by decide))
       (by decide) (by decide) 3 4 rfl rfl) (by decide +kernel)
   exact ⟨s5_run, by decide +kernel, finitePast_fin _, by decide,
+    orderLegal_of_check (by decide +kernel),
+    stepOrders_of_check (listK_none (by decide)) (by decide +kernel),
     confinedExcl_of_check [4] 2 kAtomic_conf (by decide) (by decide +kernel),
     confinedHandoff_of_check (by decide +kernel), hno, by decide,
     handoffOrdered_of_check (by decide +kernel),
@@ -407,11 +413,13 @@ theorem s6_run : EncapRun pm kAtomic mutexLayout s6σ s6L := by
 **effective and exercisable `Modify`** capability for that leaf"; C51 item 2(b)): `o :=
 derive(root, Observe, {A})`; `spawn c1` yielding `o`; `c0 : writeShared` of kind `store` on `{A}`
 with `release`; `c1 : read3(A)` through `o`, whose event reads the write of `c0` by `rf`. All steps
-are `ok`; (b) fails at the `read3`; every other condition holds; Q1–Q3 and reading 12 hold. The
+are `ok`; the condition `OrdinaryAtomicOK` of (b) (C42) fails at the `read3`; every other
+condition holds, the two other conditions of (b) included; Q1–Q3 and reading 12 hold. The
 atomic write and the non-atomic read race. Admitted twin: `witness_s6_twin`. -/
 theorem witness_s6 :
     EncapRun pm kAtomic mutexLayout s6σ s6L ∧ s6G.toGraph.EventConsistent ∧
     s6G.toGraph.FiniteCausalPast ∧ ¬ OrdinaryAtomicOK kAtomic s6σ s6L ∧
+    s6G.toGraph.OrderLegal ∧ StepOrders kAtomic mutexLayout refOrders s6σ s6L s6G.toGraph pairK ∧
     ConfinedExcl kAtomic s6σ s6L ∧
     ConfinedHandoff kAtomic mutexLayout refOrders s6σ s6L s6G.toGraph pairK ∧
     SyncOrdered kAtomic mutexLayout refOrders s6σ s6L s6G.toGraph pairK ∧
@@ -429,6 +437,8 @@ theorem witness_s6 :
     corresponds_of_check _ _ _ [(1, 1)] _ _ _ (by decide +kernel) (by decide)
   have hno : ¬ OrdinaryAtomicOK kAtomic s6σ s6L := fun h => absurd (h 3 (by decide)) (by decide)
   exact ⟨s6_run, by decide +kernel, finitePast_fin _, hno,
+    orderLegal_of_check (by decide +kernel),
+    stepOrders_of_check (listK_none (by decide)) (by decide +kernel),
     confinedExcl_of_check [4] 2 kAtomic_conf (by decide) (by decide +kernel),
     confinedHandoff_of_check (by decide +kernel), syncOrdered_of_check (by decide +kernel),
     by decide, handoffOrdered_of_check (by decide +kernel),
@@ -537,6 +547,7 @@ holds; Q1–Q3 and reading 12 hold. The write and the read race. Admitted twin:
 theorem witness_s7 :
     EncapRun pm kAtomic mutexLayout s7σ s7L ∧ s7G.toGraph.EventConsistent ∧
     s7G.toGraph.FiniteCausalPast ∧ OrdinaryAtomicOK kAtomic s7σ s7L ∧
+    s7G.toGraph.OrderLegal ∧ StepOrders kAtomic mutexLayout refOrders s7σ s7L s7G.toGraph pairK ∧
     ¬ ConfinedExcl kAtomic s7σ s7L ∧
     ¬ ConfinedHandoff kAtomic mutexLayout refOrders s7σ s7L s7G.toGraph pairK ∧
     SyncOrdered kAtomic mutexLayout refOrders s7σ s7L s7G.toGraph pairK ∧
@@ -559,7 +570,9 @@ theorem witness_s7 :
       (conflictPair_of (by decide) (by decide) (by decide) rfl (by decide) (by decide)
         (by decide))
       (by decide)) (by decide +kernel)
-  exact ⟨s7_run, by decide +kernel, finitePast_fin _, by decide, hne, hnh,
+  exact ⟨s7_run, by decide +kernel, finitePast_fin _, by decide,
+    orderLegal_of_check (by decide +kernel),
+    stepOrders_of_check (listK_none (by decide)) (by decide +kernel), hne, hnh,
     syncOrdered_of_check (by decide +kernel), by decide,
     handoffOrdered_of_check (by decide +kernel),
     ⟨by decide +kernel, by decide +kernel, by decide +kernel⟩, hK.lifecycle,
@@ -716,6 +729,7 @@ condition holds; Q1–Q3 and reading 12 hold. The two writes race. Admitted twin
 theorem witness_s8 :
     EncapRun pm kAtomic mutexLayout s8σ s8L ∧ s8G.toGraph.EventConsistent ∧
     s8G.toGraph.FiniteCausalPast ∧ OrdinaryAtomicOK kAtomic s8σ s8L ∧
+    s8G.toGraph.OrderLegal ∧ StepOrders kAtomic mutexLayout refOrders s8σ s8L s8G.toGraph s8K ∧
     ConfinedExcl kAtomic s8σ s8L ∧
     ConfinedHandoff kAtomic mutexLayout refOrders s8σ s8L s8G.toGraph s8K ∧
     SyncOrdered kAtomic mutexLayout refOrders s8σ s8L s8G.toGraph s8K ∧
@@ -732,6 +746,8 @@ theorem witness_s8 :
   have hno : ¬ LifetimeOrdered s8G.toGraph s8D := fun h =>
     absurd (h.before_end 4 6 (by decide) (by decide)) (by decide +kernel)
   exact ⟨s8_run, by decide +kernel, finitePast_fin _, by decide,
+    orderLegal_of_check (by decide +kernel),
+    stepOrders_of_check (listK_none (by decide)) (by decide +kernel),
     confinedExcl_of_check [4] 2 kAtomic_conf (by decide) (by decide +kernel),
     confinedHandoff_of_check (by decide +kernel), syncOrdered_of_check (by decide +kernel),
     by decide, handoffOrdered_of_check (by decide +kernel), hno, by decide +kernel,
