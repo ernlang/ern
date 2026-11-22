@@ -74,6 +74,7 @@ import Ern.Corpus.ConcurrencyEncap
 import Ern.Corpus.ConcurrencyExec
 import Ern.Corpus.ConcurrencyFrames
 import Ern.Corpus.ConcurrencyMutex
+import Ern.Corpus.ConcurrencySafe
 import Ern.Corpus.DataStack
 import Ern.Corpus.Lib
 import Ern.Corpus.LibRunner
