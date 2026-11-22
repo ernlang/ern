@@ -7,7 +7,8 @@ Shared material of the witnesses S1–S8 (`WitnessSafe`): each condition of `Saf
 (C51 item 2), each correspondence premise Q1–Q3 (C52) and the hypothesis of reading 12 from a
 bounded form that `decide` evaluates on a finite execution with a hand-written graph, proved
 sound. The pairs in conflict range over the classified accesses of the steps (`stepAcc`); the
-contexts with a capability over the contexts of the state (`cap_nil`).
+contexts with a capability over the contexts of the state (`cap_nil`). The legality of the memory
+orders of the events (`OrderLegal`) is checked event by event (`orderLegal_of_check`).
 -/
 
 namespace Ern.ConcurrencyModel
@@ -289,5 +290,23 @@ theorem finitePast_fin {n : Nat} {C U V S : Type} (G : Events.Graph (Fin n) C U 
 def noInit {E U V S : Type} {G : Events.Graph E Nat U V S} {lbls : List Label} {K : StepEvents E}
     (sid : E → S) : AccessData G lbls K :=
   ⟨sid, fun _ => false, (fun _ h => by cases h), (fun _ h _ _ => by cases h)⟩
+
+/-! ## The memory orders of the events (C40) -/
+
+instance (k : Events.Kind) (o : MemOrder) : Decidable (Events.Graph.OrderOK k o) := by
+  cases k <;> unfold Events.Graph.OrderOK <;> infer_instance
+
+/-- The memory order of an atomic access is permitted for its kind (C40), as a Boolean. -/
+def accOrderOK {U V : Type} : Option (Events.Acc U V) → Bool
+  | some (.atomic _ o k) => decide (Events.Graph.OrderOK k.kind o)
+  | _ => true
+
+/-- `OrderLegal` from its check on the events of the graph. -/
+theorem orderLegal_of_check {E C U V S : Type} {G : Events.Graph E C U V S}
+    (h : ∀ e, accOrderOK (G.acc? e) = true) : G.OrderLegal := by
+  intro e u o k he
+  have := h e
+  rw [he] at this
+  exact of_decide_eq_true this
 
 end Ern.ConcurrencyModel

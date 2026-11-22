@@ -190,7 +190,8 @@ theorem R46_twin :
     corresponds_of_check _ _ _ [(5, 1)] _ _ _ (by decide +kernel) (by decide)
   have hS : SafeConcurrentTrace pm kX mutexLayout refOrders r46Tσ r46TL r46TG.toGraph r46TK
       unitData :=
-    ⟨r46T_run, by decide +kernel, finitePast_fin _, by decide, confinedExcl_none kX_noConf,
+    ⟨r46T_run, by decide +kernel, finitePast_fin _, by decide,
+      orderLegal_of_check (by decide +kernel), confinedExcl_none kX_noConf,
       confinedHandoff_of_check (by decide +kernel), syncOrdered_of_check (by decide +kernel),
       by decide, handoffOrdered_of_check (by decide +kernel),
       ⟨by decide +kernel, by decide +kernel, by decide +kernel⟩, hK.lifecycle,
@@ -393,7 +394,8 @@ theorem R47_twin :
     corresponds_of_check _ _ _ [(2, 1), (4, 2)] _ _ _ (by decide +kernel) (by decide)
   have hS : SafeConcurrentTrace pm kX mutexLayout refOrders r47Tσ r47TL r47TG.toGraph r47TK
       unitData :=
-    ⟨r47T_run, by decide +kernel, finitePast_fin _, by decide, confinedExcl_none kX_noConf,
+    ⟨r47T_run, by decide +kernel, finitePast_fin _, by decide,
+      orderLegal_of_check (by decide +kernel), confinedExcl_none kX_noConf,
       confinedHandoff_of_check (by decide +kernel), syncOrdered_of_check (by decide +kernel),
       by decide, handoffOrdered_of_check (by decide +kernel),
       ⟨by decide +kernel, by decide +kernel, by decide +kernel⟩, hK.lifecycle,
@@ -644,7 +646,8 @@ theorem r48T_lock : LockEdge r48TG.toGraph r48TL r48TK :=
 /-- The twin of `R48` is a `SafeConcurrentTrace` (C51). -/
 theorem r48T_safe :
     SafeConcurrentTrace pm kMutex mutexLayout refOrders r48Tσ r48TL r48TG.toGraph r48TK unitData :=
-  ⟨r48T_run, r48T_consistent, finitePast_fin _, by decide +kernel, confinedExcl_none kMutex_noConf,
+  ⟨r48T_run, r48T_consistent, finitePast_fin _, by decide +kernel,
+      orderLegal_of_check (by decide +kernel), confinedExcl_none kMutex_noConf,
     r48T_confined, r48T_sync, by decide +kernel, r48T_handoff, r48T_lifetime,
     r48T_corr.lifecycle, r48T_lock⟩
 

@@ -325,7 +325,8 @@ correspondence `K` and the data `D` of reading 9: the execution is an `Encapsula
 (`EncapRun`), and
 
 * (a) (C26.4, C34): `EventConsistent(G)` and a finite causal past;
-* (b) (C42): `OrdinaryAtomicOK`;
+* (b) (C37–C42; C34, last sentence): `OrdinaryAtomicOK` (C42) and the legality of the memory
+  orders of the events, `OrderLegal` (C40);
 * (c) (C35, C43, C46): `ConfinedExcl` and `ConfinedHandoff`;
 * (d) (C44, C52): `SyncOrdered`;
 * (e) (C35–C40): `InheritedLegal`;
@@ -346,6 +347,8 @@ structure SafeConcurrentTrace {E U V S : Type} (pm : ProviderMeta) (ks : KShared
   finitePast : G.FiniteCausalPast
   /-- (b). -/
   ordinary : OrdinaryAtomicOK ks σ lbls
+  /-- (b) (C40; C34, last sentence). -/
+  orderLegal : G.OrderLegal
   /-- (c). -/
   confinedExcl : ConfinedExcl ks σ lbls
   /-- (c). -/
