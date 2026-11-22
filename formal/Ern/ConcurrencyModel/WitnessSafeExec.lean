@@ -8,7 +8,9 @@ Shared material of the witnesses S1–S8 (`WitnessSafe`): each condition of `Saf
 bounded form that `decide` evaluates on a finite execution with a hand-written graph, proved
 sound. The pairs in conflict range over the classified accesses of the steps (`stepAcc`); the
 contexts with a capability over the contexts of the state (`cap_nil`). The legality of the memory
-orders of the events (`OrderLegal`) is checked event by event (`orderLegal_of_check`).
+orders of the events (`OrderLegal`) is checked event by event (`orderLegal_of_check`), and the
+agreement of the atomic event of a step with its accesses (`StepOrders`) step by step
+(`stepOrders_of_check`).
 -/
 
 namespace Ern.ConcurrencyModel
@@ -308,5 +310,27 @@ theorem orderLegal_of_check {E C U V S : Type} {G : Events.Graph E C U V S}
   have := h e
   rw [he] at this
   exact of_decide_eq_true this
+
+/-- The kind and the memory order of an atomic access are those of an access of the list, as a
+Boolean (C37, C39, C40). -/
+def accStepOK {U V : Type} (xs : List LeafAccess) : Option (Events.Acc U V) → Bool
+  | some (.atomic _ o k) => xs.any fun x => decide (x.order = some o ∧ x.kind = k.kind)
+  | _ => true
+
+/-- `StepOrders` from its check on the steps of the trace, when the correspondence gives no event
+past the end of the trace. -/
+theorem stepOrders_of_check {E U V S : Type} {ks : KShared} {L : MutexLayout} {R : CtlOrders}
+    {σ : Nat → SC × SyncReg × ArenaReg} {lbls : List Label} {G : Events.Graph E Nat U V S}
+    {K : StepEvents E} (hK : ∀ i, lbls.length ≤ i → K.ev i = none)
+    (h : ∀ i, i < lbls.length → ∀ e, K.ev i = some e →
+      accStepOK (stepAcc ks L R σ lbls i) (G.acc? e) = true) : StepOrders ks L R σ lbls G K := by
+  intro i e he u o k ha
+  have hi : i < lbls.length := Decidable.byContradiction fun hn => by
+    rw [hK i (Nat.le_of_not_lt hn)] at he; cases he
+  have := h i hi e he
+  rw [ha] at this
+  simp only [accStepOK, List.any_eq_true, decide_eq_true_eq] at this
+  obtain ⟨x, hx, ho, hk⟩ := this
+  exact ⟨x, stepAccess_of_mem hx, ho, hk⟩
 
 end Ern.ConcurrencyModel

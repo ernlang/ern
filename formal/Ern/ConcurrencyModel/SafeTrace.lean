@@ -10,7 +10,8 @@ the conditional composition theorem, proven by cases on the conflicting pair.
 * Definitions (C44–C47, C49–C52): the data of the access correspondence (`AccessData`), the
   validity events (`BeginOf`, `EndOf`), `LifetimeOrdered` (C51), the conflicting pairs of steps
   (`ConflictPair`) and their exclusivity (`ExclusivePair`), the ordered handoff of a pair under a
-  criterion of C43 (`PairHandoff`), the conditions (a)–(f) of C51 item 2 and `SafeConcurrentTrace`,
+  criterion of C43 (`PairHandoff`), the agreement of the atomic event of a step with that step
+  (`StepOrders`), the conditions (a)–(f) of C51 item 2 and `SafeConcurrentTrace`,
   the correspondence premises Q1–Q3 (C52), and the hypothesis on the controller leaf
   (`CtlAtomic`).
 * 14a (C51): within one context `hb` and `po` coincide (`hb_iff_po`); ordering across distinct
@@ -232,6 +233,21 @@ instance (ks : KShared) (l : Nat) : Decidable (ConfinedLeaf ks l) := by
 instance (ks : KShared) (l : Nat) : Decidable (SyncLeaf ks l) := by
   unfold SyncLeaf; infer_instance
 
+/-- The atomic event of a step carries the kind and the memory order of an atomic access of that
+step in the sense of 11e (`StepAccess`) (C37, for `readShared(access, leaf, order)`: "`order` is
+permitted for an atomic read by C40"; C39: "That annotation applies **only** to the atomic event on
+that leaf"; C40: "A failed CAS contributes an atomic read event and the `failure` order"). Under 11e
+the controller accesses of `acquire`, `unlock` and `resetLock` carry the orders of `R`. Exported
+obligation `OB-C20` (C27–C29, C50), stated part: the kind and the memory order of the atomic event
+of a step. The obligation is exported and remains open (`ExportedObligations`). The condition
+relates neither leaves to units nor byte ranges, and says nothing of an event that is the event of
+no step, of the accesses of compound steps or of failed attempts. -/
+def StepOrders {E U V S : Type} (ks : KShared) (L : MutexLayout) (R : CtlOrders)
+    (σ : Nat → SC × SyncReg × ArenaReg) (lbls : List Label) (G : Events.Graph E Nat U V S)
+    (K : StepEvents E) : Prop :=
+  ∀ i e, K.ev i = some e → ∀ u o k, G.acc? e = some (.atomic u o k) →
+    ∃ x, StepAccess ks L R σ lbls i x ∧ x.order = some o ∧ x.kind = k.kind
+
 /-- C51 item 2(b), with C42: every `read3` and `write3` step satisfies the rule of 11f. -/
 def OrdinaryAtomicOK (ks : KShared) (σ : Nat → SC × SyncReg × ArenaReg) (lbls : List Label) :
     Prop :=
@@ -325,8 +341,9 @@ correspondence `K` and the data `D` of reading 9: the execution is an `Encapsula
 (`EncapRun`), and
 
 * (a) (C26.4, C34): `EventConsistent(G)` and a finite causal past;
-* (b) (C37–C42; C34, last sentence): `OrdinaryAtomicOK` (C42) and the legality of the memory
-  orders of the events, `OrderLegal` (C40);
+* (b) (C37–C42; C34, last sentence): `OrdinaryAtomicOK` (C42), the legality of the memory orders
+  of the events, `OrderLegal` (C40), and the agreement of the atomic event of each step with that
+  step, `StepOrders` (C37, C39, C40);
 * (c) (C35, C43, C46): `ConfinedExcl` and `ConfinedHandoff`;
 * (d) (C44, C52): `SyncOrdered`;
 * (e) (C35–C40): `InheritedLegal`;
@@ -349,6 +366,8 @@ structure SafeConcurrentTrace {E U V S : Type} (pm : ProviderMeta) (ks : KShared
   ordinary : OrdinaryAtomicOK ks σ lbls
   /-- (b) (C40; C34, last sentence). -/
   orderLegal : G.OrderLegal
+  /-- (b) (C37, C39, C40). -/
+  stepOrders : StepOrders ks L R σ lbls G K
   /-- (c). -/
   confinedExcl : ConfinedExcl ks σ lbls
   /-- (c). -/
@@ -417,12 +436,14 @@ def CtlAtomic (ks : KShared) (L : MutexLayout) (σ : Nat → SC × SyncReg × Ar
   ∀ k (h : k < lbls.length) ctl, ctlLeafAt L (σ k) lbls[k] = some ctl →
     ∃ sz al, ks.SharedDiscipline ctl = some (.atomic sz al) ∧ sz ≠ 0
 
-/-! ## Why (b) and (e) carry no other conjunct (11a–11c) -/
+/-! ## The legality of the atomic steps, (b) and (e) (11a–11c) -/
 
 /-- **Theorem 14**, first fact (C37–C40; 11a–11c): an `ok` atomic step obeys its legality rules: a
 `readShared` reads an `Atomic` leaf of nonzero size with an order of the load row; a
 compare-and-exchange has its orders in their rows and targets an `Atomic` leaf of nonzero size.
-Hence (b) constrains only `read3` and `write3`. Obligation: `OB-C03`. -/
+Hence no condition of (b) is needed for the legality of the atomic steps themselves; among the
+steps, (b) constrains `read3` and `write3` (`OrdinaryAtomicOK`), and it constrains the events of
+the graph by `OrderLegal` and `StepOrders`. Obligation: `OB-C03`. -/
 theorem atomic_steps_legal {ks : KShared} {L : MutexLayout} {lbl : Label}
     {st st' : SC × SyncReg × ArenaReg} (h : LStep ks L lbl st st') :
     (∀ c a l o v, lbl = .readShared c a l o v →
@@ -823,8 +844,9 @@ Q1–Q3 and the hypothesis of reading 12. Then no pair of events of `G` is a rac
 
 Pairs of distinct storage identities go through Q3 and 14a.2; pairs of one identity through Q2 and
 14c (14c.2, 14c.3, 14c.5 with 14c.4); initial writes through L3. The proof uses neither
-`EventConsistent`, nor the finite causal past, nor (e), nor the edge of `LockOrder`, nor the
-lifecycle conditions beyond the correspondence. -/
+`EventConsistent`, nor the finite causal past, nor the conditions `OrderLegal` and `StepOrders` of
+(b), nor (e), nor the edge of `LockOrder`, nor the lifecycle conditions beyond the
+correspondence. -/
 theorem no_race {E U V S : Type} {ks : KShared} {L : MutexLayout} {R : CtlOrders}
     {statics : Statics} {σ : Nat → SC × SyncReg × ArenaReg} {lbls : List Label}
     {G : Events.Graph E Nat U V S} {K : StepEvents E} {D : AccessData G lbls K}

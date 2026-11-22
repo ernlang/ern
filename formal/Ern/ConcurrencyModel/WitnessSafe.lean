@@ -85,7 +85,9 @@ theorem witness_s2_w2 :
   have hw := witness_w2 (pm := pm)
   have hS : SafeConcurrentTrace pm kX mutexLayout refOrders w2σ w2L w2G.toGraph w2K unitData :=
     ⟨hw.2.1, hw.2.2.2.1, finitePast_fin _, by decide,
-      orderLegal_of_check (by decide +kernel), confinedExcl_none kX_noConf,
+      orderLegal_of_check (by decide +kernel),
+      stepOrders_of_check (listK_none (by decide)) (by decide +kernel),
+      confinedExcl_none kX_noConf,
       confinedHandoff_of_check (by decide +kernel), syncOrdered_of_check (by decide +kernel),
       by decide, handoffOrdered_of_check (by decide +kernel),
       ⟨by decide +kernel, by decide +kernel, by decide +kernel⟩, hw.2.2.1.lifecycle,
@@ -126,7 +128,9 @@ theorem witness_s2_w7 :
   have hS : SafeConcurrentTrace pm kMutex mutexLayout refOrders w7σ w7L (w7G refOrders).toGraph w7K
       unitData :=
     ⟨hw.2.1, hw.2.2.2.1, finitePast_fin _, by decide,
-      orderLegal_of_check (by decide +kernel), confinedExcl_none kMutex_noConf,
+      orderLegal_of_check (by decide +kernel),
+      stepOrders_of_check (listK_none (by decide)) (by decide +kernel),
+      confinedExcl_none kMutex_noConf,
       confinedHandoff_of_check (by decide +kernel), syncOrdered_of_check (by decide +kernel),
       by decide, handoffOrdered_of_check (by decide +kernel),
       ⟨by decide +kernel, by decide +kernel, by decide +kernel⟩, hw.2.2.1.lifecycle,
@@ -191,7 +195,9 @@ theorem witness_s3_w9 :
   have hw := witness_w9 (pm := pm)
   have hS : SafeConcurrentTrace pm kMutex mutexLayout refOrders w9σ w9L w9G.toGraph w9K unitData :=
     ⟨hw.2.1, hw.2.2.2.1, finitePast_fin _, by decide,
-      orderLegal_of_check (by decide +kernel), confinedExcl_none kMutex_noConf,
+      orderLegal_of_check (by decide +kernel),
+      stepOrders_of_check (listK_none (by decide)) (by decide +kernel),
+      confinedExcl_none kMutex_noConf,
       confinedHandoff_of_check (by decide +kernel), syncOrdered_of_check (by decide +kernel),
       by decide, handoffOrdered_of_check (by decide +kernel),
       ⟨by decide +kernel, by decide +kernel, by decide +kernel⟩, hw.2.2.1.lifecycle,

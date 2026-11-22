@@ -229,6 +229,7 @@ theorem witness_s4_twin :
       (leafData 3) :=
     ⟨s4t_run, by decide +kernel, finitePast_fin _, by decide,
       orderLegal_of_check (by decide +kernel),
+      stepOrders_of_check (listK_none (by decide)) (by decide +kernel),
       confinedExcl_of_check [4] 2 kAtomic_conf (by decide) (by decide +kernel),
       confinedHandoff_of_check (by decide +kernel), syncOrdered_of_check (by decide +kernel),
       by decide, handoffOrdered_of_check (by decide +kernel),
@@ -357,6 +358,7 @@ theorem witness_s5_twin :
       (leafData 3) :=
     ⟨s5t_run, by decide +kernel, finitePast_fin _, by decide,
       orderLegal_of_check (by decide +kernel),
+      stepOrders_of_check (listK_none (by decide)) (by decide +kernel),
       confinedExcl_of_check [4] 2 kAtomic_conf (by decide) (by decide +kernel),
       confinedHandoff_of_check (by decide +kernel), syncOrdered_of_check (by decide +kernel),
       by decide, handoffOrdered_of_check (by decide +kernel),
@@ -480,6 +482,7 @@ theorem witness_s6_twin :
       (leafData 1) :=
     ⟨s6t_run, by decide +kernel, finitePast_fin _, by decide,
       orderLegal_of_check (by decide +kernel),
+      stepOrders_of_check (listK_none (by decide)) (by decide +kernel),
       confinedExcl_of_check [4] 2 kAtomic_conf (by decide) (by decide +kernel),
       confinedHandoff_of_check (by decide +kernel), syncOrdered_of_check (by decide +kernel),
       by decide, handoffOrdered_of_check (by decide +kernel),
@@ -619,6 +622,7 @@ theorem witness_s7_twin :
       (leafData 4) :=
     ⟨s7t_run, by decide +kernel, finitePast_fin _, by decide,
       orderLegal_of_check (by decide +kernel),
+      stepOrders_of_check (listK_none (by decide)) (by decide +kernel),
       confinedExcl_of_check [4] 2 kAtomic_conf (by decide) (by decide +kernel),
       confinedHandoff_of_check (by decide +kernel), syncOrdered_of_check (by decide +kernel),
       by decide, handoffOrdered_of_check (by decide +kernel),
@@ -811,6 +815,7 @@ theorem witness_s8_twin :
   have hS : SafeConcurrentTrace pm kAtomic mutexLayout refOrders s8tσ s8tL s8tG.toGraph s8tK s8tD :=
     ⟨s8t_run, by decide +kernel, finitePast_fin _, by decide,
       orderLegal_of_check (by decide +kernel),
+      stepOrders_of_check (listK_none (by decide)) (by decide +kernel),
       confinedExcl_of_check [4] 2 kAtomic_conf (by decide) (by decide +kernel),
       confinedHandoff_of_check (by decide +kernel), syncOrdered_of_check (by decide +kernel),
       by decide, handoffOrdered_of_check (by decide +kernel), hL, hK.lifecycle,
