@@ -140,6 +140,12 @@ Results (abstract part, C29): `Events.Graph.erase_hb_iff` (10b), `Events.Graph.e
 * Authority and footprint at the grain of leaves: the leaf, kind and atomicity of each conflicting
   access event are those of an access of its step (Q2). **Stated**: `CorrQ2`. Carried by
   `no_race`.
+* Kind and memory order of the atomic event of a step (C37, C39, C40; C27): the atomic event of a
+  step carries the kind and the memory order of an atomic access of that step. **Stated**:
+  `StepOrders`, a field of `SafeConcurrentTrace` (C51 item 2(b)). Carried by `no_race`, through
+  `SafeConcurrentTrace`. Outside this part: it relates neither leaves to units nor byte ranges,
+  and says nothing of an event that is the event of no step, of the accesses of compound steps or
+  of failed attempts (the parts below).
 * Byte footprints of physical accesses (C50). **Documented**: the memory machine represents the
   bytes of raw operations and the graph the units of events; no predicate relates them.
 * Validity of physical accesses (C27, C50). **Documented**: as the projection of validity events
