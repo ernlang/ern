@@ -41,7 +41,11 @@ Formalization hypotheses (retained readings, not rules of the specification):
   `rf` the publication of an `unlock(e)` or a `resetLock(e)`, that publication is `hb`-before it;
   delegated grants are not covered;
 * reading 12: where a statement says so, the controller leaf has the class `Atomic(size, align)`,
-  `size ≠ 0`, at every `newMutex`, `acquire`, `unlock` and `resetLock` step (`CtlAtomic`).
+  `size ≠ 0`, at every `newMutex`, `acquire`, `unlock` and `resetLock` step (`CtlAtomic`);
+* reading 13: an access pair is exclusive (C44) when the capability of the context of the earlier
+  access on the leaf, `cap(·,c′,l)` at the step of that access, is incompatible, under the `Modify`
+  criterion of C43, with the mode used by the later access (C45: "the capability used by `e2`";
+  `usedMode`); the capability held by the context of the later access is not compared.
 -/
 
 namespace Ern.ConcurrencyModel
@@ -141,12 +145,6 @@ def UsesModifyAt (ks : KShared) (σ : Nat → SC × SyncReg × ArenaReg) (lbls :
     (x : LeafAccess) : Prop :=
   ∃ h : k < lbls.length, UsesModify ks (σ k) lbls[k] x
 
-/-- The pair is exclusive (C44: "its relevant context capabilities are incompatible under C43"):
-one of its two steps uses `Modify` in the sense of 12e. -/
-def ExclusivePair (ks : KShared) (σ : Nat → SC × SyncReg × ArenaReg) (lbls : List Label)
-    (i j : Nat) (x y : LeafAccess) : Prop :=
-  UsesModifyAt ks σ lbls i x ∨ UsesModifyAt ks σ lbls j y
-
 /-- The label is a `read3` (O9). -/
 def IsRead3 : Label → Bool
   | .kernel _ (.read _ _) => true
@@ -184,6 +182,17 @@ rule of C42), otherwise the mode its authority requires. -/
 def usedMode (ks : KShared) (σ : Nat → SC × SyncReg × ArenaReg) (lbls : List Label) (j : Nat)
     (y : LeafAccess) : Mode :=
   if UsesModifyAt ks σ lbls j y then .modify else y.mode
+
+/-- The pair of the access `x` of step `i` and the access `y` of step `j` is exclusive (C44:
+"`HandoffOrdered` applies only if the pair is **exclusive**: its relevant context capabilities are
+incompatible under C43"; C45: "the period containing `e1` during which `cap(·,c′,l)` is incompatible
+with the capability used by `e2`"; reading 13): the capability of the context of step `i` on the
+leaf of `x`, in the state of step `i`, is incompatible under the `Modify` criterion of C43
+(`IncompatModify`) with the mode used by `y` (`usedMode`). The capability of the context of step
+`j` is not compared. -/
+def ExclusivePair (ks : KShared) (σ : Nat → SC × SyncReg × ArenaReg) (lbls : List Label)
+    (i j : Nat) (x y : LeafAccess) : Prop :=
+  IncompatModify (cap (σ i).1 (σ i).2.1 (ctxAt lbls i) x.leaf) (usedMode ks σ lbls j y)
 
 instance {Inc : Option Mode → Mode → Prop} [∀ v m, Decidable (Inc v m)]
     (σ : Nat → SC × SyncReg × ArenaReg) (i c' l : Nat) (m : Mode) (r : Nat) :
@@ -571,10 +580,12 @@ theorem pair_confined {D : AccessData G lbls K} (hdd : DDSound ks.toK) (hst : St
   subst this
   exact hb_of_marker hK hfc.1 hrj hj hreq ha hb hbd
 
-/-- **Theorem 14c.3** (C44 cases 1, 2, 4; C46; C51 item 2(f); 12d, 12f): in a
-`SafeConcurrentTrace` on fragment F, for an exclusive pair in conflict on a leaf that is not
-`Confined` (ordinary storage; `Atomic` storage with an ordinary access; `Synchronized` storage with
-an exclusive writer), with events `a` and `d`: `hb(a, d)`. -/
+/-- **Theorem 14c.3** (C44 cases 1, 2, 4; C45; C46; C51 item 2(f); 12d, 12f): in a
+`SafeConcurrentTrace` on fragment F, for an exclusive pair in conflict (reading 13: the capability
+of the context of the earlier access is incompatible with the mode used by the later access) on a
+leaf that is not `Confined` (ordinary storage; `Atomic` storage with an ordinary access;
+`Synchronized` storage with an exclusive capability), with events `a` and `d`: `hb(a, d)`. The
+loss marker of 12d is the step of the ordered handoff of (f). -/
 theorem pair_exclusive {D : AccessData G lbls K} (hdd : DDSound ks.toK) (hst : StaticsOK statics)
     (h0 : σ 0 = (SC.ofS3 (S3.init statics), [], [])) (hK : Corresponds G σ lbls K)
     (hS : SafeConcurrentTrace pm ks L R σ lbls G K D) {i j : Nat} {x y : LeafAccess}
@@ -586,18 +597,7 @@ theorem pair_exclusive {D : AccessData G lbls K} (hdd : DDSound ks.toK) (hst : S
   have hm := allows_usedMode hdd hst h0 hS.run hp.right
   rw [← hp.leaf] at hm
   have hinc : IncompatModify (cap (σ i).1 (σ i).2.1 (ctxAt lbls i) x.leaf)
-      (usedMode ks σ lbls j y) := by
-    by_cases hu : UsesModifyAt ks σ lbls j y
-    · have hpres := allows_present (cap_of_access hdd hst h0 hS.run hp.left)
-      have hmod : usedMode ks σ lbls j y = .modify := by simp only [usedMode, hu, ↓reduceIte]
-      rw [hmod]
-      revert hpres
-      cases cap (σ i).1 (σ i).2.1 (ctxAt lbls i) x.leaf with
-      | none => exact fun h => absurd rfl h
-      | some v => exact fun _ => Or.inr rfl
-    · have hux : UsesModifyAt ks σ lbls i x := hx.resolve_right hu
-      rw [cap_of_usesModifyAt hdd hst h0 hS.run hp.left hux]
-      exact Or.inl rfl
+      (usedMode ks σ lbls j y) := hx
   obtain ⟨r', hfc', -, -, hreq⟩ := loss_marker_modify hdd hst h0 hS.run hp.lt (Nat.le_of_lt hj)
     (fun e => hp.ctx e.symm) hm hinc
   have := hfc'.unique hfc
@@ -733,14 +733,32 @@ theorem access_class {lbl : Label} {st st' : SC × SyncReg × ArenaReg} {acc : L
     exact .inl (ctl i _ _ rfl hx)
   | _ => simp only [classify, Option.some.injEq] at hc; subst hc; simp at hx
 
-/-- **Theorem 14c.5** (C35, C42, C44; C51 item 2(b); reading 12), exhaustiveness: in a
-`SafeConcurrentTrace`, under the hypothesis of reading 12, a non-exclusive pair in conflict is on a
-`Synchronized` or `Confined` leaf. Only the execution and (b) are used. Reading 12 is used for a
-pair one of whose accesses is a protocol access of `acquire`, `unlock` or `resetLock`. -/
-theorem pair_exhaustive {D : AccessData G lbls K} (hS : SafeConcurrentTrace pm ks L R σ lbls G K D)
+/-- **Theorem 14c.5** (C35, C42, C43, C44; C51 item 2(b); readings 12, 13), exhaustiveness: in a
+`SafeConcurrentTrace` from the initial state of Spec 1 §47, under `DDSound` and the hypothesis of
+reading 12, a non-exclusive pair in conflict is on a `Synchronized` or `Confined` leaf. A pair that
+is not exclusive has no step that uses `Modify` for its access: the access of a step is covered by
+the capability of its context (12a; `cap_of_access`, `cap_of_usesModifyAt`). The rest uses the
+execution and the condition `OrdinaryAtomicOK` of (b). Reading 12 is used for a pair one of whose
+accesses is a protocol access of `acquire`, `unlock` or `resetLock`. -/
+theorem pair_exhaustive {D : AccessData G lbls K} (hdd : DDSound ks.toK) (hst : StaticsOK statics)
+    (h0 : σ 0 = (SC.ofS3 (S3.init statics), [], []))
+    (hS : SafeConcurrentTrace pm ks L R σ lbls G K D)
     (h12 : CtlAtomic ks L σ lbls) {i j : Nat} {x y : LeafAccess}
     (hp : ConflictPair ks L R σ lbls i j x y) (hx : ¬ ExclusivePair ks σ lbls i j x y) :
     SyncLeaf ks x.leaf ∨ ConfinedLeaf ks x.leaf := by
+  have hxi : ¬ UsesModifyAt ks σ lbls i x := fun hu => hx (by
+    unfold ExclusivePair
+    rw [cap_of_usesModifyAt hdd hst h0 hS.run hp.left hu]
+    exact Or.inl rfl)
+  have hyj : ¬ UsesModifyAt ks σ lbls j y := fun hu => hx (by
+    have hpres := allows_present (cap_of_access hdd hst h0 hS.run hp.left)
+    have hmod : usedMode ks σ lbls j y = .modify := by simp only [usedMode, hu, ↓reduceIte]
+    unfold ExclusivePair
+    rw [hmod]
+    revert hpres
+    cases cap (σ i).1 (σ i).2.1 (ctxAt lbls i) x.leaf with
+    | none => exact fun h => absurd rfl h
+    | some v => exact fun _ => Or.inr rfl)
   have cls : ∀ k z, StepAccess ks L R σ lbls k z → ¬ UsesModifyAt ks σ lbls k z →
       (z.order ≠ none ∧ AtomicLeaf ks z.leaf) ∨
         (z.order = none ∧ z.kind = .read ∧ ¬ AtomicLeaf ks z.leaf) ∨
@@ -748,8 +766,8 @@ theorem pair_exhaustive {D : AccessData G lbls K} (hS : SafeConcurrentTrace pm k
     intro k z ⟨hk, acc, hc, hz⟩ hnu
     exact access_class (hS.run k hk).2 (hS.ordinary k hk) (fun ctl h => h12 k hk ctl h) hc hz
       (fun hu => hnu ⟨hk, hu⟩)
-  have cx := cls i x hp.left fun h => hx (.inl h)
-  have cy := cls j y hp.right fun h => hx (.inr h)
+  have cx := cls i x hp.left hxi
+  have cy := cls j y hp.right hyj
   rw [← hp.leaf] at cy
   rcases cx with ⟨hxo, hxa⟩ | ⟨hxo, hxk, hxa⟩ | ⟨-, hxc⟩
   · rcases cy with ⟨hyo, -⟩ | ⟨-, -, hya⟩ | ⟨-, hyc⟩
@@ -776,7 +794,7 @@ theorem pair_ordered {D : AccessData G lbls K} (hdd : DDSound ks.toK) (hst : Sta
   · exact .inl (pair_confined hdd hst h0 hK hS hp hc ha hd)
   · by_cases hx : ExclusivePair ks σ lbls i j x y
     · exact .inl (pair_exclusive hdd hst h0 hK hS hp hx hc ha hd)
-    · rcases pair_exhaustive hS h12 hp hx with hs | hc'
+    · rcases pair_exhaustive hdd hst h0 hS h12 hp hx with hs | hc'
       · exact pair_synchronized hS hp hx hs ha hd
       · exact absurd hc' hc
 
