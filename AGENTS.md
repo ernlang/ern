@@ -8,7 +8,6 @@ Claude Code implements. Codex reviews. Both follow this file.
 - Never restate spec content in code comments or agent files. Point to its location.
 - Spec beats code. If the spec is ambiguous, contradictory or silent on something the task needs: stop and report the exact passage with a concrete example of the problem. Never pick an interpretation yourself.
 - Representation choices (structure or inductive type, function or relation) are yours when they change no accepted program and no behavior. A choice that does is a semantic question: stop and report.
-- Documentation references shall resolve to files within the repository, except where an external, publicly available primary source is necessary to identify or independently verify a formal transcription or comparison. Such an exception must identify the exact source and, where available, its version, commit, path, and cryptographic digest. This exception does not permit references to external briefs, working reports, informal decisions, or exploratory artifacts as normative authorities. The ERN specifications remain authoritative.
 
 ## Scope
 
