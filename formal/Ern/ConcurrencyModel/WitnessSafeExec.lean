@@ -292,7 +292,22 @@ theorem finitePast_fin {n : Nat} {C U V S : Type} (G : Events.Graph (Fin n) C U 
 /-- Data of reading 9 without initial writes. -/
 def noInit {E U V S : Type} {G : Events.Graph E Nat U V S} {lbls : List Label} {K : StepEvents E}
     (sid : E → S) : AccessData G lbls K :=
-  ⟨sid, fun _ => false, (fun _ h => by cases h), (fun _ h _ _ => by cases h)⟩
+  ⟨sid, fun _ => false, (fun _ h => by cases h), (fun _ h _ _ => by cases h),
+    (fun _ h => by cases h)⟩
+
+/-- The field `init_origin` of `AccessData` (reading 14) from its check on the events of the steps
+of the trace, when the correspondence gives no event past the end of the trace. -/
+theorem initOrigin_of_check {E U V S : Type} {G : Events.Graph E Nat U V S} {lbls : List Label}
+    {K : StepEvents E} {init : E → Bool} (hK : ∀ i, lbls.length ≤ i → K.ev i = none)
+    (h : ∀ w, init w = true →
+      (∀ d, (∃ i, i < lbls.length ∧ K.ev i = some d) → ¬ G.HB d w) ∨ ¬ G.Atomic w) :
+    ∀ w, init w = true → (∀ i d, K.ev i = some d → ¬ G.HB d w) ∨ ¬ G.Atomic w := by
+  intro w hw
+  rcases h w hw with h' | h'
+  · refine .inl fun i d hd => h' d ⟨i, ?_, hd⟩
+    exact Decidable.byContradiction fun hn => by
+      rw [hK i (Nat.le_of_not_lt hn)] at hd; cases hd
+  · exact .inr h'
 
 /-! ## The memory orders of the events (C40) -/
 

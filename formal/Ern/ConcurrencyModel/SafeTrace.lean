@@ -75,14 +75,22 @@ end Events.Graph
 each access event (`sid`, read on access events only), and the initial writes (`init`): writes of
 `G` that are the event of no step. A represented initial write is the construction write of its
 storage (C31: "Initial writes or initialized storage must have an explicitly represented source";
-C51). Exported obligation `OB-C12` (C25, C50), stated part. The obligation is exported and remains
-open (`ExportedObligations`). -/
+C51). An initial write that an event of a step precedes by `hb` is not atomic, a condition of
+fragment F (reading 14, `init_origin`). Exported obligation `OB-C12` (C25, C50), stated part. The
+obligation is exported and remains open (`ExportedObligations`). -/
 structure AccessData {E U V S : Type} (G : Events.Graph E Nat U V S) (lbls : List Label)
     (K : StepEvents E) where
   sid : E → S
   init : E → Bool
   init_writes : ∀ e, init e = true → G.Writes e
   init_unstepped : ∀ e, init e = true → ∀ i, i < lbls.length → K.ev i ≠ some e
+  /-- Provenance of an initial write, as a condition of fragment F (reading 14; C31: "Initial
+  writes or initialized storage must have an explicitly represented source"). Either no event of a
+  step is `hb`-before it, which the fragment requires of initial contents of a storage; or it is
+  not atomic: fragment F represents no atomic access outside the steps. The condition does not
+  prove that an initial write is the physical initial contents of its storage: that provenance
+  remains an open obligation (`OB-C12`, `OB-C20`). -/
+  init_origin : ∀ w, init w = true → (∀ i d, K.ev i = some d → ¬ G.HB d w) ∨ ¬ G.Atomic w
 
 /-! ## `LifetimeOrdered` (C51) -/
 

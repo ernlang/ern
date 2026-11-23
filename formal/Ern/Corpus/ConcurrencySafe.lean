@@ -267,11 +267,13 @@ def r50K : StepEvents (Fin 6) := listK [1, 2, 4, 5] [(1, 3)] []
 
 /-- The data of reading 9 of `R50`: one storage identity; the event 0 is an initial write. -/
 def r50D : AccessData (r50G .acquire).toGraph s6tL r50K :=
-  ⟨fun _ => 1, fun e => decide (e.val = 0), by decide +kernel, by decide +kernel⟩
+  ⟨fun _ => 1, fun e => decide (e.val = 0), by decide +kernel, by decide +kernel,
+    initOrigin_of_check (lbls := s6tL) (listK_none (by decide)) (by decide +kernel)⟩
 
 /-- The data of reading 9 of the twin of `R50`. -/
 def r50TD : AccessData (r50G .relaxed).toGraph s6tL r50K :=
-  ⟨fun _ => 1, fun e => decide (e.val = 0), by decide +kernel, by decide +kernel⟩
+  ⟨fun _ => 1, fun e => decide (e.val = 0), by decide +kernel, by decide +kernel,
+    initOrigin_of_check (lbls := s6tL) (listK_none (by decide)) (by decide +kernel)⟩
 
 /-- **R50** (not safe: the legality of the memory orders alone fails; no race). The steps of the
 twin of S6: `o := derive(root, Observe, {A})`; `spawn c1` yielding `o`; `c0 : writeShared({A})` of
