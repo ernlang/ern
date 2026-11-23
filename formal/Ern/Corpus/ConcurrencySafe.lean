@@ -8,11 +8,11 @@ Cases `R49`–`R58` of the concurrency model
 each execution is an `EncapsulatedTrace` with named states from the initial state of Spec 1 §47
 (`EncapRun`), with a hand-written graph of fragment F, its correspondence (K1–K4) and the data of
 reading 9. A trace that is not safe states every condition of `SafeConcurrentTrace`, the one that
-fails being negated, the correspondence premises Q1–Q4 (C52), the hypothesis of reading 12
-(`CtlAtomic`), and that no pair of events races (C33): each case isolates one condition. A safe
-trace states `SafeConcurrentTrace`, Q1–Q4, reading 12, and applies 14d (`no_race`). Each docstring
-gives the expected verdict with its clause, the obtained verdict and the twin. This is a test
-module: no model module imports it.
+fails being negated, the correspondence premises Q1–Q3 (C52) and Q4 (C26), the hypothesis of
+reading 12 (`CtlAtomic`), and that no pair of events races (C33): each case isolates one
+condition. A safe trace states `SafeConcurrentTrace`, Q1–Q4, reading 12, and applies 14d
+(`no_race`). Each docstring gives the expected verdict with its clause, the obtained verdict and
+the twin. This is a test module: no model module imports it.
 
 In `R52` and `R55` the condition that fails is a correspondence premise, Q4 and Q1; in `R53` and
 `R54` it is the provenance of lifecycle roles, a part of the correspondence itself (K3, K4): these
@@ -654,7 +654,6 @@ def r53G : ListGraph 5 Nat Nat Nat Nat where
   rf := []
   mo := []
 
-set_option maxHeartbeats 400000 in
 /-- **R53** (not safe: the provenance of the lifecycle roles alone fails; no race). The execution
 of `R52`; one event per step; the event of the write of `c1` (step 2) also carries the role
 `complete(c1)`, that of the write of `c0` (step 3) the role `join(c1)`. Expected (C28: "a context
@@ -761,7 +760,6 @@ theorem s5_not_creates7 : ∀ s, ¬ Creates s5σ s5L s 7 := by
   match s, hs with
   | 0, _ | 1, _ | 2, _ | 3, _ => exact absurd hc7 (by decide +kernel)
 
-set_option maxHeartbeats 400000 in
 /-- **R54** (not safe: the provenance of the lifecycle roles alone fails; no race). The execution
 of `R52`; one event per step; the event of the write of `c1` (step 2) also carries the role
 `spawn(c7)`, that of the write of `c0` (step 3) the role `start(c7)`. Expected (C28: "the parent
@@ -905,7 +903,6 @@ def r55hG : ListGraph 7 Nat Nat Nat Nat where
   rf := [(0, 5)]
   mo := []
 
-set_option maxHeartbeats 400000 in
 /-- **R55** (not safe: the provenance of initial writes alone fails; no race).
 `o := derive(root, Observe, {A, S})`; `spawn c1` yielding `o`; `c1` writes `S` by the concurrent
 `writeShared` of kind `store` without annotation; `c0 : readShared(root, A, acquire)`; `c0` writes
@@ -1146,7 +1143,6 @@ def r56hG : ListGraph 8 Nat Nat Nat Nat where
   rf := [(0, 6)]
   mo := []
 
-set_option maxHeartbeats 400000 in
 /-- **R56** (not safe: the units of the events of steps alone fail; no race).
 `o := derive(root, Observe, {A, B, S})`; `spawn c1` yielding `o`; `c1` writes `S` by the
 concurrent `writeShared` of kind `store` without annotation; `c1 : writeShared({B})` of kind
@@ -1233,7 +1229,6 @@ def r57D : AccessData r57G.toGraph s6tL r50K :=
     by decide +kernel, initOrigin_of_check (lbls := s6tL) (listK_none (by decide))
       (by decide +kernel)⟩
 
-set_option maxHeartbeats 400000 in
 /-- **R57** (not safe: the units of the events of steps alone fail; no race). The steps of `R50`:
 `o := derive(root, Observe, {A})`; `spawn c1` yielding `o`; `c0 : writeShared({A})` of kind
 `store` with `release`; `c1 : readShared(o, A, acquire)`. The event of step 2 designates one unit,
@@ -1299,7 +1294,6 @@ theorem R57 :
 def r58G : ListGraph 5 Nat Nat Nat Nat :=
   { s6tG with uRange := fun u => if u = 1 then ⟨8, 0⟩ else rLeaf u }
 
-set_option maxHeartbeats 400000 in
 /-- **R58** (not safe: the units of the events of steps alone fail; no race). The steps of `R50`,
 with its graph without the initial write; the unit of `A` has an empty byte range. Expected (C38:
 "An `Atomic(size, align)` leaf with zero physical size cannot satisfy the supported atomic-unit

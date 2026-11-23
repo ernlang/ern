@@ -346,7 +346,9 @@ def HandoffOrdered {E U V S : Type} (ks : KShared) (L : MutexLayout) (R : CtlOrd
     ¬ ConfinedLeaf ks x.leaf → PairHandoff IncompatModify ks σ lbls G K i j x y
 
 /-- The lifecycle conditions (C47; C51 item 2(f)): K3 and K4 of the correspondence, in both
-directions (C28, C32.2, C32.3). -/
+directions (C28, C32.2, C32.3). Exported obligation `OB-C20` (C27–C29, C50), stated part: the
+correspondence of the events of steps and of the lifecycle markers. The obligation is exported and
+remains open (`ExportedObligations`). -/
 structure LifecycleOK {E U V S : Type} (G : Events.Graph E Nat U V S)
     (σ : Nat → SC × SyncReg × ArenaReg) (lbls : List Label) (K : StepEvents E) : Prop where
   /-- K3. -/

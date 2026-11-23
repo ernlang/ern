@@ -218,7 +218,9 @@ represented steps and markers.
   `join(d)`.
 
 K3 and K4 hold in both directions: a lifecycle role is carried only by the event of the step, or
-by the marker, that C28 names. -/
+by the marker, that C28 names. Exported obligation `OB-C20` (C27–C29, C50), stated part: the
+correspondence of the events of steps and of the lifecycle markers. The obligation is exported and
+remains open (`ExportedObligations`). -/
 structure Corresponds {E U V S : Type} (G : Events.Graph E Nat U V S)
     (σ : Nat → SC × SyncReg × ArenaReg) (lbls : List Label) (K : StepEvents E) : Prop where
   /-- K1 (C26, C27). -/
