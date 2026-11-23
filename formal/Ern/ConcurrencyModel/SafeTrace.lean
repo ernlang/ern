@@ -258,9 +258,10 @@ permitted for an atomic read by C40"; C39: "That annotation applies **only** to 
 that leaf"; C40: "A failed CAS contributes an atomic read event and the `failure` order"). Under 11e
 the controller accesses of `acquire`, `unlock` and `resetLock` carry the orders of `R`. Exported
 obligation `OB-C20` (C27–C29, C50), stated part: the kind and the memory order of the atomic event
-of a step. The obligation is exported and remains open (`ExportedObligations`). The units of the
-events of steps are the condition `UnitLeaf`. The condition says nothing of an event that is the
-event of no step, of the accesses of compound steps or of failed attempts. -/
+of a step. The obligation is exported and remains open (`ExportedObligations`). The condition
+relates neither leaves to units, which is the condition `UnitLeaf`, nor byte ranges, and says
+nothing of an event that is the event of no step, of the accesses of compound steps or of failed
+attempts. -/
 def StepOrders {E U V S : Type} (ks : KShared) (L : MutexLayout) (R : CtlOrders)
     (σ : Nat → SC × SyncReg × ArenaReg) (lbls : List Label) (G : Events.Graph E Nat U V S)
     (K : StepEvents E) : Prop :=

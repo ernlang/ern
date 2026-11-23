@@ -105,9 +105,12 @@ Results: none. The obligation remains open.
   `Refinement` and `Machine` belong to the memory model: this entry carries their citation.
 * Realization of conflicting access events beyond the grain of steps (C50, C51, C52): the leaf,
   kind and atomicity of each conflicting access event (Q2), the storage identity of each access
-  event and the initial writes (reading 9), the order of distinct storage identities that reuse
-  bytes (Q3). **Stated**: `CorrQ2`, `AccessData`, `CorrQ3`. Carried by `no_race` (14d);
-  `AccessData` is data of `SafeConcurrentTrace` and of the theorems of 14a–14c.
+  event and the initial writes (reading 9), with the condition of fragment F on initial writes
+  (reading 14, field `init_origin`), the order of distinct storage identities that reuse bytes
+  (Q3). **Stated**: `CorrQ2`, `AccessData`, `CorrQ3`. Carried by `no_race` (14d); `AccessData` is
+  data of `SafeConcurrentTrace` and of the theorems of 14a–14c. The physical provenance of the
+  initial contents of a storage is not stated: an initial write of the graph is not proved to be
+  those contents.
 * Indivisibility of atomic units and interleaving of raw operations below the grain of abstract
   steps (C38, C39, C50). **Out of scope**: contexts interleave at the grain of abstract steps; the
   raw operations of one step run without interference (`refinement_run`).
@@ -135,23 +138,60 @@ Results (abstract part, C29): `Events.Graph.erase_hb_iff` (10b), `Events.Graph.e
 
 ## `OB-C20` (C27–C29, C50): correspondence of all physical accesses
 
-* Coverage: every access event is the event of a step or an initial write (Q1). **Stated**:
-  `CorrQ1`. Carried by `no_race`.
+* Provenance of access events: every access event is the event of a step or an initial write
+  (Q1). **Stated**: `CorrQ1`. Carried by `no_race`. This part is not the coverage of C29, of
+  which it is the converse: it says where an access event comes from, not that an access has an
+  event.
+* Correspondence of the events of steps and of the lifecycle markers, K1–K4, with the provenance
+  of lifecycle roles in both directions (C26–C28, C32, C47). **Stated**: `Corresponds`, and its
+  lifecycle part `LifecycleOK`, a field of `SafeConcurrentTrace` (C51 item 2(f)). Carried by
+  `Corresponds.po_or_eq`, `handoff_compose`, `handoff_no_race`, `spawn_hb`, `join_hb`,
+  `lock_order`, `mid_of_same_context`, `hb_of_marker`, `pair_confined`, `pair_exclusive`,
+  `pair_ordered`, `pair_covered`, `no_race`, `lock_edge`; concluded by `controller_graph`.
+  Outside this part: the order of the events within a step (C28; one event per step in fragment
+  F), the validity events and the step that emits them, and whether a step with an access has an
+  event (the next part).
+* Presence of an event for a step with a classified access (C26). **Stated**: `CorrQ4`, a
+  correspondence premise, not a condition of the safe trace (C51). Carried by `pair_covered`
+  (14c.6) and `atomic_covered`; it is not a premise of `no_race`. Outside this part: it is not the
+  coverage of C29 (the part "Coverage of physical accesses" below): it does not say that the event
+  carries an access, nor its byte footprint, and says nothing of the accesses of compound steps or
+  of failed attempts.
 * Authority and footprint at the grain of leaves: the leaf, kind and atomicity of each conflicting
   access event are those of an access of its step (Q2). **Stated**: `CorrQ2`. Carried by
   `no_race`.
 * Kind and memory order of the atomic event of a step (C37, C39, C40; C27): the atomic event of a
   step carries the kind and the memory order of an atomic access of that step. **Stated**:
   `StepOrders`, a field of `SafeConcurrentTrace` (C51 item 2(b)). Carried by `no_race`, through
-  `SafeConcurrentTrace`. Outside this part: it relates neither leaves to units nor byte ranges,
-  and says nothing of an event that is the event of no step, of the accesses of compound steps or
-  of failed attempts (the parts below).
+  `SafeConcurrentTrace`. Outside this part: it relates no leaf to a unit (the next part) and no
+  byte range, and says nothing of an event that is the event of no step, of the accesses of
+  compound steps or of failed attempts (the parts below).
+* Unit of the events of steps (C38, C30, C31, C32 item 1): two events of steps designate one unit
+  exactly when their steps access one `Atomic` leaf of nonzero size, and that unit has a nonempty
+  byte range. **Stated**: `UnitLeaf`, a field of `SafeConcurrentTrace` (C51 item 2(b)). Carried by
+  `atomic_covered`, and by `no_race` through `SafeConcurrentTrace`. Outside this part: the
+  placement of the byte range of a unit, the byte ranges of the accesses that designate no unit,
+  and the events that are the event of no step.
+* Initial writes, a condition of fragment F (C31; readings 9 and 14): an initial write with an
+  event of a step `hb`-before it is not atomic. **Stated**: the field `init_origin` of
+  `AccessData`, data of `SafeConcurrentTrace` and of the theorems of 14a–14d. Outside this part:
+  it does not prove that an initial write is the physical initial contents of its storage; that
+  physical provenance of the initial contents of a storage remains open (`OB-C12`). Atomic
+  accesses performed during an execution by a phase that is not a step are outside fragment F.
+* Coverage of physical accesses (C29: "Every actual byte access performed by a step realization
+  must have a corresponding `acc` event with its true byte footprint"). **Documented**: no
+  predicate states it. What the model gives: for an access to an `Atomic` leaf of nonzero size, an
+  event that designates a unit of nonempty byte range (`atomic_covered`, under Q4 and `UnitLeaf`);
+  for the other leaves, the physical size is not represented.
 * Byte footprints of physical accesses (C50). **Documented**: the memory machine represents the
   bytes of raw operations and the graph the units of events; no predicate relates them.
 * Validity of physical accesses (C27, C50). **Documented**: as the projection of validity events
   under `OB-C19`.
 * Ordering of physical accesses (C50). **Documented**: no predicate relates the order of the raw
-  operations of a translated run to `po`, `rf` and `mo` of the graph.
+  operations of a translated run to `po`, `rf` and `mo` of the graph. No predicate relates `rf` to
+  the order of the abstract trace either: an `rf` edge may go from the event of a later step to the
+  event of an earlier one (C26: the abstract interleaving "is **not** a hardware memory order").
+  The model imposes no memory order from the interleaving.
 * Compound steps: the physical accesses of `transfer`, `store`, `issue`, `alloc`, `free`,
   `endUse`, `exitFrame`, `terminate` and of the phases of a by-value `spawn` (C27; C5).
   **Documented**: their raw operations are represented (`rawOps`); `classify` gives them no access
@@ -165,7 +205,10 @@ Results (abstract part, C29): `Events.Graph.erase_hb_iff` (10b), `Events.Graph.e
   represents no write of provider metadata; the raw operations of `alloc` allocate the new root
   only (`Refinement.opsOf`).
 
-Results: none beyond those of `OB-C12`. The obligation remains open.
+Results: under Q4, `pair_covered` (14c.6: the two steps of a pair in conflict have events ordered
+by `hb`) and `atomic_covered` (an access to an `Atomic` leaf of nonzero size has an event that
+designates a unit of nonempty byte range); they state the existence of events, not their fidelity
+to the physical accesses. Otherwise none beyond those of `OB-C12`. The obligation remains open.
 
 ## `OB-C22` (C34, C50): compilation of `NoThinAir_RC11` and of the finite causal past
 
@@ -182,8 +225,8 @@ Results: none for this obligation. The obligation remains open.
 * The property of the executions against which safe code is sound (C51 item 2). **Stated**:
   `SafeConcurrentTrace`. A property of executions, not a proof that safe code produces only such
   executions. Carried by `SafeConcurrentTrace.encapsulated` (14b), `pair_confined`,
-  `pair_exclusive`, `pair_synchronized`, `pair_exhaustive`, `pair_ordered` (14c) and `no_race`
-  (14d).
+  `pair_exclusive`, `pair_synchronized`, `pair_exhaustive`, `pair_ordered`, `pair_covered` (14c)
+  and `no_race` (14d).
 * Programs accepted as safe and safe libraries produce only such traces (C51, C52). **Out of
   scope**: no program, type system or library is represented.
 
