@@ -178,11 +178,10 @@ Results (abstract part, C29): `Events.Graph.erase_hb_iff` (10b), `Events.Graph.e
   it does not prove that an initial write is the physical initial contents of its storage; that
   physical provenance of the initial contents of a storage remains open (`OB-C12`). Atomic
   accesses performed during an execution by a phase that is not a step are outside fragment F.
-* Coverage of physical accesses (C29: "Every actual byte access performed by a step realization
-  must have a corresponding `acc` event with its true byte footprint"). **Documented**: no
-  predicate states it. What the model gives: for an access to an `Atomic` leaf of nonzero size, an
-  event that designates a unit of nonempty byte range (`atomic_covered`, under Q4 and `UnitLeaf`);
-  for the other leaves, the physical size is not represented.
+* Coverage of physical accesses (C29). **Documented**: no predicate states it. What the model gives:
+  for an access to an `Atomic` leaf of nonzero size, an event that designates a unit of nonempty
+  byte range (`atomic_covered`, under Q4 and `UnitLeaf`); for the other leaves, the physical size is
+  not represented.
 * Byte footprints of physical accesses (C50). **Documented**: the memory machine represents the
   bytes of raw operations and the graph the units of events; no predicate relates them.
 * Validity of physical accesses (C27, C50). **Documented**: as the projection of validity events
@@ -190,8 +189,7 @@ Results (abstract part, C29): `Events.Graph.erase_hb_iff` (10b), `Events.Graph.e
 * Ordering of physical accesses (C50). **Documented**: no predicate relates the order of the raw
   operations of a translated run to `po`, `rf` and `mo` of the graph. No predicate relates `rf` to
   the order of the abstract trace either: an `rf` edge may go from the event of a later step to the
-  event of an earlier one (C26: the abstract interleaving "is **not** a hardware memory order").
-  The model imposes no memory order from the interleaving.
+  event of an earlier one (C26). The model imposes no memory order from the interleaving.
 * Compound steps: the physical accesses of `transfer`, `store`, `issue`, `alloc`, `free`,
   `endUse`, `exitFrame`, `terminate` and of the phases of a by-value `spawn` (C27; C5).
   **Documented**: their raw operations are represented (`rawOps`); `classify` gives them no access

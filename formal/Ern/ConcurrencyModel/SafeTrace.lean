@@ -95,11 +95,10 @@ structure AccessData {E U V S : Type} (G : Events.Graph E Nat U V S) (lbls : Lis
   init : E → Bool
   init_writes : ∀ e, init e = true → G.Writes e
   init_unstepped : ∀ e, init e = true → ∀ i, i < lbls.length → K.ev i ≠ some e
-  /-- Provenance of an initial write, as a condition of fragment F (reading 14; C31: "Initial
-  writes or initialized storage must have an explicitly represented source"). Either no event of a
-  step is `hb`-before it, which the fragment requires of initial contents of a storage; or it is
-  not atomic: fragment F represents no atomic access outside the steps. The condition does not
-  prove that an initial write is the physical initial contents of its storage: that provenance
+  /-- Provenance of an initial write, as a condition of fragment F (reading 14; C31). Either no
+  event of a step is `hb`-before it, which the fragment requires of initial contents of a storage;
+  or it is not atomic: fragment F represents no atomic access outside the steps. The condition does
+  not prove that an initial write is the physical initial contents of its storage: that provenance
   remains an open obligation (`OB-C12`, `OB-C20`). -/
   init_origin : ∀ w, init w = true → (∀ i d, K.ev i = some d → ¬ G.HB d w) ∨ ¬ G.Atomic w
 
@@ -268,15 +267,11 @@ def StepOrders {E U V S : Type} (ks : KShared) (L : MutexLayout) (R : CtlOrders)
   ∀ i e, K.ev i = some e → ∀ u o k, G.acc? e = some (.atomic u o k) →
     ∃ x, StepAccess ks L R σ lbls i x ∧ x.order = some o ∧ x.kind = k.kind
 
-/-- The units of the events of steps (C38: "One `Atomic(size, align)` unit is **one logical leaf**
-whose entire byte range is a single physically supported atomic unit"; "An `Atomic(size, align)`
-leaf with zero physical size cannot satisfy the supported atomic-unit requirement"; C31: `mo` is,
-for each `Atomic` location, "a strict total order over **all writes/modifications of that
-location**"; C32 item 1: "on the same atomic unit"). The units are those of the `Atomic` leaves of
-nonzero size (reading 6). No map from units to leaves is given: the conditions relate the events
-of two steps. Exported obligation `OB-C20` (C27–C29, C50), stated part: the unit of the events of
-steps. The obligation is exported and remains open (`ExportedObligations`). The condition says
-nothing of the placement of the byte range of a unit, of the byte ranges of the accesses that
+/-- The units of the events of steps (C38, C31, C32 item 1). The units are those of the `Atomic`
+leaves of nonzero size (reading 6). No map from units to leaves is given: the conditions relate the
+events of two steps. Exported obligation `OB-C20` (C27–C29, C50), stated part: the unit of the
+events of steps. The obligation is exported and remains open (`ExportedObligations`). The condition
+says nothing of the placement of the byte range of a unit, of the byte ranges of the accesses that
 designate no unit, or of an event that is the event of no step. -/
 structure UnitLeaf {E U V S : Type} (ks : KShared) (L : MutexLayout) (R : CtlOrders)
     (σ : Nat → SC × SyncReg × ArenaReg) (lbls : List Label) (G : Events.Graph E Nat U V S)
@@ -427,8 +422,7 @@ structure SafeConcurrentTrace {E U V S : Type} (pm : ProviderMeta) (ks : KShared
   orderLegal : G.OrderLegal
   /-- (b) (C37, C39, C40). -/
   stepOrders : StepOrders ks L R σ lbls G K
-  /-- (b) (C38: "One `Atomic(size, align)` unit is **one logical leaf**"; C51 item 2(b):
-  "`Atomic` accesses obey C37–C42"). -/
+  /-- (b) (C38; C51 item 2(b)). -/
   unitLeaf : UnitLeaf ks L R σ lbls G K
   /-- (c). -/
   confinedExcl : ConfinedExcl ks σ lbls
@@ -484,24 +478,22 @@ def CorrQ3 {E U V S : Type} {G : Events.Graph E Nat U V S} {lbls : List Label}
     (∃ v w, G.EndOf v (D.sid a) ∧ G.BeginOf w (D.sid d) ∧ G.HB v w) ∨
     (∃ v w, G.EndOf v (D.sid d) ∧ G.BeginOf w (D.sid a) ∧ G.HB v w)
 
-/-- Q4 (C26: "Each successful transition has a defined association with one or more semantic
-events"), at the grain of 11e: a step with a classified access has an event. This is the presence
-of an event, not the coverage of C29 ("Every actual byte access performed by a step realization
-must have a corresponding `acc` event with its true byte footprint"): Q4 does not say that the
-event carries an access, and says nothing of byte footprints, of the accesses of compound steps or
-of failed attempts. The coverage of C29 remains an open obligation (`OB-C20`,
-`ExportedObligations`). A correspondence premise, not a condition of the safe trace (C51:
-"physical access coverage and enforcement remain distinct realization obligations"). -/
+/-- Q4 (C26), at the grain of 11e: a step with a classified access has an event. This is the
+presence of an event, not the coverage of C29: Q4 does not say that the event carries an access, and
+says nothing of byte footprints, of the accesses of compound steps or of failed attempts. Exported
+obligation `OB-C20` (C27–C29, C50), stated part: the presence of an event for a step with a
+classified access. The coverage of C29 is another part of `OB-C20`, documented only. The obligation
+is exported and remains open (`ExportedObligations`). A correspondence premise, not a condition of
+the safe trace (C51 item 2). -/
 def CorrQ4 {E : Type} (ks : KShared) (L : MutexLayout) (R : CtlOrders)
     (σ : Nat → SC × SyncReg × ArenaReg) (lbls : List Label) (K : StepEvents E) : Prop :=
   ∀ i x, StepAccess ks L R σ lbls i x → ∃ e, K.ev i = some e
 
-/-- Under Q4 and `UnitLeaf`, a step with a classified access to an `Atomic` leaf of nonzero size
-has an event that designates a unit of nonempty byte range: an `acc` event (C29, C38). For these
-accesses the model has the information that a byte access exists; for the other leaves the
-physical size is not represented (C38: "A zero-physical-size `Synchronized` or `Confined` leaf may
-be targeted by a legal `store` without a byte access"). The statement does not say that the event
-is atomic when the access is, and is not the coverage of C29. -/
+/-- Under Q4 and `UnitLeaf`, a step with a classified access to an `Atomic` leaf of nonzero size has
+an event that designates a unit of nonempty byte range: an `acc` event (C29, C38). For these
+accesses the model has the information that a byte access exists; for the other leaves the physical
+size is not represented (C38). The statement does not say that the event is atomic when the access
+is, and is not the coverage of C29. -/
 theorem atomic_covered {E U V S : Type} {ks : KShared} {L : MutexLayout} {R : CtlOrders}
     {σ : Nat → SC × SyncReg × ArenaReg} {lbls : List Label} {G : Events.Graph E Nat U V S}
     {K : StepEvents E} (hq4 : CorrQ4 ks L R σ lbls K) (hu : UnitLeaf ks L R σ lbls G K) {i : Nat}
@@ -951,7 +943,9 @@ Pairs of distinct storage identities go through Q3 and 14a.2; pairs of one ident
 14c (14c.2, 14c.3, 14c.5 with 14c.4); initial writes through L3. The proof uses neither
 `EventConsistent`, nor the finite causal past, nor the conditions `OrderLegal`, `StepOrders` and
 `UnitLeaf` of (b), nor (e), nor the edge of `LockOrder`, nor the lifecycle conditions beyond the
-correspondence.
+correspondence. It uses neither the provenance of lifecycle roles (K3 and K4, converse direction),
+nor the field `init_origin` of the data. The conditions that the proof does not use restrict the
+graphs that the premises accept.
 
 The conclusion is about the events of `G`. The premises do not include Q4: a graph that gives no
 event to a step with an access satisfies them. The presence of the events is Q4, carried by 14c.6
