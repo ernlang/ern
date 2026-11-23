@@ -4,12 +4,12 @@ import Ern.ConcurrencyModel.WitnessLock
 /-!
 # Witnesses S1–S3: safe traces on the executions of theorems 12 and 13 (C46, C49, C51, C52)
 
-The executions, graphs and correspondences of W1, W2 and W7–W10 (`WitnessHandoff`,
-`WitnessLock`), unchanged, with the data of reading 9: those graphs have no validity event and no
-initial write, and their storage identities are of type `Unit`, one identity for every access, so
-Q3 is vacuous and Q2 covers every conflicting pair of step events. For each execution: the
-conditions of `SafeConcurrentTrace` (C51 item 2), the correspondence premises Q1–Q3 (C52) and Q4
-(C26), and the hypothesis of reading 12 (`CtlAtomic`). A safe trace applies 14d; a trace that is not safe states
+The executions, graphs and correspondences of W1, W2 and W7–W10 (`WitnessHandoff`, `WitnessLock`),
+unchanged, with the data of reading 9: those graphs have no validity event and no initial write, and
+their storage identities are of type `Unit`, one identity for every access, so Q3 is vacuous and Q2
+covers every conflicting pair of step events. For each execution: the conditions of
+`SafeConcurrentTrace` (C51 item 2), the correspondence premises Q1–Q3 (C52) and Q4 (C26), and the
+hypothesis of reading 12 (`CtlAtomic`). A safe trace applies 14d; a trace that is not safe states
 the condition that fails, every other condition, and the race.
 
 The contract `kMutex` classes the controller `lock` (leaf 2) `Atomic(4, 4)`: reading 12 holds for

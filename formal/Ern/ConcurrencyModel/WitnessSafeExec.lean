@@ -3,15 +3,15 @@ import Ern.ConcurrencyModel.SafeTrace
 /-!
 # Witness tooling for theorem 14: bounded forms of the safe-trace conditions
 
-Shared material of the witnesses S1–S8 (`WitnessSafe`): each condition of `SafeConcurrentTrace`
-(C51 item 2), each correspondence premise Q1–Q3 (C52) and Q4 (C26), and the hypothesis of
-reading 12 from a bounded form that `decide` evaluates on a finite execution with a hand-written
-graph, proved sound. The pairs in conflict range over the classified accesses of the steps (`stepAcc`); the
+Shared material of the witnesses S1–S8 (`WitnessSafe`): each condition of `SafeConcurrentTrace` (C51
+item 2), each correspondence premise Q1–Q3 (C52) and Q4 (C26), and the hypothesis of reading 12 from
+a bounded form that `decide` evaluates on a finite execution with a hand-written graph, proved
+sound. The pairs in conflict range over the classified accesses of the steps (`stepAcc`); the
 contexts with a capability over the contexts of the state (`cap_nil`). The legality of the memory
-orders of the events (`OrderLegal`) is checked event by event (`orderLegal_of_check`), the
-agreement of the atomic event of a step with its accesses (`StepOrders`) step by step
-(`stepOrders_of_check`), and the units of the events of steps (`UnitLeaf`) pair of steps by pair
-of steps (`unitLeaf_of_check`). The premise Q4 is checked step by step (`corrQ4_of_check`).
+orders of the events (`OrderLegal`) is checked event by event (`orderLegal_of_check`), the agreement
+of the atomic event of a step with its accesses (`StepOrders`) step by step (`stepOrders_of_check`),
+and the units of the events of steps (`UnitLeaf`) pair of steps by pair of steps
+(`unitLeaf_of_check`). The premise Q4 is checked step by step (`corrQ4_of_check`).
 -/
 
 namespace Ern.ConcurrencyModel
