@@ -140,7 +140,7 @@ theorem witness_w7 :
     (∀ eu ea, w7K.ev 7 = some eu → w7K.ev 9 = some ea → (w7G refOrders).toGraph.HB eu ea) := by
   have hr := w7_run (pm := pm)
   have hK : Corresponds (w7G refOrders).toGraph w7σ w7L w7K :=
-    corresponds_of_check _ _ _ [(4, 1)] _ _ _ (by decide +kernel) (by decide)
+    corresponds_of_check _ _ _ [(4, 1)] _ _ _ (by decide +kernel) (by decide) (by decide +kernel)
   have hc : (w7G refOrders).toGraph.EventConsistent := by decide +kernel
   have hR : Realizes (w7G refOrders).toGraph mutexLayout w7σ w7L w7K 0 2 refOrders 0 1 :=
     realizes_of_check _ _ _ _ _ _ _ _ _ _ _ _ (by decide +kernel)
@@ -236,7 +236,8 @@ theorem witness_w8 :
     (w8G refOrders).toGraph.Race 7 12 ∧
     FirstCompatible IncompatModify w8σ 6 1 3 .modify 7 ∧ w8L[7]? = some (.unlock 1 0) ∧
     ¬ (w8G refOrders).toGraph.HB 8 12 ∧ grantOf (w8σ 9).2.1 0 = some none := by
-  refine ⟨rfl, w8_run, corresponds_of_check _ _ _ [(4, 1)] _ _ _ (by decide +kernel) (by decide),
+  refine ⟨rfl, w8_run, corresponds_of_check _ _ _ [(4, 1)] _ _ _ (by decide +kernel) (by decide)
+    (by decide +kernel),
     by decide +kernel, realizes_of_check _ _ _ _ _ _ _ _ _ _ _ _ (by decide +kernel),
     by decide +kernel, by decide +kernel, by decide +kernel, by decide +kernel, by decide +kernel,
     by decide +kernel, firstCompatible_of_check (by decide) (by decide) (by decide), rfl,
@@ -328,7 +329,8 @@ theorem witness_w9 :
     w9G.toGraph.HB 7 15 ∧ ¬ w9G.toGraph.Race 7 15 ∧
     FirstCompatible IncompatModify w9σ 6 1 3 .modify 7 ∧ w9L[7]? = some (.unlock 1 0) ∧
     w9G.toGraph.HB 8 15 := by
-  refine ⟨rfl, w9_run, corresponds_of_check _ _ _ [(4, 1)] _ _ _ (by decide +kernel) (by decide),
+  refine ⟨rfl, w9_run, corresponds_of_check _ _ _ [(4, 1)] _ _ _ (by decide +kernel) (by decide)
+    (by decide +kernel),
     by decide +kernel, realizes_of_check _ _ _ _ _ _ _ _ _ _ _ _ (by decide +kernel),
     by decide +kernel, by decide +kernel, by decide +kernel,
     firstCompatible_of_check (by decide) (by decide) (by decide), rfl, by decide +kernel⟩
@@ -353,10 +355,12 @@ theorem witness_w10 :
       (∀ a b, (w8G rlxOrders).toGraph.SW a b ↔ a = 4 ∧ b = 5) ∧
       (w8G rlxOrders).toGraph.Race 7 12) := by
   refine ⟨⟨by decide +kernel, corresponds_of_check _ _ _ [(4, 1)] _ _ _ (by decide +kernel)
-    (by decide), realizes_of_check _ _ _ _ _ _ _ _ _ _ _ _ (by decide +kernel), by decide +kernel,
+    (by decide) (by decide +kernel),
+    realizes_of_check _ _ _ _ _ _ _ _ _ _ _ _ (by decide +kernel), by decide +kernel,
     by decide +kernel, by decide +kernel, by decide +kernel, by decide +kernel⟩,
     ⟨by decide +kernel, corresponds_of_check _ _ _ [(4, 1)] _ _ _ (by decide +kernel)
-    (by decide), realizes_of_check _ _ _ _ _ _ _ _ _ _ _ _ (by decide +kernel), by decide +kernel,
+    (by decide) (by decide +kernel),
+    realizes_of_check _ _ _ _ _ _ _ _ _ _ _ _ (by decide +kernel), by decide +kernel,
     by decide +kernel, by decide +kernel⟩⟩
 
 end Ern.ConcurrencyModel

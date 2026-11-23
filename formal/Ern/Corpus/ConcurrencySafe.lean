@@ -100,7 +100,7 @@ theorem R49_twin :
     ExclusivePair kAtomic r49σ r49L 0 3 r49w r49w ∧
     FirstCompatible IncompatModify r49σ 0 0 3 .observe 1 ∧ ∀ a b, ¬ r49TG.toGraph.Race a b := by
   have hK : Corresponds r49TG.toGraph r49σ r49L r49TK :=
-    corresponds_of_check _ _ _ [(2, 1)] _ _ _ (by decide +kernel) (by decide)
+    corresponds_of_check _ _ _ [(2, 1)] _ _ _ (by decide +kernel) (by decide) (by decide +kernel)
   have hS : SafeConcurrentTrace pm kAtomic mutexLayout refOrders r49σ r49L r49TG.toGraph r49TK
       (leafData 3) :=
     ⟨r49_run, by decide +kernel, finitePast_fin _, by decide,
@@ -149,6 +149,10 @@ theorem r49K_lt {i : Nat} {e : Fin 4} (h : r49K.ev i = some e) : i < r49L.length
   · exact h4
   · rw [r49K_none i h4] at h; cases h
 
+/-- The check of the provenance of the lifecycle roles of `R49` (`roleFromOK`). -/
+theorem r49_roles : ∀ e, roleFromOK r49σ r49L r49K e (r49G.toGraph.sync? e) = true := by
+  decide +kernel
+
 /-- The correspondence K1–K4 of `R49` (C26–C28, C32.2, C47). -/
 theorem r49_corr : Corresponds r49G.toGraph r49σ r49L r49K where
   ctx := fun i h e he =>
@@ -180,6 +184,10 @@ theorem r49_corr : Corresponds r49G.toGraph r49σ r49L r49K where
     intro q h c d e hl
     match q, h with
     | 0, _ | 1, _ | 2, _ | 3, _ => cases hl
+  spawnFrom := (roles_of_check r49_roles).1
+  startFrom := (roles_of_check r49_roles).2.1
+  completeFrom := (roles_of_check r49_roles).2.2.1
+  joinFrom := (roles_of_check r49_roles).2.2.2
 
 /-- **R49** (not safe: `HandoffOrdered` alone fails; no race). The base frame of `c0` holds
 `root`; `c0` writes `S` by the concurrent `writeShared` of kind `store` without annotation;
@@ -297,7 +305,7 @@ theorem R50 :
     ¬ SafeConcurrentTrace pm kAtomic mutexLayout refOrders s6tσ s6tL (r50G .acquire).toGraph
       r50K r50D := by
   have hK : Corresponds (r50G .acquire).toGraph s6tσ s6tL r50K :=
-    corresponds_of_check _ _ _ [(1, 1)] _ _ _ (by decide +kernel) (by decide)
+    corresponds_of_check _ _ _ [(1, 1)] _ _ _ (by decide +kernel) (by decide) (by decide +kernel)
   have hno : ¬ (r50G .acquire).toGraph.OrderLegal := fun h => by
     have h3 : Graph.OrderOK Kind.write MemOrder.acquire :=
       h 0 1 .acquire (.write 0) (by decide +kernel)
@@ -324,7 +332,7 @@ theorem R50_twin :
     CorrQ3 r50TD ∧ CtlAtomic kAtomic mutexLayout s6tσ s6tL ∧
     r50TD.init 0 = true ∧ ∀ a b, ¬ (r50G .relaxed).toGraph.Race a b := by
   have hK : Corresponds (r50G .relaxed).toGraph s6tσ s6tL r50K :=
-    corresponds_of_check _ _ _ [(1, 1)] _ _ _ (by decide +kernel) (by decide)
+    corresponds_of_check _ _ _ [(1, 1)] _ _ _ (by decide +kernel) (by decide) (by decide +kernel)
   have hS : SafeConcurrentTrace pm kAtomic mutexLayout refOrders s6tσ s6tL
       (r50G .relaxed).toGraph r50K r50TD :=
     ⟨s6t_run, by decide +kernel, finitePast_fin _, by decide,
@@ -464,7 +472,7 @@ theorem R51 :
     ¬ SafeConcurrentTrace pm kAtomic mutexLayout refOrders r51σ r51L
       (r51G .release .acquire).toGraph r51K r51D := by
   have hK : Corresponds (r51G .release .acquire).toGraph r51σ r51L r51K :=
-    corresponds_of_check _ _ _ [(1, 1)] _ _ _ (by decide +kernel) (by decide)
+    corresponds_of_check _ _ _ [(1, 1)] _ _ _ (by decide +kernel) (by decide) (by decide +kernel)
   have hno : ¬ StepOrders kAtomic mutexLayout refOrders r51σ r51L
       (r51G .release .acquire).toGraph r51K := fun h => by
     obtain ⟨x, hx, ho, -⟩ := h 3 4 (by decide +kernel) 1 .release (.write 1) (by decide +kernel)
@@ -496,7 +504,7 @@ theorem R51_twin :
     (r51G .release .acquire).toGraph.SW 4 5 ∧
     ∀ a b, ¬ (r51G .release .acquire).toGraph.Race a b := by
   have hK : Corresponds (r51G .release .acquire).toGraph r51σ r51TL r51K :=
-    corresponds_of_check _ _ _ [(1, 1)] _ _ _ (by decide +kernel) (by decide)
+    corresponds_of_check _ _ _ [(1, 1)] _ _ _ (by decide +kernel) (by decide) (by decide +kernel)
   have hS : SafeConcurrentTrace pm kAtomic mutexLayout refOrders r51σ r51TL
       (r51G .release .acquire).toGraph r51K r51TD :=
     ⟨r51T_run, by decide +kernel, finitePast_fin _, by decide,

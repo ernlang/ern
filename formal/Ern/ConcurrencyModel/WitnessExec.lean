@@ -6,8 +6,9 @@ import Ern.ConcurrencyModel.EventDecide
 
 Shared material of the execution witnesses of theorems 12 and 13 (`WitnessHandoff`,
 `WitnessLock`): the trace of an `EncapRun` (`trace_of_run`), a correspondence given by lists
-(`listK`) with a Boolean check of K1–K4 proved sound (`corresponds_of_check`), and a Boolean form
-of `FirstCompatible` on a finite range (`firstCompatible_of_check`).
+(`listK`) with a Boolean check of K1–K4 proved sound (`corresponds_of_check`), with the provenance
+of lifecycle roles checked for any correspondence (`roleFromOK`, `roles_of_check`), and a Boolean
+form of `FirstCompatible` on a finite range (`firstCompatible_of_check`).
 -/
 
 namespace Ern.ConcurrencyModel
@@ -100,6 +101,109 @@ def createsOK (σ : Nat → SC × SyncReg × ArenaReg) (lbls : List Label) (crea
     | some (.spawn _ _ _) | some (.spawnVal _ _ _ _) => creates.contains (s, (σ s).1.C.length)
     | _ => true
 
+/-- Step `s` is a `spawn` or a by-value `spawn` that creates `c`, as a Boolean (`Creates`). -/
+def createsB (σ : Nat → SC × SyncReg × ArenaReg) (lbls : List Label) (s c : Nat) : Bool :=
+  match lbls[s]? with
+  | some (.spawn _ _ _) => decide (c = (σ s).1.C.length)
+  | some (.spawnVal _ _ _ _) => decide (c = (σ s).1.C.length)
+  | _ => false
+
+theorem creates_of_createsB {σ : Nat → SC × SyncReg × ArenaReg} {lbls : List Label} {s c : Nat}
+    (h : createsB σ lbls s c = true) : Creates σ lbls s c := by
+  unfold createsB at h
+  split at h
+  · rename_i c' ps ls hs
+    obtain ⟨hlt, hget⟩ := List.getElem?_eq_some_iff.1 hs
+    exact ⟨hlt, .inl ⟨c', ps, ls, hget⟩, of_decide_eq_true h⟩
+  · rename_i c' ps ls vs hs
+    obtain ⟨hlt, hget⟩ := List.getElem?_eq_some_iff.1 hs
+    exact ⟨hlt, .inr ⟨c', ps, ls, vs, hget⟩, of_decide_eq_true h⟩
+  · cases h
+
+/-- Step `t` is `terminate` by `c`, as a Boolean. -/
+def termB (lbls : List Label) (t c : Nat) : Bool :=
+  match lbls[t]? with
+  | some (.terminate c') => decide (c' = c)
+  | _ => false
+
+theorem term_of_termB {lbls : List Label} {t c : Nat} (h : termB lbls t c = true) :
+    ∃ ht : t < lbls.length, lbls[t] = .terminate c := by
+  unfold termB at h
+  split at h
+  · rename_i c' hs
+    obtain ⟨hlt, hget⟩ := List.getElem?_eq_some_iff.1 hs
+    have := of_decide_eq_true h
+    subst this
+    exact ⟨hlt, hget⟩
+  · cases h
+
+/-- Step `q` is a `join` of `d`, as a Boolean. -/
+def joinB (lbls : List Label) (q d : Nat) : Bool :=
+  match lbls[q]? with
+  | some (.join _ d') => decide (d' = d)
+  | _ => false
+
+theorem join_of_joinB {lbls : List Label} {q d : Nat} (h : joinB lbls q d = true) :
+    ∃ hq : q < lbls.length, ∃ c, lbls[q] = .join c d := by
+  unfold joinB at h
+  split at h
+  · rename_i c d' hs
+    obtain ⟨hlt, hget⟩ := List.getElem?_eq_some_iff.1 hs
+    have := of_decide_eq_true h
+    subst this
+    exact ⟨hlt, c, hget⟩
+  · cases h
+
+/-- The provenance of the lifecycle role of the event `e` (K3 and K4, converse; C28, C32), as a
+Boolean: a role `spawn(c)` is carried by the event of a step that creates `c`, a role `start(c)` by
+the marker `start(c)` of a created context, a role `complete(c)` by the marker `complete(c)` of a
+context that executes `terminate`, a role `join(d)` by the event of a step `join(d)`. -/
+def roleFromOK {E : Type} [DecidableEq E] (σ : Nat → SC × SyncReg × ArenaReg) (lbls : List Label)
+    (K : StepEvents E) (e : E) : Option (SyncRole Nat) → Bool
+  | some (.spawn c) =>
+      (List.range lbls.length).any fun s => createsB σ lbls s c && decide (K.ev s = some e)
+  | some (.start c) =>
+      decide (K.start c = some e) && (List.range lbls.length).any fun s => createsB σ lbls s c
+  | some (.complete c) =>
+      decide (K.complete c = some e) && (List.range lbls.length).any fun t => termB lbls t c
+  | some (.join d) =>
+      (List.range lbls.length).any fun q => joinB lbls q d && decide (K.ev q = some e)
+  | _ => true
+
+/-- Soundness of the Boolean check of the provenance of roles: it gives the four provenance fields
+of `Corresponds` (K3 and K4, converse), for any correspondence. -/
+theorem roles_of_check {E U V S : Type} [DecidableEq E] {G : Events.Graph E Nat U V S}
+    {σ : Nat → SC × SyncReg × ArenaReg} {lbls : List Label} {K : StepEvents E}
+    (h : ∀ e, roleFromOK σ lbls K e (G.sync? e) = true) :
+    (∀ e c, G.sync? e = some (.spawn c) → ∃ s, Creates σ lbls s c ∧ K.ev s = some e) ∧
+    (∀ e c, G.sync? e = some (.start c) → K.start c = some e ∧ ∃ s, Creates σ lbls s c) ∧
+    (∀ e c, G.sync? e = some (.complete c) →
+      K.complete c = some e ∧ ∃ t, ∃ h : t < lbls.length, lbls[t] = .terminate c) ∧
+    (∀ e d, G.sync? e = some (.join d) →
+      ∃ q, ∃ h : q < lbls.length, ∃ c, lbls[q] = .join c d ∧ K.ev q = some e) := by
+  refine ⟨fun e c hs => ?_, fun e c hs => ?_, fun e c hs => ?_, fun e d hs => ?_⟩
+  · have := h e
+    rw [hs] at this
+    simp only [roleFromOK, List.any_eq_true, Bool.and_eq_true, decide_eq_true_eq] at this
+    obtain ⟨s, -, hc, he⟩ := this
+    exact ⟨s, creates_of_createsB hc, he⟩
+  · have := h e
+    rw [hs] at this
+    simp only [roleFromOK, List.any_eq_true, Bool.and_eq_true, decide_eq_true_eq] at this
+    obtain ⟨hk, s, -, hc⟩ := this
+    exact ⟨hk, s, creates_of_createsB hc⟩
+  · have := h e
+    rw [hs] at this
+    simp only [roleFromOK, List.any_eq_true, Bool.and_eq_true, decide_eq_true_eq] at this
+    obtain ⟨hk, t, -, ht⟩ := this
+    exact ⟨hk, t, term_of_termB ht⟩
+  · have := h e
+    rw [hs] at this
+    simp only [roleFromOK, List.any_eq_true, Bool.and_eq_true, decide_eq_true_eq] at this
+    obtain ⟨q, -, hj, he⟩ := this
+    obtain ⟨hq, c, hl⟩ := join_of_joinB hj
+    exact ⟨q, hq, c, hl, he⟩
+
 /-- In a list without duplicates, an element has one index. -/
 theorem nodup_getElem?_inj {α : Type} : ∀ {l : List α}, l.Nodup → ∀ {i j : Nat} {a : α},
     l[i]? = some a → l[j]? = some a → i = j
@@ -123,18 +227,21 @@ theorem nodup_getElem?_inj {α : Type} : ∀ {l : List α}, l.Nodup → ∀ {i j
         simp only [List.getElem?_cons_succ] at hi hj
         exact congrArg (· + 1) (nodup_getElem?_inj hl hi hj)
 
-/-- Soundness of the Boolean check: a list correspondence that passes it is a correspondence of
-fragment F (K1–K4). -/
+/-- Soundness of the Boolean checks: a list correspondence that passes them is a correspondence of
+fragment F (K1–K4, with the provenance of roles, `roleFromOK`). -/
 theorem corresponds_of_check {n : Nat} {U V S : Type} (G : ListGraph n Nat U V S)
     (σ : Nat → SC × SyncReg × ArenaReg) (lbls : List Label) (creates : List (Nat × Nat))
     (evs : List (Fin n)) (starts completes : List (Nat × Fin n))
     (h : kcheck G lbls creates evs starts completes = true)
-    (hc : createsOK σ lbls creates = true) :
+    (hc : createsOK σ lbls creates = true)
+    (hr : ∀ e, roleFromOK σ lbls (listK evs starts completes) e (G.toGraph.sync? e) = true) :
     Corresponds G.toGraph σ lbls (listK evs starts completes) := by
+  obtain ⟨hr1, hr2, hr3, hr4⟩ := roles_of_check hr
   simp only [kcheck, Bool.and_eq_true, List.all_eq_true, decide_eq_true_eq] at h
   obtain ⟨⟨⟨⟨⟨⟨hnd, hctx⟩, hpo⟩, hsp⟩, hst⟩, hco⟩, hjo⟩ := h
   refine ⟨fun i hi e he => ?_, fun i j e hi hj => ?_, fun i j hi hj a b hij hreq ha hb => ?_,
-    fun s c hcr e he => ?_, fun c x hx => ?_, fun c x hx => ?_, fun q hq c d e hlq he => ?_⟩
+    fun s c hcr e he => ?_, fun c x hx => ?_, fun c x hx => ?_, fun q hq c d e hlq he => ?_,
+    hr1, hr2, hr3, hr4⟩
   · have := hctx i (List.mem_range.2 hi)
     simp only [listK] at he
     rw [he, List.getElem?_eq_getElem hi] at this

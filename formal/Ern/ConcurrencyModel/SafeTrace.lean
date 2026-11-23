@@ -299,8 +299,8 @@ def HandoffOrdered {E U V S : Type} (ks : KShared) (L : MutexLayout) (R : CtlOrd
   ∀ i j x y, ConflictPair ks L R σ lbls i j x y → ExclusivePair ks σ lbls i j x y →
     ¬ ConfinedLeaf ks x.leaf → PairHandoff IncompatModify ks σ lbls G K i j x y
 
-/-- The lifecycle conditions (C47; C51 item 2(f)): K3 and K4 of the correspondence (C28, C32.2,
-C32.3). -/
+/-- The lifecycle conditions (C47; C51 item 2(f)): K3 and K4 of the correspondence, in both
+directions (C28, C32.2, C32.3). -/
 structure LifecycleOK {E U V S : Type} (G : Events.Graph E Nat U V S)
     (σ : Nat → SC × SyncReg × ArenaReg) (lbls : List Label) (K : StepEvents E) : Prop where
   /-- K3. -/
@@ -314,12 +314,23 @@ structure LifecycleOK {E U V S : Type} (G : Events.Graph E Nat U V S)
   /-- K4. -/
   joinRole : ∀ q (h : q < lbls.length) c d e, lbls[q] = .join c d → K.ev q = some e →
     G.sync? e = some (.join d)
+  /-- K3, provenance. -/
+  spawnFrom : ∀ e c, G.sync? e = some (.spawn c) → ∃ s, Creates σ lbls s c ∧ K.ev s = some e
+  /-- K3, provenance. -/
+  startFrom : ∀ e c, G.sync? e = some (.start c) → K.start c = some e ∧ ∃ s, Creates σ lbls s c
+  /-- K4, provenance. -/
+  completeFrom : ∀ e c, G.sync? e = some (.complete c) →
+    K.complete c = some e ∧ ∃ t, ∃ h : t < lbls.length, lbls[t] = .terminate c
+  /-- K4, provenance. -/
+  joinFrom : ∀ e d, G.sync? e = some (.join d) →
+    ∃ q, ∃ h : q < lbls.length, ∃ c, lbls[q] = .join c d ∧ K.ev q = some e
 
 /-- The correspondence gives the lifecycle conditions. -/
 theorem Corresponds.lifecycle {E U V S : Type} {G : Events.Graph E Nat U V S}
     {σ : Nat → SC × SyncReg × ArenaReg} {lbls : List Label} {K : StepEvents E}
     (h : Corresponds G σ lbls K) : LifecycleOK G σ lbls K :=
-  ⟨h.spawnRole, h.start, h.complete, h.joinRole⟩
+  ⟨h.spawnRole, h.start, h.complete, h.joinRole, h.spawnFrom, h.startFrom, h.completeFrom,
+    h.joinFrom⟩
 
 /-- Step `p` is an `unlock(e)` or a `resetLock(e)` (C17, C18). -/
 def PubOn (lbls : List Label) (e p : Nat) : Prop :=

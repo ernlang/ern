@@ -153,7 +153,7 @@ theorem witness_s4 :
     ¬ SafeConcurrentTrace pm kAtomic mutexLayout refOrders s4σ s4L s4G.toGraph pairK
       (leafData 5) := by
   have hK : Corresponds s4G.toGraph s4σ s4L pairK :=
-    corresponds_of_check _ _ _ [(1, 1)] _ _ _ (by decide +kernel) (by decide)
+    corresponds_of_check _ _ _ [(1, 1)] _ _ _ (by decide +kernel) (by decide) (by decide +kernel)
   have hne : ¬ InheritedLegal kAtomic s4L := fun h => absurd (h 2 (by decide)) (by decide)
   have hq2 : ¬ CorrQ2 kAtomic mutexLayout refOrders s4σ s4L s4G.toGraph pairK (leafData 5) :=
     fun h => by
@@ -227,7 +227,7 @@ theorem witness_s4_twin :
     CorrQ3 (leafData (G := s4tG.toGraph) (lbls := s4tL) (K := joinK) 3) ∧
     CtlAtomic kAtomic mutexLayout s4tσ s4tL ∧ ∀ a b, ¬ s4tG.toGraph.Race a b := by
   have hK : Corresponds s4tG.toGraph s4tσ s4tL joinK :=
-    corresponds_of_check _ _ _ [(1, 1)] _ _ _ (by decide +kernel) (by decide)
+    corresponds_of_check _ _ _ [(1, 1)] _ _ _ (by decide +kernel) (by decide) (by decide +kernel)
   have hS : SafeConcurrentTrace pm kAtomic mutexLayout refOrders s4tσ s4tL s4tG.toGraph joinK
       (leafData 3) :=
     ⟨s4t_run, by decide +kernel, finitePast_fin _, by decide,
@@ -301,7 +301,7 @@ theorem witness_s5 :
     ¬ SafeConcurrentTrace pm kAtomic mutexLayout refOrders s5σ s5L s5G.toGraph pairK
       (leafData 3) := by
   have hK : Corresponds s5G.toGraph s5σ s5L pairK :=
-    corresponds_of_check _ _ _ [(1, 1)] _ _ _ (by decide +kernel) (by decide)
+    corresponds_of_check _ _ _ [(1, 1)] _ _ _ (by decide +kernel) (by decide) (by decide +kernel)
   have hno : ¬ SyncOrdered kAtomic mutexLayout refOrders s5σ s5L s5G.toGraph pairK := fun h =>
     absurd (h 2 3 ⟨3, .write, none, .observe⟩ ⟨3, .write, none, .observe⟩
       (conflictPair_of (by decide) (by decide) (by decide) rfl (by decide) (by decide)
@@ -359,7 +359,7 @@ theorem witness_s5_twin :
     CorrQ3 (leafData (G := s4tG.toGraph) (lbls := s5tL) (K := joinK) 3) ∧
     CtlAtomic kAtomic mutexLayout s5tσ s5tL ∧ ∀ a b, ¬ s4tG.toGraph.Race a b := by
   have hK : Corresponds s4tG.toGraph s5tσ s5tL joinK :=
-    corresponds_of_check _ _ _ [(1, 1)] _ _ _ (by decide +kernel) (by decide)
+    corresponds_of_check _ _ _ [(1, 1)] _ _ _ (by decide +kernel) (by decide) (by decide +kernel)
   have hS : SafeConcurrentTrace pm kAtomic mutexLayout refOrders s5tσ s5tL s4tG.toGraph joinK
       (leafData 3) :=
     ⟨s5t_run, by decide +kernel, finitePast_fin _, by decide,
@@ -434,7 +434,7 @@ theorem witness_s6 :
     ¬ SafeConcurrentTrace pm kAtomic mutexLayout refOrders s6σ s6L s6G.toGraph pairK
       (leafData 1) := by
   have hK : Corresponds s6G.toGraph s6σ s6L pairK :=
-    corresponds_of_check _ _ _ [(1, 1)] _ _ _ (by decide +kernel) (by decide)
+    corresponds_of_check _ _ _ [(1, 1)] _ _ _ (by decide +kernel) (by decide) (by decide +kernel)
   have hno : ¬ OrdinaryAtomicOK kAtomic s6σ s6L := fun h => absurd (h 3 (by decide)) (by decide)
   exact ⟨s6_run, by decide +kernel, finitePast_fin _, hno,
     orderLegal_of_check (by decide +kernel),
@@ -487,7 +487,7 @@ theorem witness_s6_twin :
     CtlAtomic kAtomic mutexLayout s6tσ s6tL ∧ s6tG.toGraph.SW 3 4 ∧
     ∀ a b, ¬ s6tG.toGraph.Race a b := by
   have hK : Corresponds s6tG.toGraph s6tσ s6tL pairK :=
-    corresponds_of_check _ _ _ [(1, 1)] _ _ _ (by decide +kernel) (by decide)
+    corresponds_of_check _ _ _ [(1, 1)] _ _ _ (by decide +kernel) (by decide) (by decide +kernel)
   have hS : SafeConcurrentTrace pm kAtomic mutexLayout refOrders s6tσ s6tL s6tG.toGraph pairK
       (leafData 1) :=
     ⟨s6t_run, by decide +kernel, finitePast_fin _, by decide,
@@ -562,7 +562,7 @@ theorem witness_s7 :
     ¬ SafeConcurrentTrace pm kAtomic mutexLayout refOrders s7σ s7L s7G.toGraph pairK
       (leafData 4) := by
   have hK : Corresponds s7G.toGraph s7σ s7L pairK :=
-    corresponds_of_check _ _ _ [(1, 1)] _ _ _ (by decide +kernel) (by decide)
+    corresponds_of_check _ _ _ [(1, 1)] _ _ _ (by decide +kernel) (by decide) (by decide +kernel)
   have hne : ¬ ConfinedExcl kAtomic s7σ s7L := fun h =>
     absurd (h 2 (by decide) 4 (by decide) 0 1 (by decide) (by decide)) (by decide)
   have hnh : ¬ ConfinedHandoff kAtomic mutexLayout refOrders s7σ s7L s7G.toGraph pairK := fun h =>
@@ -630,7 +630,7 @@ theorem witness_s7_twin :
     s7tL[3]? = some (.kernel 1 (.release 1)) ∧ s7tG.toGraph.HB 4 8 ∧
     ∀ a b, ¬ s7tG.toGraph.Race a b := by
   have hK : Corresponds s7tG.toGraph s7tσ s7tL joinK :=
-    corresponds_of_check _ _ _ [(1, 1)] _ _ _ (by decide +kernel) (by decide)
+    corresponds_of_check _ _ _ [(1, 1)] _ _ _ (by decide +kernel) (by decide) (by decide +kernel)
   have hS : SafeConcurrentTrace pm kAtomic mutexLayout refOrders s7tσ s7tL s7tG.toGraph joinK
       (leafData 4) :=
     ⟨s7t_run, by decide +kernel, finitePast_fin _, by decide,
@@ -742,7 +742,7 @@ theorem witness_s8 :
     CtlAtomic kAtomic mutexLayout s8σ s8L ∧ s8G.toGraph.Race 4 8 ∧
     ¬ SafeConcurrentTrace pm kAtomic mutexLayout refOrders s8σ s8L s8G.toGraph s8K s8D := by
   have hK : Corresponds s8G.toGraph s8σ s8L s8K :=
-    corresponds_of_check _ _ _ [(2, 1)] _ _ _ (by decide +kernel) (by decide)
+    corresponds_of_check _ _ _ [(2, 1)] _ _ _ (by decide +kernel) (by decide) (by decide +kernel)
   have hno : ¬ LifetimeOrdered s8G.toGraph s8D := fun h =>
     absurd (h.before_end 4 6 (by decide) (by decide)) (by decide +kernel)
   exact ⟨s8_run, by decide +kernel, finitePast_fin _, by decide,
@@ -825,7 +825,7 @@ theorem witness_s8_twin :
     CtlAtomic kAtomic mutexLayout s8tσ s8tL ∧ s8tG.toGraph.HB 4 11 ∧
     ∀ a b, ¬ s8tG.toGraph.Race a b := by
   have hK : Corresponds s8tG.toGraph s8tσ s8tL s8tK :=
-    corresponds_of_check _ _ _ [(2, 1)] _ _ _ (by decide +kernel) (by decide)
+    corresponds_of_check _ _ _ [(2, 1)] _ _ _ (by decide +kernel) (by decide) (by decide +kernel)
   have hL : LifetimeOrdered s8tG.toGraph s8tD :=
     ⟨by decide +kernel, by decide +kernel, by decide +kernel⟩
   have hS : SafeConcurrentTrace pm kAtomic mutexLayout refOrders s8tσ s8tL s8tG.toGraph s8tK s8tD :=

@@ -109,7 +109,7 @@ theorem R46 :
     r46L[5]? = some (.kernel 0 (.release 2)) ∧ r46G.toGraph.Race 5 7 ∧
     ¬ SafeConcurrentTrace pm kX mutexLayout refOrders r46σ r46L r46G.toGraph r46K unitData := by
   have hK : Corresponds r46G.toGraph r46σ r46L r46K :=
-    corresponds_of_check _ _ _ [(3, 1)] _ _ _ (by decide +kernel) (by decide)
+    corresponds_of_check _ _ _ [(3, 1)] _ _ _ (by decide +kernel) (by decide) (by decide +kernel)
   have hno : ¬ HandoffOrdered kX mutexLayout refOrders r46σ r46L r46G.toGraph r46K := fun h =>
     absurd (h 4 6 ⟨0, .write, none, .modify⟩ ⟨0, .write, none, .modify⟩
       (conflictPair_of (by decide) (by decide) (by decide) rfl (by decide) (by decide)
@@ -191,7 +191,7 @@ theorem R46_twin :
     CtlAtomic kX mutexLayout r46Tσ r46TL ∧
     FirstCompatible IncompatModify r46Tσ 3 0 0 .modify 5 ∧ ∀ a b, ¬ r46TG.toGraph.Race a b := by
   have hK : Corresponds r46TG.toGraph r46Tσ r46TL r46TK :=
-    corresponds_of_check _ _ _ [(5, 1)] _ _ _ (by decide +kernel) (by decide)
+    corresponds_of_check _ _ _ [(5, 1)] _ _ _ (by decide +kernel) (by decide) (by decide +kernel)
   have hS : SafeConcurrentTrace pm kX mutexLayout refOrders r46Tσ r46TL r46TG.toGraph r46TK
       unitData :=
     ⟨r46T_run, by decide +kernel, finitePast_fin _, by decide,
@@ -303,6 +303,7 @@ theorem R47 :
     ¬ SafeConcurrentTrace pm kX mutexLayout refOrders r47σ r47L r47G.toGraph r47K unitData := by
   have hK : Corresponds r47G.toGraph r47σ r47L r47K :=
     corresponds_of_check _ _ _ [(2, 1), (4, 2)] _ _ _ (by decide +kernel) (by decide)
+      (by decide +kernel)
   have hno : ¬ HandoffOrdered kX mutexLayout refOrders r47σ r47L r47G.toGraph r47K := fun h =>
     absurd (h 5 10 ⟨0, .write, none, .modify⟩ ⟨0, .write, none, .modify⟩
       (conflictPair_of (by decide) (by decide) (by decide) rfl (by decide) (by decide)
@@ -402,6 +403,7 @@ theorem R47_twin :
     CtlAtomic kX mutexLayout r47Tσ r47TL ∧ ∀ a b, ¬ r47TG.toGraph.Race a b := by
   have hK : Corresponds r47TG.toGraph r47Tσ r47TL r47TK :=
     corresponds_of_check _ _ _ [(2, 1), (4, 2)] _ _ _ (by decide +kernel) (by decide)
+      (by decide +kernel)
   have hS : SafeConcurrentTrace pm kX mutexLayout refOrders r47Tσ r47TL r47TG.toGraph r47TK
       unitData :=
     ⟨r47T_run, by decide +kernel, finitePast_fin _, by decide,
@@ -519,7 +521,7 @@ theorem R48 :
     ¬ SafeConcurrentTrace pm kMutex mutexLayout refOrders r48σ r48L (r48G refOrders).toGraph r48K
       unitData := by
   have hK : Corresponds (r48G refOrders).toGraph r48σ r48L r48K :=
-    corresponds_of_check _ _ _ [(7, 1)] _ _ _ (by decide +kernel) (by decide)
+    corresponds_of_check _ _ _ [(7, 1)] _ _ _ (by decide +kernel) (by decide) (by decide +kernel)
   have hR : Realizes (r48G refOrders).toGraph mutexLayout r48σ r48L r48K 0 2 refOrders 0 1 :=
     realizes_of_check _ _ _ _ _ _ _ _ _ _ _ _ (by decide +kernel)
   have hno : ¬ HandoffOrdered kMutex mutexLayout refOrders r48σ r48L (r48G refOrders).toGraph
@@ -617,6 +619,7 @@ def r48TK : StepEvents (Fin 18) :=
 /-- The correspondence of the twin of `R48` (K1–K4). -/
 theorem r48T_corr : Corresponds r48TG.toGraph r48Tσ r48TL r48TK :=
   corresponds_of_check _ _ _ [(7, 1)] _ _ _ (by decide +kernel) (by decide +kernel)
+    (by decide +kernel)
 
 /-- Realization R in the twin of `R48` (C48). -/
 theorem r48T_realizes : Realizes r48TG.toGraph mutexLayout r48Tσ r48TL r48TK 0 2 refOrders 0 1 :=
