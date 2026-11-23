@@ -227,21 +227,35 @@ theorem nodup_getElem?_inj {α : Type} : ∀ {l : List α}, l.Nodup → ∀ {i j
         simp only [List.getElem?_cons_succ] at hi hj
         exact congrArg (· + 1) (nodup_getElem?_inj hl hi hj)
 
-/-- Soundness of the Boolean checks: a list correspondence that passes them is a correspondence of
-fragment F (K1–K4, with the provenance of roles, `roleFromOK`). -/
-theorem corresponds_of_check {n : Nat} {U V S : Type} (G : ListGraph n Nat U V S)
+/-- Soundness of the Boolean checks `kcheck` and `createsOK`: a list correspondence that passes
+them satisfies K1–K4 in the direction of the steps, the fields of `Corresponds` other than the
+provenance of roles. -/
+theorem corresponds_fwd_of_check {n : Nat} {U V S : Type} (G : ListGraph n Nat U V S)
     (σ : Nat → SC × SyncReg × ArenaReg) (lbls : List Label) (creates : List (Nat × Nat))
     (evs : List (Fin n)) (starts completes : List (Nat × Fin n))
     (h : kcheck G lbls creates evs starts completes = true)
-    (hc : createsOK σ lbls creates = true)
-    (hr : ∀ e, roleFromOK σ lbls (listK evs starts completes) e (G.toGraph.sync? e) = true) :
-    Corresponds G.toGraph σ lbls (listK evs starts completes) := by
-  obtain ⟨hr1, hr2, hr3, hr4⟩ := roles_of_check hr
+    (hc : createsOK σ lbls creates = true) :
+    (∀ i (h : i < lbls.length) e, (listK evs starts completes).ev i = some e →
+      G.toGraph.ctx e = lbls[i].requester) ∧
+    (∀ i j e, (listK evs starts completes).ev i = some e →
+      (listK evs starts completes).ev j = some e → i = j) ∧
+    (∀ i j (hi : i < lbls.length) (hj : j < lbls.length) a b, i < j →
+      lbls[i].requester = lbls[j].requester → (listK evs starts completes).ev i = some a →
+      (listK evs starts completes).ev j = some b → G.toGraph.po a b) ∧
+    (∀ s c, Creates σ lbls s c → ∀ e, (listK evs starts completes).ev s = some e →
+      G.toGraph.sync? e = some (.spawn c)) ∧
+    (∀ c x, (listK evs starts completes).start c = some x → G.toGraph.ctx x = c ∧
+      G.toGraph.sync? x = some (.start c) ∧ ∀ j (h : j < lbls.length) d,
+        lbls[j].requester = c → (listK evs starts completes).ev j = some d → G.toGraph.po x d) ∧
+    (∀ c x, (listK evs starts completes).complete c = some x → G.toGraph.ctx x = c ∧
+      G.toGraph.sync? x = some (.complete c) ∧ ∀ j (h : j < lbls.length) d,
+        lbls[j].requester = c → (listK evs starts completes).ev j = some d → G.toGraph.po d x) ∧
+    (∀ q (h : q < lbls.length) c d e, lbls[q] = .join c d →
+      (listK evs starts completes).ev q = some e → G.toGraph.sync? e = some (.join d)) := by
   simp only [kcheck, Bool.and_eq_true, List.all_eq_true, decide_eq_true_eq] at h
   obtain ⟨⟨⟨⟨⟨⟨hnd, hctx⟩, hpo⟩, hsp⟩, hst⟩, hco⟩, hjo⟩ := h
   refine ⟨fun i hi e he => ?_, fun i j e hi hj => ?_, fun i j hi hj a b hij hreq ha hb => ?_,
-    fun s c hcr e he => ?_, fun c x hx => ?_, fun c x hx => ?_, fun q hq c d e hlq he => ?_,
-    hr1, hr2, hr3, hr4⟩
+    fun s c hcr e he => ?_, fun c x hx => ?_, fun c x hx => ?_, fun q hq c d e hlq he => ?_⟩
   · have := hctx i (List.mem_range.2 hi)
     simp only [listK] at he
     rw [he, List.getElem?_eq_getElem hi] at this
@@ -298,6 +312,20 @@ theorem corresponds_of_check {n : Nat} {U V S : Type} (G : ListGraph n Nat U V S
     simp only [listK] at he
     rw [List.getElem?_eq_getElem hq, hlq, he] at this
     exact of_decide_eq_true this
+
+/-- Soundness of the Boolean checks: a list correspondence that passes them is a correspondence of
+fragment F (K1–K4, with the provenance of roles, `roleFromOK`). -/
+theorem corresponds_of_check {n : Nat} {U V S : Type} (G : ListGraph n Nat U V S)
+    (σ : Nat → SC × SyncReg × ArenaReg) (lbls : List Label) (creates : List (Nat × Nat))
+    (evs : List (Fin n)) (starts completes : List (Nat × Fin n))
+    (h : kcheck G lbls creates evs starts completes = true)
+    (hc : createsOK σ lbls creates = true)
+    (hr : ∀ e, roleFromOK σ lbls (listK evs starts completes) e (G.toGraph.sync? e) = true) :
+    Corresponds G.toGraph σ lbls (listK evs starts completes) := by
+  obtain ⟨h1, h2, h3, h4, h5, h6, h7⟩ := corresponds_fwd_of_check G σ lbls creates evs starts
+    completes h hc
+  obtain ⟨hr1, hr2, hr3, hr4⟩ := roles_of_check hr
+  exact ⟨h1, h2, h3, h4, h5, h6, h7, hr1, hr2, hr3, hr4⟩
 
 /-! ## `FirstCompatible` on a finite range -/
 

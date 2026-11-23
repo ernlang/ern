@@ -8,7 +8,7 @@ The executions, graphs and correspondences of W1, W2 and W7–W10 (`WitnessHando
 `WitnessLock`), unchanged, with the data of reading 9: those graphs have no validity event and no
 initial write, and their storage identities are of type `Unit`, one identity for every access, so
 Q3 is vacuous and Q2 covers every conflicting pair of step events. For each execution: the
-conditions of `SafeConcurrentTrace` (C51 item 2), the correspondence premises Q1–Q3 (C52) and the
+conditions of `SafeConcurrentTrace` (C51 item 2), the correspondence premises Q1–Q4 (C52) and the
 hypothesis of reading 12 (`CtlAtomic`). A safe trace applies 14d; a trace that is not safe states
 the condition that fails, every other condition, and the race.
 
@@ -43,7 +43,7 @@ abbrev unitData {E U V : Type} {G : Events.Graph E Nat U V Unit} {lbls : List La
 steps are `ok` and the execution is an `EncapsulatedTrace`; `HandoffOrdered` fails for the pair of
 the `write3` of `c1` (step 2) and that of `c0` (step 4) on `X`: their loss marker is `release(a)`,
 and its event is not `hb`-before the write of `c0`. Every other condition of the safe trace holds,
-and Q1–Q3 and reading 12 hold. The two writes race. -/
+and Q1–Q4 and reading 12 hold. The two writes race. -/
 theorem witness_s1 :
     EncapRun pm kX mutexLayout w1σ w1L ∧ w1G.toGraph.EventConsistent ∧
     w1G.toGraph.FiniteCausalPast ∧ OrdinaryAtomicOK kX w1σ w1L ∧
@@ -84,7 +84,7 @@ theorem witness_s1 :
 /-! ## S2: W2 and W7 -/
 
 /-- **Witness S2**, W2 (C46, C47; C51, C52): W2 (`witness_w2`), restitution of `a` with `c1 :
-terminate` and `c0 : join(c1)`, is a `SafeConcurrentTrace` from the initial state; Q1–Q3 and
+terminate` and `c0 : join(c1)`, is a `SafeConcurrentTrace` from the initial state; Q1–Q4 and
 reading 12 hold; 14d applies: no pair of events races. -/
 theorem witness_s2_w2 :
     SafeConcurrentTrace pm kX mutexLayout refOrders w2σ w2L w2G.toGraph w2K unitData ∧
@@ -128,7 +128,7 @@ theorem mutex_lockEdge {E S : Type} {G : Events.Graph E Nat Nat Nat S}
 
 /-- **Witness S2**, W7 (C48, C49; C51, C52): W7 (`witness_w7`), the mutex handoff under the
 reference triple, is a `SafeConcurrentTrace` from the initial state; its edge of `LockOrder` holds
-by 14e; Q1–Q3 and reading 12 hold (the contract classes `lock` `Atomic(4, 4)`); 14d applies: no
+by 14e; Q1–Q4 and reading 12 hold (the contract classes `lock` `Atomic(4, 4)`); 14d applies: no
 pair of events races. -/
 theorem witness_s2_w7 :
     SafeConcurrentTrace pm kMutex mutexLayout refOrders w7σ w7L (w7G refOrders).toGraph w7K
@@ -166,7 +166,7 @@ theorem witness_s2_w7 :
 edge missing from an abandoned grant"; C51 item 2(f)): W8 (`witness_w8`), recovery without `join`.
 All steps are `ok`; `HandoffOrdered` fails for the pair of the `write3` of `T` of `c1` (step 6) and
 that of `c0` (step 11): their loss marker is `unlock(e)`, whose event is not `hb`-before the write
-of `c0`. Every other condition holds, the edge of `LockOrder` by 14e; Q1–Q3 and reading 12 hold.
+of `c0`. Every other condition holds, the edge of `LockOrder` by 14e; Q1–Q4 and reading 12 hold.
 The two writes race. Admitted twin: W9 (`witness_s3_w9`). -/
 theorem witness_s3_w8 :
     EncapRun pm kMutex mutexLayout w8σ w8L ∧ (w8G refOrders).toGraph.EventConsistent ∧
@@ -210,7 +210,7 @@ theorem witness_s3_w8 :
     fun h => hno h.handoff⟩
 
 /-- **Witness S3**, twin W9 (C47, C49; C51, C52): W9 (`witness_w9`), W8 with `c1 : terminate` and
-`c0 : join(c1)` before the `resetLock`, is a `SafeConcurrentTrace`; Q1–Q3 and reading 12 hold; 14d
+`c0 : join(c1)` before the `resetLock`, is a `SafeConcurrentTrace`; Q1–Q4 and reading 12 hold; 14d
 applies: no pair of events races. -/
 theorem witness_s3_w9 :
     SafeConcurrentTrace pm kMutex mutexLayout refOrders w9σ w9L w9G.toGraph w9K unitData ∧
@@ -244,7 +244,7 @@ theorem witness_s3_w9 :
 relaxed triple (`witness_w10`): all steps are `ok`; `HandoffOrdered` fails for the pair of the
 `write3` of `T` of `c1` (step 6) and that of `c0` (step 10), whose marker `unlock(e)` has no `hb` to
 the write of `c0`; the edge of `LockOrder` fails: the `acquire` of `c0` (step 9) reads by `rf` the
-`unlock` of `c1` (step 7), which is not `hb`-before it. Every other condition holds; Q1–Q3 and
+`unlock` of `c1` (step 7), which is not `hb`-before it. Every other condition holds; Q1–Q4 and
 reading 12 hold. The two writes race. Admitted twin: W7 (`witness_s2_w7`). -/
 theorem witness_s3_w10 :
     EncapRun pm kMutex mutexLayout w7σ w7L ∧ (w7G rlxOrders).toGraph.EventConsistent ∧

@@ -10,7 +10,7 @@ Executions from the initial state of Spec 1 §47 under the test contract of the 
 `root` (authority 0) is the root authority of `V`, held by the base frame of `c0`. Each step is an
 `ok` step; each execution is an `EncapsulatedTrace` with a hand-written graph, its correspondence
 K1–K4 and the data of reading 9 (storage identities: the place of the accessed storage; no initial
-write). A trace that is not safe states the condition that fails, every other condition, Q1–Q3
+write). A trace that is not safe states the condition that fails, every other condition, Q1–Q4
 (unless stated) and the race; each has an admitted twin, a `SafeConcurrentTrace` to which 14d
 applies.
 
@@ -132,7 +132,7 @@ theorem s4_run : EncapRun pm kAtomic mutexLayout s4σ s4L := by
 if any targeted leaf lacks a selected `K_C.SharedDiscipline` class"; C51 item 2(e)):
 `o := derive(root, Observe, {U})`; `spawn c1` yielding `o`; `c1` and then `c0` run the inherited
 `writeShared` on `{U}`, through `o` and through `root`. All steps are `ok` in the kernel; (e) fails
-for both writes; every other condition of the safe trace holds; Q1, Q3 and reading 12 hold; Q2
+for both writes; every other condition of the safe trace holds; Q1, Q3, Q4 and reading 12 hold; Q2
 fails: an inherited `writeShared` outside the table has no access in 11e. The two writes race.
 Admitted twin: `witness_s4_twin`. -/
 theorem witness_s4 :
@@ -222,7 +222,7 @@ theorem s4t_run : EncapRun pm kAtomic mutexLayout s4tσ s4tL := by
 
 /-- **Witness S4**, admitted twin (C35–C38; C51, C52): the inherited `writeShared` of S4 on the
 `Synchronized` leaf `S`, `c1` releasing `o` and terminating, `c0` joining `c1` before its write:
-the inherited steps satisfy the table (e); the execution is a `SafeConcurrentTrace`; Q1–Q3 and
+the inherited steps satisfy the table (e); the execution is a `SafeConcurrentTrace`; Q1–Q4 and
 reading 12 hold; 14d applies: no pair of events races. -/
 theorem witness_s4_twin :
     SafeConcurrentTrace pm kAtomic mutexLayout refOrders s4tσ s4tL s4tG.toGraph joinK
@@ -289,7 +289,7 @@ storage performed under shared compatible `Observe` rights are **not** covered b
 exclusive-handoff premise"; C51 item 2(d); C52): `o := derive(root, Observe, {S})`; `spawn c1`
 yielding `o`; `c1` and then `c0` run the concurrent `writeShared` of kind `store` without
 annotation on `{S}`, through `o` and through `root`. (d) fails: the two writes form a
-non-exclusive pair in conflict on `S` not ordered by `hb`. Every other condition holds; Q1–Q3 and
+non-exclusive pair in conflict on `S` not ordered by `hb`. Every other condition holds; Q1–Q4 and
 reading 12 hold. The two writes race. Admitted twin: `witness_s5_twin`. -/
 theorem witness_s5 :
     EncapRun pm kAtomic mutexLayout s5σ s5L ∧ s5G.toGraph.EventConsistent ∧
@@ -363,7 +363,7 @@ theorem s5t_run : EncapRun pm kAtomic mutexLayout s5tσ s5tL := by
 
 /-- **Witness S5**, admitted twin (C47, C51 item 2(d), C52): with `c1 : terminate` and `c0 :
 join(c1)` before the write of `c0`, the two writes of `S` are ordered by `hb`; the execution is a
-`SafeConcurrentTrace`; Q1–Q3 and reading 12 hold; 14d applies: no pair of events races. -/
+`SafeConcurrentTrace`; Q1–Q4 and reading 12 hold; 14d applies: no pair of events races. -/
 theorem witness_s5_twin :
     SafeConcurrentTrace pm kAtomic mutexLayout refOrders s5tσ s5tL s4tG.toGraph joinK
       (leafData 3) ∧
@@ -430,7 +430,7 @@ theorem s6_run : EncapRun pm kAtomic mutexLayout s6σ s6L := by
 derive(root, Observe, {A})`; `spawn c1` yielding `o`; `c0 : writeShared` of kind `store` on `{A}`
 with `release`; `c1 : read3(A)` through `o`, whose event reads the write of `c0` by `rf`. All steps
 are `ok`; the condition `OrdinaryAtomicOK` of (b) (C42) fails at the `read3`; every other
-condition holds, the two other conditions of (b) included; Q1–Q3 and reading 12 hold. The
+condition holds, the two other conditions of (b) included; Q1–Q4 and reading 12 hold. The
 atomic write and the non-atomic read race. Admitted twin: `witness_s6_twin`. -/
 theorem witness_s6 :
     EncapRun pm kAtomic mutexLayout s6σ s6L ∧ s6G.toGraph.EventConsistent ∧
@@ -498,7 +498,7 @@ theorem s6t_run : EncapRun pm kAtomic mutexLayout s6tσ s6tL := by
 
 /-- **Witness S6**, admitted twin (C37, C32.1, C42; C51, C52): with `readShared(A)` in `acquire`
 instead of `read3`, `sw` relates the write to the read; the execution is a
-`SafeConcurrentTrace`; Q1–Q3 and reading 12 hold; 14d applies: no pair of events races. -/
+`SafeConcurrentTrace`; Q1–Q4 and reading 12 hold; 14d applies: no pair of events races. -/
 theorem witness_s6_twin :
     SafeConcurrentTrace pm kAtomic mutexLayout refOrders s6tσ s6tL s6tG.toGraph pairK
       (leafData 1) ∧
@@ -566,7 +566,7 @@ yielding `o`; `c1 : writeShared` of kind `store` without annotation on `{C}`; `c
 through `root`. All steps are `ok`; (c) fails: after the `spawn`, `c0` and `c1` both have a present
 capability on `C`, and the pair of the write of `c1` and the read of `c0` has no ordered handoff
 under the `Confined` criterion (the capability of `c1` never becomes `none`). Every other condition
-holds; Q1–Q3 and reading 12 hold. The write and the read race. Admitted twin:
+holds; Q1–Q4 and reading 12 hold. The write and the read race. Admitted twin:
 `witness_s7_twin`. -/
 theorem witness_s7 :
     EncapRun pm kAtomic mutexLayout s7σ s7L ∧ s7G.toGraph.EventConsistent ∧
@@ -647,7 +647,7 @@ theorem s7t_run : EncapRun pm kAtomic mutexLayout s7tσ s7tL := by
 {C})` yielded to `c1`, which writes, releases `m` and terminates, and `c0` joining `c1` before its
 read, at most one context has a capability on `C` at every state; the loss marker of the pair is
 `release(m)`, step 3 of `c1` (`FirstCompatible`, `Confined` criterion), and its event is
-`hb`-before the read; the execution is a `SafeConcurrentTrace`; Q1–Q3 and reading 12 hold; 14d
+`hb`-before the read; the execution is a `SafeConcurrentTrace`; Q1–Q4 and reading 12 hold; 14d
 applies: no pair of events races. -/
 theorem witness_s7_twin :
     SafeConcurrentTrace pm kAtomic mutexLayout refOrders s7tσ s7tL s7tG.toGraph joinK
@@ -758,7 +758,7 @@ derive(root_X, Modify)`; `spawn c1` yielding `a`; `c1 : write3(X)` by `a`; `c1 :
 bytes and distinct identities; the events of the `enterFrame` and `exitFrame` steps are the begin
 and end of validity of `X` and the begin of validity of `Y`. All steps are `ok`; `LifetimeOrdered`
 fails by L2: the write of `c1` is not `hb`-before the end of validity of `X`. Every other
-condition holds; Q1–Q3 and reading 12 hold. The two writes race. Admitted twin:
+condition holds; Q1–Q4 and reading 12 hold. The two writes race. Admitted twin:
 `witness_s8_twin`. -/
 theorem witness_s8 :
     EncapRun pm kAtomic mutexLayout s8σ s8L ∧ s8G.toGraph.EventConsistent ∧
@@ -855,7 +855,7 @@ theorem s8t_run : EncapRun pm kAtomic mutexLayout s8tσ s8tL := by
 /-- **Witness S8**, admitted twin (C47, C51, C52): with `c1 : terminate` after its `release` and
 `c0 : join(c1)` before the `exitFrame`, the write of `X` is `hb`-before the end of validity of `X`,
 which is `hb`-before the begin of validity of `Y`; the two writes are ordered by 14a.2; the
-execution is a `SafeConcurrentTrace`; Q1–Q3 and reading 12 hold; 14d applies: no pair of events
+execution is a `SafeConcurrentTrace`; Q1–Q4 and reading 12 hold; 14d applies: no pair of events
 races. -/
 theorem witness_s8_twin :
     SafeConcurrentTrace pm kAtomic mutexLayout refOrders s8tσ s8tL s8tG.toGraph s8tK s8tD ∧

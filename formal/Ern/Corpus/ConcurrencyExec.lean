@@ -11,8 +11,8 @@ each execution is an `EncapsulatedTrace` with named states from the initial stat
 (`EncapRun`), with a hand-written graph of fragment F, its correspondence (K1–K4) and the data of
 reading 9 (storage identities of type `Unit`, no initial write: `unitData`). A trace that is not
 safe states the condition of `SafeConcurrentTrace` that fails, every other condition, the
-correspondence premises Q1–Q3 (C52), the hypothesis of reading 12 (`CtlAtomic`) and the race
-(C33). A safe trace states `SafeConcurrentTrace`, Q1–Q3, reading 12, and applies 14d (`no_race`).
+correspondence premises Q1–Q4 (C52), the hypothesis of reading 12 (`CtlAtomic`) and the race
+(C33). A safe trace states `SafeConcurrentTrace`, Q1–Q4, reading 12, and applies 14d (`no_race`).
 Each docstring gives the expected verdict with its clause, the obtained verdict and the twin. The
 expected order of the loss marker and the expected races are those of C45, C46 and C33. This is a
 test module: no model module imports it.
@@ -88,7 +88,7 @@ yielding `a`; context 0 writes `X` through `b`, then releases `b`; context 1 wri
 `release(b)`, later than the `spawn`; the write of `c0` through `b` and that of `c1` race.
 Obtained: the execution is an `EncapsulatedTrace`; the loss marker of the pair of the write of
 `c0` (step 4) and that of `c1` (step 6) is `release(b)` (step 5, `FirstCompatible`);
-`HandoffOrdered` fails for that pair; every other condition of the safe trace holds, and Q1–Q3
+`HandoffOrdered` fails for that pair; every other condition of the safe trace holds, and Q1–Q4
 and reading 12 hold; the two writes (events 5 and 7) race. Twin: `R46_twin`. -/
 theorem R46 :
     r46σ 0 = (SC.ofS3 (S3.init oneLocal), [], []) ∧ EncapRun pm kX mutexLayout r46σ r46L ∧
@@ -185,7 +185,7 @@ def r46TK : StepEvents (Fin 8) := listK [0, 1, 2, 3, 4, 5, 7] [(1, 6)] []
 
 /-- **R46, twin** (safe). The write of `c0` through `b` and `release(b)` before the `spawn`.
 Expected: a safe trace; the loss marker is the `spawn`, ordered by the creation edge (C47).
-Obtained: `SafeConcurrentTrace`, Q1–Q3 and reading 12 hold; the loss marker of the pair of the
+Obtained: `SafeConcurrentTrace`, Q1–Q4 and reading 12 hold; the loss marker of the pair of the
 write of `c0` through `b` (step 3) and that of `c1` (step 6) is the `spawn` (step 5); 14d applies:
 no pair of events races. -/
 theorem R46_twin :
@@ -290,7 +290,7 @@ then writes `X` through `root_X`. Expected (C45, C46, C47, C51 item 2(f); C33): 
 alone fails, for the pair of the write of `c2` and the final write of `c0`, despite `join(c1)`;
 these two writes race. Obtained: the execution is an `EncapsulatedTrace`; the loss marker of that
 pair (steps 5 and 10) is `release(a₂)` (step 6, `FirstCompatible`); `HandoffOrdered` fails for it;
-every other condition of the safe trace holds, and Q1–Q3 and reading 12 hold; the two writes
+every other condition of the safe trace holds, and Q1–Q4 and reading 12 hold; the two writes
 (events 7 and 13) race. Twin: `R47_twin`. -/
 theorem R47 :
     r47σ 0 = (SC.ofS3 (S3.init oneLocal), [], []) ∧ EncapRun pm kX mutexLayout r47σ r47L ∧
@@ -409,7 +409,7 @@ def r47TK : StepEvents (Fin 17) :=
 set_option maxHeartbeats 400000 in
 /-- **R47, twin** (safe). Context 2 terminates after its `release`; context 1 joins context 2
 before its own `release`; then the rest of `R47`. Expected: a safe trace. Obtained:
-`SafeConcurrentTrace`, Q1–Q3 and reading 12 hold; 14d applies: no pair of events races. -/
+`SafeConcurrentTrace`, Q1–Q4 and reading 12 hold; 14d applies: no pair of events races. -/
 theorem R47_twin :
     SafeConcurrentTrace pm kX mutexLayout refOrders r47Tσ r47TL r47TG.toGraph r47TK unitData ∧
     CorrQ1 r47TG.toGraph r47TL r47TK unitData ∧
@@ -513,7 +513,7 @@ and that of `c0` (step 11): the loss marker is `release(x)`; the edge of `LockOr
 the execution is an `EncapsulatedTrace` with realization R; the loss marker of that pair (steps 9
 and 13 of the trace) is `release(x)` (step 10 of the trace, `FirstCompatible`); `HandoffOrdered`
 fails for it; the `acquire` of step 10 reads by `rf` the `resetLock` (events 12, 13) and the edge
-of `LockOrder` holds by 14e; every other condition of the safe trace holds, and Q1–Q3 and reading
+of `LockOrder` holds by 14e; every other condition of the safe trace holds, and Q1–Q4 and reading
 12 hold; the two writes (events 10 and 14) race. Twin: `R48_twin`. -/
 theorem R48 :
     r48σ 0 = (SC.ofS3 (S3.init mutexStatics), [], []) ∧ EncapRun pm kMutex mutexLayout r48σ r48L ∧
@@ -700,7 +700,7 @@ theorem r48T_safe :
 
 /-- **R48, twin** (safe). After step 8 of `R22`: context 1 terminates; context 0 joins it; then
 steps 9–11. Expected: a safe trace. Obtained: `SafeConcurrentTrace` (the edge of `LockOrder` by
-14e), Q1–Q3 and reading 12 hold; 14d applies: no pair of events races. -/
+14e), Q1–Q4 and reading 12 hold; 14d applies: no pair of events races. -/
 theorem R48_twin :
     SafeConcurrentTrace pm kMutex mutexLayout refOrders r48Tσ r48TL r48TG.toGraph r48TK unitData ∧
     CorrQ1 r48TG.toGraph r48TL r48TK unitData ∧
