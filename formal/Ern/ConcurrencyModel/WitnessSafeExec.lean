@@ -8,9 +8,10 @@ Shared material of the witnesses S1–S8 (`WitnessSafe`): each condition of `Saf
 bounded form that `decide` evaluates on a finite execution with a hand-written graph, proved
 sound. The pairs in conflict range over the classified accesses of the steps (`stepAcc`); the
 contexts with a capability over the contexts of the state (`cap_nil`). The legality of the memory
-orders of the events (`OrderLegal`) is checked event by event (`orderLegal_of_check`), and the
+orders of the events (`OrderLegal`) is checked event by event (`orderLegal_of_check`), the
 agreement of the atomic event of a step with its accesses (`StepOrders`) step by step
-(`stepOrders_of_check`).
+(`stepOrders_of_check`), and the units of the events of steps (`UnitLeaf`) pair of steps by pair
+of steps (`unitLeaf_of_check`).
 -/
 
 namespace Ern.ConcurrencyModel
@@ -332,5 +333,64 @@ theorem stepOrders_of_check {E U V S : Type} {ks : KShared} {L : MutexLayout} {R
   simp only [accStepOK, List.any_eq_true, decide_eq_true_eq] at this
   obtain ⟨x, hx, ho, hk⟩ := this
   exact ⟨x, stepAccess_of_mem hx, ho, hk⟩
+
+/-! ## The units of the events of steps (C38) -/
+
+/-- The check of `UnitLeaf.leaf` on two option units. -/
+def SameUnitLeaf {U : Type} (ks : KShared) (xs ys : List LeafAccess) : Option U → Option U → Prop
+  | some u, some u' =>
+      u = u' → ∃ x ∈ xs, ∃ y ∈ ys, x.leaf = y.leaf ∧ AtomicLeaf ks x.leaf ∧ ¬ ZeroAtomic ks x.leaf
+  | _, _ => True
+
+instance {U : Type} [DecidableEq U] (ks : KShared) (xs ys : List LeafAccess) (a b : Option U) :
+    Decidable (SameUnitLeaf ks xs ys a b) := by
+  unfold SameUnitLeaf; split <;> infer_instance
+
+/-- The check of `UnitLeaf.unit` on two option units. -/
+def LeafSameUnit {U : Type} (ks : KShared) (xs ys : List LeafAccess) (ua ud : Option U) : Prop :=
+  (∃ x ∈ xs, ∃ y ∈ ys, x.leaf = y.leaf ∧ AtomicLeaf ks x.leaf ∧ ¬ ZeroAtomic ks x.leaf) →
+    ua.isSome = true ∧ ua = ud
+
+instance {U : Type} [DecidableEq U] (ks : KShared) (xs ys : List LeafAccess) (a b : Option U) :
+    Decidable (LeafSameUnit ks xs ys a b) := by
+  unfold LeafSameUnit; infer_instance
+
+/-- The check of `UnitLeaf.range` on an option unit. -/
+def UnitRangeOK {E C U V S : Type} (G : Events.Graph E C U V S) : Option U → Prop
+  | some u => (G.uRange u).len ≠ 0
+  | none => True
+
+instance {E C U V S : Type} (G : Events.Graph E C U V S) (a : Option U) :
+    Decidable (UnitRangeOK G a) := by
+  unfold UnitRangeOK; split <;> infer_instance
+
+/-- `UnitLeaf` from its check on the pairs of steps of the trace, when the correspondence gives no
+event past the end of the trace. -/
+theorem unitLeaf_of_check {E U V S : Type} [DecidableEq U] {ks : KShared} {L : MutexLayout}
+    {R : CtlOrders} {σ : Nat → SC × SyncReg × ArenaReg} {lbls : List Label}
+    {G : Events.Graph E Nat U V S} {K : StepEvents E} (hK : ∀ i, lbls.length ≤ i → K.ev i = none)
+    (h1 : ∀ i, i < lbls.length → ∀ j, j < lbls.length → ∀ a d, K.ev i = some a →
+      K.ev j = some d → SameUnitLeaf ks (stepAcc ks L R σ lbls i) (stepAcc ks L R σ lbls j)
+        (G.unitOf a) (G.unitOf d))
+    (h2 : ∀ i, i < lbls.length → ∀ j, j < lbls.length → ∀ a d, K.ev i = some a →
+      K.ev j = some d → LeafSameUnit ks (stepAcc ks L R σ lbls i) (stepAcc ks L R σ lbls j)
+        (G.unitOf a) (G.unitOf d))
+    (h3 : ∀ i, i < lbls.length → ∀ a, K.ev i = some a → UnitRangeOK G (G.unitOf a)) :
+    UnitLeaf ks L R σ lbls G K := by
+  have lt : ∀ {i : Nat} {a : E}, K.ev i = some a → i < lbls.length := fun {i a} he =>
+    Decidable.byContradiction fun hn => by rw [hK i (Nat.le_of_not_lt hn)] at he; cases he
+  refine ⟨fun i j a d u ha hd hua hud => ?_, fun i j a d x y ha hd hx hy hl hat hnz => ?_,
+    fun i a u ha hu => ?_⟩
+  · have := h1 i (lt ha) j (lt hd) a d ha hd
+    rw [hua, hud] at this
+    obtain ⟨x, hx, y, hy, hl, hat, hnz⟩ := this rfl
+    exact ⟨x, y, stepAccess_of_mem hx, stepAccess_of_mem hy, hl, hat, hnz⟩
+  · obtain ⟨hs, he⟩ := h2 i (lt ha) j (lt hd) a d ha hd
+      ⟨x, mem_stepAcc hx, y, mem_stepAcc hy, hl, hat, hnz⟩
+    obtain ⟨u, hu⟩ := Option.isSome_iff_exists.1 hs
+    exact ⟨u, hu, by rw [← he]; exact hu⟩
+  · have := h3 i (lt ha) a ha
+    rw [hu] at this
+    exact this
 
 end Ern.ConcurrencyModel

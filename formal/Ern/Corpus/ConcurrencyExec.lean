@@ -95,6 +95,7 @@ theorem R46 :
     Corresponds r46G.toGraph r46σ r46L r46K ∧ r46G.toGraph.EventConsistent ∧
     r46G.toGraph.FiniteCausalPast ∧ OrdinaryAtomicOK kX r46σ r46L ∧
     r46G.toGraph.OrderLegal ∧ StepOrders kX mutexLayout refOrders r46σ r46L r46G.toGraph r46K ∧
+    UnitLeaf kX mutexLayout refOrders r46σ r46L r46G.toGraph r46K ∧
     ConfinedExcl kX r46σ r46L ∧
     ConfinedHandoff kX mutexLayout refOrders r46σ r46L r46G.toGraph r46K ∧
     SyncOrdered kX mutexLayout refOrders r46σ r46L r46G.toGraph r46K ∧ InheritedLegal kX r46L ∧
@@ -118,6 +119,8 @@ theorem R46 :
   exact ⟨rfl, r46_run, hK, by decide +kernel, finitePast_fin _, by decide,
     orderLegal_of_check (by decide +kernel),
     stepOrders_of_check (listK_none (by decide)) (by decide +kernel),
+    unitLeaf_of_check (listK_none (by decide)) (by decide +kernel) (by decide +kernel)
+      (by decide +kernel),
     confinedExcl_none kX_noConf, confinedHandoff_of_check (by decide +kernel),
     syncOrdered_of_check (by decide +kernel), by decide, hno,
     ⟨by decide +kernel, by decide +kernel, by decide +kernel⟩, hK.lifecycle,
@@ -197,6 +200,8 @@ theorem R46_twin :
     ⟨r46T_run, by decide +kernel, finitePast_fin _, by decide,
       orderLegal_of_check (by decide +kernel),
       stepOrders_of_check (listK_none (by decide)) (by decide +kernel),
+      unitLeaf_of_check (listK_none (by decide)) (by decide +kernel) (by decide +kernel)
+        (by decide +kernel),
       confinedExcl_none kX_noConf,
       confinedHandoff_of_check (by decide +kernel), syncOrdered_of_check (by decide +kernel),
       by decide, handoffOrdered_of_check (by decide +kernel),
@@ -288,6 +293,7 @@ theorem R47 :
     Corresponds r47G.toGraph r47σ r47L r47K ∧ r47G.toGraph.EventConsistent ∧
     r47G.toGraph.FiniteCausalPast ∧ OrdinaryAtomicOK kX r47σ r47L ∧
     r47G.toGraph.OrderLegal ∧ StepOrders kX mutexLayout refOrders r47σ r47L r47G.toGraph r47K ∧
+    UnitLeaf kX mutexLayout refOrders r47σ r47L r47G.toGraph r47K ∧
     ConfinedExcl kX r47σ r47L ∧
     ConfinedHandoff kX mutexLayout refOrders r47σ r47L r47G.toGraph r47K ∧
     SyncOrdered kX mutexLayout refOrders r47σ r47L r47G.toGraph r47K ∧ InheritedLegal kX r47L ∧
@@ -312,6 +318,8 @@ theorem R47 :
   exact ⟨rfl, r47_run, hK, by decide +kernel, finitePast_fin _, by decide,
     orderLegal_of_check (by decide +kernel),
     stepOrders_of_check (listK_none (by decide)) (by decide +kernel),
+    unitLeaf_of_check (listK_none (by decide)) (by decide +kernel) (by decide +kernel)
+      (by decide +kernel),
     confinedExcl_none kX_noConf, confinedHandoff_of_check (by decide +kernel),
     syncOrdered_of_check (by decide +kernel), by decide, hno,
     ⟨by decide +kernel, by decide +kernel, by decide +kernel⟩, hK.lifecycle,
@@ -392,6 +400,7 @@ def r47TG : ListGraph 17 Nat Nat Nat Unit where
 def r47TK : StepEvents (Fin 17) :=
   listK [0, 1, 2, 4, 5, 7, 8, 9, 11, 12, 13, 15, 16] [(1, 3), (2, 6)] [(2, 10), (1, 14)]
 
+set_option maxHeartbeats 400000 in
 /-- **R47, twin** (safe). Context 2 terminates after its `release`; context 1 joins context 2
 before its own `release`; then the rest of `R47`. Expected: a safe trace. Obtained:
 `SafeConcurrentTrace`, Q1–Q3 and reading 12 hold; 14d applies: no pair of events races. -/
@@ -409,6 +418,8 @@ theorem R47_twin :
     ⟨r47T_run, by decide +kernel, finitePast_fin _, by decide,
       orderLegal_of_check (by decide +kernel),
       stepOrders_of_check (listK_none (by decide)) (by decide +kernel),
+      unitLeaf_of_check (listK_none (by decide)) (by decide +kernel) (by decide +kernel)
+        (by decide +kernel),
       confinedExcl_none kX_noConf,
       confinedHandoff_of_check (by decide +kernel), syncOrdered_of_check (by decide +kernel),
       by decide, handoffOrdered_of_check (by decide +kernel),
@@ -486,6 +497,7 @@ def r48G (R : CtlOrders) : ListGraph 15 Nat Nat Nat Unit where
 /-- The correspondence of `R48`. -/
 def r48K : StepEvents (Fin 15) := listK [0, 1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14] [(1, 8)] []
 
+set_option maxHeartbeats 400000 in
 /-- **R48** (not safe: `HandoffOrdered` alone fails; race). The execution of `R22`, steps 1–11,
 after the construction of the reference mutex, under the reference triple. Expected (C45, C46,
 C48, C49, C51 item 2(f); C33): `HandoffOrdered` alone fails, for the write of `T` by `c1` (step 7)
@@ -504,6 +516,7 @@ theorem R48 :
     (r48G refOrders).toGraph.FiniteCausalPast ∧ OrdinaryAtomicOK kMutex r48σ r48L ∧
     (r48G refOrders).toGraph.OrderLegal ∧
     StepOrders kMutex mutexLayout refOrders r48σ r48L (r48G refOrders).toGraph r48K ∧
+    UnitLeaf kMutex mutexLayout refOrders r48σ r48L (r48G refOrders).toGraph r48K ∧
     ConfinedExcl kMutex r48σ r48L ∧
     ConfinedHandoff kMutex mutexLayout refOrders r48σ r48L (r48G refOrders).toGraph r48K ∧
     SyncOrdered kMutex mutexLayout refOrders r48σ r48L (r48G refOrders).toGraph r48K ∧
@@ -533,6 +546,8 @@ theorem R48 :
   exact ⟨rfl, r48_run, hK, by decide +kernel, hR, finitePast_fin _, by decide,
     orderLegal_of_check (by decide +kernel),
     stepOrders_of_check (listK_none (by decide)) (by decide +kernel),
+    unitLeaf_of_check (listK_none (by decide)) (by decide +kernel) (by decide +kernel)
+      (by decide +kernel),
     confinedExcl_none kMutex_noConf, confinedHandoff_of_check (by decide +kernel),
     syncOrdered_of_check (by decide +kernel), by decide, hno,
     ⟨by decide +kernel, by decide +kernel, by decide +kernel⟩, hK.lifecycle, by decide +kernel,
@@ -668,6 +683,8 @@ theorem r48T_safe :
   ⟨r48T_run, r48T_consistent, finitePast_fin _, by decide +kernel,
       orderLegal_of_check (by decide +kernel),
       stepOrders_of_check (listK_none (by decide)) (by decide +kernel),
+      unitLeaf_of_check (listK_none (by decide)) (by decide +kernel) (by decide +kernel)
+        (by decide +kernel),
       confinedExcl_none kMutex_noConf,
     r48T_confined, r48T_sync, by decide +kernel, r48T_handoff, r48T_lifetime,
     r48T_corr.lifecycle, r48T_lock⟩

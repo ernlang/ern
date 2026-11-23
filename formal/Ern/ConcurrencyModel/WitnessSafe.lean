@@ -48,6 +48,7 @@ theorem witness_s1 :
     EncapRun pm kX mutexLayout w1σ w1L ∧ w1G.toGraph.EventConsistent ∧
     w1G.toGraph.FiniteCausalPast ∧ OrdinaryAtomicOK kX w1σ w1L ∧
     w1G.toGraph.OrderLegal ∧ StepOrders kX mutexLayout refOrders w1σ w1L w1G.toGraph w1K ∧
+    UnitLeaf kX mutexLayout refOrders w1σ w1L w1G.toGraph w1K ∧
     ConfinedExcl kX w1σ w1L ∧
     ConfinedHandoff kX mutexLayout refOrders w1σ w1L w1G.toGraph w1K ∧
     SyncOrdered kX mutexLayout refOrders w1σ w1L w1G.toGraph w1K ∧ InheritedLegal kX w1L ∧
@@ -67,7 +68,10 @@ theorem witness_s1 :
       (by decide) (kX_noConf 0)) (by decide +kernel)
   exact ⟨hw.2.1, hw.2.2.2.1, finitePast_fin _, by decide,
     orderLegal_of_check (by decide +kernel),
-    stepOrders_of_check (listK_none (by decide)) (by decide +kernel), confinedExcl_none kX_noConf,
+    stepOrders_of_check (listK_none (by decide)) (by decide +kernel),
+    unitLeaf_of_check (listK_none (by decide)) (by decide +kernel) (by decide +kernel)
+      (by decide +kernel),
+    confinedExcl_none kX_noConf,
     confinedHandoff_of_check (by decide +kernel), syncOrdered_of_check (by decide +kernel),
     by decide, hno, ⟨by decide +kernel, by decide +kernel, by decide +kernel⟩,
     hw.2.2.1.lifecycle, lockEdge_none (by decide), by unfold CorrQ1; decide +kernel,
@@ -91,6 +95,8 @@ theorem witness_s2_w2 :
     ⟨hw.2.1, hw.2.2.2.1, finitePast_fin _, by decide,
       orderLegal_of_check (by decide +kernel),
       stepOrders_of_check (listK_none (by decide)) (by decide +kernel),
+      unitLeaf_of_check (listK_none (by decide)) (by decide +kernel) (by decide +kernel)
+        (by decide +kernel),
       confinedExcl_none kX_noConf,
       confinedHandoff_of_check (by decide +kernel), syncOrdered_of_check (by decide +kernel),
       by decide, handoffOrdered_of_check (by decide +kernel),
@@ -134,6 +140,8 @@ theorem witness_s2_w7 :
     ⟨hw.2.1, hw.2.2.2.1, finitePast_fin _, by decide,
       orderLegal_of_check (by decide +kernel),
       stepOrders_of_check (listK_none (by decide)) (by decide +kernel),
+      unitLeaf_of_check (listK_none (by decide)) (by decide +kernel) (by decide +kernel)
+        (by decide +kernel),
       confinedExcl_none kMutex_noConf,
       confinedHandoff_of_check (by decide +kernel), syncOrdered_of_check (by decide +kernel),
       by decide, handoffOrdered_of_check (by decide +kernel),
@@ -161,6 +169,7 @@ theorem witness_s3_w8 :
     (w8G refOrders).toGraph.FiniteCausalPast ∧ OrdinaryAtomicOK kMutex w8σ w8L ∧
     (w8G refOrders).toGraph.OrderLegal ∧
     StepOrders kMutex mutexLayout refOrders w8σ w8L (w8G refOrders).toGraph w8K ∧
+    UnitLeaf kMutex mutexLayout refOrders w8σ w8L (w8G refOrders).toGraph w8K ∧
     ConfinedExcl kMutex w8σ w8L ∧
     ConfinedHandoff kMutex mutexLayout refOrders w8σ w8L (w8G refOrders).toGraph w8K ∧
     SyncOrdered kMutex mutexLayout refOrders w8σ w8L (w8G refOrders).toGraph w8K ∧
@@ -183,6 +192,8 @@ theorem witness_s3_w8 :
   exact ⟨hw.2.1, hw.2.2.2.1, finitePast_fin _, by decide,
     orderLegal_of_check (by decide +kernel),
     stepOrders_of_check (listK_none (by decide)) (by decide +kernel),
+    unitLeaf_of_check (listK_none (by decide)) (by decide +kernel) (by decide +kernel)
+      (by decide +kernel),
     confinedExcl_none kMutex_noConf,
     confinedHandoff_of_check (by decide +kernel), syncOrdered_of_check (by decide +kernel),
     by decide, hno, ⟨by decide +kernel, by decide +kernel, by decide +kernel⟩,
@@ -206,6 +217,8 @@ theorem witness_s3_w9 :
     ⟨hw.2.1, hw.2.2.2.1, finitePast_fin _, by decide,
       orderLegal_of_check (by decide +kernel),
       stepOrders_of_check (listK_none (by decide)) (by decide +kernel),
+      unitLeaf_of_check (listK_none (by decide)) (by decide +kernel) (by decide +kernel)
+        (by decide +kernel),
       confinedExcl_none kMutex_noConf,
       confinedHandoff_of_check (by decide +kernel), syncOrdered_of_check (by decide +kernel),
       by decide, handoffOrdered_of_check (by decide +kernel),
@@ -231,6 +244,7 @@ theorem witness_s3_w10 :
     (w7G rlxOrders).toGraph.FiniteCausalPast ∧ OrdinaryAtomicOK kMutex w7σ w7L ∧
     (w7G rlxOrders).toGraph.OrderLegal ∧
     StepOrders kMutex mutexLayout rlxOrders w7σ w7L (w7G rlxOrders).toGraph w7K ∧
+    UnitLeaf kMutex mutexLayout rlxOrders w7σ w7L (w7G rlxOrders).toGraph w7K ∧
     ConfinedExcl kMutex w7σ w7L ∧
     ConfinedHandoff kMutex mutexLayout rlxOrders w7σ w7L (w7G rlxOrders).toGraph w7K ∧
     SyncOrdered kMutex mutexLayout rlxOrders w7σ w7L (w7G rlxOrders).toGraph w7K ∧
@@ -256,6 +270,8 @@ theorem witness_s3_w10 :
   exact ⟨w7_run, hw.1, finitePast_fin _, by decide,
     orderLegal_of_check (by decide +kernel),
     stepOrders_of_check (listK_none (by decide)) (by decide +kernel),
+    unitLeaf_of_check (listK_none (by decide)) (by decide +kernel) (by decide +kernel)
+      (by decide +kernel),
     confinedExcl_none kMutex_noConf,
     confinedHandoff_of_check (by decide +kernel), syncOrdered_of_check (by decide +kernel),
     by decide, hno, ⟨by decide +kernel, by decide +kernel, by decide +kernel⟩,

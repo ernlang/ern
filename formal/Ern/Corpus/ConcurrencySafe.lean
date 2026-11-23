@@ -106,6 +106,8 @@ theorem R49_twin :
     ⟨r49_run, by decide +kernel, finitePast_fin _, by decide,
       orderLegal_of_check (by decide +kernel),
       stepOrders_of_check (listK_none (by decide)) (by decide +kernel),
+      unitLeaf_of_check (listK_none (by decide)) (by decide +kernel) (by decide +kernel)
+        (by decide +kernel),
       confinedExcl_of_check [4] 2 kAtomic_conf (by decide) (by decide +kernel),
       confinedHandoff_of_check (by decide +kernel), syncOrdered_of_check (by decide +kernel),
       by decide, handoffOrdered_of_check (by decide +kernel),
@@ -208,6 +210,7 @@ theorem R49 :
     r49G.toGraph.EventConsistent ∧ r49G.toGraph.FiniteCausalPast ∧
     OrdinaryAtomicOK kAtomic r49σ r49L ∧ r49G.toGraph.OrderLegal ∧
     StepOrders kAtomic mutexLayout refOrders r49σ r49L r49G.toGraph r49K ∧
+    UnitLeaf kAtomic mutexLayout refOrders r49σ r49L r49G.toGraph r49K ∧
     ConfinedExcl kAtomic r49σ r49L ∧
     ConfinedHandoff kAtomic mutexLayout refOrders r49σ r49L r49G.toGraph r49K ∧
     SyncOrdered kAtomic mutexLayout refOrders r49σ r49L r49G.toGraph r49K ∧
@@ -232,6 +235,8 @@ theorem R49 :
       (by decide +kernel) (by decide)) (by decide +kernel)
   exact ⟨rfl, r49_run, hK, by decide +kernel, finitePast_fin _, by decide,
     orderLegal_of_check (by decide +kernel), stepOrders_of_check r49K_none (by decide +kernel),
+    unitLeaf_of_check r49K_none (by decide +kernel) (by decide +kernel)
+      (by decide +kernel),
     confinedExcl_of_check [4] 2 kAtomic_conf (by decide) (by decide +kernel),
     confinedHandoff_of_check (by decide +kernel), syncOrdered_of_check (by decide +kernel),
     by decide, hno,
@@ -290,6 +295,7 @@ theorem R50 :
     (r50G .acquire).toGraph.FiniteCausalPast ∧ OrdinaryAtomicOK kAtomic s6tσ s6tL ∧
     ¬ (r50G .acquire).toGraph.OrderLegal ∧
     StepOrders kAtomic mutexLayout refOrders s6tσ s6tL (r50G .acquire).toGraph r50K ∧
+    UnitLeaf kAtomic mutexLayout refOrders s6tσ s6tL (r50G .acquire).toGraph r50K ∧
     ConfinedExcl kAtomic s6tσ s6tL ∧
     ConfinedHandoff kAtomic mutexLayout refOrders s6tσ s6tL (r50G .acquire).toGraph r50K ∧
     SyncOrdered kAtomic mutexLayout refOrders s6tσ s6tL (r50G .acquire).toGraph r50K ∧
@@ -312,6 +318,8 @@ theorem R50 :
     rcases h3 with h3 | h3 | h3 <;> cases h3
   exact ⟨rfl, s6t_run, hK, by decide +kernel, finitePast_fin _, by decide, hno,
     stepOrders_of_check (listK_none (by decide)) (by decide +kernel),
+    unitLeaf_of_check (listK_none (by decide)) (by decide +kernel) (by decide +kernel)
+      (by decide +kernel),
     confinedExcl_of_check [4] 2 kAtomic_conf (by decide) (by decide +kernel),
     confinedHandoff_of_check (by decide +kernel), syncOrdered_of_check (by decide +kernel),
     by decide, handoffOrdered_of_check (by decide +kernel),
@@ -338,6 +346,8 @@ theorem R50_twin :
     ⟨s6t_run, by decide +kernel, finitePast_fin _, by decide,
       orderLegal_of_check (by decide +kernel),
       stepOrders_of_check (listK_none (by decide)) (by decide +kernel),
+      unitLeaf_of_check (listK_none (by decide)) (by decide +kernel) (by decide +kernel)
+        (by decide +kernel),
       confinedExcl_of_check [4] 2 kAtomic_conf (by decide) (by decide +kernel),
       confinedHandoff_of_check (by decide +kernel), syncOrdered_of_check (by decide +kernel),
       by decide, handoffOrdered_of_check (by decide +kernel),
@@ -455,6 +465,7 @@ theorem R51 :
     (r51G .release .acquire).toGraph.FiniteCausalPast ∧ OrdinaryAtomicOK kAtomic r51σ r51L ∧
     (r51G .release .acquire).toGraph.OrderLegal ∧
     ¬ StepOrders kAtomic mutexLayout refOrders r51σ r51L (r51G .release .acquire).toGraph r51K ∧
+    UnitLeaf kAtomic mutexLayout refOrders r51σ r51L (r51G .release .acquire).toGraph r51K ∧
     ConfinedExcl kAtomic r51σ r51L ∧
     ConfinedHandoff kAtomic mutexLayout refOrders r51σ r51L (r51G .release .acquire).toGraph r51K ∧
     SyncOrdered kAtomic mutexLayout refOrders r51σ r51L (r51G .release .acquire).toGraph r51K ∧
@@ -480,6 +491,8 @@ theorem R51 :
       x.order ≠ some MemOrder.release) x (mem_stepAcc hx) ho
   exact ⟨rfl, r51_run, hK, by decide +kernel, finitePast_fin _, by decide,
     orderLegal_of_check (by decide +kernel), hno,
+    unitLeaf_of_check (listK_none (by decide)) (by decide +kernel) (by decide +kernel)
+      (by decide +kernel),
     confinedExcl_of_check [4] 2 kAtomic_conf (by decide) (by decide +kernel),
     confinedHandoff_of_check (by decide +kernel), syncOrdered_of_check (by decide +kernel),
     by decide, handoffOrdered_of_check (by decide +kernel),
@@ -510,6 +523,8 @@ theorem R51_twin :
     ⟨r51T_run, by decide +kernel, finitePast_fin _, by decide,
       orderLegal_of_check (by decide +kernel),
       stepOrders_of_check (listK_none (by decide)) (by decide +kernel),
+      unitLeaf_of_check (listK_none (by decide)) (by decide +kernel) (by decide +kernel)
+        (by decide +kernel),
       confinedExcl_of_check [4] 2 kAtomic_conf (by decide) (by decide +kernel),
       confinedHandoff_of_check (by decide +kernel), syncOrdered_of_check (by decide +kernel),
       by decide, handoffOrdered_of_check (by decide +kernel),

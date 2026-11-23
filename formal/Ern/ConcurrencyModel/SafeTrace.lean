@@ -239,14 +239,40 @@ permitted for an atomic read by C40"; C39: "That annotation applies **only** to 
 that leaf"; C40: "A failed CAS contributes an atomic read event and the `failure` order"). Under 11e
 the controller accesses of `acquire`, `unlock` and `resetLock` carry the orders of `R`. Exported
 obligation `OB-C20` (C27–C29, C50), stated part: the kind and the memory order of the atomic event
-of a step. The obligation is exported and remains open (`ExportedObligations`). The condition
-relates neither leaves to units nor byte ranges, and says nothing of an event that is the event of
-no step, of the accesses of compound steps or of failed attempts. -/
+of a step. The obligation is exported and remains open (`ExportedObligations`). The units of the
+events of steps are the condition `UnitLeaf`. The condition says nothing of an event that is the
+event of no step, of the accesses of compound steps or of failed attempts. -/
 def StepOrders {E U V S : Type} (ks : KShared) (L : MutexLayout) (R : CtlOrders)
     (σ : Nat → SC × SyncReg × ArenaReg) (lbls : List Label) (G : Events.Graph E Nat U V S)
     (K : StepEvents E) : Prop :=
   ∀ i e, K.ev i = some e → ∀ u o k, G.acc? e = some (.atomic u o k) →
     ∃ x, StepAccess ks L R σ lbls i x ∧ x.order = some o ∧ x.kind = k.kind
+
+/-- The units of the events of steps (C38: "One `Atomic(size, align)` unit is **one logical leaf**
+whose entire byte range is a single physically supported atomic unit"; "An `Atomic(size, align)`
+leaf with zero physical size cannot satisfy the supported atomic-unit requirement"; C31: `mo` is,
+for each `Atomic` location, "a strict total order over **all writes/modifications of that
+location**"; C32 item 1: "on the same atomic unit"). The units are those of the `Atomic` leaves of
+nonzero size (reading 6). No map from units to leaves is given: the conditions relate the events
+of two steps. Exported obligation `OB-C20` (C27–C29, C50), stated part: the unit of the events of
+steps. The obligation is exported and remains open (`ExportedObligations`). The condition says
+nothing of the placement of the byte range of a unit, of the byte ranges of the accesses that
+designate no unit, or of an event that is the event of no step. -/
+structure UnitLeaf {E U V S : Type} (ks : KShared) (L : MutexLayout) (R : CtlOrders)
+    (σ : Nat → SC × SyncReg × ArenaReg) (lbls : List Label) (G : Events.Graph E Nat U V S)
+    (K : StepEvents E) : Prop where
+  /-- Two events of steps that designate one unit are events of steps that access one `Atomic`
+  leaf of nonzero size. -/
+  leaf : ∀ i j a d u, K.ev i = some a → K.ev j = some d → G.unitOf a = some u →
+    G.unitOf d = some u →
+    ∃ x y, StepAccess ks L R σ lbls i x ∧ StepAccess ks L R σ lbls j y ∧ x.leaf = y.leaf ∧
+      AtomicLeaf ks x.leaf ∧ ¬ ZeroAtomic ks x.leaf
+  /-- Two events of steps that access one `Atomic` leaf of nonzero size designate one unit. -/
+  unit : ∀ i j a d x y, K.ev i = some a → K.ev j = some d → StepAccess ks L R σ lbls i x →
+    StepAccess ks L R σ lbls j y → x.leaf = y.leaf → AtomicLeaf ks x.leaf →
+    ¬ ZeroAtomic ks x.leaf → ∃ u, G.unitOf a = some u ∧ G.unitOf d = some u
+  /-- The unit that the event of a step designates has a nonempty byte range. -/
+  range : ∀ i a u, K.ev i = some a → G.unitOf a = some u → (G.uRange u).len ≠ 0
 
 /-- C51 item 2(b), with C42: every `read3` and `write3` step satisfies the rule of 11f. -/
 def OrdinaryAtomicOK (ks : KShared) (σ : Nat → SC × SyncReg × ArenaReg) (lbls : List Label) :
@@ -353,8 +379,8 @@ correspondence `K` and the data `D` of reading 9: the execution is an `Encapsula
 
 * (a) (C26.4, C34): `EventConsistent(G)` and a finite causal past;
 * (b) (C37–C42; C34, last sentence): `OrdinaryAtomicOK` (C42), the legality of the memory orders
-  of the events, `OrderLegal` (C40), and the agreement of the atomic event of each step with that
-  step, `StepOrders` (C37, C39, C40);
+  of the events, `OrderLegal` (C40), the agreement of the atomic event of each step with that
+  step, `StepOrders` (C37, C39, C40), and the units of the events of steps, `UnitLeaf` (C38);
 * (c) (C35, C43, C46): `ConfinedExcl` and `ConfinedHandoff`;
 * (d) (C44, C52): `SyncOrdered`;
 * (e) (C35–C40): `InheritedLegal`;
@@ -379,6 +405,9 @@ structure SafeConcurrentTrace {E U V S : Type} (pm : ProviderMeta) (ks : KShared
   orderLegal : G.OrderLegal
   /-- (b) (C37, C39, C40). -/
   stepOrders : StepOrders ks L R σ lbls G K
+  /-- (b) (C38: "One `Atomic(size, align)` unit is **one logical leaf**"; C51 item 2(b):
+  "`Atomic` accesses obey C37–C42"). -/
+  unitLeaf : UnitLeaf ks L R σ lbls G K
   /-- (c). -/
   confinedExcl : ConfinedExcl ks σ lbls
   /-- (c). -/
