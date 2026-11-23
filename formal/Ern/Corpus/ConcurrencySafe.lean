@@ -96,6 +96,7 @@ theorem R49_twin :
     CorrQ1 r49TG.toGraph r49L r49TK (leafData 3) ∧
     CorrQ2 kAtomic mutexLayout refOrders r49σ r49L r49TG.toGraph r49TK (leafData 3) ∧
     CorrQ3 (leafData (G := r49TG.toGraph) (lbls := r49L) (K := r49TK) 3) ∧
+    CorrQ4 kAtomic mutexLayout refOrders r49σ r49L r49TK ∧
     CtlAtomic kAtomic mutexLayout r49σ r49L ∧
     ExclusivePair kAtomic r49σ r49L 0 3 r49w r49w ∧
     FirstCompatible IncompatModify r49σ 0 0 3 .observe 1 ∧ ∀ a b, ¬ r49TG.toGraph.Race a b := by
@@ -119,7 +120,8 @@ theorem R49_twin :
   have hq3 : CorrQ3 (leafData (G := r49TG.toGraph) (lbls := r49L) (K := r49TK) 3) := by
     unfold CorrQ3; decide +kernel
   have h12 : CtlAtomic kAtomic mutexLayout r49σ r49L := ctlAtomic_of_check (by decide)
-  exact ⟨hS, hq1, hq2, hq3, h12, by decide +kernel, by decide +kernel,
+  exact ⟨hS, hq1, hq2, hq3, corrQ4_of_check (by decide +kernel), h12, by decide +kernel,
+    by decide +kernel,
     no_race (testKS_dd _ _ _) atomicStatics_ok rfl hK hS hq1 hq2 hq3 h12⟩
 
 /-- The graph of `R49`: the `derive` has no event. -/
@@ -221,6 +223,7 @@ theorem R49 :
     CorrQ1 r49G.toGraph r49L r49K (leafData 3) ∧
     CorrQ2 kAtomic mutexLayout refOrders r49σ r49L r49G.toGraph r49K (leafData 3) ∧
     CorrQ3 (leafData (G := r49G.toGraph) (lbls := r49L) (K := r49K) 3) ∧
+    CorrQ4 kAtomic mutexLayout refOrders r49σ r49L r49K ∧
     CtlAtomic kAtomic mutexLayout r49σ r49L ∧
     ExclusivePair kAtomic r49σ r49L 0 3 r49w r49w ∧
     FirstCompatible IncompatModify r49σ 0 0 3 .observe 1 ∧ r49K.ev 1 = none ∧
@@ -243,6 +246,7 @@ theorem R49 :
     ⟨by decide +kernel, by decide +kernel, by decide +kernel⟩, hK.lifecycle,
     lockEdge_none (by decide), by unfold CorrQ1; decide +kernel,
     corrQ2_of_check r49K_none (by decide +kernel), by unfold CorrQ3; decide +kernel,
+    corrQ4_of_check (by decide +kernel),
     ctlAtomic_of_check (by decide), by decide +kernel, by decide +kernel, by decide +kernel,
     by decide +kernel, fun h => hno h.handoff⟩
 
@@ -308,7 +312,8 @@ theorem R50 :
     LockEdge (r50G .acquire).toGraph s6tL r50K ∧
     CorrQ1 (r50G .acquire).toGraph s6tL r50K r50D ∧
     CorrQ2 kAtomic mutexLayout refOrders s6tσ s6tL (r50G .acquire).toGraph r50K r50D ∧
-    CorrQ3 r50D ∧ CtlAtomic kAtomic mutexLayout s6tσ s6tL ∧
+    CorrQ3 r50D ∧ CorrQ4 kAtomic mutexLayout refOrders s6tσ s6tL r50K ∧
+    CtlAtomic kAtomic mutexLayout s6tσ s6tL ∧
     r50D.init 0 = true ∧ (∀ a b, ¬ (r50G .acquire).toGraph.Race a b) ∧
     ¬ SafeConcurrentTrace pm kAtomic mutexLayout refOrders s6tσ s6tL (r50G .acquire).toGraph
       r50K r50D := by
@@ -328,7 +333,8 @@ theorem R50 :
     ⟨by decide +kernel, by decide +kernel, by decide +kernel⟩, hK.lifecycle,
     lockEdge_none (by decide), by unfold CorrQ1; decide +kernel,
     corrQ2_of_check (listK_none (by decide)) (by decide +kernel),
-    by unfold CorrQ3; decide +kernel, ctlAtomic_of_check (by decide), rfl, by decide +kernel,
+    by unfold CorrQ3; decide +kernel, corrQ4_of_check (by decide +kernel),
+    ctlAtomic_of_check (by decide), rfl, by decide +kernel,
     fun h => hno h.orderLegal⟩
 
 /-- **R50, twin** (safe). The same initial write of `A`, with the order `relaxed`. Expected: a safe
@@ -339,7 +345,8 @@ theorem R50_twin :
       r50TD ∧
     CorrQ1 (r50G .relaxed).toGraph s6tL r50K r50TD ∧
     CorrQ2 kAtomic mutexLayout refOrders s6tσ s6tL (r50G .relaxed).toGraph r50K r50TD ∧
-    CorrQ3 r50TD ∧ CtlAtomic kAtomic mutexLayout s6tσ s6tL ∧
+    CorrQ3 r50TD ∧ CorrQ4 kAtomic mutexLayout refOrders s6tσ s6tL r50K ∧
+    CtlAtomic kAtomic mutexLayout s6tσ s6tL ∧
     r50TD.init 0 = true ∧ ∀ a b, ¬ (r50G .relaxed).toGraph.Race a b := by
   have hK : Corresponds (r50G .relaxed).toGraph s6tσ s6tL r50K :=
     corresponds_of_check _ _ _ [(1, 1)] _ _ _ (by decide +kernel) (by decide) (by decide +kernel)
@@ -360,7 +367,7 @@ theorem R50_twin :
     corrQ2_of_check (listK_none (by decide)) (by decide +kernel)
   have hq3 : CorrQ3 r50TD := by unfold CorrQ3; decide +kernel
   have h12 : CtlAtomic kAtomic mutexLayout s6tσ s6tL := ctlAtomic_of_check (by decide)
-  exact ⟨hS, hq1, hq2, hq3, h12, rfl,
+  exact ⟨hS, hq1, hq2, hq3, corrQ4_of_check (by decide +kernel), h12, rfl,
     no_race (testKS_dd _ _ _) atomicStatics_ok rfl hK hS hq1 hq2 hq3 h12⟩
 
 /-! ## R51: the atomic event of a step agrees with its step (C37, C39, C40; C51 item 2(b)) -/
@@ -479,6 +486,7 @@ theorem R51 :
     CorrQ1 (r51G .release .acquire).toGraph r51L r51K r51D ∧
     CorrQ2 kAtomic mutexLayout refOrders r51σ r51L (r51G .release .acquire).toGraph r51K r51D ∧
     CorrQ3 (r51D (G := (r51G .release .acquire).toGraph)) ∧
+    CorrQ4 kAtomic mutexLayout refOrders r51σ r51L r51K ∧
     CtlAtomic kAtomic mutexLayout r51σ r51L ∧
     (r51G .release .acquire).toGraph.SW 4 5 ∧
     (∀ a b, ¬ (r51G .release .acquire).toGraph.Race a b) ∧
@@ -501,7 +509,8 @@ theorem R51 :
     ⟨by decide +kernel, by decide +kernel, by decide +kernel⟩, hK.lifecycle,
     lockEdge_none (by decide), by unfold CorrQ1; decide +kernel,
     corrQ2_of_check (listK_none (by decide)) (by decide +kernel),
-    by unfold CorrQ3; decide +kernel, ctlAtomic_of_check (by decide), by decide +kernel,
+    by unfold CorrQ3; decide +kernel, corrQ4_of_check (by decide +kernel),
+    ctlAtomic_of_check (by decide), by decide +kernel,
     by decide +kernel, fun h => hno h.stepOrders⟩
 
 /-- **R51, twin** (safe). The same steps with `release` on the atomic write of step 3 and `acquire`
@@ -515,6 +524,7 @@ theorem R51_twin :
     CorrQ1 (r51G .release .acquire).toGraph r51TL r51K r51TD ∧
     CorrQ2 kAtomic mutexLayout refOrders r51σ r51TL (r51G .release .acquire).toGraph r51K r51TD ∧
     CorrQ3 (r51TD (G := (r51G .release .acquire).toGraph)) ∧
+    CorrQ4 kAtomic mutexLayout refOrders r51σ r51TL r51K ∧
     CtlAtomic kAtomic mutexLayout r51σ r51TL ∧
     (r51G .release .acquire).toGraph.SW 4 5 ∧
     ∀ a b, ¬ (r51G .release .acquire).toGraph.Race a b := by
@@ -539,7 +549,7 @@ theorem R51_twin :
   have hq3 : CorrQ3 (r51TD (G := (r51G .release .acquire).toGraph)) := by
     unfold CorrQ3; decide +kernel
   have h12 : CtlAtomic kAtomic mutexLayout r51σ r51TL := ctlAtomic_of_check (by decide)
-  exact ⟨hS, hq1, hq2, hq3, h12, by decide +kernel,
+  exact ⟨hS, hq1, hq2, hq3, corrQ4_of_check (by decide +kernel), h12, by decide +kernel,
     no_race (testKS_dd _ _ _) atomicStatics_ok rfl hK hS hq1 hq2 hq3 h12⟩
 
 end Ern.Corpus.Concurrency

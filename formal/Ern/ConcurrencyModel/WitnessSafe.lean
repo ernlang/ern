@@ -58,6 +58,7 @@ theorem witness_s1 :
     CorrQ1 w1G.toGraph w1L w1K unitData ∧
     CorrQ2 kX mutexLayout refOrders w1σ w1L w1G.toGraph w1K unitData ∧
     CorrQ3 (unitData (G := w1G.toGraph) (lbls := w1L) (K := w1K)) ∧
+    CorrQ4 kX mutexLayout refOrders w1σ w1L w1K ∧
     CtlAtomic kX mutexLayout w1σ w1L ∧ w1G.toGraph.Race 3 5 ∧
     ¬ SafeConcurrentTrace pm kX mutexLayout refOrders w1σ w1L w1G.toGraph w1K unitData := by
   have hw := witness_w1 (pm := pm)
@@ -76,7 +77,8 @@ theorem witness_s1 :
     by decide, hno, ⟨by decide +kernel, by decide +kernel, by decide +kernel⟩,
     hw.2.2.1.lifecycle, lockEdge_none (by decide), by unfold CorrQ1; decide +kernel,
     corrQ2_of_check (listK_none (by decide)) (by decide +kernel),
-    by unfold CorrQ3; decide +kernel, ctlAtomic_of_check (by decide), by decide +kernel,
+    by unfold CorrQ3; decide +kernel, corrQ4_of_check (by decide +kernel),
+    ctlAtomic_of_check (by decide), by decide +kernel,
     fun h => hno h.handoff⟩
 
 /-! ## S2: W2 and W7 -/
@@ -89,6 +91,7 @@ theorem witness_s2_w2 :
     CorrQ1 w2G.toGraph w2L w2K unitData ∧
     CorrQ2 kX mutexLayout refOrders w2σ w2L w2G.toGraph w2K unitData ∧
     CorrQ3 (unitData (G := w2G.toGraph) (lbls := w2L) (K := w2K)) ∧
+    CorrQ4 kX mutexLayout refOrders w2σ w2L w2K ∧
     CtlAtomic kX mutexLayout w2σ w2L ∧ ∀ a b, ¬ w2G.toGraph.Race a b := by
   have hw := witness_w2 (pm := pm)
   have hS : SafeConcurrentTrace pm kX mutexLayout refOrders w2σ w2L w2G.toGraph w2K unitData :=
@@ -108,7 +111,7 @@ theorem witness_s2_w2 :
   have hq3 : CorrQ3 (unitData (G := w2G.toGraph) (lbls := w2L) (K := w2K)) := by
     unfold CorrQ3; decide +kernel
   have h12 : CtlAtomic kX mutexLayout w2σ w2L := ctlAtomic_of_check (by decide)
-  exact ⟨hS, hq1, hq2, hq3, h12,
+  exact ⟨hS, hq1, hq2, hq3, corrQ4_of_check (by decide +kernel), h12,
     no_race (testKS_dd _ _ _) xStatics_ok hw.1 hw.2.2.1 hS hq1 hq2 hq3 h12⟩
 
 /-- The edge of `LockOrder` for an execution of the mutex block whose `acquire` steps are all on
@@ -133,6 +136,7 @@ theorem witness_s2_w7 :
     CorrQ1 (w7G refOrders).toGraph w7L w7K unitData ∧
     CorrQ2 kMutex mutexLayout refOrders w7σ w7L (w7G refOrders).toGraph w7K unitData ∧
     CorrQ3 (unitData (G := (w7G refOrders).toGraph) (lbls := w7L) (K := w7K)) ∧
+    CorrQ4 kMutex mutexLayout refOrders w7σ w7L w7K ∧
     CtlAtomic kMutex mutexLayout w7σ w7L ∧ ∀ a b, ¬ (w7G refOrders).toGraph.Race a b := by
   have hw := witness_w7 (pm := pm)
   have hS : SafeConcurrentTrace pm kMutex mutexLayout refOrders w7σ w7L (w7G refOrders).toGraph w7K
@@ -153,7 +157,7 @@ theorem witness_s2_w7 :
   have hq3 : CorrQ3 (unitData (G := (w7G refOrders).toGraph) (lbls := w7L) (K := w7K)) := by
     unfold CorrQ3; decide +kernel
   have h12 : CtlAtomic kMutex mutexLayout w7σ w7L := ctlAtomic_of_check (by decide)
-  exact ⟨hS, hq1, hq2, hq3, h12,
+  exact ⟨hS, hq1, hq2, hq3, corrQ4_of_check (by decide +kernel), h12,
     no_race (testKS_dd _ _ _) mutexStatics_ok hw.1 hw.2.2.1 hS hq1 hq2 hq3 h12⟩
 
 /-! ## S3: W8 and W10, and the twin W9 -/
@@ -180,6 +184,7 @@ theorem witness_s3_w8 :
     CorrQ1 (w8G refOrders).toGraph w8L w8K unitData ∧
     CorrQ2 kMutex mutexLayout refOrders w8σ w8L (w8G refOrders).toGraph w8K unitData ∧
     CorrQ3 (unitData (G := (w8G refOrders).toGraph) (lbls := w8L) (K := w8K)) ∧
+    CorrQ4 kMutex mutexLayout refOrders w8σ w8L w8K ∧
     CtlAtomic kMutex mutexLayout w8σ w8L ∧ (w8G refOrders).toGraph.Race 7 12 ∧
     ¬ SafeConcurrentTrace pm kMutex mutexLayout refOrders w8σ w8L (w8G refOrders).toGraph w8K
       unitData := by
@@ -200,7 +205,8 @@ theorem witness_s3_w8 :
     hw.2.2.1.lifecycle, mutex_lockEdge hw.2.2.2.2.1 (by decide) (by decide),
     by unfold CorrQ1; decide +kernel,
     corrQ2_of_check (listK_none (by decide)) (by decide +kernel),
-    by unfold CorrQ3; decide +kernel, ctlAtomic_of_check (by decide), by decide +kernel,
+    by unfold CorrQ3; decide +kernel, corrQ4_of_check (by decide +kernel),
+    ctlAtomic_of_check (by decide), by decide +kernel,
     fun h => hno h.handoff⟩
 
 /-- **Witness S3**, twin W9 (C47, C49; C51, C52): W9 (`witness_w9`), W8 with `c1 : terminate` and
@@ -211,6 +217,7 @@ theorem witness_s3_w9 :
     CorrQ1 w9G.toGraph w9L w9K unitData ∧
     CorrQ2 kMutex mutexLayout refOrders w9σ w9L w9G.toGraph w9K unitData ∧
     CorrQ3 (unitData (G := w9G.toGraph) (lbls := w9L) (K := w9K)) ∧
+    CorrQ4 kMutex mutexLayout refOrders w9σ w9L w9K ∧
     CtlAtomic kMutex mutexLayout w9σ w9L ∧ ∀ a b, ¬ w9G.toGraph.Race a b := by
   have hw := witness_w9 (pm := pm)
   have hS : SafeConcurrentTrace pm kMutex mutexLayout refOrders w9σ w9L w9G.toGraph w9K unitData :=
@@ -230,7 +237,7 @@ theorem witness_s3_w9 :
   have hq3 : CorrQ3 (unitData (G := w9G.toGraph) (lbls := w9L) (K := w9K)) := by
     unfold CorrQ3; decide +kernel
   have h12 : CtlAtomic kMutex mutexLayout w9σ w9L := ctlAtomic_of_check (by decide)
-  exact ⟨hS, hq1, hq2, hq3, h12,
+  exact ⟨hS, hq1, hq2, hq3, corrQ4_of_check (by decide +kernel), h12,
     no_race (testKS_dd _ _ _) mutexStatics_ok hw.1 hw.2.2.1 hS hq1 hq2 hq3 h12⟩
 
 /-- **Witness S3**, W10 (C32.1, C40, C48; C51 item 2(f)): the execution and graph of W7 with the
@@ -256,6 +263,7 @@ theorem witness_s3_w10 :
     CorrQ1 (w7G rlxOrders).toGraph w7L w7K unitData ∧
     CorrQ2 kMutex mutexLayout rlxOrders w7σ w7L (w7G rlxOrders).toGraph w7K unitData ∧
     CorrQ3 (unitData (G := (w7G rlxOrders).toGraph) (lbls := w7L) (K := w7K)) ∧
+    CorrQ4 kMutex mutexLayout rlxOrders w7σ w7L w7K ∧
     CtlAtomic kMutex mutexLayout w7σ w7L ∧ (w7G rlxOrders).toGraph.Race 7 11 ∧
     ¬ SafeConcurrentTrace pm kMutex mutexLayout rlxOrders w7σ w7L (w7G rlxOrders).toGraph w7K
       unitData := by
@@ -277,7 +285,8 @@ theorem witness_s3_w10 :
     by decide, hno, ⟨by decide +kernel, by decide +kernel, by decide +kernel⟩,
     hw.2.1.lifecycle, hle, by unfold CorrQ1; decide +kernel,
     corrQ2_of_check (listK_none (by decide)) (by decide +kernel),
-    by unfold CorrQ3; decide +kernel, ctlAtomic_of_check (by decide), by decide +kernel,
+    by unfold CorrQ3; decide +kernel, corrQ4_of_check (by decide +kernel),
+    ctlAtomic_of_check (by decide), by decide +kernel,
     fun h => hno h.handoff⟩
 
 end Ern.ConcurrencyModel

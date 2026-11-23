@@ -11,7 +11,7 @@ contexts with a capability over the contexts of the state (`cap_nil`). The legal
 orders of the events (`OrderLegal`) is checked event by event (`orderLegal_of_check`), the
 agreement of the atomic event of a step with its accesses (`StepOrders`) step by step
 (`stepOrders_of_check`), and the units of the events of steps (`UnitLeaf`) pair of steps by pair
-of steps (`unitLeaf_of_check`).
+of steps (`unitLeaf_of_check`). The premise Q4 is checked step by step (`corrQ4_of_check`).
 -/
 
 namespace Ern.ConcurrencyModel
@@ -407,5 +407,16 @@ theorem unitLeaf_of_check {E U V S : Type} [DecidableEq U] {ks : KShared} {L : M
   · have := h3 i (lt ha) a ha
     rw [hu] at this
     exact this
+
+/-! ## The presence of an event for the steps with a classified access (Q4, C26) -/
+
+/-- Q4 from its check on the steps of the trace. -/
+theorem corrQ4_of_check {E : Type} {ks : KShared} {L : MutexLayout} {R : CtlOrders}
+    {σ : Nat → SC × SyncReg × ArenaReg} {lbls : List Label} {K : StepEvents E}
+    (h : ∀ i, i < lbls.length → stepAcc ks L R σ lbls i ≠ [] → (K.ev i).isSome = true) :
+    CorrQ4 ks L R σ lbls K := by
+  intro i x hx
+  have hm := mem_stepAcc hx
+  exact Option.isSome_iff_exists.1 (h i hx.1 (fun hn => by rw [hn] at hm; cases hm))
 
 end Ern.ConcurrencyModel

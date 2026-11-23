@@ -150,6 +150,7 @@ theorem witness_s4 :
     CorrQ1 s4G.toGraph s4L pairK (leafData 5) ∧
     ¬ CorrQ2 kAtomic mutexLayout refOrders s4σ s4L s4G.toGraph pairK (leafData 5) ∧
     CorrQ3 (leafData (G := s4G.toGraph) (lbls := s4L) (K := pairK) 5) ∧
+    CorrQ4 kAtomic mutexLayout refOrders s4σ s4L pairK ∧
     CtlAtomic kAtomic mutexLayout s4σ s4L ∧ s4G.toGraph.Race 3 4 ∧
     ¬ SafeConcurrentTrace pm kAtomic mutexLayout refOrders s4σ s4L s4G.toGraph pairK
       (leafData 5) := by
@@ -172,7 +173,8 @@ theorem witness_s4 :
     handoffOrdered_of_check (by decide +kernel),
     ⟨by decide +kernel, by decide +kernel, by decide +kernel⟩, hK.lifecycle,
     lockEdge_none (by decide), by unfold CorrQ1; decide +kernel, hq2,
-    by unfold CorrQ3; decide +kernel, ctlAtomic_of_check (by decide), by decide +kernel,
+    by unfold CorrQ3; decide +kernel, corrQ4_of_check (by decide +kernel),
+    ctlAtomic_of_check (by decide), by decide +kernel,
     fun h => hne h.inherited⟩
 
 /-! ## The joined executions on one leaf -/
@@ -228,6 +230,7 @@ theorem witness_s4_twin :
     CorrQ1 s4tG.toGraph s4tL joinK (leafData 3) ∧
     CorrQ2 kAtomic mutexLayout refOrders s4tσ s4tL s4tG.toGraph joinK (leafData 3) ∧
     CorrQ3 (leafData (G := s4tG.toGraph) (lbls := s4tL) (K := joinK) 3) ∧
+    CorrQ4 kAtomic mutexLayout refOrders s4tσ s4tL joinK ∧
     CtlAtomic kAtomic mutexLayout s4tσ s4tL ∧ ∀ a b, ¬ s4tG.toGraph.Race a b := by
   have hK : Corresponds s4tG.toGraph s4tσ s4tL joinK :=
     corresponds_of_check _ _ _ [(1, 1)] _ _ _ (by decide +kernel) (by decide) (by decide +kernel)
@@ -249,7 +252,7 @@ theorem witness_s4_twin :
   have hq3 : CorrQ3 (leafData (G := s4tG.toGraph) (lbls := s4tL) (K := joinK) 3) := by
     unfold CorrQ3; decide +kernel
   have h12 : CtlAtomic kAtomic mutexLayout s4tσ s4tL := ctlAtomic_of_check (by decide)
-  exact ⟨hS, hq1, hq2, hq3, h12,
+  exact ⟨hS, hq1, hq2, hq3, corrQ4_of_check (by decide +kernel), h12,
     no_race (testKS_dd _ _ _) atomicStatics_ok rfl hK hS hq1 hq2 hq3 h12⟩
 
 /-! ## S5: concurrent `writeShared` on `Synchronized` storage -/
@@ -303,6 +306,7 @@ theorem witness_s5 :
     CorrQ1 s5G.toGraph s5L pairK (leafData 3) ∧
     CorrQ2 kAtomic mutexLayout refOrders s5σ s5L s5G.toGraph pairK (leafData 3) ∧
     CorrQ3 (leafData (G := s5G.toGraph) (lbls := s5L) (K := pairK) 3) ∧
+    CorrQ4 kAtomic mutexLayout refOrders s5σ s5L pairK ∧
     CtlAtomic kAtomic mutexLayout s5σ s5L ∧ s5G.toGraph.Race 3 4 ∧
     ¬ SafeConcurrentTrace pm kAtomic mutexLayout refOrders s5σ s5L s5G.toGraph pairK
       (leafData 3) := by
@@ -324,7 +328,8 @@ theorem witness_s5 :
     ⟨by decide +kernel, by decide +kernel, by decide +kernel⟩, hK.lifecycle,
     lockEdge_none (by decide), by unfold CorrQ1; decide +kernel,
     corrQ2_of_check (listK_none (by decide)) (by decide +kernel),
-    by unfold CorrQ3; decide +kernel, ctlAtomic_of_check (by decide), by decide +kernel,
+    by unfold CorrQ3; decide +kernel, corrQ4_of_check (by decide +kernel),
+    ctlAtomic_of_check (by decide), by decide +kernel,
     fun h => hno h.synchronized⟩
 
 /-- The labels of S5's twin: `c1` writes, releases `o` and terminates; `c0` joins `c1` and
@@ -365,6 +370,7 @@ theorem witness_s5_twin :
     CorrQ1 s4tG.toGraph s5tL joinK (leafData 3) ∧
     CorrQ2 kAtomic mutexLayout refOrders s5tσ s5tL s4tG.toGraph joinK (leafData 3) ∧
     CorrQ3 (leafData (G := s4tG.toGraph) (lbls := s5tL) (K := joinK) 3) ∧
+    CorrQ4 kAtomic mutexLayout refOrders s5tσ s5tL joinK ∧
     CtlAtomic kAtomic mutexLayout s5tσ s5tL ∧ ∀ a b, ¬ s4tG.toGraph.Race a b := by
   have hK : Corresponds s4tG.toGraph s5tσ s5tL joinK :=
     corresponds_of_check _ _ _ [(1, 1)] _ _ _ (by decide +kernel) (by decide) (by decide +kernel)
@@ -386,7 +392,7 @@ theorem witness_s5_twin :
   have hq3 : CorrQ3 (leafData (G := s4tG.toGraph) (lbls := s5tL) (K := joinK) 3) := by
     unfold CorrQ3; decide +kernel
   have h12 : CtlAtomic kAtomic mutexLayout s5tσ s5tL := ctlAtomic_of_check (by decide)
-  exact ⟨hS, hq1, hq2, hq3, h12,
+  exact ⟨hS, hq1, hq2, hq3, corrQ4_of_check (by decide +kernel), h12,
     no_race (testKS_dd _ _ _) atomicStatics_ok rfl hK hS hq1 hq2 hq3 h12⟩
 
 /-! ## S6: ordinary read of `Atomic` storage under `Observe` -/
@@ -441,6 +447,7 @@ theorem witness_s6 :
     CorrQ1 s6G.toGraph s6L pairK (leafData 1) ∧
     CorrQ2 kAtomic mutexLayout refOrders s6σ s6L s6G.toGraph pairK (leafData 1) ∧
     CorrQ3 (leafData (G := s6G.toGraph) (lbls := s6L) (K := pairK) 1) ∧
+    CorrQ4 kAtomic mutexLayout refOrders s6σ s6L pairK ∧
     CtlAtomic kAtomic mutexLayout s6σ s6L ∧ s6G.toGraph.rf 3 4 ∧ s6G.toGraph.Race 3 4 ∧
     ¬ SafeConcurrentTrace pm kAtomic mutexLayout refOrders s6σ s6L s6G.toGraph pairK
       (leafData 1) := by
@@ -458,7 +465,8 @@ theorem witness_s6 :
     ⟨by decide +kernel, by decide +kernel, by decide +kernel⟩, hK.lifecycle,
     lockEdge_none (by decide), by unfold CorrQ1; decide +kernel,
     corrQ2_of_check (listK_none (by decide)) (by decide +kernel),
-    by unfold CorrQ3; decide +kernel, ctlAtomic_of_check (by decide), by decide +kernel,
+    by unfold CorrQ3; decide +kernel, corrQ4_of_check (by decide +kernel),
+    ctlAtomic_of_check (by decide), by decide +kernel,
     by decide +kernel, fun h => hno h.ordinary⟩
 
 /-- The labels of S6's twin: the read of `c1` is `readShared(A)` with `acquire`. -/
@@ -497,6 +505,7 @@ theorem witness_s6_twin :
     CorrQ1 s6tG.toGraph s6tL pairK (leafData 1) ∧
     CorrQ2 kAtomic mutexLayout refOrders s6tσ s6tL s6tG.toGraph pairK (leafData 1) ∧
     CorrQ3 (leafData (G := s6tG.toGraph) (lbls := s6tL) (K := pairK) 1) ∧
+    CorrQ4 kAtomic mutexLayout refOrders s6tσ s6tL pairK ∧
     CtlAtomic kAtomic mutexLayout s6tσ s6tL ∧ s6tG.toGraph.SW 3 4 ∧
     ∀ a b, ¬ s6tG.toGraph.Race a b := by
   have hK : Corresponds s6tG.toGraph s6tσ s6tL pairK :=
@@ -519,7 +528,7 @@ theorem witness_s6_twin :
   have hq3 : CorrQ3 (leafData (G := s6tG.toGraph) (lbls := s6tL) (K := pairK) 1) := by
     unfold CorrQ3; decide +kernel
   have h12 : CtlAtomic kAtomic mutexLayout s6tσ s6tL := ctlAtomic_of_check (by decide)
-  exact ⟨hS, hq1, hq2, hq3, h12, by decide +kernel,
+  exact ⟨hS, hq1, hq2, hq3, corrQ4_of_check (by decide +kernel), h12, by decide +kernel,
     no_race (testKS_dd _ _ _) atomicStatics_ok rfl hK hS hq1 hq2 hq3 h12⟩
 
 /-! ## S7: two contexts with a capability on `Confined` storage -/
@@ -574,6 +583,7 @@ theorem witness_s7 :
     CorrQ1 s7G.toGraph s7L pairK (leafData 4) ∧
     CorrQ2 kAtomic mutexLayout refOrders s7σ s7L s7G.toGraph pairK (leafData 4) ∧
     CorrQ3 (leafData (G := s7G.toGraph) (lbls := s7L) (K := pairK) 4) ∧
+    CorrQ4 kAtomic mutexLayout refOrders s7σ s7L pairK ∧
     CtlAtomic kAtomic mutexLayout s7σ s7L ∧ s7G.toGraph.Race 3 4 ∧
     ¬ SafeConcurrentTrace pm kAtomic mutexLayout refOrders s7σ s7L s7G.toGraph pairK
       (leafData 4) := by
@@ -597,7 +607,8 @@ theorem witness_s7 :
     ⟨by decide +kernel, by decide +kernel, by decide +kernel⟩, hK.lifecycle,
     lockEdge_none (by decide), by unfold CorrQ1; decide +kernel,
     corrQ2_of_check (listK_none (by decide)) (by decide +kernel),
-    by unfold CorrQ3; decide +kernel, ctlAtomic_of_check (by decide), by decide +kernel,
+    by unfold CorrQ3; decide +kernel, corrQ4_of_check (by decide +kernel),
+    ctlAtomic_of_check (by decide), by decide +kernel,
     fun h => hne h.confinedExcl⟩
 
 /-- The labels of S7's twin: `m := derive(root, Modify, {C})`; `spawn c1` yielding `m`; `c1`
@@ -644,6 +655,7 @@ theorem witness_s7_twin :
     CorrQ1 s7tG.toGraph s7tL joinK (leafData 4) ∧
     CorrQ2 kAtomic mutexLayout refOrders s7tσ s7tL s7tG.toGraph joinK (leafData 4) ∧
     CorrQ3 (leafData (G := s7tG.toGraph) (lbls := s7tL) (K := joinK) 4) ∧
+    CorrQ4 kAtomic mutexLayout refOrders s7tσ s7tL joinK ∧
     CtlAtomic kAtomic mutexLayout s7tσ s7tL ∧
     FirstCompatible IncompatConfined s7tσ 2 1 4 .observe 3 ∧
     s7tL[3]? = some (.kernel 1 (.release 1)) ∧ s7tG.toGraph.HB 4 8 ∧
@@ -668,7 +680,8 @@ theorem witness_s7_twin :
   have hq3 : CorrQ3 (leafData (G := s7tG.toGraph) (lbls := s7tL) (K := joinK) 4) := by
     unfold CorrQ3; decide +kernel
   have h12 : CtlAtomic kAtomic mutexLayout s7tσ s7tL := ctlAtomic_of_check (by decide)
-  exact ⟨hS, hq1, hq2, hq3, h12, by decide, rfl, by decide +kernel,
+  exact ⟨hS, hq1, hq2, hq3, corrQ4_of_check (by decide +kernel), h12, by decide, rfl,
+    by decide +kernel,
     no_race (testKS_dd _ _ _) atomicStatics_ok rfl hK hS hq1 hq2 hq3 h12⟩
 
 /-! ## S8: reuse of bytes by a distinct storage identity -/
@@ -761,6 +774,7 @@ theorem witness_s8 :
     LifecycleOK s8G.toGraph s8σ s8L s8K ∧ LockEdge s8G.toGraph s8L s8K ∧
     CorrQ1 s8G.toGraph s8L s8K s8D ∧
     CorrQ2 kAtomic mutexLayout refOrders s8σ s8L s8G.toGraph s8K s8D ∧ CorrQ3 s8D ∧
+    CorrQ4 kAtomic mutexLayout refOrders s8σ s8L s8K ∧
     CtlAtomic kAtomic mutexLayout s8σ s8L ∧ s8G.toGraph.Race 4 8 ∧
     ¬ SafeConcurrentTrace pm kAtomic mutexLayout refOrders s8σ s8L s8G.toGraph s8K s8D := by
   have hK : Corresponds s8G.toGraph s8σ s8L s8K :=
@@ -777,7 +791,8 @@ theorem witness_s8 :
     by decide, handoffOrdered_of_check (by decide +kernel), hno, by decide +kernel,
     hK.lifecycle, lockEdge_none (by decide), by unfold CorrQ1; decide +kernel,
     corrQ2_of_check (listK_none (by decide)) (by decide +kernel),
-    by unfold CorrQ3; decide +kernel, ctlAtomic_of_check (by decide), by decide +kernel,
+    by unfold CorrQ3; decide +kernel, corrQ4_of_check (by decide +kernel),
+    ctlAtomic_of_check (by decide), by decide +kernel,
     fun h => hno h.lifetime⟩
 
 /-- The labels of S8's twin: `c1` terminates after its `release`, and `c0` joins `c1` before its
@@ -846,6 +861,7 @@ theorem witness_s8_twin :
     SafeConcurrentTrace pm kAtomic mutexLayout refOrders s8tσ s8tL s8tG.toGraph s8tK s8tD ∧
     CorrQ1 s8tG.toGraph s8tL s8tK s8tD ∧
     CorrQ2 kAtomic mutexLayout refOrders s8tσ s8tL s8tG.toGraph s8tK s8tD ∧ CorrQ3 s8tD ∧
+    CorrQ4 kAtomic mutexLayout refOrders s8tσ s8tL s8tK ∧
     CtlAtomic kAtomic mutexLayout s8tσ s8tL ∧ s8tG.toGraph.HB 4 11 ∧
     ∀ a b, ¬ s8tG.toGraph.Race a b := by
   have hK : Corresponds s8tG.toGraph s8tσ s8tL s8tK :=
@@ -870,7 +886,7 @@ theorem witness_s8_twin :
   have hord : s8tG.toGraph.HB 4 11 :=
     lifetime_reuse hL (v := 9) (w := 10) (x := 7) (y := 8) (by decide) (by decide)
       (by decide +kernel) (by decide) rfl (by decide) rfl
-  exact ⟨hS, hq1, hq2, hq3, h12, hord,
+  exact ⟨hS, hq1, hq2, hq3, corrQ4_of_check (by decide +kernel), h12, hord,
     no_race (testKS_dd _ _ _) atomicStatics_ok rfl hK hS hq1 hq2 hq3 h12⟩
 
 end Ern.ConcurrencyModel

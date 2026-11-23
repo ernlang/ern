@@ -105,6 +105,7 @@ theorem R46 :
     CorrQ1 r46G.toGraph r46L r46K unitData ∧
     CorrQ2 kX mutexLayout refOrders r46σ r46L r46G.toGraph r46K unitData ∧
     CorrQ3 (unitData (G := r46G.toGraph) (lbls := r46L) (K := r46K)) ∧
+    CorrQ4 kX mutexLayout refOrders r46σ r46L r46K ∧
     CtlAtomic kX mutexLayout r46σ r46L ∧
     FirstCompatible IncompatModify r46σ 4 0 0 .modify 5 ∧
     r46L[5]? = some (.kernel 0 (.release 2)) ∧ r46G.toGraph.Race 5 7 ∧
@@ -126,7 +127,8 @@ theorem R46 :
     ⟨by decide +kernel, by decide +kernel, by decide +kernel⟩, hK.lifecycle,
     lockEdge_none (by decide), by unfold CorrQ1; decide +kernel,
     corrQ2_of_check (listK_none (by decide)) (by decide +kernel),
-    by unfold CorrQ3; decide +kernel, ctlAtomic_of_check (by decide),
+    by unfold CorrQ3; decide +kernel, corrQ4_of_check (by decide +kernel),
+    ctlAtomic_of_check (by decide),
     firstCompatible_of_check (by decide) (by decide) (by decide), rfl, by decide +kernel,
     fun h => hno h.handoff⟩
 
@@ -191,6 +193,7 @@ theorem R46_twin :
     CorrQ1 r46TG.toGraph r46TL r46TK unitData ∧
     CorrQ2 kX mutexLayout refOrders r46Tσ r46TL r46TG.toGraph r46TK unitData ∧
     CorrQ3 (unitData (G := r46TG.toGraph) (lbls := r46TL) (K := r46TK)) ∧
+    CorrQ4 kX mutexLayout refOrders r46Tσ r46TL r46TK ∧
     CtlAtomic kX mutexLayout r46Tσ r46TL ∧
     FirstCompatible IncompatModify r46Tσ 3 0 0 .modify 5 ∧ ∀ a b, ¬ r46TG.toGraph.Race a b := by
   have hK : Corresponds r46TG.toGraph r46Tσ r46TL r46TK :=
@@ -213,7 +216,8 @@ theorem R46_twin :
   have hq3 : CorrQ3 (unitData (G := r46TG.toGraph) (lbls := r46TL) (K := r46TK)) := by
     unfold CorrQ3; decide +kernel
   have h12 : CtlAtomic kX mutexLayout r46Tσ r46TL := ctlAtomic_of_check (by decide)
-  exact ⟨hS, hq1, hq2, hq3, h12, firstCompatible_of_check (by decide) (by decide) (by decide),
+  exact ⟨hS, hq1, hq2, hq3, corrQ4_of_check (by decide +kernel), h12,
+    firstCompatible_of_check (by decide) (by decide) (by decide),
     no_race (testKS_dd _ _ _) (by decide : StaticsOK oneLocal) rfl hK hS hq1 hq2 hq3 h12⟩
 
 /-! ## R47: a relay through an intermediate context, joined alone -/
@@ -303,6 +307,7 @@ theorem R47 :
     CorrQ1 r47G.toGraph r47L r47K unitData ∧
     CorrQ2 kX mutexLayout refOrders r47σ r47L r47G.toGraph r47K unitData ∧
     CorrQ3 (unitData (G := r47G.toGraph) (lbls := r47L) (K := r47K)) ∧
+    CorrQ4 kX mutexLayout refOrders r47σ r47L r47K ∧
     CtlAtomic kX mutexLayout r47σ r47L ∧
     FirstCompatible IncompatModify r47σ 5 2 0 .modify 6 ∧
     r47L[6]? = some (.kernel 2 (.release 2)) ∧ r47G.toGraph.Race 7 13 ∧
@@ -325,7 +330,8 @@ theorem R47 :
     ⟨by decide +kernel, by decide +kernel, by decide +kernel⟩, hK.lifecycle,
     lockEdge_none (by decide), by unfold CorrQ1; decide +kernel,
     corrQ2_of_check (listK_none (by decide)) (by decide +kernel),
-    by unfold CorrQ3; decide +kernel, ctlAtomic_of_check (by decide),
+    by unfold CorrQ3; decide +kernel, corrQ4_of_check (by decide +kernel),
+    ctlAtomic_of_check (by decide),
     firstCompatible_of_check (by decide) (by decide) (by decide), rfl, by decide +kernel,
     fun h => hno h.handoff⟩
 
@@ -409,6 +415,7 @@ theorem R47_twin :
     CorrQ1 r47TG.toGraph r47TL r47TK unitData ∧
     CorrQ2 kX mutexLayout refOrders r47Tσ r47TL r47TG.toGraph r47TK unitData ∧
     CorrQ3 (unitData (G := r47TG.toGraph) (lbls := r47TL) (K := r47TK)) ∧
+    CorrQ4 kX mutexLayout refOrders r47Tσ r47TL r47TK ∧
     CtlAtomic kX mutexLayout r47Tσ r47TL ∧ ∀ a b, ¬ r47TG.toGraph.Race a b := by
   have hK : Corresponds r47TG.toGraph r47Tσ r47TL r47TK :=
     corresponds_of_check _ _ _ [(2, 1), (4, 2)] _ _ _ (by decide +kernel) (by decide)
@@ -431,7 +438,7 @@ theorem R47_twin :
   have hq3 : CorrQ3 (unitData (G := r47TG.toGraph) (lbls := r47TL) (K := r47TK)) := by
     unfold CorrQ3; decide +kernel
   have h12 : CtlAtomic kX mutexLayout r47Tσ r47TL := ctlAtomic_of_check (by decide)
-  exact ⟨hS, hq1, hq2, hq3, h12,
+  exact ⟨hS, hq1, hq2, hq3, corrQ4_of_check (by decide +kernel), h12,
     no_race (testKS_dd _ _ _) (by decide : StaticsOK oneLocal) rfl hK hS hq1 hq2 hq3 h12⟩
 
 /-! ## R48: a grant abandoned by a frame exit, then recovered -/
@@ -528,6 +535,7 @@ theorem R48 :
     CorrQ1 (r48G refOrders).toGraph r48L r48K unitData ∧
     CorrQ2 kMutex mutexLayout refOrders r48σ r48L (r48G refOrders).toGraph r48K unitData ∧
     CorrQ3 (unitData (G := (r48G refOrders).toGraph) (lbls := r48L) (K := r48K)) ∧
+    CorrQ4 kMutex mutexLayout refOrders r48σ r48L r48K ∧
     CtlAtomic kMutex mutexLayout r48σ r48L ∧
     FirstCompatible IncompatModify r48σ 9 1 3 .modify 10 ∧
     r48L[10]? = some (.kernel 1 (.release 5)) ∧ (r48G refOrders).toGraph.Race 10 14 ∧
@@ -553,7 +561,8 @@ theorem R48 :
     ⟨by decide +kernel, by decide +kernel, by decide +kernel⟩, hK.lifecycle, by decide +kernel,
     mutex_lockEdge hR (by decide) (by decide), by unfold CorrQ1; decide +kernel,
     corrQ2_of_check (listK_none (by decide)) (by decide +kernel),
-    by unfold CorrQ3; decide +kernel, ctlAtomic_of_check (by decide),
+    by unfold CorrQ3; decide +kernel, corrQ4_of_check (by decide +kernel),
+    ctlAtomic_of_check (by decide),
     firstCompatible_of_check (by decide) (by decide) (by decide), rfl, by decide +kernel,
     fun h => hno h.handoff⟩
 
@@ -697,8 +706,9 @@ theorem R48_twin :
     CorrQ1 r48TG.toGraph r48TL r48TK unitData ∧
     CorrQ2 kMutex mutexLayout refOrders r48Tσ r48TL r48TG.toGraph r48TK unitData ∧
     CorrQ3 (unitData (G := r48TG.toGraph) (lbls := r48TL) (K := r48TK)) ∧
+    CorrQ4 kMutex mutexLayout refOrders r48Tσ r48TL r48TK ∧
     CtlAtomic kMutex mutexLayout r48Tσ r48TL ∧ ∀ a b, ¬ r48TG.toGraph.Race a b :=
-  ⟨r48T_safe, r48T_q1, r48T_q2, r48T_q3, r48T_ctl,
+  ⟨r48T_safe, r48T_q1, r48T_q2, r48T_q3, corrQ4_of_check (by decide +kernel), r48T_ctl,
     no_race (testKS_dd _ _ _) mutexStatics_ok rfl r48T_corr (r48T_safe (pm := pm)) r48T_q1 r48T_q2 r48T_q3
       r48T_ctl⟩
 
