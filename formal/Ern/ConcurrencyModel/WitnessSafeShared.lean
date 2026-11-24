@@ -10,7 +10,7 @@ Executions from the initial state of Spec 1 §47 under the test contract of the 
 `root` (authority 0) is the root authority of `V`, held by the base frame of `c0`. Each step is an
 `ok` step; each execution is an `EncapsulatedTrace` with a hand-written graph, its correspondence
 K1–K4 and the data of reading 9 (storage identities: the place of the accessed storage; no initial
-write). A trace that is not safe states the condition that fails, every other condition, Q1–Q3
+write). A trace that is not safe states the condition that fails, every other condition, Q1–Q4
 (unless stated) and the race; each has an admitted twin, a `SafeConcurrentTrace` to which 14d
 applies.
 
@@ -132,13 +132,14 @@ theorem s4_run : EncapRun pm kAtomic mutexLayout s4σ s4L := by
 if any targeted leaf lacks a selected `K_C.SharedDiscipline` class"; C51 item 2(e)):
 `o := derive(root, Observe, {U})`; `spawn c1` yielding `o`; `c1` and then `c0` run the inherited
 `writeShared` on `{U}`, through `o` and through `root`. All steps are `ok` in the kernel; (e) fails
-for both writes; every other condition of the safe trace holds; Q1, Q3 and reading 12 hold; Q2
+for both writes; every other condition of the safe trace holds; Q1, Q3, Q4 and reading 12 hold; Q2
 fails: an inherited `writeShared` outside the table has no access in 11e. The two writes race.
 Admitted twin: `witness_s4_twin`. -/
 theorem witness_s4 :
     EncapRun pm kAtomic mutexLayout s4σ s4L ∧ s4G.toGraph.EventConsistent ∧
     s4G.toGraph.FiniteCausalPast ∧ OrdinaryAtomicOK kAtomic s4σ s4L ∧
     s4G.toGraph.OrderLegal ∧ StepOrders kAtomic mutexLayout refOrders s4σ s4L s4G.toGraph pairK ∧
+    UnitLeaf kAtomic mutexLayout refOrders s4σ s4L s4G.toGraph pairK ∧
     ConfinedExcl kAtomic s4σ s4L ∧
     ConfinedHandoff kAtomic mutexLayout refOrders s4σ s4L s4G.toGraph pairK ∧
     SyncOrdered kAtomic mutexLayout refOrders s4σ s4L s4G.toGraph pairK ∧
@@ -149,11 +150,12 @@ theorem witness_s4 :
     CorrQ1 s4G.toGraph s4L pairK (leafData 5) ∧
     ¬ CorrQ2 kAtomic mutexLayout refOrders s4σ s4L s4G.toGraph pairK (leafData 5) ∧
     CorrQ3 (leafData (G := s4G.toGraph) (lbls := s4L) (K := pairK) 5) ∧
+    CorrQ4 kAtomic mutexLayout refOrders s4σ s4L pairK ∧
     CtlAtomic kAtomic mutexLayout s4σ s4L ∧ s4G.toGraph.Race 3 4 ∧
     ¬ SafeConcurrentTrace pm kAtomic mutexLayout refOrders s4σ s4L s4G.toGraph pairK
       (leafData 5) := by
   have hK : Corresponds s4G.toGraph s4σ s4L pairK :=
-    corresponds_of_check _ _ _ [(1, 1)] _ _ _ (by decide +kernel) (by decide)
+    corresponds_of_check _ _ _ [(1, 1)] _ _ _ (by decide +kernel) (by decide) (by decide +kernel)
   have hne : ¬ InheritedLegal kAtomic s4L := fun h => absurd (h 2 (by decide)) (by decide)
   have hq2 : ¬ CorrQ2 kAtomic mutexLayout refOrders s4σ s4L s4G.toGraph pairK (leafData 5) :=
     fun h => by
@@ -164,12 +166,15 @@ theorem witness_s4 :
   exact ⟨s4_run, by decide +kernel, finitePast_fin _, by decide,
     orderLegal_of_check (by decide +kernel),
     stepOrders_of_check (listK_none (by decide)) (by decide +kernel),
+    unitLeaf_of_check (listK_none (by decide)) (by decide +kernel) (by decide +kernel)
+      (by decide +kernel),
     confinedExcl_of_check [4] 2 kAtomic_conf (by decide) (by decide +kernel),
     confinedHandoff_of_check (by decide +kernel), syncOrdered_of_check (by decide +kernel), hne,
     handoffOrdered_of_check (by decide +kernel),
     ⟨by decide +kernel, by decide +kernel, by decide +kernel⟩, hK.lifecycle,
     lockEdge_none (by decide), by unfold CorrQ1; decide +kernel, hq2,
-    by unfold CorrQ3; decide +kernel, ctlAtomic_of_check (by decide), by decide +kernel,
+    by unfold CorrQ3; decide +kernel, corrQ4_of_check (by decide +kernel),
+    ctlAtomic_of_check (by decide), by decide +kernel,
     fun h => hne h.inherited⟩
 
 /-! ## The joined executions on one leaf -/
@@ -217,7 +222,7 @@ theorem s4t_run : EncapRun pm kAtomic mutexLayout s4tσ s4tL := by
 
 /-- **Witness S4**, admitted twin (C35–C38; C51, C52): the inherited `writeShared` of S4 on the
 `Synchronized` leaf `S`, `c1` releasing `o` and terminating, `c0` joining `c1` before its write:
-the inherited steps satisfy the table (e); the execution is a `SafeConcurrentTrace`; Q1–Q3 and
+the inherited steps satisfy the table (e); the execution is a `SafeConcurrentTrace`; Q1–Q4 and
 reading 12 hold; 14d applies: no pair of events races. -/
 theorem witness_s4_twin :
     SafeConcurrentTrace pm kAtomic mutexLayout refOrders s4tσ s4tL s4tG.toGraph joinK
@@ -225,14 +230,17 @@ theorem witness_s4_twin :
     CorrQ1 s4tG.toGraph s4tL joinK (leafData 3) ∧
     CorrQ2 kAtomic mutexLayout refOrders s4tσ s4tL s4tG.toGraph joinK (leafData 3) ∧
     CorrQ3 (leafData (G := s4tG.toGraph) (lbls := s4tL) (K := joinK) 3) ∧
+    CorrQ4 kAtomic mutexLayout refOrders s4tσ s4tL joinK ∧
     CtlAtomic kAtomic mutexLayout s4tσ s4tL ∧ ∀ a b, ¬ s4tG.toGraph.Race a b := by
   have hK : Corresponds s4tG.toGraph s4tσ s4tL joinK :=
-    corresponds_of_check _ _ _ [(1, 1)] _ _ _ (by decide +kernel) (by decide)
+    corresponds_of_check _ _ _ [(1, 1)] _ _ _ (by decide +kernel) (by decide) (by decide +kernel)
   have hS : SafeConcurrentTrace pm kAtomic mutexLayout refOrders s4tσ s4tL s4tG.toGraph joinK
       (leafData 3) :=
     ⟨s4t_run, by decide +kernel, finitePast_fin _, by decide,
       orderLegal_of_check (by decide +kernel),
       stepOrders_of_check (listK_none (by decide)) (by decide +kernel),
+      unitLeaf_of_check (listK_none (by decide)) (by decide +kernel) (by decide +kernel)
+        (by decide +kernel),
       confinedExcl_of_check [4] 2 kAtomic_conf (by decide) (by decide +kernel),
       confinedHandoff_of_check (by decide +kernel), syncOrdered_of_check (by decide +kernel),
       by decide, handoffOrdered_of_check (by decide +kernel),
@@ -244,7 +252,7 @@ theorem witness_s4_twin :
   have hq3 : CorrQ3 (leafData (G := s4tG.toGraph) (lbls := s4tL) (K := joinK) 3) := by
     unfold CorrQ3; decide +kernel
   have h12 : CtlAtomic kAtomic mutexLayout s4tσ s4tL := ctlAtomic_of_check (by decide)
-  exact ⟨hS, hq1, hq2, hq3, h12,
+  exact ⟨hS, hq1, hq2, hq3, corrQ4_of_check (by decide +kernel), h12,
     no_race (testKS_dd _ _ _) atomicStatics_ok rfl hK hS hq1 hq2 hq3 h12⟩
 
 /-! ## S5: concurrent `writeShared` on `Synchronized` storage -/
@@ -281,12 +289,13 @@ storage performed under shared compatible `Observe` rights are **not** covered b
 exclusive-handoff premise"; C51 item 2(d); C52): `o := derive(root, Observe, {S})`; `spawn c1`
 yielding `o`; `c1` and then `c0` run the concurrent `writeShared` of kind `store` without
 annotation on `{S}`, through `o` and through `root`. (d) fails: the two writes form a
-non-exclusive pair in conflict on `S` not ordered by `hb`. Every other condition holds; Q1–Q3 and
+non-exclusive pair in conflict on `S` not ordered by `hb`. Every other condition holds; Q1–Q4 and
 reading 12 hold. The two writes race. Admitted twin: `witness_s5_twin`. -/
 theorem witness_s5 :
     EncapRun pm kAtomic mutexLayout s5σ s5L ∧ s5G.toGraph.EventConsistent ∧
     s5G.toGraph.FiniteCausalPast ∧ OrdinaryAtomicOK kAtomic s5σ s5L ∧
     s5G.toGraph.OrderLegal ∧ StepOrders kAtomic mutexLayout refOrders s5σ s5L s5G.toGraph pairK ∧
+    UnitLeaf kAtomic mutexLayout refOrders s5σ s5L s5G.toGraph pairK ∧
     ConfinedExcl kAtomic s5σ s5L ∧
     ConfinedHandoff kAtomic mutexLayout refOrders s5σ s5L s5G.toGraph pairK ∧
     ¬ SyncOrdered kAtomic mutexLayout refOrders s5σ s5L s5G.toGraph pairK ∧
@@ -297,11 +306,12 @@ theorem witness_s5 :
     CorrQ1 s5G.toGraph s5L pairK (leafData 3) ∧
     CorrQ2 kAtomic mutexLayout refOrders s5σ s5L s5G.toGraph pairK (leafData 3) ∧
     CorrQ3 (leafData (G := s5G.toGraph) (lbls := s5L) (K := pairK) 3) ∧
+    CorrQ4 kAtomic mutexLayout refOrders s5σ s5L pairK ∧
     CtlAtomic kAtomic mutexLayout s5σ s5L ∧ s5G.toGraph.Race 3 4 ∧
     ¬ SafeConcurrentTrace pm kAtomic mutexLayout refOrders s5σ s5L s5G.toGraph pairK
       (leafData 3) := by
   have hK : Corresponds s5G.toGraph s5σ s5L pairK :=
-    corresponds_of_check _ _ _ [(1, 1)] _ _ _ (by decide +kernel) (by decide)
+    corresponds_of_check _ _ _ [(1, 1)] _ _ _ (by decide +kernel) (by decide) (by decide +kernel)
   have hno : ¬ SyncOrdered kAtomic mutexLayout refOrders s5σ s5L s5G.toGraph pairK := fun h =>
     absurd (h 2 3 ⟨3, .write, none, .observe⟩ ⟨3, .write, none, .observe⟩
       (conflictPair_of (by decide) (by decide) (by decide) rfl (by decide) (by decide)
@@ -310,13 +320,16 @@ theorem witness_s5 :
   exact ⟨s5_run, by decide +kernel, finitePast_fin _, by decide,
     orderLegal_of_check (by decide +kernel),
     stepOrders_of_check (listK_none (by decide)) (by decide +kernel),
+    unitLeaf_of_check (listK_none (by decide)) (by decide +kernel) (by decide +kernel)
+      (by decide +kernel),
     confinedExcl_of_check [4] 2 kAtomic_conf (by decide) (by decide +kernel),
     confinedHandoff_of_check (by decide +kernel), hno, by decide,
     handoffOrdered_of_check (by decide +kernel),
     ⟨by decide +kernel, by decide +kernel, by decide +kernel⟩, hK.lifecycle,
     lockEdge_none (by decide), by unfold CorrQ1; decide +kernel,
     corrQ2_of_check (listK_none (by decide)) (by decide +kernel),
-    by unfold CorrQ3; decide +kernel, ctlAtomic_of_check (by decide), by decide +kernel,
+    by unfold CorrQ3; decide +kernel, corrQ4_of_check (by decide +kernel),
+    ctlAtomic_of_check (by decide), by decide +kernel,
     fun h => hno h.synchronized⟩
 
 /-- The labels of S5's twin: `c1` writes, releases `o` and terminates; `c0` joins `c1` and
@@ -350,21 +363,24 @@ theorem s5t_run : EncapRun pm kAtomic mutexLayout s5tσ s5tL := by
 
 /-- **Witness S5**, admitted twin (C47, C51 item 2(d), C52): with `c1 : terminate` and `c0 :
 join(c1)` before the write of `c0`, the two writes of `S` are ordered by `hb`; the execution is a
-`SafeConcurrentTrace`; Q1–Q3 and reading 12 hold; 14d applies: no pair of events races. -/
+`SafeConcurrentTrace`; Q1–Q4 and reading 12 hold; 14d applies: no pair of events races. -/
 theorem witness_s5_twin :
     SafeConcurrentTrace pm kAtomic mutexLayout refOrders s5tσ s5tL s4tG.toGraph joinK
       (leafData 3) ∧
     CorrQ1 s4tG.toGraph s5tL joinK (leafData 3) ∧
     CorrQ2 kAtomic mutexLayout refOrders s5tσ s5tL s4tG.toGraph joinK (leafData 3) ∧
     CorrQ3 (leafData (G := s4tG.toGraph) (lbls := s5tL) (K := joinK) 3) ∧
+    CorrQ4 kAtomic mutexLayout refOrders s5tσ s5tL joinK ∧
     CtlAtomic kAtomic mutexLayout s5tσ s5tL ∧ ∀ a b, ¬ s4tG.toGraph.Race a b := by
   have hK : Corresponds s4tG.toGraph s5tσ s5tL joinK :=
-    corresponds_of_check _ _ _ [(1, 1)] _ _ _ (by decide +kernel) (by decide)
+    corresponds_of_check _ _ _ [(1, 1)] _ _ _ (by decide +kernel) (by decide) (by decide +kernel)
   have hS : SafeConcurrentTrace pm kAtomic mutexLayout refOrders s5tσ s5tL s4tG.toGraph joinK
       (leafData 3) :=
     ⟨s5t_run, by decide +kernel, finitePast_fin _, by decide,
       orderLegal_of_check (by decide +kernel),
       stepOrders_of_check (listK_none (by decide)) (by decide +kernel),
+      unitLeaf_of_check (listK_none (by decide)) (by decide +kernel) (by decide +kernel)
+        (by decide +kernel),
       confinedExcl_of_check [4] 2 kAtomic_conf (by decide) (by decide +kernel),
       confinedHandoff_of_check (by decide +kernel), syncOrdered_of_check (by decide +kernel),
       by decide, handoffOrdered_of_check (by decide +kernel),
@@ -376,7 +392,7 @@ theorem witness_s5_twin :
   have hq3 : CorrQ3 (leafData (G := s4tG.toGraph) (lbls := s5tL) (K := joinK) 3) := by
     unfold CorrQ3; decide +kernel
   have h12 : CtlAtomic kAtomic mutexLayout s5tσ s5tL := ctlAtomic_of_check (by decide)
-  exact ⟨hS, hq1, hq2, hq3, h12,
+  exact ⟨hS, hq1, hq2, hq3, corrQ4_of_check (by decide +kernel), h12,
     no_race (testKS_dd _ _ _) atomicStatics_ok rfl hK hS hq1 hq2 hq3 h12⟩
 
 /-! ## S6: ordinary read of `Atomic` storage under `Observe` -/
@@ -414,12 +430,13 @@ theorem s6_run : EncapRun pm kAtomic mutexLayout s6σ s6L := by
 derive(root, Observe, {A})`; `spawn c1` yielding `o`; `c0 : writeShared` of kind `store` on `{A}`
 with `release`; `c1 : read3(A)` through `o`, whose event reads the write of `c0` by `rf`. All steps
 are `ok`; the condition `OrdinaryAtomicOK` of (b) (C42) fails at the `read3`; every other
-condition holds, the two other conditions of (b) included; Q1–Q3 and reading 12 hold. The
+condition holds, the two other conditions of (b) included; Q1–Q4 and reading 12 hold. The
 atomic write and the non-atomic read race. Admitted twin: `witness_s6_twin`. -/
 theorem witness_s6 :
     EncapRun pm kAtomic mutexLayout s6σ s6L ∧ s6G.toGraph.EventConsistent ∧
     s6G.toGraph.FiniteCausalPast ∧ ¬ OrdinaryAtomicOK kAtomic s6σ s6L ∧
     s6G.toGraph.OrderLegal ∧ StepOrders kAtomic mutexLayout refOrders s6σ s6L s6G.toGraph pairK ∧
+    UnitLeaf kAtomic mutexLayout refOrders s6σ s6L s6G.toGraph pairK ∧
     ConfinedExcl kAtomic s6σ s6L ∧
     ConfinedHandoff kAtomic mutexLayout refOrders s6σ s6L s6G.toGraph pairK ∧
     SyncOrdered kAtomic mutexLayout refOrders s6σ s6L s6G.toGraph pairK ∧
@@ -430,22 +447,26 @@ theorem witness_s6 :
     CorrQ1 s6G.toGraph s6L pairK (leafData 1) ∧
     CorrQ2 kAtomic mutexLayout refOrders s6σ s6L s6G.toGraph pairK (leafData 1) ∧
     CorrQ3 (leafData (G := s6G.toGraph) (lbls := s6L) (K := pairK) 1) ∧
+    CorrQ4 kAtomic mutexLayout refOrders s6σ s6L pairK ∧
     CtlAtomic kAtomic mutexLayout s6σ s6L ∧ s6G.toGraph.rf 3 4 ∧ s6G.toGraph.Race 3 4 ∧
     ¬ SafeConcurrentTrace pm kAtomic mutexLayout refOrders s6σ s6L s6G.toGraph pairK
       (leafData 1) := by
   have hK : Corresponds s6G.toGraph s6σ s6L pairK :=
-    corresponds_of_check _ _ _ [(1, 1)] _ _ _ (by decide +kernel) (by decide)
+    corresponds_of_check _ _ _ [(1, 1)] _ _ _ (by decide +kernel) (by decide) (by decide +kernel)
   have hno : ¬ OrdinaryAtomicOK kAtomic s6σ s6L := fun h => absurd (h 3 (by decide)) (by decide)
   exact ⟨s6_run, by decide +kernel, finitePast_fin _, hno,
     orderLegal_of_check (by decide +kernel),
     stepOrders_of_check (listK_none (by decide)) (by decide +kernel),
+    unitLeaf_of_check (listK_none (by decide)) (by decide +kernel) (by decide +kernel)
+      (by decide +kernel),
     confinedExcl_of_check [4] 2 kAtomic_conf (by decide) (by decide +kernel),
     confinedHandoff_of_check (by decide +kernel), syncOrdered_of_check (by decide +kernel),
     by decide, handoffOrdered_of_check (by decide +kernel),
     ⟨by decide +kernel, by decide +kernel, by decide +kernel⟩, hK.lifecycle,
     lockEdge_none (by decide), by unfold CorrQ1; decide +kernel,
     corrQ2_of_check (listK_none (by decide)) (by decide +kernel),
-    by unfold CorrQ3; decide +kernel, ctlAtomic_of_check (by decide), by decide +kernel,
+    by unfold CorrQ3; decide +kernel, corrQ4_of_check (by decide +kernel),
+    ctlAtomic_of_check (by decide), by decide +kernel,
     by decide +kernel, fun h => hno h.ordinary⟩
 
 /-- The labels of S6's twin: the read of `c1` is `readShared(A)` with `acquire`. -/
@@ -477,22 +498,25 @@ theorem s6t_run : EncapRun pm kAtomic mutexLayout s6tσ s6tL := by
 
 /-- **Witness S6**, admitted twin (C37, C32.1, C42; C51, C52): with `readShared(A)` in `acquire`
 instead of `read3`, `sw` relates the write to the read; the execution is a
-`SafeConcurrentTrace`; Q1–Q3 and reading 12 hold; 14d applies: no pair of events races. -/
+`SafeConcurrentTrace`; Q1–Q4 and reading 12 hold; 14d applies: no pair of events races. -/
 theorem witness_s6_twin :
     SafeConcurrentTrace pm kAtomic mutexLayout refOrders s6tσ s6tL s6tG.toGraph pairK
       (leafData 1) ∧
     CorrQ1 s6tG.toGraph s6tL pairK (leafData 1) ∧
     CorrQ2 kAtomic mutexLayout refOrders s6tσ s6tL s6tG.toGraph pairK (leafData 1) ∧
     CorrQ3 (leafData (G := s6tG.toGraph) (lbls := s6tL) (K := pairK) 1) ∧
+    CorrQ4 kAtomic mutexLayout refOrders s6tσ s6tL pairK ∧
     CtlAtomic kAtomic mutexLayout s6tσ s6tL ∧ s6tG.toGraph.SW 3 4 ∧
     ∀ a b, ¬ s6tG.toGraph.Race a b := by
   have hK : Corresponds s6tG.toGraph s6tσ s6tL pairK :=
-    corresponds_of_check _ _ _ [(1, 1)] _ _ _ (by decide +kernel) (by decide)
+    corresponds_of_check _ _ _ [(1, 1)] _ _ _ (by decide +kernel) (by decide) (by decide +kernel)
   have hS : SafeConcurrentTrace pm kAtomic mutexLayout refOrders s6tσ s6tL s6tG.toGraph pairK
       (leafData 1) :=
     ⟨s6t_run, by decide +kernel, finitePast_fin _, by decide,
       orderLegal_of_check (by decide +kernel),
       stepOrders_of_check (listK_none (by decide)) (by decide +kernel),
+      unitLeaf_of_check (listK_none (by decide)) (by decide +kernel) (by decide +kernel)
+        (by decide +kernel),
       confinedExcl_of_check [4] 2 kAtomic_conf (by decide) (by decide +kernel),
       confinedHandoff_of_check (by decide +kernel), syncOrdered_of_check (by decide +kernel),
       by decide, handoffOrdered_of_check (by decide +kernel),
@@ -504,7 +528,7 @@ theorem witness_s6_twin :
   have hq3 : CorrQ3 (leafData (G := s6tG.toGraph) (lbls := s6tL) (K := pairK) 1) := by
     unfold CorrQ3; decide +kernel
   have h12 : CtlAtomic kAtomic mutexLayout s6tσ s6tL := ctlAtomic_of_check (by decide)
-  exact ⟨hS, hq1, hq2, hq3, h12, by decide +kernel,
+  exact ⟨hS, hq1, hq2, hq3, corrQ4_of_check (by decide +kernel), h12, by decide +kernel,
     no_race (testKS_dd _ _ _) atomicStatics_ok rfl hK hS hq1 hq2 hq3 h12⟩
 
 /-! ## S7: two contexts with a capability on `Confined` storage -/
@@ -542,12 +566,13 @@ yielding `o`; `c1 : writeShared` of kind `store` without annotation on `{C}`; `c
 through `root`. All steps are `ok`; (c) fails: after the `spawn`, `c0` and `c1` both have a present
 capability on `C`, and the pair of the write of `c1` and the read of `c0` has no ordered handoff
 under the `Confined` criterion (the capability of `c1` never becomes `none`). Every other condition
-holds; Q1–Q3 and reading 12 hold. The write and the read race. Admitted twin:
+holds; Q1–Q4 and reading 12 hold. The write and the read race. Admitted twin:
 `witness_s7_twin`. -/
 theorem witness_s7 :
     EncapRun pm kAtomic mutexLayout s7σ s7L ∧ s7G.toGraph.EventConsistent ∧
     s7G.toGraph.FiniteCausalPast ∧ OrdinaryAtomicOK kAtomic s7σ s7L ∧
     s7G.toGraph.OrderLegal ∧ StepOrders kAtomic mutexLayout refOrders s7σ s7L s7G.toGraph pairK ∧
+    UnitLeaf kAtomic mutexLayout refOrders s7σ s7L s7G.toGraph pairK ∧
     ¬ ConfinedExcl kAtomic s7σ s7L ∧
     ¬ ConfinedHandoff kAtomic mutexLayout refOrders s7σ s7L s7G.toGraph pairK ∧
     SyncOrdered kAtomic mutexLayout refOrders s7σ s7L s7G.toGraph pairK ∧
@@ -558,11 +583,12 @@ theorem witness_s7 :
     CorrQ1 s7G.toGraph s7L pairK (leafData 4) ∧
     CorrQ2 kAtomic mutexLayout refOrders s7σ s7L s7G.toGraph pairK (leafData 4) ∧
     CorrQ3 (leafData (G := s7G.toGraph) (lbls := s7L) (K := pairK) 4) ∧
+    CorrQ4 kAtomic mutexLayout refOrders s7σ s7L pairK ∧
     CtlAtomic kAtomic mutexLayout s7σ s7L ∧ s7G.toGraph.Race 3 4 ∧
     ¬ SafeConcurrentTrace pm kAtomic mutexLayout refOrders s7σ s7L s7G.toGraph pairK
       (leafData 4) := by
   have hK : Corresponds s7G.toGraph s7σ s7L pairK :=
-    corresponds_of_check _ _ _ [(1, 1)] _ _ _ (by decide +kernel) (by decide)
+    corresponds_of_check _ _ _ [(1, 1)] _ _ _ (by decide +kernel) (by decide) (by decide +kernel)
   have hne : ¬ ConfinedExcl kAtomic s7σ s7L := fun h =>
     absurd (h 2 (by decide) 4 (by decide) 0 1 (by decide) (by decide)) (by decide)
   have hnh : ¬ ConfinedHandoff kAtomic mutexLayout refOrders s7σ s7L s7G.toGraph pairK := fun h =>
@@ -572,13 +598,17 @@ theorem witness_s7 :
       (by decide)) (by decide +kernel)
   exact ⟨s7_run, by decide +kernel, finitePast_fin _, by decide,
     orderLegal_of_check (by decide +kernel),
-    stepOrders_of_check (listK_none (by decide)) (by decide +kernel), hne, hnh,
+    stepOrders_of_check (listK_none (by decide)) (by decide +kernel),
+    unitLeaf_of_check (listK_none (by decide)) (by decide +kernel) (by decide +kernel)
+      (by decide +kernel),
+    hne, hnh,
     syncOrdered_of_check (by decide +kernel), by decide,
     handoffOrdered_of_check (by decide +kernel),
     ⟨by decide +kernel, by decide +kernel, by decide +kernel⟩, hK.lifecycle,
     lockEdge_none (by decide), by unfold CorrQ1; decide +kernel,
     corrQ2_of_check (listK_none (by decide)) (by decide +kernel),
-    by unfold CorrQ3; decide +kernel, ctlAtomic_of_check (by decide), by decide +kernel,
+    by unfold CorrQ3; decide +kernel, corrQ4_of_check (by decide +kernel),
+    ctlAtomic_of_check (by decide), by decide +kernel,
     fun h => hne h.confinedExcl⟩
 
 /-- The labels of S7's twin: `m := derive(root, Modify, {C})`; `spawn c1` yielding `m`; `c1`
@@ -617,7 +647,7 @@ theorem s7t_run : EncapRun pm kAtomic mutexLayout s7tσ s7tL := by
 {C})` yielded to `c1`, which writes, releases `m` and terminates, and `c0` joining `c1` before its
 read, at most one context has a capability on `C` at every state; the loss marker of the pair is
 `release(m)`, step 3 of `c1` (`FirstCompatible`, `Confined` criterion), and its event is
-`hb`-before the read; the execution is a `SafeConcurrentTrace`; Q1–Q3 and reading 12 hold; 14d
+`hb`-before the read; the execution is a `SafeConcurrentTrace`; Q1–Q4 and reading 12 hold; 14d
 applies: no pair of events races. -/
 theorem witness_s7_twin :
     SafeConcurrentTrace pm kAtomic mutexLayout refOrders s7tσ s7tL s7tG.toGraph joinK
@@ -625,17 +655,20 @@ theorem witness_s7_twin :
     CorrQ1 s7tG.toGraph s7tL joinK (leafData 4) ∧
     CorrQ2 kAtomic mutexLayout refOrders s7tσ s7tL s7tG.toGraph joinK (leafData 4) ∧
     CorrQ3 (leafData (G := s7tG.toGraph) (lbls := s7tL) (K := joinK) 4) ∧
+    CorrQ4 kAtomic mutexLayout refOrders s7tσ s7tL joinK ∧
     CtlAtomic kAtomic mutexLayout s7tσ s7tL ∧
     FirstCompatible IncompatConfined s7tσ 2 1 4 .observe 3 ∧
     s7tL[3]? = some (.kernel 1 (.release 1)) ∧ s7tG.toGraph.HB 4 8 ∧
     ∀ a b, ¬ s7tG.toGraph.Race a b := by
   have hK : Corresponds s7tG.toGraph s7tσ s7tL joinK :=
-    corresponds_of_check _ _ _ [(1, 1)] _ _ _ (by decide +kernel) (by decide)
+    corresponds_of_check _ _ _ [(1, 1)] _ _ _ (by decide +kernel) (by decide) (by decide +kernel)
   have hS : SafeConcurrentTrace pm kAtomic mutexLayout refOrders s7tσ s7tL s7tG.toGraph joinK
       (leafData 4) :=
     ⟨s7t_run, by decide +kernel, finitePast_fin _, by decide,
       orderLegal_of_check (by decide +kernel),
       stepOrders_of_check (listK_none (by decide)) (by decide +kernel),
+      unitLeaf_of_check (listK_none (by decide)) (by decide +kernel) (by decide +kernel)
+        (by decide +kernel),
       confinedExcl_of_check [4] 2 kAtomic_conf (by decide) (by decide +kernel),
       confinedHandoff_of_check (by decide +kernel), syncOrdered_of_check (by decide +kernel),
       by decide, handoffOrdered_of_check (by decide +kernel),
@@ -647,7 +680,8 @@ theorem witness_s7_twin :
   have hq3 : CorrQ3 (leafData (G := s7tG.toGraph) (lbls := s7tL) (K := joinK) 4) := by
     unfold CorrQ3; decide +kernel
   have h12 : CtlAtomic kAtomic mutexLayout s7tσ s7tL := ctlAtomic_of_check (by decide)
-  exact ⟨hS, hq1, hq2, hq3, h12, by decide, rfl, by decide +kernel,
+  exact ⟨hS, hq1, hq2, hq3, corrQ4_of_check (by decide +kernel), h12, by decide, rfl,
+    by decide +kernel,
     no_race (testKS_dd _ _ _) atomicStatics_ok rfl hK hS hq1 hq2 hq3 h12⟩
 
 /-! ## S8: reuse of bytes by a distinct storage identity -/
@@ -724,12 +758,13 @@ derive(root_X, Modify)`; `spawn c1` yielding `a`; `c1 : write3(X)` by `a`; `c1 :
 bytes and distinct identities; the events of the `enterFrame` and `exitFrame` steps are the begin
 and end of validity of `X` and the begin of validity of `Y`. All steps are `ok`; `LifetimeOrdered`
 fails by L2: the write of `c1` is not `hb`-before the end of validity of `X`. Every other
-condition holds; Q1–Q3 and reading 12 hold. The two writes race. Admitted twin:
+condition holds; Q1–Q4 and reading 12 hold. The two writes race. Admitted twin:
 `witness_s8_twin`. -/
 theorem witness_s8 :
     EncapRun pm kAtomic mutexLayout s8σ s8L ∧ s8G.toGraph.EventConsistent ∧
     s8G.toGraph.FiniteCausalPast ∧ OrdinaryAtomicOK kAtomic s8σ s8L ∧
     s8G.toGraph.OrderLegal ∧ StepOrders kAtomic mutexLayout refOrders s8σ s8L s8G.toGraph s8K ∧
+    UnitLeaf kAtomic mutexLayout refOrders s8σ s8L s8G.toGraph s8K ∧
     ConfinedExcl kAtomic s8σ s8L ∧
     ConfinedHandoff kAtomic mutexLayout refOrders s8σ s8L s8G.toGraph s8K ∧
     SyncOrdered kAtomic mutexLayout refOrders s8σ s8L s8G.toGraph s8K ∧
@@ -739,21 +774,25 @@ theorem witness_s8 :
     LifecycleOK s8G.toGraph s8σ s8L s8K ∧ LockEdge s8G.toGraph s8L s8K ∧
     CorrQ1 s8G.toGraph s8L s8K s8D ∧
     CorrQ2 kAtomic mutexLayout refOrders s8σ s8L s8G.toGraph s8K s8D ∧ CorrQ3 s8D ∧
+    CorrQ4 kAtomic mutexLayout refOrders s8σ s8L s8K ∧
     CtlAtomic kAtomic mutexLayout s8σ s8L ∧ s8G.toGraph.Race 4 8 ∧
     ¬ SafeConcurrentTrace pm kAtomic mutexLayout refOrders s8σ s8L s8G.toGraph s8K s8D := by
   have hK : Corresponds s8G.toGraph s8σ s8L s8K :=
-    corresponds_of_check _ _ _ [(2, 1)] _ _ _ (by decide +kernel) (by decide)
+    corresponds_of_check _ _ _ [(2, 1)] _ _ _ (by decide +kernel) (by decide) (by decide +kernel)
   have hno : ¬ LifetimeOrdered s8G.toGraph s8D := fun h =>
     absurd (h.before_end 4 6 (by decide) (by decide)) (by decide +kernel)
   exact ⟨s8_run, by decide +kernel, finitePast_fin _, by decide,
     orderLegal_of_check (by decide +kernel),
     stepOrders_of_check (listK_none (by decide)) (by decide +kernel),
+    unitLeaf_of_check (listK_none (by decide)) (by decide +kernel) (by decide +kernel)
+      (by decide +kernel),
     confinedExcl_of_check [4] 2 kAtomic_conf (by decide) (by decide +kernel),
     confinedHandoff_of_check (by decide +kernel), syncOrdered_of_check (by decide +kernel),
     by decide, handoffOrdered_of_check (by decide +kernel), hno, by decide +kernel,
     hK.lifecycle, lockEdge_none (by decide), by unfold CorrQ1; decide +kernel,
     corrQ2_of_check (listK_none (by decide)) (by decide +kernel),
-    by unfold CorrQ3; decide +kernel, ctlAtomic_of_check (by decide), by decide +kernel,
+    by unfold CorrQ3; decide +kernel, corrQ4_of_check (by decide +kernel),
+    ctlAtomic_of_check (by decide), by decide +kernel,
     fun h => hno h.lifetime⟩
 
 /-- The labels of S8's twin: `c1` terminates after its `release`, and `c0` joins `c1` before its
@@ -816,22 +855,25 @@ theorem s8t_run : EncapRun pm kAtomic mutexLayout s8tσ s8tL := by
 /-- **Witness S8**, admitted twin (C47, C51, C52): with `c1 : terminate` after its `release` and
 `c0 : join(c1)` before the `exitFrame`, the write of `X` is `hb`-before the end of validity of `X`,
 which is `hb`-before the begin of validity of `Y`; the two writes are ordered by 14a.2; the
-execution is a `SafeConcurrentTrace`; Q1–Q3 and reading 12 hold; 14d applies: no pair of events
+execution is a `SafeConcurrentTrace`; Q1–Q4 and reading 12 hold; 14d applies: no pair of events
 races. -/
 theorem witness_s8_twin :
     SafeConcurrentTrace pm kAtomic mutexLayout refOrders s8tσ s8tL s8tG.toGraph s8tK s8tD ∧
     CorrQ1 s8tG.toGraph s8tL s8tK s8tD ∧
     CorrQ2 kAtomic mutexLayout refOrders s8tσ s8tL s8tG.toGraph s8tK s8tD ∧ CorrQ3 s8tD ∧
+    CorrQ4 kAtomic mutexLayout refOrders s8tσ s8tL s8tK ∧
     CtlAtomic kAtomic mutexLayout s8tσ s8tL ∧ s8tG.toGraph.HB 4 11 ∧
     ∀ a b, ¬ s8tG.toGraph.Race a b := by
   have hK : Corresponds s8tG.toGraph s8tσ s8tL s8tK :=
-    corresponds_of_check _ _ _ [(2, 1)] _ _ _ (by decide +kernel) (by decide)
+    corresponds_of_check _ _ _ [(2, 1)] _ _ _ (by decide +kernel) (by decide) (by decide +kernel)
   have hL : LifetimeOrdered s8tG.toGraph s8tD :=
     ⟨by decide +kernel, by decide +kernel, by decide +kernel⟩
   have hS : SafeConcurrentTrace pm kAtomic mutexLayout refOrders s8tσ s8tL s8tG.toGraph s8tK s8tD :=
     ⟨s8t_run, by decide +kernel, finitePast_fin _, by decide,
       orderLegal_of_check (by decide +kernel),
       stepOrders_of_check (listK_none (by decide)) (by decide +kernel),
+      unitLeaf_of_check (listK_none (by decide)) (by decide +kernel) (by decide +kernel)
+        (by decide +kernel),
       confinedExcl_of_check [4] 2 kAtomic_conf (by decide) (by decide +kernel),
       confinedHandoff_of_check (by decide +kernel), syncOrdered_of_check (by decide +kernel),
       by decide, handoffOrdered_of_check (by decide +kernel), hL, hK.lifecycle,
@@ -844,7 +886,7 @@ theorem witness_s8_twin :
   have hord : s8tG.toGraph.HB 4 11 :=
     lifetime_reuse hL (v := 9) (w := 10) (x := 7) (y := 8) (by decide) (by decide)
       (by decide +kernel) (by decide) rfl (by decide) rfl
-  exact ⟨hS, hq1, hq2, hq3, h12, hord,
+  exact ⟨hS, hq1, hq2, hq3, corrQ4_of_check (by decide +kernel), h12, hord,
     no_race (testKS_dd _ _ _) atomicStatics_ok rfl hK hS hq1 hq2 hq3 h12⟩
 
 end Ern.ConcurrencyModel

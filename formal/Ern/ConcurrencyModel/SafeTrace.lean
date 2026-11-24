@@ -11,15 +11,18 @@ the conditional composition theorem, proven by cases on the conflicting pair.
   validity events (`BeginOf`, `EndOf`), `LifetimeOrdered` (C51), the conflicting pairs of steps
   (`ConflictPair`) and their exclusivity (`ExclusivePair`), the ordered handoff of a pair under a
   criterion of C43 (`PairHandoff`), the agreement of the atomic event of a step with that step
-  (`StepOrders`), the conditions (a)–(f) of C51 item 2 and `SafeConcurrentTrace`,
-  the correspondence premises Q1–Q3 (C52), and the hypothesis on the controller leaf
-  (`CtlAtomic`).
+  (`StepOrders`), the units of the events of steps (`UnitLeaf`), the conditions (a)–(f) of C51
+  item 2 and `SafeConcurrentTrace`, the correspondence premises Q1–Q3 (C52) and Q4 (C26,
+  `CorrQ4`), and the hypothesis on the controller leaf (`CtlAtomic`).
+* Under Q4 and `UnitLeaf` (C26, C29, C38): a step with a classified access to an `Atomic` leaf of
+  nonzero size has an event that designates a unit of nonempty byte range (`atomic_covered`).
 * 14a (C51): within one context `hb` and `po` coincide (`hb_iff_po`); ordering across distinct
   storage identities (`lifetime_reuse`).
 * 14b (C51): a `SafeConcurrentTrace` is an `EncapsulatedTrace` (`SafeConcurrentTrace.encapsulated`);
   the converse fails (witnesses S1, S3–S8, `WitnessSafe`).
 * 14c (C44, C52): the cases on a pair (`pair_atomic`, `pair_confined`, `pair_exclusive`,
-  `pair_synchronized`, `pair_exhaustive`).
+  `pair_synchronized`, `pair_exhaustive`); under Q4, the two steps of a pair in conflict have
+  events ordered by `hb` (14c.6, `pair_covered`).
 * 14d (C52; `OB-C06`): no race, on fragment F (`no_race`).
 * 14e (C48, C49; `OB-C04`): the edge of `LockOrder` under realization R, for an `acquire` whose
   controller is the unit of R (`lock_edge`, 14e.1) and for the whole entry under the stability of
@@ -28,7 +31,10 @@ the conditional composition theorem, proven by cases on the conflicting pair.
 Fragment F: `DDSound` (Spec 1 §80), well-formed statics (§47), an `EncapsulatedTrace` from the
 initial state of §47 with named states (`EncapRun`), a graph `G` whose contexts are context
 identities, and the partial correspondence K1–K4 (`Corresponds`): a condition on a pair of steps
-concerns the pairs whose two steps have an event in `G`.
+concerns the pairs whose two steps have an event in `G`. The correspondence stays partial. The
+provenance of lifecycle roles holds in both directions (K3, K4: a role is carried only by the event
+of the step, or by the marker, that C28 names). The presence of an event for a step with a
+classified access is the premise Q4 (`CorrQ4`), which is not the coverage of C29.
 
 Formalization hypotheses (retained readings, not rules of the specification):
 
@@ -46,7 +52,12 @@ Formalization hypotheses (retained readings, not rules of the specification):
 * reading 13: an access pair is exclusive (C44) when the capability of the context of the earlier
   access on the leaf, `cap(·,c′,l)` at the step of that access, is incompatible, under the `Modify`
   criterion of C43, with the mode used by the later access (C45: "the capability used by `e2`";
-  `usedMode`); the capability held by the context of the later access is not compared.
+  `usedMode`); the capability held by the context of the later access is not compared;
+* reading 14: an initial write (reading 9) with an event of a step `hb`-before it is not atomic:
+  fragment F represents no atomic access outside the steps. A condition of the fragment, not a
+  rule of C31, and not a proof that an initial write is the physical initial contents of its
+  storage; an atomic access performed during the execution by a phase that is not a step is
+  outside the fragment (`OB-C20`).
 -/
 
 namespace Ern.ConcurrencyModel
@@ -75,14 +86,21 @@ end Events.Graph
 each access event (`sid`, read on access events only), and the initial writes (`init`): writes of
 `G` that are the event of no step. A represented initial write is the construction write of its
 storage (C31: "Initial writes or initialized storage must have an explicitly represented source";
-C51). Exported obligation `OB-C12` (C25, C50), stated part. The obligation is exported and remains
-open (`ExportedObligations`). -/
+C51). An initial write that an event of a step precedes by `hb` is not atomic, a condition of
+fragment F (reading 14, `init_origin`). Exported obligation `OB-C12` (C25, C50), stated part. The
+obligation is exported and remains open (`ExportedObligations`). -/
 structure AccessData {E U V S : Type} (G : Events.Graph E Nat U V S) (lbls : List Label)
     (K : StepEvents E) where
   sid : E → S
   init : E → Bool
   init_writes : ∀ e, init e = true → G.Writes e
   init_unstepped : ∀ e, init e = true → ∀ i, i < lbls.length → K.ev i ≠ some e
+  /-- Provenance of an initial write, as a condition of fragment F (reading 14; C31). Either no
+  event of a step is `hb`-before it, which the fragment requires of initial contents of a storage;
+  or it is not atomic: fragment F represents no atomic access outside the steps. The condition does
+  not prove that an initial write is the physical initial contents of its storage: that provenance
+  remains an open obligation (`OB-C12`, `OB-C20`). -/
+  init_origin : ∀ w, init w = true → (∀ i d, K.ev i = some d → ¬ G.HB d w) ∨ ¬ G.Atomic w
 
 /-! ## `LifetimeOrdered` (C51) -/
 
@@ -240,13 +258,36 @@ that leaf"; C40: "A failed CAS contributes an atomic read event and the `failure
 the controller accesses of `acquire`, `unlock` and `resetLock` carry the orders of `R`. Exported
 obligation `OB-C20` (C27–C29, C50), stated part: the kind and the memory order of the atomic event
 of a step. The obligation is exported and remains open (`ExportedObligations`). The condition
-relates neither leaves to units nor byte ranges, and says nothing of an event that is the event of
-no step, of the accesses of compound steps or of failed attempts. -/
+relates neither leaves to units, which is the condition `UnitLeaf`, nor byte ranges, and says
+nothing of an event that is the event of no step, of the accesses of compound steps or of failed
+attempts. -/
 def StepOrders {E U V S : Type} (ks : KShared) (L : MutexLayout) (R : CtlOrders)
     (σ : Nat → SC × SyncReg × ArenaReg) (lbls : List Label) (G : Events.Graph E Nat U V S)
     (K : StepEvents E) : Prop :=
   ∀ i e, K.ev i = some e → ∀ u o k, G.acc? e = some (.atomic u o k) →
     ∃ x, StepAccess ks L R σ lbls i x ∧ x.order = some o ∧ x.kind = k.kind
+
+/-- The units of the events of steps (C38, C31, C32 item 1). The units are those of the `Atomic`
+leaves of nonzero size (reading 6). No map from units to leaves is given: the conditions relate the
+events of two steps. Exported obligation `OB-C20` (C27–C29, C50), stated part: the unit of the
+events of steps. The obligation is exported and remains open (`ExportedObligations`). The condition
+says nothing of the placement of the byte range of a unit, of the byte ranges of the accesses that
+designate no unit, or of an event that is the event of no step. -/
+structure UnitLeaf {E U V S : Type} (ks : KShared) (L : MutexLayout) (R : CtlOrders)
+    (σ : Nat → SC × SyncReg × ArenaReg) (lbls : List Label) (G : Events.Graph E Nat U V S)
+    (K : StepEvents E) : Prop where
+  /-- Two events of steps that designate one unit are events of steps that access one `Atomic`
+  leaf of nonzero size. -/
+  leaf : ∀ i j a d u, K.ev i = some a → K.ev j = some d → G.unitOf a = some u →
+    G.unitOf d = some u →
+    ∃ x y, StepAccess ks L R σ lbls i x ∧ StepAccess ks L R σ lbls j y ∧ x.leaf = y.leaf ∧
+      AtomicLeaf ks x.leaf ∧ ¬ ZeroAtomic ks x.leaf
+  /-- Two events of steps that access one `Atomic` leaf of nonzero size designate one unit. -/
+  unit : ∀ i j a d x y, K.ev i = some a → K.ev j = some d → StepAccess ks L R σ lbls i x →
+    StepAccess ks L R σ lbls j y → x.leaf = y.leaf → AtomicLeaf ks x.leaf →
+    ¬ ZeroAtomic ks x.leaf → ∃ u, G.unitOf a = some u ∧ G.unitOf d = some u
+  /-- The unit that the event of a step designates has a nonempty byte range. -/
+  range : ∀ i a u, K.ev i = some a → G.unitOf a = some u → (G.uRange u).len ≠ 0
 
 /-- C51 item 2(b), with C42: every `read3` and `write3` step satisfies the rule of 11f. -/
 def OrdinaryAtomicOK (ks : KShared) (σ : Nat → SC × SyncReg × ArenaReg) (lbls : List Label) :
@@ -299,8 +340,10 @@ def HandoffOrdered {E U V S : Type} (ks : KShared) (L : MutexLayout) (R : CtlOrd
   ∀ i j x y, ConflictPair ks L R σ lbls i j x y → ExclusivePair ks σ lbls i j x y →
     ¬ ConfinedLeaf ks x.leaf → PairHandoff IncompatModify ks σ lbls G K i j x y
 
-/-- The lifecycle conditions (C47; C51 item 2(f)): K3 and K4 of the correspondence (C28, C32.2,
-C32.3). -/
+/-- The lifecycle conditions (C47; C51 item 2(f)): K3 and K4 of the correspondence, in both
+directions (C28, C32.2, C32.3). Exported obligation `OB-C20` (C27–C29, C50), stated part: the
+correspondence of the events of steps and of the lifecycle markers. The obligation is exported and
+remains open (`ExportedObligations`). -/
 structure LifecycleOK {E U V S : Type} (G : Events.Graph E Nat U V S)
     (σ : Nat → SC × SyncReg × ArenaReg) (lbls : List Label) (K : StepEvents E) : Prop where
   /-- K3. -/
@@ -314,12 +357,23 @@ structure LifecycleOK {E U V S : Type} (G : Events.Graph E Nat U V S)
   /-- K4. -/
   joinRole : ∀ q (h : q < lbls.length) c d e, lbls[q] = .join c d → K.ev q = some e →
     G.sync? e = some (.join d)
+  /-- K3, provenance. -/
+  spawnFrom : ∀ e c, G.sync? e = some (.spawn c) → ∃ s, Creates σ lbls s c ∧ K.ev s = some e
+  /-- K3, provenance. -/
+  startFrom : ∀ e c, G.sync? e = some (.start c) → K.start c = some e ∧ ∃ s, Creates σ lbls s c
+  /-- K4, provenance. -/
+  completeFrom : ∀ e c, G.sync? e = some (.complete c) →
+    K.complete c = some e ∧ ∃ t, ∃ h : t < lbls.length, lbls[t] = .terminate c
+  /-- K4, provenance. -/
+  joinFrom : ∀ e d, G.sync? e = some (.join d) →
+    ∃ q, ∃ h : q < lbls.length, ∃ c, lbls[q] = .join c d ∧ K.ev q = some e
 
 /-- The correspondence gives the lifecycle conditions. -/
 theorem Corresponds.lifecycle {E U V S : Type} {G : Events.Graph E Nat U V S}
     {σ : Nat → SC × SyncReg × ArenaReg} {lbls : List Label} {K : StepEvents E}
     (h : Corresponds G σ lbls K) : LifecycleOK G σ lbls K :=
-  ⟨h.spawnRole, h.start, h.complete, h.joinRole⟩
+  ⟨h.spawnRole, h.start, h.complete, h.joinRole, h.spawnFrom, h.startFrom, h.completeFrom,
+    h.joinFrom⟩
 
 /-- Step `p` is an `unlock(e)` or a `resetLock(e)` (C17, C18). -/
 def PubOn (lbls : List Label) (e p : Nat) : Prop :=
@@ -342,8 +396,8 @@ correspondence `K` and the data `D` of reading 9: the execution is an `Encapsula
 
 * (a) (C26.4, C34): `EventConsistent(G)` and a finite causal past;
 * (b) (C37–C42; C34, last sentence): `OrdinaryAtomicOK` (C42), the legality of the memory orders
-  of the events, `OrderLegal` (C40), and the agreement of the atomic event of each step with that
-  step, `StepOrders` (C37, C39, C40);
+  of the events, `OrderLegal` (C40), the agreement of the atomic event of each step with that
+  step, `StepOrders` (C37, C39, C40), and the units of the events of steps, `UnitLeaf` (C38);
 * (c) (C35, C43, C46): `ConfinedExcl` and `ConfinedHandoff`;
 * (d) (C44, C52): `SyncOrdered`;
 * (e) (C35–C40): `InheritedLegal`;
@@ -368,6 +422,8 @@ structure SafeConcurrentTrace {E U V S : Type} (pm : ProviderMeta) (ks : KShared
   orderLegal : G.OrderLegal
   /-- (b) (C37, C39, C40). -/
   stepOrders : StepOrders ks L R σ lbls G K
+  /-- (b) (C38; C51 item 2(b)). -/
+  unitLeaf : UnitLeaf ks L R σ lbls G K
   /-- (c). -/
   confinedExcl : ConfinedExcl ks σ lbls
   /-- (c). -/
@@ -421,6 +477,32 @@ def CorrQ3 {E U V S : Type} {G : Events.Graph E Nat U V S} {lbls : List Label}
   ∀ a d, G.Conflict a d → D.sid a ≠ D.sid d →
     (∃ v w, G.EndOf v (D.sid a) ∧ G.BeginOf w (D.sid d) ∧ G.HB v w) ∨
     (∃ v w, G.EndOf v (D.sid d) ∧ G.BeginOf w (D.sid a) ∧ G.HB v w)
+
+/-- Q4 (C26), at the grain of 11e: a step with a classified access has an event. This is the
+presence of an event, not the coverage of C29: Q4 does not say that the event carries an access, and
+says nothing of byte footprints, of the accesses of compound steps or of failed attempts. Exported
+obligation `OB-C20` (C27–C29, C50), stated part: the presence of an event for a step with a
+classified access. The coverage of C29 is another part of `OB-C20`, documented only. The obligation
+is exported and remains open (`ExportedObligations`). A correspondence premise, not a condition of
+the safe trace (C51 item 2). -/
+def CorrQ4 {E : Type} (ks : KShared) (L : MutexLayout) (R : CtlOrders)
+    (σ : Nat → SC × SyncReg × ArenaReg) (lbls : List Label) (K : StepEvents E) : Prop :=
+  ∀ i x, StepAccess ks L R σ lbls i x → ∃ e, K.ev i = some e
+
+/-- Under Q4 and `UnitLeaf`, a step with a classified access to an `Atomic` leaf of nonzero size has
+an event that designates a unit of nonempty byte range: an `acc` event (C29, C38). For these
+accesses the model has the information that a byte access exists; for the other leaves the physical
+size is not represented (C38). The statement does not say that the event is atomic when the access
+is, and is not the coverage of C29. -/
+theorem atomic_covered {E U V S : Type} {ks : KShared} {L : MutexLayout} {R : CtlOrders}
+    {σ : Nat → SC × SyncReg × ArenaReg} {lbls : List Label} {G : Events.Graph E Nat U V S}
+    {K : StepEvents E} (hq4 : CorrQ4 ks L R σ lbls K) (hu : UnitLeaf ks L R σ lbls G K) {i : Nat}
+    {x : LeafAccess} (hx : StepAccess ks L R σ lbls i x) (hat : AtomicLeaf ks x.leaf)
+    (hnz : ¬ ZeroAtomic ks x.leaf) :
+    ∃ e u, K.ev i = some e ∧ G.unitOf e = some u ∧ (G.uRange u).len ≠ 0 := by
+  obtain ⟨e, he⟩ := hq4 i x hx
+  obtain ⟨u, hu1, -⟩ := hu.unit i i e e x x he he hx hx rfl hat hnz
+  exact ⟨e, u, he, hu1, hu.range i e u he hu1⟩
 
 /-- The controller leaf of a `newMutex`, `acquire`, `unlock` or `resetLock` step (C12, C13, C48). -/
 def ctlLeafAt (L : MutexLayout) (st : SC × SyncReg × ArenaReg) : Label → Option Nat
@@ -822,6 +904,21 @@ theorem pair_ordered {D : AccessData G lbls K} (hdd : DDSound ks.toK) (hst : Sta
       · exact pair_synchronized hS hp hx hs ha hd
       · exact absurd hc' hc
 
+/-- **Theorem 14c.6** (C26, C52): under Q4, the two steps of a pair in conflict have events, and
+these are ordered by `hb` in one direction or the other, in a `SafeConcurrentTrace` on fragment F
+under reading 12. The statement is about the existence and the order of the events of the two
+steps. It does not say that these events carry the accesses of the steps, with their byte
+footprints: that fidelity is the coverage of C29, an open obligation (`OB-C20`). -/
+theorem pair_covered {D : AccessData G lbls K} (hdd : DDSound ks.toK) (hst : StaticsOK statics)
+    (h0 : σ 0 = (SC.ofS3 (S3.init statics), [], [])) (hK : Corresponds G σ lbls K)
+    (hS : SafeConcurrentTrace pm ks L R σ lbls G K D) (h12 : CtlAtomic ks L σ lbls)
+    (hq4 : CorrQ4 ks L R σ lbls K) {i j : Nat} {x y : LeafAccess}
+    (hp : ConflictPair ks L R σ lbls i j x y) :
+    ∃ a d, K.ev i = some a ∧ K.ev j = some d ∧ (G.HB a d ∨ G.HB d a) := by
+  obtain ⟨a, ha⟩ := hq4 i x hp.left
+  obtain ⟨d, hd⟩ := hq4 j y hp.right
+  exact ⟨a, d, ha, hd, pair_ordered hdd hst h0 hK hS h12 hp ha hd⟩
+
 end Pairs
 
 /-! ## 14d: the conditional composition theorem (C52; `OB-C06`) -/
@@ -844,9 +941,15 @@ Q1–Q3 and the hypothesis of reading 12. Then no pair of events of `G` is a rac
 
 Pairs of distinct storage identities go through Q3 and 14a.2; pairs of one identity through Q2 and
 14c (14c.2, 14c.3, 14c.5 with 14c.4); initial writes through L3. The proof uses neither
-`EventConsistent`, nor the finite causal past, nor the conditions `OrderLegal` and `StepOrders` of
-(b), nor (e), nor the edge of `LockOrder`, nor the lifecycle conditions beyond the
-correspondence. -/
+`EventConsistent`, nor the finite causal past, nor the conditions `OrderLegal`, `StepOrders` and
+`UnitLeaf` of (b), nor (e), nor the edge of `LockOrder`, nor the lifecycle conditions beyond the
+correspondence. It uses neither the provenance of lifecycle roles (K3 and K4, converse direction),
+nor the field `init_origin` of the data. The conditions that the proof does not use restrict the
+graphs that the premises accept.
+
+The conclusion is about the events of `G`. The premises do not include Q4: a graph that gives no
+event to a step with an access satisfies them. The presence of the events is Q4, carried by 14c.6
+(`pair_covered`); the coverage of C29 remains open (`OB-C20`). -/
 theorem no_race {E U V S : Type} {ks : KShared} {L : MutexLayout} {R : CtlOrders}
     {statics : Statics} {σ : Nat → SC × SyncReg × ArenaReg} {lbls : List Label}
     {G : Events.Graph E Nat U V S} {K : StepEvents E} {D : AccessData G lbls K}

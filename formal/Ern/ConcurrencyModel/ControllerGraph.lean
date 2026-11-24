@@ -296,9 +296,20 @@ theorem controller_graph (hr : EncapRun pm ks L σ lbls) {n c g : Nat}
     · trivial
     · exact (rows_agree_orderOK R.rel).2.1.1 hlegal.2.1
     · exact (rows_agree_orderOK R.reset).2.1.1 hlegal.2.2
-  · refine ⟨fun k hk e he => ?_, fun k k' e he he' => ?_, fun k k' hk hk' a b hlt hreq ha hb => ?_,
+  · -- the only role of the controller graph is `protocol`
+    have hprot : ∀ (e : CtlEv L σ lbls i x) r, G.sync? e = some r → r = .protocol := by
+      intro e r h
+      change syncAt lbls e.1 = some r at h
+      unfold syncAt at h
+      split at h
+      · rename_i lbl _
+        cases lbl <;> dsimp only [ctlSync] at h <;> cases h <;> rfl
+      · cases h
+    refine ⟨fun k hk e he => ?_, fun k k' e he he' => ?_, fun k k' hk hk' a b hlt hreq ha hb => ?_,
       fun s c' hcr e he => ?_, (fun c' x' h => by cases h), (fun c' x' h => by cases h),
-      fun q hq c' d e hlq he => ?_⟩
+      fun q hq c' d e hlq he => ?_, (fun e c' h => by cases hprot e _ h),
+      (fun e c' h => by cases hprot e _ h), (fun e c' h => by cases hprot e _ h),
+      (fun e d h => by cases hprot e _ h)⟩
     · have hke := ctlK_ev.1 he
       subst hke
       show ((lbls[e.1]?).map Label.requester).getD 0 = _

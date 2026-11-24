@@ -209,10 +209,18 @@ represented steps and markers.
 * K2 (C28): for `i < j` of the same context, `po` relates the event of `i` to that of `j`.
 * K3 (C28, C32.2, C47): the event of a step that creates `c` has the role `spawn(c)`; the marker
   `start(c)` is an event of context `c`, of role `start(c)`, `po`-before the event of every step
-  of `c`.
+  of `c`. Conversely, an event of role `spawn(c)` is the event of a step that creates `c`, and an
+  event of role `start(c)` is the marker `start(c)` of a context that a step creates.
 * K4 (C28, C32.3, C47): the marker `complete(c)` is an event of context `c`, of role
   `complete(c)`, `po`-after the event of every step of `c`; the event of a step `join(d)` has the
-  role `join(d)`. -/
+  role `join(d)`. Conversely, an event of role `complete(c)` is the marker `complete(c)` of a
+  context that executes `terminate`, and an event of role `join(d)` is the event of a step
+  `join(d)`.
+
+K3 and K4 hold in both directions: a lifecycle role is carried only by the event of the step, or
+by the marker, that C28 names. Exported obligation `OB-C20` (C27–C29, C50), stated part: the
+correspondence of the events of steps and of the lifecycle markers. The obligation is exported and
+remains open (`ExportedObligations`). -/
 structure Corresponds {E U V S : Type} (G : Events.Graph E Nat U V S)
     (σ : Nat → SC × SyncReg × ArenaReg) (lbls : List Label) (K : StepEvents E) : Prop where
   /-- K1 (C26, C27). -/
@@ -233,6 +241,20 @@ structure Corresponds {E U V S : Type} (G : Events.Graph E Nat U V S)
   /-- K4 (C28, C32.3, C47). -/
   joinRole : ∀ q (h : q < lbls.length) c d e, lbls[q] = .join c d → K.ev q = some e →
     G.sync? e = some (.join d)
+  /-- K3, provenance (C28, C32 item 2): an event of role `spawn(c)` is the event of a step that
+  creates `c`. -/
+  spawnFrom : ∀ e c, G.sync? e = some (.spawn c) → ∃ s, Creates σ lbls s c ∧ K.ev s = some e
+  /-- K3, provenance (C28): an event of role `start(c)` is the marker `start(c)`, and a step creates
+  `c`. -/
+  startFrom : ∀ e c, G.sync? e = some (.start c) → K.start c = some e ∧ ∃ s, Creates σ lbls s c
+  /-- K4, provenance (C28): an event of role `complete(c)` is the marker `complete(c)`, and `c`
+  executes `terminate`. -/
+  completeFrom : ∀ e c, G.sync? e = some (.complete c) →
+    K.complete c = some e ∧ ∃ t, ∃ h : t < lbls.length, lbls[t] = .terminate c
+  /-- K4, provenance (C28, C32 item 3): an event of role `join(d)` is the event of a step
+  `join(d)`. -/
+  joinFrom : ∀ e d, G.sync? e = some (.join d) →
+    ∃ q, ∃ h : q < lbls.length, ∃ c, lbls[q] = .join c d ∧ K.ev q = some e
 
 namespace Corresponds
 

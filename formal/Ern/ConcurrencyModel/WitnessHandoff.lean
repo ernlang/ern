@@ -110,7 +110,8 @@ theorem witness_w1 :
     ¬ w1G.toGraph.HB 3 5 ∧ ¬ w1G.toGraph.HB 5 3 ∧ w1G.toGraph.Race 3 5 ∧
     FirstCompatible IncompatModify w1σ 2 1 0 .modify 3 ∧ w1L[3]? = some (.kernel 1 (.release 1)) ∧
     ¬ w1G.toGraph.HB 4 5 := by
-  refine ⟨rfl, w1_run, corresponds_of_check _ _ _ [(1, 1)] _ _ _ (by decide +kernel) (by decide),
+  refine ⟨rfl, w1_run, corresponds_of_check _ _ _ [(1, 1)] _ _ _ (by decide +kernel) (by decide)
+    (by decide +kernel),
     by decide +kernel, by decide +kernel, by decide +kernel, by decide +kernel, by decide +kernel,
     firstCompatible_of_check (by decide) (by decide) (by decide), rfl, by decide +kernel⟩
 
@@ -175,7 +176,8 @@ theorem witness_w2 :
     w2G.toGraph.HB 3 8 ∧ ¬ w2G.toGraph.Race 3 8 ∧
     FirstCompatible IncompatModify w2σ 2 1 0 .modify 3 ∧ w2L[3]? = some (.kernel 1 (.release 1)) ∧
     w2G.toGraph.HB 4 8 := by
-  refine ⟨rfl, w2_run, corresponds_of_check _ _ _ [(1, 1)] _ _ _ (by decide +kernel) (by decide),
+  refine ⟨rfl, w2_run, corresponds_of_check _ _ _ [(1, 1)] _ _ _ (by decide +kernel) (by decide)
+    (by decide +kernel),
     by decide +kernel, by decide +kernel, by decide +kernel, by decide +kernel,
     firstCompatible_of_check (by decide) (by decide) (by decide), rfl, by decide +kernel⟩
 
@@ -243,7 +245,8 @@ theorem witness_w3 :
     ¬ w3G.toGraph.HB 4 6 ∧ w3G.toGraph.Race 4 6 ∧
     FirstCompatible IncompatModify w3σ 3 0 0 .modify 4 ∧ w3L[4]? = some (.kernel 0 (.release 2)) ∧
     ¬ w3G.toGraph.HB 5 6 := by
-  refine ⟨rfl, w3_run, corresponds_of_check _ _ _ [(2, 1)] _ _ _ (by decide +kernel) (by decide),
+  refine ⟨rfl, w3_run, corresponds_of_check _ _ _ [(2, 1)] _ _ _ (by decide +kernel) (by decide)
+    (by decide +kernel),
     by decide +kernel, by decide +kernel, by decide +kernel, by decide +kernel,
     firstCompatible_of_check (by decide) (by decide) (by decide), rfl, by decide +kernel⟩
 
@@ -303,7 +306,8 @@ theorem witness_w4 :
     w4G.toGraph.po 0 2 ∧ w4G.toGraph.po 3 4 ∧ w4G.toGraph.HB 0 4 ∧ ¬ w4G.toGraph.Race 0 4 ∧
     FirstCompatible IncompatModify w4σ 0 0 0 .modify 2 ∧ w4L[2]? = some (.spawn 0 [1] []) ∧
     w4G.toGraph.HB 2 4 := by
-  refine ⟨rfl, w4_run, corresponds_of_check _ _ _ [(2, 1)] _ _ _ (by decide +kernel) (by decide),
+  refine ⟨rfl, w4_run, corresponds_of_check _ _ _ [(2, 1)] _ _ _ (by decide +kernel) (by decide)
+    (by decide +kernel),
     by decide +kernel, by decide +kernel, by decide +kernel, by decide +kernel, by decide +kernel,
     by decide +kernel, firstCompatible_of_check (by decide) (by decide) (by decide), rfl,
     by decide +kernel⟩
@@ -388,7 +392,8 @@ theorem witness_w5 :
     FirstCompatible IncompatModify w5σ 4 2 0 .modify 5 ∧ w5L[5]? = some (.kernel 2 (.release 2)) ∧
     ¬ w5G.toGraph.HB 7 12 := by
   refine ⟨rfl, w5_run, corresponds_of_check _ _ _ [(1, 1), (3, 2)] _ _ _ (by decide +kernel)
-    (by decide), by decide +kernel, by decide +kernel, by decide +kernel, by decide +kernel,
+    (by decide) (by decide +kernel),
+    by decide +kernel, by decide +kernel, by decide +kernel, by decide +kernel,
     by decide +kernel, firstCompatible_of_check (by decide) (by decide) (by decide), rfl,
     by decide +kernel⟩
 
@@ -472,7 +477,8 @@ theorem witness_w6 :
     FirstCompatible IncompatModify w6σ 4 2 0 .modify 5 ∧ w6L[5]? = some (.kernel 2 (.release 2)) ∧
     w6G.toGraph.HB 7 15 := by
   refine ⟨rfl, w6_run, corresponds_of_check _ _ _ [(1, 1), (3, 2)] _ _ _ (by decide +kernel)
-    (by decide), by decide +kernel, by decide +kernel, by decide +kernel, by decide +kernel,
+    (by decide) (by decide +kernel),
+    by decide +kernel, by decide +kernel, by decide +kernel, by decide +kernel,
     firstCompatible_of_check (by decide) (by decide) (by decide), rfl, by decide +kernel⟩
 
 end Ern.ConcurrencyModel

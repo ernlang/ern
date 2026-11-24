@@ -11,11 +11,11 @@ each execution is an `EncapsulatedTrace` with named states from the initial stat
 (`EncapRun`), with a hand-written graph of fragment F, its correspondence (K1–K4) and the data of
 reading 9 (storage identities of type `Unit`, no initial write: `unitData`). A trace that is not
 safe states the condition of `SafeConcurrentTrace` that fails, every other condition, the
-correspondence premises Q1–Q3 (C52), the hypothesis of reading 12 (`CtlAtomic`) and the race
-(C33). A safe trace states `SafeConcurrentTrace`, Q1–Q3, reading 12, and applies 14d (`no_race`).
-Each docstring gives the expected verdict with its clause, the obtained verdict and the twin. The
-expected order of the loss marker and the expected races are those of C45, C46 and C33. This is a
-test module: no model module imports it.
+correspondence premises Q1–Q3 (C52) and Q4 (C26), the hypothesis of reading 12 (`CtlAtomic`) and
+the race (C33). A safe trace states `SafeConcurrentTrace`, Q1–Q4, reading 12, and applies 14d
+(`no_race`). Each docstring gives the expected verdict with its clause, the obtained verdict and the
+twin. The expected order of the loss marker and the expected races are those of C45, C46 and C33.
+This is a test module: no model module imports it.
 
 Events: `write3` carries a non-atomic access of the range of the written place; the controller
 events follow realization R (`nmEv`, `acqEv`, `pubEv` of `WitnessLock`); the other steps are pure
@@ -88,13 +88,14 @@ yielding `a`; context 0 writes `X` through `b`, then releases `b`; context 1 wri
 `release(b)`, later than the `spawn`; the write of `c0` through `b` and that of `c1` race.
 Obtained: the execution is an `EncapsulatedTrace`; the loss marker of the pair of the write of
 `c0` (step 4) and that of `c1` (step 6) is `release(b)` (step 5, `FirstCompatible`);
-`HandoffOrdered` fails for that pair; every other condition of the safe trace holds, and Q1–Q3
+`HandoffOrdered` fails for that pair; every other condition of the safe trace holds, and Q1–Q4
 and reading 12 hold; the two writes (events 5 and 7) race. Twin: `R46_twin`. -/
 theorem R46 :
     r46σ 0 = (SC.ofS3 (S3.init oneLocal), [], []) ∧ EncapRun pm kX mutexLayout r46σ r46L ∧
     Corresponds r46G.toGraph r46σ r46L r46K ∧ r46G.toGraph.EventConsistent ∧
     r46G.toGraph.FiniteCausalPast ∧ OrdinaryAtomicOK kX r46σ r46L ∧
     r46G.toGraph.OrderLegal ∧ StepOrders kX mutexLayout refOrders r46σ r46L r46G.toGraph r46K ∧
+    UnitLeaf kX mutexLayout refOrders r46σ r46L r46G.toGraph r46K ∧
     ConfinedExcl kX r46σ r46L ∧
     ConfinedHandoff kX mutexLayout refOrders r46σ r46L r46G.toGraph r46K ∧
     SyncOrdered kX mutexLayout refOrders r46σ r46L r46G.toGraph r46K ∧ InheritedLegal kX r46L ∧
@@ -104,12 +105,13 @@ theorem R46 :
     CorrQ1 r46G.toGraph r46L r46K unitData ∧
     CorrQ2 kX mutexLayout refOrders r46σ r46L r46G.toGraph r46K unitData ∧
     CorrQ3 (unitData (G := r46G.toGraph) (lbls := r46L) (K := r46K)) ∧
+    CorrQ4 kX mutexLayout refOrders r46σ r46L r46K ∧
     CtlAtomic kX mutexLayout r46σ r46L ∧
     FirstCompatible IncompatModify r46σ 4 0 0 .modify 5 ∧
     r46L[5]? = some (.kernel 0 (.release 2)) ∧ r46G.toGraph.Race 5 7 ∧
     ¬ SafeConcurrentTrace pm kX mutexLayout refOrders r46σ r46L r46G.toGraph r46K unitData := by
   have hK : Corresponds r46G.toGraph r46σ r46L r46K :=
-    corresponds_of_check _ _ _ [(3, 1)] _ _ _ (by decide +kernel) (by decide)
+    corresponds_of_check _ _ _ [(3, 1)] _ _ _ (by decide +kernel) (by decide) (by decide +kernel)
   have hno : ¬ HandoffOrdered kX mutexLayout refOrders r46σ r46L r46G.toGraph r46K := fun h =>
     absurd (h 4 6 ⟨0, .write, none, .modify⟩ ⟨0, .write, none, .modify⟩
       (conflictPair_of (by decide) (by decide) (by decide) rfl (by decide) (by decide)
@@ -118,12 +120,15 @@ theorem R46 :
   exact ⟨rfl, r46_run, hK, by decide +kernel, finitePast_fin _, by decide,
     orderLegal_of_check (by decide +kernel),
     stepOrders_of_check (listK_none (by decide)) (by decide +kernel),
+    unitLeaf_of_check (listK_none (by decide)) (by decide +kernel) (by decide +kernel)
+      (by decide +kernel),
     confinedExcl_none kX_noConf, confinedHandoff_of_check (by decide +kernel),
     syncOrdered_of_check (by decide +kernel), by decide, hno,
     ⟨by decide +kernel, by decide +kernel, by decide +kernel⟩, hK.lifecycle,
     lockEdge_none (by decide), by unfold CorrQ1; decide +kernel,
     corrQ2_of_check (listK_none (by decide)) (by decide +kernel),
-    by unfold CorrQ3; decide +kernel, ctlAtomic_of_check (by decide),
+    by unfold CorrQ3; decide +kernel, corrQ4_of_check (by decide +kernel),
+    ctlAtomic_of_check (by decide),
     firstCompatible_of_check (by decide) (by decide) (by decide), rfl, by decide +kernel,
     fun h => hno h.handoff⟩
 
@@ -180,7 +185,7 @@ def r46TK : StepEvents (Fin 8) := listK [0, 1, 2, 3, 4, 5, 7] [(1, 6)] []
 
 /-- **R46, twin** (safe). The write of `c0` through `b` and `release(b)` before the `spawn`.
 Expected: a safe trace; the loss marker is the `spawn`, ordered by the creation edge (C47).
-Obtained: `SafeConcurrentTrace`, Q1–Q3 and reading 12 hold; the loss marker of the pair of the
+Obtained: `SafeConcurrentTrace`, Q1–Q4 and reading 12 hold; the loss marker of the pair of the
 write of `c0` through `b` (step 3) and that of `c1` (step 6) is the `spawn` (step 5); 14d applies:
 no pair of events races. -/
 theorem R46_twin :
@@ -188,15 +193,18 @@ theorem R46_twin :
     CorrQ1 r46TG.toGraph r46TL r46TK unitData ∧
     CorrQ2 kX mutexLayout refOrders r46Tσ r46TL r46TG.toGraph r46TK unitData ∧
     CorrQ3 (unitData (G := r46TG.toGraph) (lbls := r46TL) (K := r46TK)) ∧
+    CorrQ4 kX mutexLayout refOrders r46Tσ r46TL r46TK ∧
     CtlAtomic kX mutexLayout r46Tσ r46TL ∧
     FirstCompatible IncompatModify r46Tσ 3 0 0 .modify 5 ∧ ∀ a b, ¬ r46TG.toGraph.Race a b := by
   have hK : Corresponds r46TG.toGraph r46Tσ r46TL r46TK :=
-    corresponds_of_check _ _ _ [(5, 1)] _ _ _ (by decide +kernel) (by decide)
+    corresponds_of_check _ _ _ [(5, 1)] _ _ _ (by decide +kernel) (by decide) (by decide +kernel)
   have hS : SafeConcurrentTrace pm kX mutexLayout refOrders r46Tσ r46TL r46TG.toGraph r46TK
       unitData :=
     ⟨r46T_run, by decide +kernel, finitePast_fin _, by decide,
       orderLegal_of_check (by decide +kernel),
       stepOrders_of_check (listK_none (by decide)) (by decide +kernel),
+      unitLeaf_of_check (listK_none (by decide)) (by decide +kernel) (by decide +kernel)
+        (by decide +kernel),
       confinedExcl_none kX_noConf,
       confinedHandoff_of_check (by decide +kernel), syncOrdered_of_check (by decide +kernel),
       by decide, handoffOrdered_of_check (by decide +kernel),
@@ -208,7 +216,8 @@ theorem R46_twin :
   have hq3 : CorrQ3 (unitData (G := r46TG.toGraph) (lbls := r46TL) (K := r46TK)) := by
     unfold CorrQ3; decide +kernel
   have h12 : CtlAtomic kX mutexLayout r46Tσ r46TL := ctlAtomic_of_check (by decide)
-  exact ⟨hS, hq1, hq2, hq3, h12, firstCompatible_of_check (by decide) (by decide) (by decide),
+  exact ⟨hS, hq1, hq2, hq3, corrQ4_of_check (by decide +kernel), h12,
+    firstCompatible_of_check (by decide) (by decide) (by decide),
     no_race (testKS_dd _ _ _) (by decide : StaticsOK oneLocal) rfl hK hS hq1 hq2 hq3 h12⟩
 
 /-! ## R47: a relay through an intermediate context, joined alone -/
@@ -281,13 +290,14 @@ then writes `X` through `root_X`. Expected (C45, C46, C47, C51 item 2(f); C33): 
 alone fails, for the pair of the write of `c2` and the final write of `c0`, despite `join(c1)`;
 these two writes race. Obtained: the execution is an `EncapsulatedTrace`; the loss marker of that
 pair (steps 5 and 10) is `release(a₂)` (step 6, `FirstCompatible`); `HandoffOrdered` fails for it;
-every other condition of the safe trace holds, and Q1–Q3 and reading 12 hold; the two writes
+every other condition of the safe trace holds, and Q1–Q4 and reading 12 hold; the two writes
 (events 7 and 13) race. Twin: `R47_twin`. -/
 theorem R47 :
     r47σ 0 = (SC.ofS3 (S3.init oneLocal), [], []) ∧ EncapRun pm kX mutexLayout r47σ r47L ∧
     Corresponds r47G.toGraph r47σ r47L r47K ∧ r47G.toGraph.EventConsistent ∧
     r47G.toGraph.FiniteCausalPast ∧ OrdinaryAtomicOK kX r47σ r47L ∧
     r47G.toGraph.OrderLegal ∧ StepOrders kX mutexLayout refOrders r47σ r47L r47G.toGraph r47K ∧
+    UnitLeaf kX mutexLayout refOrders r47σ r47L r47G.toGraph r47K ∧
     ConfinedExcl kX r47σ r47L ∧
     ConfinedHandoff kX mutexLayout refOrders r47σ r47L r47G.toGraph r47K ∧
     SyncOrdered kX mutexLayout refOrders r47σ r47L r47G.toGraph r47K ∧ InheritedLegal kX r47L ∧
@@ -297,12 +307,14 @@ theorem R47 :
     CorrQ1 r47G.toGraph r47L r47K unitData ∧
     CorrQ2 kX mutexLayout refOrders r47σ r47L r47G.toGraph r47K unitData ∧
     CorrQ3 (unitData (G := r47G.toGraph) (lbls := r47L) (K := r47K)) ∧
+    CorrQ4 kX mutexLayout refOrders r47σ r47L r47K ∧
     CtlAtomic kX mutexLayout r47σ r47L ∧
     FirstCompatible IncompatModify r47σ 5 2 0 .modify 6 ∧
     r47L[6]? = some (.kernel 2 (.release 2)) ∧ r47G.toGraph.Race 7 13 ∧
     ¬ SafeConcurrentTrace pm kX mutexLayout refOrders r47σ r47L r47G.toGraph r47K unitData := by
   have hK : Corresponds r47G.toGraph r47σ r47L r47K :=
     corresponds_of_check _ _ _ [(2, 1), (4, 2)] _ _ _ (by decide +kernel) (by decide)
+      (by decide +kernel)
   have hno : ¬ HandoffOrdered kX mutexLayout refOrders r47σ r47L r47G.toGraph r47K := fun h =>
     absurd (h 5 10 ⟨0, .write, none, .modify⟩ ⟨0, .write, none, .modify⟩
       (conflictPair_of (by decide) (by decide) (by decide) rfl (by decide) (by decide)
@@ -311,12 +323,15 @@ theorem R47 :
   exact ⟨rfl, r47_run, hK, by decide +kernel, finitePast_fin _, by decide,
     orderLegal_of_check (by decide +kernel),
     stepOrders_of_check (listK_none (by decide)) (by decide +kernel),
+    unitLeaf_of_check (listK_none (by decide)) (by decide +kernel) (by decide +kernel)
+      (by decide +kernel),
     confinedExcl_none kX_noConf, confinedHandoff_of_check (by decide +kernel),
     syncOrdered_of_check (by decide +kernel), by decide, hno,
     ⟨by decide +kernel, by decide +kernel, by decide +kernel⟩, hK.lifecycle,
     lockEdge_none (by decide), by unfold CorrQ1; decide +kernel,
     corrQ2_of_check (listK_none (by decide)) (by decide +kernel),
-    by unfold CorrQ3; decide +kernel, ctlAtomic_of_check (by decide),
+    by unfold CorrQ3; decide +kernel, corrQ4_of_check (by decide +kernel),
+    ctlAtomic_of_check (by decide),
     firstCompatible_of_check (by decide) (by decide) (by decide), rfl, by decide +kernel,
     fun h => hno h.handoff⟩
 
@@ -391,22 +406,27 @@ def r47TG : ListGraph 17 Nat Nat Nat Unit where
 def r47TK : StepEvents (Fin 17) :=
   listK [0, 1, 2, 4, 5, 7, 8, 9, 11, 12, 13, 15, 16] [(1, 3), (2, 6)] [(2, 10), (1, 14)]
 
+set_option maxHeartbeats 400000 in
 /-- **R47, twin** (safe). Context 2 terminates after its `release`; context 1 joins context 2
 before its own `release`; then the rest of `R47`. Expected: a safe trace. Obtained:
-`SafeConcurrentTrace`, Q1–Q3 and reading 12 hold; 14d applies: no pair of events races. -/
+`SafeConcurrentTrace`, Q1–Q4 and reading 12 hold; 14d applies: no pair of events races. -/
 theorem R47_twin :
     SafeConcurrentTrace pm kX mutexLayout refOrders r47Tσ r47TL r47TG.toGraph r47TK unitData ∧
     CorrQ1 r47TG.toGraph r47TL r47TK unitData ∧
     CorrQ2 kX mutexLayout refOrders r47Tσ r47TL r47TG.toGraph r47TK unitData ∧
     CorrQ3 (unitData (G := r47TG.toGraph) (lbls := r47TL) (K := r47TK)) ∧
+    CorrQ4 kX mutexLayout refOrders r47Tσ r47TL r47TK ∧
     CtlAtomic kX mutexLayout r47Tσ r47TL ∧ ∀ a b, ¬ r47TG.toGraph.Race a b := by
   have hK : Corresponds r47TG.toGraph r47Tσ r47TL r47TK :=
     corresponds_of_check _ _ _ [(2, 1), (4, 2)] _ _ _ (by decide +kernel) (by decide)
+      (by decide +kernel)
   have hS : SafeConcurrentTrace pm kX mutexLayout refOrders r47Tσ r47TL r47TG.toGraph r47TK
       unitData :=
     ⟨r47T_run, by decide +kernel, finitePast_fin _, by decide,
       orderLegal_of_check (by decide +kernel),
       stepOrders_of_check (listK_none (by decide)) (by decide +kernel),
+      unitLeaf_of_check (listK_none (by decide)) (by decide +kernel) (by decide +kernel)
+        (by decide +kernel),
       confinedExcl_none kX_noConf,
       confinedHandoff_of_check (by decide +kernel), syncOrdered_of_check (by decide +kernel),
       by decide, handoffOrdered_of_check (by decide +kernel),
@@ -418,7 +438,7 @@ theorem R47_twin :
   have hq3 : CorrQ3 (unitData (G := r47TG.toGraph) (lbls := r47TL) (K := r47TK)) := by
     unfold CorrQ3; decide +kernel
   have h12 : CtlAtomic kX mutexLayout r47Tσ r47TL := ctlAtomic_of_check (by decide)
-  exact ⟨hS, hq1, hq2, hq3, h12,
+  exact ⟨hS, hq1, hq2, hq3, corrQ4_of_check (by decide +kernel), h12,
     no_race (testKS_dd _ _ _) (by decide : StaticsOK oneLocal) rfl hK hS hq1 hq2 hq3 h12⟩
 
 /-! ## R48: a grant abandoned by a frame exit, then recovered -/
@@ -484,6 +504,7 @@ def r48G (R : CtlOrders) : ListGraph 15 Nat Nat Nat Unit where
 /-- The correspondence of `R48`. -/
 def r48K : StepEvents (Fin 15) := listK [0, 1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14] [(1, 8)] []
 
+set_option maxHeartbeats 400000 in
 /-- **R48** (not safe: `HandoffOrdered` alone fails; race). The execution of `R22`, steps 1–11,
 after the construction of the reference mutex, under the reference triple. Expected (C45, C46,
 C48, C49, C51 item 2(f); C33): `HandoffOrdered` alone fails, for the write of `T` by `c1` (step 7)
@@ -492,7 +513,7 @@ and that of `c0` (step 11): the loss marker is `release(x)`; the edge of `LockOr
 the execution is an `EncapsulatedTrace` with realization R; the loss marker of that pair (steps 9
 and 13 of the trace) is `release(x)` (step 10 of the trace, `FirstCompatible`); `HandoffOrdered`
 fails for it; the `acquire` of step 10 reads by `rf` the `resetLock` (events 12, 13) and the edge
-of `LockOrder` holds by 14e; every other condition of the safe trace holds, and Q1–Q3 and reading
+of `LockOrder` holds by 14e; every other condition of the safe trace holds, and Q1–Q4 and reading
 12 hold; the two writes (events 10 and 14) race. Twin: `R48_twin`. -/
 theorem R48 :
     r48σ 0 = (SC.ofS3 (S3.init mutexStatics), [], []) ∧ EncapRun pm kMutex mutexLayout r48σ r48L ∧
@@ -502,6 +523,7 @@ theorem R48 :
     (r48G refOrders).toGraph.FiniteCausalPast ∧ OrdinaryAtomicOK kMutex r48σ r48L ∧
     (r48G refOrders).toGraph.OrderLegal ∧
     StepOrders kMutex mutexLayout refOrders r48σ r48L (r48G refOrders).toGraph r48K ∧
+    UnitLeaf kMutex mutexLayout refOrders r48σ r48L (r48G refOrders).toGraph r48K ∧
     ConfinedExcl kMutex r48σ r48L ∧
     ConfinedHandoff kMutex mutexLayout refOrders r48σ r48L (r48G refOrders).toGraph r48K ∧
     SyncOrdered kMutex mutexLayout refOrders r48σ r48L (r48G refOrders).toGraph r48K ∧
@@ -513,13 +535,14 @@ theorem R48 :
     CorrQ1 (r48G refOrders).toGraph r48L r48K unitData ∧
     CorrQ2 kMutex mutexLayout refOrders r48σ r48L (r48G refOrders).toGraph r48K unitData ∧
     CorrQ3 (unitData (G := (r48G refOrders).toGraph) (lbls := r48L) (K := r48K)) ∧
+    CorrQ4 kMutex mutexLayout refOrders r48σ r48L r48K ∧
     CtlAtomic kMutex mutexLayout r48σ r48L ∧
     FirstCompatible IncompatModify r48σ 9 1 3 .modify 10 ∧
     r48L[10]? = some (.kernel 1 (.release 5)) ∧ (r48G refOrders).toGraph.Race 10 14 ∧
     ¬ SafeConcurrentTrace pm kMutex mutexLayout refOrders r48σ r48L (r48G refOrders).toGraph r48K
       unitData := by
   have hK : Corresponds (r48G refOrders).toGraph r48σ r48L r48K :=
-    corresponds_of_check _ _ _ [(7, 1)] _ _ _ (by decide +kernel) (by decide)
+    corresponds_of_check _ _ _ [(7, 1)] _ _ _ (by decide +kernel) (by decide) (by decide +kernel)
   have hR : Realizes (r48G refOrders).toGraph mutexLayout r48σ r48L r48K 0 2 refOrders 0 1 :=
     realizes_of_check _ _ _ _ _ _ _ _ _ _ _ _ (by decide +kernel)
   have hno : ¬ HandoffOrdered kMutex mutexLayout refOrders r48σ r48L (r48G refOrders).toGraph
@@ -531,12 +554,15 @@ theorem R48 :
   exact ⟨rfl, r48_run, hK, by decide +kernel, hR, finitePast_fin _, by decide,
     orderLegal_of_check (by decide +kernel),
     stepOrders_of_check (listK_none (by decide)) (by decide +kernel),
+    unitLeaf_of_check (listK_none (by decide)) (by decide +kernel) (by decide +kernel)
+      (by decide +kernel),
     confinedExcl_none kMutex_noConf, confinedHandoff_of_check (by decide +kernel),
     syncOrdered_of_check (by decide +kernel), by decide, hno,
     ⟨by decide +kernel, by decide +kernel, by decide +kernel⟩, hK.lifecycle, by decide +kernel,
     mutex_lockEdge hR (by decide) (by decide), by unfold CorrQ1; decide +kernel,
     corrQ2_of_check (listK_none (by decide)) (by decide +kernel),
-    by unfold CorrQ3; decide +kernel, ctlAtomic_of_check (by decide),
+    by unfold CorrQ3; decide +kernel, corrQ4_of_check (by decide +kernel),
+    ctlAtomic_of_check (by decide),
     firstCompatible_of_check (by decide) (by decide) (by decide), rfl, by decide +kernel,
     fun h => hno h.handoff⟩
 
@@ -617,6 +643,7 @@ def r48TK : StepEvents (Fin 18) :=
 /-- The correspondence of the twin of `R48` (K1–K4). -/
 theorem r48T_corr : Corresponds r48TG.toGraph r48Tσ r48TL r48TK :=
   corresponds_of_check _ _ _ [(7, 1)] _ _ _ (by decide +kernel) (by decide +kernel)
+    (by decide +kernel)
 
 /-- Realization R in the twin of `R48` (C48). -/
 theorem r48T_realizes : Realizes r48TG.toGraph mutexLayout r48Tσ r48TL r48TK 0 2 refOrders 0 1 :=
@@ -665,20 +692,23 @@ theorem r48T_safe :
   ⟨r48T_run, r48T_consistent, finitePast_fin _, by decide +kernel,
       orderLegal_of_check (by decide +kernel),
       stepOrders_of_check (listK_none (by decide)) (by decide +kernel),
+      unitLeaf_of_check (listK_none (by decide)) (by decide +kernel) (by decide +kernel)
+        (by decide +kernel),
       confinedExcl_none kMutex_noConf,
     r48T_confined, r48T_sync, by decide +kernel, r48T_handoff, r48T_lifetime,
     r48T_corr.lifecycle, r48T_lock⟩
 
 /-- **R48, twin** (safe). After step 8 of `R22`: context 1 terminates; context 0 joins it; then
 steps 9–11. Expected: a safe trace. Obtained: `SafeConcurrentTrace` (the edge of `LockOrder` by
-14e), Q1–Q3 and reading 12 hold; 14d applies: no pair of events races. -/
+14e), Q1–Q4 and reading 12 hold; 14d applies: no pair of events races. -/
 theorem R48_twin :
     SafeConcurrentTrace pm kMutex mutexLayout refOrders r48Tσ r48TL r48TG.toGraph r48TK unitData ∧
     CorrQ1 r48TG.toGraph r48TL r48TK unitData ∧
     CorrQ2 kMutex mutexLayout refOrders r48Tσ r48TL r48TG.toGraph r48TK unitData ∧
     CorrQ3 (unitData (G := r48TG.toGraph) (lbls := r48TL) (K := r48TK)) ∧
+    CorrQ4 kMutex mutexLayout refOrders r48Tσ r48TL r48TK ∧
     CtlAtomic kMutex mutexLayout r48Tσ r48TL ∧ ∀ a b, ¬ r48TG.toGraph.Race a b :=
-  ⟨r48T_safe, r48T_q1, r48T_q2, r48T_q3, r48T_ctl,
+  ⟨r48T_safe, r48T_q1, r48T_q2, r48T_q3, corrQ4_of_check (by decide +kernel), r48T_ctl,
     no_race (testKS_dd _ _ _) mutexStatics_ok rfl r48T_corr (r48T_safe (pm := pm)) r48T_q1 r48T_q2 r48T_q3
       r48T_ctl⟩
 
