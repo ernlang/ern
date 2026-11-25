@@ -9,7 +9,7 @@ unchanged, with the data of reading 9: those graphs have no validity event and n
 their storage identities are of type `Unit`, one identity for every access, so Q3 is vacuous and Q2
 covers every conflicting pair of step events. For each execution: the conditions of
 `SafeConcurrentTrace` (C51 item 2), the correspondence premises Q1–Q3 (C52) and Q4 (C26), and the
-hypothesis of reading 12 (`CtlAtomic`). A safe trace applies 14d; a trace that is not safe states
+premise of reading 12 (`CtlAtomic`). A safe trace applies 14d; a trace that is not safe states
 the condition that fails, every other condition, and the race.
 
 The contract `kMutex` classes the controller `lock` (leaf 2) `Atomic(4, 4)`: reading 12 holds for
@@ -162,12 +162,11 @@ theorem witness_s2_w7 :
 
 /-! ## S3: W8 and W10, and the twin W9 -/
 
-/-- **Witness S3**, W8 (C49: "Recovery is **not automatically** a substitute for an acquire/release
-edge missing from an abandoned grant"; C51 item 2(f)): W8 (`witness_w8`), recovery without `join`.
-All steps are `ok`; `HandoffOrdered` fails for the pair of the `write3` of `T` of `c1` (step 6) and
-that of `c0` (step 11): their loss marker is `unlock(e)`, whose event is not `hb`-before the write
-of `c0`. Every other condition holds, the edge of `LockOrder` by 14e; Q1–Q4 and reading 12 hold.
-The two writes race. Admitted twin: W9 (`witness_s3_w9`). -/
+/-- **Witness S3**, W8 (C49; C51 item 2(f)): W8 (`witness_w8`), recovery without `join`. All steps
+are `ok`; `HandoffOrdered` fails for the pair of the `write3` of `T` of `c1` (step 6) and that of
+`c0` (step 11): their loss marker is `unlock(e)`, whose event is not `hb`-before the write of `c0`.
+Every other condition holds, the edge of `LockOrder` by 14e; Q1–Q4 and reading 12 hold. The two
+writes race. Admitted twin: W9 (`witness_s3_w9`). -/
 theorem witness_s3_w8 :
     EncapRun pm kMutex mutexLayout w8σ w8L ∧ (w8G refOrders).toGraph.EventConsistent ∧
     (w8G refOrders).toGraph.FiniteCausalPast ∧ OrdinaryAtomicOK kMutex w8σ w8L ∧

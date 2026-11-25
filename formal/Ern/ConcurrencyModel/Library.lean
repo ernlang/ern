@@ -12,8 +12,7 @@ Library state separate from `S_C` (C2, C12), on the pattern of `Ern.MemoryModel.
   `ControlOf` relationship (C12) for declared field positions `MutexLayout`;
 * `SyncInv` (C21.1–C21.7) and `GrantDiscipline` (C22);
 * the library instantiation of `K_C.SyncAuthorized` on the registry (C14.1–C14.3), and the
-  contract obligation `SyncSound` of C14 ("cannot be used outside the corresponding valid
-  synchronization contract");
+  contract obligation `SyncSound` of C14;
 * derived operations `newMutex` (C13), `acquire` (C16), `unlock` (C17), `resetLock` (C18);
 * the arena registry of Spec 1 §46 beside the synchronization registry (C2, C19), and the
   derived arena operations O17–O19 of `Ern.MemoryModel.Arena` (Spec 1 §76–§78, Part XIV) executed
@@ -40,9 +39,9 @@ deriving DecidableEq, Repr
 /-- Synchronization registry (C12), library state separate from `S_C`. -/
 abbrev SyncReg := List SyncEntry
 
-/-- Declared field positions of the reference mutex value (C12: "at its declared field
-position", `guardedField`, `controlField`): the position of the field holding `guarded` and that of the controller, among the
-ordered children of the mutex value. -/
+/-- Declared field positions of the reference mutex value (C12, `guardedField`, `controlField`): the
+position of the field holding `guarded` and that of the controller, among the ordered children of
+the mutex value. -/
 structure MutexLayout where
   guardedField : Nat
   controlField : Nat
@@ -132,9 +131,8 @@ instance (ks : KShared) (L : MutexLayout) (reg : SyncReg) (s : SC) (g f : Nat) :
     Decidable ((libKC ks L).SyncAuthorized reg s g f) :=
   inferInstanceAs (Decidable (LibSyncAuthorized L reg s g f))
 
-/-- Contract obligation of C14 ("cannot be used outside the corresponding valid
-synchronization contract"), in state `s` with registry `reg`: `SyncAuthorized` holds only for the
-`guarded` of a live entry of `reg`. -/
+/-- Contract obligation of C14, in state `s` with registry `reg`: `SyncAuthorized` holds only for
+the `guarded` of a live entry of `reg`. -/
 def SyncSound (kc : KC SyncReg) (reg : SyncReg) (s : SC) : Prop :=
   ∀ g f, kc.SyncAuthorized reg s g f → ∃ e ∈ reg, e.guarded = g ∧ e.Live s
 
@@ -181,8 +179,7 @@ the `guarded` identities of its live entries. -/
 def liveGuardeds (s : SC) (reg : SyncReg) : List Nat :=
   (reg.filter fun e => decide (e.Live s)).map (·.guarded)
 
-/-- Separation of the two registries of live administrations (Spec 1 §56: "An authority identity
-may serve as `internal` for at most one live administrative abstraction"; C13.7, OB-C16): no
+/-- Separation of the two registries of live administrations (Spec 1 §56; C13.7, OB-C16): no
 identity is at once the `guarded` of a live synchronization entry and the `internal` of a live
 arena. -/
 def AdminSep (s : SC) (reg : SyncReg) (ar : ArenaReg) : Prop :=
@@ -275,8 +272,9 @@ def mutexOf (s : SC) (g : Nat) : Option Nat :=
 
 /-- Preconditions of `newMutex(guarded)` executed by `c` (C13.1–C13.11), the arena registry
 `ar` being the other registry of live administrations (Spec 1 §56). The interface and realization
-obligations of C13 (C13.3, C13.6, initial physical controller state) are not represented: C13
-says they "are not claimed to follow from the authority-only state `S_C`". -/
+obligations of C13 (C13, paragraph on these obligations) are not represented: those attached to
+C13.3 and C13.6, and the one on the initial physical controller state. The items C13.3 and C13.6
+themselves enter only as the preconditions `control` and `sharedMutable`. -/
 structure NewMutexPre (k : K) (L : MutexLayout) (ar : ArenaReg) (s : SC) (reg : SyncReg)
     (c g : Nat) : Prop where
   /-- C13.1: `guarded` is active, of own mode `Modify`, and held by a usable place. -/
@@ -336,9 +334,8 @@ instance (k : K) [DecidablePred k.SharedMutable] (L : MutexLayout) (ar : ArenaRe
     ⟨fun ⟨a, b, c, d, e, f, h, i, j, l, m, n⟩ => ⟨a, b, c, d, e, f, h, i, j, l, m, n⟩,
      fun ⟨a, b, c, d, e, f, h, i, j, l, m, n⟩ => ⟨a, b, c, d, e, f, h, i, j, l, m, n⟩⟩
 
-/-- The `ok` outcome of `newMutex(guarded)` executed by `c` (C13, "Outcome": `ok` when all
-applicable preconditions hold and the registration effect is established): registers the entry
-`⟨guarded, none⟩`; the kernel state is unchanged and no authority is created (C13 effect). The
+/-- The `ok` outcome of `newMutex(guarded)` executed by `c` (C13, outcome paragraph): registers the
+entry `⟨guarded, none⟩`; the kernel state is unchanged and no authority is created (C13 effect). The
 `reject` outcome is `NewMutexOutcome.reject`. -/
 def NewMutexOk (k : K) (L : MutexLayout) (ar : ArenaReg) (s : SC) (reg : SyncReg) (c g : Nat)
     (st' : SC × SyncReg) : Prop :=
@@ -373,10 +370,10 @@ def UnlockOk (L : MutexLayout) (s : SC) (reg : SyncReg) (c i : Nat) (st' : SC ×
 
 /-- `resetLock` of entry `i` executed by `c` (C18.1–C18.4): the entry becomes available; the
 kernel state is unchanged (C18 effect), so recovery invalidates no surviving dependent authority
-(C18.3) and fabricates none (C18 effect). No prerequisite that the recorded grant be `none` (C18). C18.3: "`ControlOf(entry)` resolves to an
-existing, usable controller **leaf**, as required by C21.3"; the controller-initialization
-invariant is not a precondition (C18.3: "established separately for every live entry by
-C21.7"). C18.4 is `CtrlRight`. The outcome classes of C18 are defined with the outcome theorems. -/
+(C18.3) and fabricates none (C18 effect). No prerequisite that the recorded grant be `none` (C18).
+C18.3: `ControlOf(entry)` is defined and is a usable leaf (C21.3); the controller-initialization
+invariant is not a precondition (C18.3, C21.7). C18.4 is `CtrlRight`. The outcome classes of C18 are
+defined with the outcome theorems. -/
 def ResetLockOk (L : MutexLayout) (s : SC) (reg : SyncReg) (c i : Nat) (st' : SC × SyncReg) :
     Prop :=
   ∃ e, reg[i]? = some e ∧ (s.view c).ExercisableAt e.guarded .modify ∧
@@ -417,8 +414,7 @@ theorem resetLockOk_live {L : MutexLayout} {s : SC} {reg : SyncReg} {c i : Nat}
 clauses of `Arena.NewArenaBase` on the view of `c`, §76.6 being read on the concurrent kernel state
 (C2, C3, C20: `WF3` and `I1` over the globally live frames, `AnchorOrder` and
 `AnchorOrderHeld` on `ancestorC`), and the guard of §76.4 over the arena registry and the
-synchronization registry (Spec 1 §56: "all relevant registries of live administrations";
-C13.7, OB-C16), with `Arena.Guard56`. -/
+synchronization registry (Spec 1 §56; C13.7, OB-C16), with `Arena.Guard56`. -/
 structure NewArenaPreC (s : SC) (reg : SyncReg) (ar : ArenaReg) (c storage internal : Nat) :
     Prop where
   /-- Spec 1 §76.1: `storage` is an existing, usable place. -/
@@ -702,9 +698,8 @@ inductive LRun (ks : KShared) (L : MutexLayout) :
       LStep ks L lbl st st₁ → LRun ks L st₁ lbls st₂ → LRun ks L st (lbl :: lbls) st₂
 
 /-- A run every step of which satisfies `RestrictedStep` in the state where it is taken: the trace
-assumption of C23 (C22.1–C22.3, C22.5; C23: "Any lemma conditional on encapsulation must expose
-that condition in its theorem statement or the reachable-trace assumptions"). It is weaker than
-`EncapsulatedTrace` (C51.1), which adds C22.4 and C22.6. -/
+assumption of C23 (C22.1–C22.3, C22.5; C23). It is weaker than `EncapsulatedTrace` (C51.1), which
+adds C22.4 and C22.6. -/
 inductive RestrictedTrace (ks : KShared) (L : MutexLayout) :
     SC × SyncReg × ArenaReg → List Label → SC × SyncReg × ArenaReg → Prop where
   | nil {st : SC × SyncReg × ArenaReg} : RestrictedTrace ks L st [] st

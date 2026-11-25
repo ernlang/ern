@@ -203,12 +203,10 @@ theorem classify_atomic_le_one {ks : KShared} {L : MutexLayout} {R : CtlOrders} 
     exact Nat.le_trans (atomics_length_le _) (ctlAccess_length ..)
   | _ => simp only [classify, Option.some.injEq] at hc; subst hc; exact Nat.zero_le _
 
-/-- **Theorem 11e** (C39: an `Atomic` leaf "requires an atomic memory-order annotation"; "With no
-`Atomic` leaf, the annotation must be absent"): an admitted concurrent `writeShared` carries an
-annotation exactly when it has an atomic access. `readShared` and the compare-and-exchange always
-carry their orders and always have exactly one atomic access; the protocol operations of the
-mutex carry no annotation, their orders being those of the realization (`CtlOrders`).
-Obligation: `OB-C03`. -/
+/-- **Theorem 11e** (C39): an admitted concurrent `writeShared` carries an annotation exactly when
+it has an atomic access. `readShared` and the compare-and-exchange always carry their orders and
+always have exactly one atomic access; the protocol operations of the mutex carry no annotation,
+their orders being those of the realization (`CtlOrders`). Obligation: `OB-C03`. -/
 theorem writeShared_annotation_iff {ks : KShared} {L : MutexLayout} {R : CtlOrders} {c a : Nat}
     {region : List Nat} {ord : Option MemOrder} {kind : WriteKind}
     {st st' : SC × SyncReg × ArenaReg} (h : LStep ks L (.writeShared c a region ord kind) st st') :
@@ -236,12 +234,10 @@ theorem writeShared_annotation_iff {ks : KShared} {L : MutexLayout} {R : CtlOrde
 
 /-! ## 11f: exclusive ordinary access to atomic storage (C42) -/
 
-/-- The rule of C42 on the step labelled `lbl` from `s` ("an ordinary `read3` or `write3` on an
-`Atomic` leaf requires an effective and exercisable `Modify` capability for that leaf"): for each
-targeted `Atomic` leaf, the authority of the access is exercisable in `Modify` from the current
-frame of the executing context (Spec 1 §43) and its effective mode on the leaf is `Modify`. A rule
-of the safe concurrent interface, not a kernel precondition (C42; witness D12). Other steps are
-not constrained by it. -/
+/-- The rule of C42 on the step labelled `lbl` from `s`: for each targeted `Atomic` leaf, the
+authority of the access is exercisable in `Modify` from the current frame of the executing context
+(Spec 1 §43) and its effective mode on the leaf is `Modify`. A rule of the safe concurrent
+interface, not a kernel precondition (C42; witness D12). Other steps are not constrained by it. -/
 def AtomicOrdinaryOK (ks : KShared) (s : SC) : Label → Prop
   | .kernel c (.read a ls) => ∀ l ∈ ls, AtomicLeaf ks l →
       (s.view c).ExercisableAt a .modify ∧ effective s.flat a l = some .modify
@@ -249,9 +245,8 @@ def AtomicOrdinaryOK (ks : KShared) (s : SC) : Label → Prop
       (s.view c).ExercisableAt a .modify ∧ effective s.flat a l = some .modify
   | _ => True
 
-/-- **Theorem 11f**, item 2 (C42: "O9 and O10 remain unchanged"): an `ok` `write3` meets the rule
-of C42, by its own preconditions (Spec 1 §67.1). For `read3` the rule is not implied (witness
-D12). -/
+/-- **Theorem 11f**, item 2 (C42): an `ok` `write3` meets the rule of C42, by its own preconditions
+(Spec 1 §67.1). For `read3` the rule is not implied (witness D12). -/
 theorem write_atomicOrdinaryOK {ks : KShared} {s s' : SC} {c a : Nat} {ls : List Nat}
     (h : opStepC ks.toK (.write a ls) c s (.ok s')) :
     AtomicOrdinaryOK ks s (.kernel c (.write a ls)) := by
@@ -310,12 +305,10 @@ theorem top_eq_of_exercisable {s : SC} (h1 : I1 s.flat) (hw : WF3 s.flat) {c c' 
       subst hbb
       exact ih rfl hb'
 
-/-- **Theorem 11f**, item 3 (C42: "Under the applicable structural authority invariants, `Modify`
-effective exercise precludes simultaneous incompatible effective exercise by another context on
-the same leaf"), on a state satisfying the invariants of theorem 2 (`KInvCA`): if an authority
-exercisable in `Modify` from the current frame of `c` has effective `Modify` on `l`, no authority
-exercisable, in any mode, from the current frame of another context has a present effective mode
-on `l`. Logical exclusivity at one abstract state only (C42). -/
+/-- **Theorem 11f**, item 3 (C42), on a state satisfying the invariants of theorem 2 (`KInvCA`): if
+an authority exercisable in `Modify` from the current frame of `c` has effective `Modify` on `l`, no
+authority exercisable, in any mode, from the current frame of another context has a present
+effective mode on `l`. Logical exclusivity at one abstract state only (C42). -/
 theorem modify_exercise_exclusive {s : SC} (hk : KInvCA s) {c c' x y l : Nat} {m : Mode}
     (hcc : c ≠ c') (hx : (s.view c).ExercisableAt x .modify)
     (hxl : effective s.flat x l = some .modify) (hy : (s.view c').ExercisableAt y m) :

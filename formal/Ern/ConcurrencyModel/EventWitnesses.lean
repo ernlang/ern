@@ -280,8 +280,7 @@ def T9 : ListGraph 11 (Fin 3) (Fin 2) Nat Unit := lg 11
    wr 1 1 .release 1, wr 1 1 .relaxed 2, sy 2 (.start 2), rd 2 1 .acquire 2, rd 2 0 .relaxed 0]
   [(7, 9), (0, 10)] [(0, 5), (1, 6), (1, 7), (6, 7)]
 
-/-- **T9** (C48: "Ordinary atomic stores, including same-thread non-RMW stores, do **not** extend
-the sequence"): admitted; no `sw` edge leaves `W_rel(f,1)`. T9 is the admitted twin of T10. -/
+/-- **T9** (C48): admitted; no `sw` edge leaves `W_rel(f,1)`. T9 is the admitted twin of T10. -/
 theorem t9_consistent : T9.toGraph.EventConsistent := by decide +kernel
 /-- **T9** (C48): no `sw` edge leaves `W_rel(f,1)`: `W_rlx(f,2)` is not a member of its release
 sequence (retained reading 5). -/
@@ -398,8 +397,7 @@ def T15 : ListGraph 7 (Fin 3) (Fin 1) Nat Unit := lg 7
    sy 2 (.start 2), ⟨2, ⟨0, 0⟩, .marks (some (.unit 0 (.rmw 0 2))) none⟩]
   [(0, 6)] [(0, 4), (0, 6), (4, 6)]
 
-/-- **T15** (C34.3: "the `rf` source of a successful atomic RMW is its immediate
-`mo`-predecessor"): the non-atomic RMW is not constrained by conjunct 3, and the seven conjuncts
+/-- **T15** (C34.3): the non-atomic RMW is not constrained by conjunct 3, and the seven conjuncts
 hold. The two writes of `x` are in a race (C33), which is not a conjunct. -/
 theorem t15_consistent : T15.toGraph.RmwAtomic ∧ T15.toGraph.EventConsistent ∧
     T15.toGraph.Race 4 6 := by decide +kernel

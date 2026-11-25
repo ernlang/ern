@@ -131,9 +131,9 @@ theorem mixed_rejected {ks : KShared} {s : SC} {c a : Nat} {region : List Nat}
     obtain ⟨l, sz, al, e1, e2, -, -⟩ := hd'
     subst e1; exact hm.2 (singleClass_singleton (by rw [e2]; exact Option.some_ne_none _))
 
-/-- **Theorem 8** (C39, "Operation kind and atomic memory-order annotations"): for a concurrent
-`writeShared` whose region is of a single `K_C.SharedDiscipline` class, the class of its leaf `l`
-(the region is not empty):
+/-- **Theorem 8** (C39, rules on the kind and the annotation): for a concurrent `writeShared` whose
+region is of a single `K_C.SharedDiscipline` class, the class of its leaf `l` (the region is not
+empty):
 
 1. on `Atomic` storage the annotation is required: without one, the outcome is `reject`;
 2. on `Synchronized` or `Confined` storage the annotation does not apply: with one, the outcome is

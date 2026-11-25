@@ -53,12 +53,10 @@ theorem sequential_conservativity {k : K} {s : SC} (hs : s.Single) (hfr : Frames
     single_view hs.sole, single_ancestorC hs.sole (single_decreasing hs.sole hfr),
     single_kInvC hs.sole⟩
 
-/-- **Theorem 1** (C24: "The reachable sequential domain under inherited operations must
-correspond to the sequential domain of Spec 1 under the stated state correspondence"; "the
-applicable sequential invariants are preserved"): every run of inherited operations executed by
-the initial context from the initial state of Spec 1 §47 reaches a single-context state whose
-projection is reachable in Spec 1 and which satisfies `KInvC`. The converse is
-`sequential_domain_converse`. Under `DDSound` (Spec 1 §80) and well-formed statics (Spec 1 §47). -/
+/-- **Theorem 1** (C24): every run of inherited operations executed by the initial context from the
+initial state of Spec 1 §47 reaches a single-context state whose projection is reachable in Spec 1
+and which satisfies `KInvC`. The converse is `sequential_domain_converse`. Under `DDSound` (Spec 1
+§80) and well-formed statics (Spec 1 §47). -/
 theorem sequential_domain {ks : KShared} {L : MutexLayout} {statics : Statics} {lbls : List Label}
     {st' : SC × SyncReg × ArenaReg} (hdd : DDSound ks.toK) (hst : StaticsOK statics)
     (h : LRun ks L (SC.ofS3 (S3.init statics), [], []) lbls st')
@@ -89,9 +87,7 @@ labelled step relation from the initial state of Spec 1 §47 (any contexts, libr
 cases, without trace restriction), a reached single-context state (`SC.Single`, one context in
 all) satisfies the frame structure and the kernel
 invariant of Spec 1 §57 on its projection, under `DDSound` (Spec 1 §80) and well-formed statics
-(Spec 1 §47). The last paragraph of C24 ("A transition history involving additional contexts must
-not return to an invalid single-context authority state") is carried by
-`no_invalid_sole_return`. -/
+(Spec 1 §47). The last paragraph of C24 is carried by `no_invalid_sole_return`. -/
 theorem no_invalid_single_return {ks : KShared} {L : MutexLayout} {statics : Statics}
     {lbls : List Label} {st' : SC × SyncReg × ArenaReg} (hdd : DDSound ks.toK)
     (hst : StaticsOK statics) (h : LRun ks L (SC.ofS3 (S3.init statics), [], []) lbls st')
@@ -120,12 +116,10 @@ theorem lrun_kInvCA {ks : KShared} {L : MutexLayout} {st st' : SC × SyncReg × 
   | nil => exact hk
   | cons hs _ ih => exact ih (lstep_kInvCA hdd hs hk)
 
-/-- **Theorem 1** (C24: "The reachable sequential domain under inherited operations must
-correspond to the sequential domain of Spec 1 under the stated state correspondence"), converse of
-`sequential_domain`: every state reachable in Spec 1 (§57) from the initial state of §47 is the
-projection of a single-context state reached from the initial state, with empty registries, by a
-run of inherited operations executed by the initial context. Under `DDSound` (Spec 1 §80) and
-well-formed statics (Spec 1 §47), as `sequential_domain`. -/
+/-- **Theorem 1** (C24), converse of `sequential_domain`: every state reachable in Spec 1 (§57) from
+the initial state of §47 is the projection of a single-context state reached from the initial state,
+with empty registries, by a run of inherited operations executed by the initial context. Under
+`DDSound` (Spec 1 §80) and well-formed statics (Spec 1 §47), as `sequential_domain`. -/
 theorem sequential_domain_converse {ks : KShared} {L : MutexLayout} {statics : Statics} {t : S3}
     (hdd : DDSound ks.toK) (hst : StaticsOK statics) (h : Reachable ks.toK statics t) :
     ∃ lbls s', LRun ks L (SC.ofS3 (S3.init statics), [], []) lbls (s', [], []) ∧
@@ -188,12 +182,11 @@ theorem sole_conservativity {k : K} {s : SC} (hfr : FramesC s) (hl : ∀ c, s.Li
     ⟨(conservative_ok_sole hs hfr h).1.2, (conservative_ok_sole hs hfr h).2⟩, single_view hs,
     single_ancestorC hs (single_decreasing hs hfr), single_kInvC hs⟩
 
-/-- **Theorem 1** (C24: "A transition history involving additional contexts must not return to an
-invalid single-context authority state"): along every run of the labelled step relation from the
-initial state of Spec 1 §47 (any contexts, libraries and atomic cases, without trace restriction),
-a reached state whose only live context is the initial one, the additional contexts having
-terminated, satisfies the frame structure and the kernel invariant of Spec 1 §57 on its
-projection, under `DDSound` (Spec 1 §80) and well-formed statics (Spec 1 §47). -/
+/-- **Theorem 1** (C24): along every run of the labelled step relation from the initial state of
+Spec 1 §47 (any contexts, libraries and atomic cases, without trace restriction), a reached state
+whose only live context is the initial one, the additional contexts having terminated, satisfies the
+frame structure and the kernel invariant of Spec 1 §57 on its projection, under `DDSound` (Spec 1
+§80) and well-formed statics (Spec 1 §47). -/
 theorem no_invalid_sole_return {ks : KShared} {L : MutexLayout} {statics : Statics}
     {lbls : List Label} {st' : SC × SyncReg × ArenaReg} (hdd : DDSound ks.toK)
     (hst : StaticsOK statics) (h : LRun ks L (SC.ofS3 (S3.init statics), [], []) lbls st')
@@ -207,10 +200,9 @@ theorem no_invalid_sole_return {ks : KShared} {L : MutexLayout} {statics : Stati
 contract `K`. -/
 theorem projection_libKC (ks : KShared) (L : MutexLayout) : (libKC ks L).toK = ks.toK := rfl
 
-/-- C2 (the registry is an external argument of `K_C.SyncAuthorized`, C14: "It must refer to the
-same logical registry state used for the library transition"): the library instantiation holds
-only for the `guarded` of a live entry of the registry it is given. Its state-dependent soundness
-for `deriveSync` is theorem 4. -/
+/-- C2 (the registry is an external argument of `K_C.SyncAuthorized`, C14): the library
+instantiation holds only for the `guarded` of a live entry of the registry it is given. Its
+state-dependent soundness for `deriveSync` is theorem 4. -/
 theorem registry_external (ks : KShared) (L : MutexLayout) (reg : SyncReg) (s : SC) (g f : Nat)
     (h : (libKC ks L).SyncAuthorized reg s g f) : ∃ e ∈ reg, e.guarded = g ∧ e.Live s :=
   libKC_sound ks L reg s g f h
@@ -223,10 +215,8 @@ theorem registry_none_no_deriveSync {ks : KShared} {L : MutexLayout} {reg : Sync
   obtain ⟨e, he, -, hl⟩ := libKC_sound ks L reg s g _ (Guarded.ok_iff.1 h).1.authorized
   exact hnone e he hl
 
-/-- C2 ("An inherited `K.Satisfiable` obligation for a context-executed allocation is evaluated on
-the `S₃` view of the executing context"): an `ok` outcome of `alloc` executed by `c` entails
-`K.Satisfiable` on the view of `c`, a `fail` outcome its negation; on a single-context state that
-view is the Spec 1 state (C2: "these interpretations ... must coincide with Spec 1"). -/
+/-- C2: an `ok` outcome of `alloc` executed by `c` entails `K.Satisfiable` on the view of `c`, a
+`fail` outcome its negation; on a single-context state that view is the Spec 1 state (C2). -/
 theorem satisfiable_on_view {k : K} {s : SC} {c pr ow : Nat} {ls : LocalShape} :
     (∀ s', opStepC k (.alloc pr ow ls) c s (.ok s') → k.Satisfiable pr ls (s.view c)) ∧
       (opStepC k (.alloc pr ow ls) c s .fail → ¬ k.Satisfiable pr ls (s.view c)) ∧

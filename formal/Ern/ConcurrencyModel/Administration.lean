@@ -25,11 +25,10 @@ open Ern.MemoryModel Ern.MemoryModel.Access
 
 /-! ## `newMutex` (C13) -/
 
-/-- **Theorem 5** (C13, "The construction must establish the entire `SyncInv` and
-`GrantDiscipline` suite for the new and previously live entries"): from a state satisfying the
-kernel invariant and the library invariant, an `ok` `newMutex(g)` yields a state where `SyncInv`
-and `GrantDiscipline` hold, with the new entry `⟨g, none⟩` registered and live. Under `DDSound`
-(Spec 1 §80). Fragment: every state satisfying `KInvCA` and `LibInv`. -/
+/-- **Theorem 5** (C13): from a state satisfying the kernel invariant and the library invariant, an
+`ok` `newMutex(g)` yields a state where `SyncInv` and `GrantDiscipline` hold, with the new entry
+`⟨g, none⟩` registered and live. Under `DDSound` (Spec 1 §80). Fragment: every state satisfying
+`KInvCA` and `LibInv`. -/
 theorem newMutex_establishes {ks : KShared} {L : MutexLayout} {st st' : SC × SyncReg × ArenaReg}
     {c g : Nat} (hdd : DDSound ks.toK) (hk : KInvCA st.1) (hl : LibInv L st)
     (h : LStep ks L (.newMutex c g) st st') :
@@ -46,13 +45,10 @@ theorem newMutex_establishes {ks : KShared} {L : MutexLayout} {st st' : SC × Sy
     · rename_i y hy; exact ⟨y, hy, hg.1⟩
     · exact hg.elim
 
-/-- **Theorem 5**, C13.11 ("The ordinary-write exclusivity requirement of O10.2 (Spec 1 §67.2)
-also applies to this non-atomic write; whether it follows from the reachable-state invariants is a
-verification target, not an assumption"): on a state satisfying `I1` (Spec 1 §50), an authority
-of effective mode `Modify` on the controller leaf is the only one with an effective mode there
-(Spec 1 `effective_exclusive`), so the O10.2 part of C13.11 follows from its effective-`Modify`
-part. The precondition keeps both (`NewMutexPre.ctlRight`). Fragment: every state satisfying
-`I1`. -/
+/-- **Theorem 5**, C13.11: on a state satisfying `I1` (Spec 1 §50), an authority of effective mode
+`Modify` on the controller leaf is the only one with an effective mode there (Spec 1
+`effective_exclusive`), so the O10.2 part of C13.11 follows from its effective-`Modify` part. The
+precondition keeps both (`NewMutexPre.ctlRight`). Fragment: every state satisfying `I1`. -/
 theorem ctlRight_exclusive_of_i1 {s : SC} {c a ctl : Nat} (h1 : I1 s.flat)
     (ha : effective (s.view c) a ctl = some .modify) :
     ∀ b ∈ List.range s.A.length, b ≠ a → effective (s.view c) b ctl = none :=
@@ -94,10 +90,9 @@ theorem admin_guard_reached {ks : KShared} {L : MutexLayout} {statics : Statics}
 
 /-! ## Synchronized administration (C19) -/
 
-/-- C19 ("the grant must therefore cover the entire required administrative footprint"): an
-authority whose effective mode permits `m` on every leaf of a place covers every leaf of that
-place (Spec 1 §43, case 1: an authority that does not cover a leaf has no effective mode there).
-`metaRight_grounded` applies it to the authority on which `MetaRight` rests. -/
+/-- C19: an authority whose effective mode permits `m` on every leaf of a place covers every leaf of
+that place (Spec 1 §43, case 1: an authority that does not cover a leaf has no effective mode
+there). `metaRight_grounded` applies it to the authority on which `MetaRight` rests. -/
 theorem metaRight_covers {t : S3} {a p : Nat} {m : Mode}
     (h : ∀ l ∈ footprint t.P p, Allows (effective t a l) m) :
     ∀ l ∈ footprint t.P p, ∃ x, t.A[a]? = some x ∧ x.active = true ∧ l ∈ x.footprint := by
@@ -118,12 +113,9 @@ theorem issue_metaRight {k : K} {s : SC} {ar : ArenaReg} {c i : Nat} {region : L
   obtain ⟨E, -, hE, hst, -⟩ := issueStepC_ok h
   exact ⟨E, hE, hst.metaRight⟩
 
-/-- **Theorem 5** (C19: "A grant protecting an administrative value may permit `MetaRight` only
-when it provides exercisable `Modify` over every required leaf of that administrative value. The
-grant must therefore cover the entire required administrative footprint"; Spec 1 §36, §43):
-`MetaRight` rests on an authority exercisable in `Modify` whose effective mode permits `Modify` on
-every leaf of the administrative value and which covers each of them; a grant permitting
-`MetaRight` is such an authority. Fragment: every state. -/
+/-- **Theorem 5** (C19; Spec 1 §36, §43): `MetaRight` rests on an authority exercisable in `Modify`
+whose effective mode permits `Modify` on every leaf of the administrative value and which covers
+each of them; a grant permitting `MetaRight` is such an authority. Fragment: every state. -/
 theorem metaRight_grounded {t : S3} {E : Arena.ArenaEntry} (h : Arena.MetaRight t E) :
     ∃ v b, Arena.arenaValue t E = some v ∧ t.ExercisableAt b .modify ∧
       ∀ l ∈ footprint t.P v, Allows (effective t b l) .modify ∧

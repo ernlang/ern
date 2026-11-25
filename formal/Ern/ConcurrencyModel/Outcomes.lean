@@ -8,15 +8,15 @@ the conditions of its own clause; the outcome type is that of Spec 1 §58 (`Outc
 added constructor; a legal request that is not enabled has no outcome (DESIGN.md, "Abstract
 steps").
 
-* `join` (C8): `reject` for a requester that is not live (C8, "Requesting-context validity",
-  checked first) or an unknown identifier; for a live requester, legal and not enabled for a live
-  target, `ok` with the state unchanged for a completed target.
+* `join` (C8): `reject` for a requester that is not live (C8, condition on the requester, checked
+  first) or an unknown identifier; for a live requester, legal and not enabled for a live target,
+  `ok` with the state unchanged for a completed target.
 * `acquire` (C16): `reject` for an invalid requester-side request (C16.1), legal and not enabled
   when the recorded grant is not `none` (C16.2), `ok` otherwise (C16.3); invalid requester-side
   conditions take precedence for the same state.
 * `deriveSync` (C15), `unlock` (C17), `resetLock` (C18): `ok` or `reject`, no waiting class;
   `resetLock` does not require `grant = none`.
-* `newMutex` (C13, "Outcome"): `ok` or `reject`, no `fail`.
+* `newMutex` (C13, outcome paragraph): `ok` or `reject`, no `fail`.
 * every request of a context that is not live is `reject` (`dead_requests_reject`,
   `dead_only_reject`); every labelled step has a live requester (`lstep_live`); every request
   other than `join` and `acquire` has an outcome (`requests_have_outcome`), and the legal but
@@ -33,7 +33,7 @@ open Ern.MemoryModel.Access
 
 /-! ## `join` (C8) -/
 
-/-- C8: `reject`: the requesting context is not live ("Requesting-context validity": whatever the
+/-- C8: `reject`: the requesting context is not live (condition on the requester: whatever the
 target identifier or lifecycle state, with precedence over the classification by target), or the
 identifier is unknown to the execution. -/
 def JoinReject (s : SC) (c d : Nat) : Prop := ¬ s.Live c ∨ s.C[d]? = none
@@ -50,9 +50,8 @@ def JoinOkClass (s : SC) (c d : Nat) : Prop :=
 
 /-- **Theorem 7**, `join` (C8): for every requester and every target, exactly one class applies;
 the outcome is `reject` exactly when the requester is not live or the identifier is unknown (C8,
-"Requesting-context validity" first); a completed target with a live requester gives `ok`, the
-state unchanged; a non-enabled request has no outcome; `fail` is never produced. Fragment: every
-state. -/
+condition on the requester first); a completed target with a live requester gives `ok`, the state
+unchanged; a non-enabled request has no outcome; `fail` is never produced. Fragment: every state. -/
 theorem join_classes {s : SC} {c d : Nat} :
     ((JoinReject s c d ∧ ¬ JoinNotEnabled s c d ∧ ¬ JoinOkClass s c d) ∨
       (¬ JoinReject s c d ∧ JoinNotEnabled s c d ∧ ¬ JoinOkClass s c d) ∨
@@ -113,10 +112,8 @@ def AcquireIndependent (s : SC) (c g : Nat) : Prop :=
 
 /-- The conditions of `deriveSync` (C15.4, C15.5: O1.2 effective mode `Modify` on the protected
 footprint, O1.3 exclusivity) that a covering active descendant of `guarded` makes false. With a
-recorded grant, that inability is non-enablement (C16.2: "The inability to derive `guarded`
-attributable to such a recorded grant is also non-enablement"); with `grant = none` it is an
-independently invalid request (C16.1: "with `grant = none`, an independently invalid
-protected-authority invariant is `reject`"). -/
+recorded grant, that inability is non-enablement (C16.2); with `grant = none` it is an independently
+invalid request (C16.1). -/
 def AcquireGrantSensitive (s : SC) (c g : Nat) : Prop :=
   (∀ l ∈ (s.view c).afp g, Allows (effective (s.view c) g l) .modify) ∧
     ∀ b ∈ List.range s.A.length, OptP (s.A[b]?) (fun y => y.active = true →
@@ -148,8 +145,7 @@ def AcquireOkClass (L : MutexLayout) (s : SC) (reg : SyncReg) (c i : Nat) : Prop
   AcquireLegal L s reg c i ∧ ∃ e, reg[i]? = some e ∧ e.grant = none
 
 /-- The outcomes of `acquire` of entry `i` by `c` (C16): `ok` with the effect of C16 (`AcquireOk`),
-or `reject` for an invalid request. A non-enabled request has none; there is no `fail` (C16:
-"neither `ok`, `reject`, `fail`, nor any new `Outcome3` value"). -/
+or `reject` for an invalid request. A non-enabled request has none; there is no `fail` (C16). -/
 inductive AcquireOutcome (ks : KShared) (L : MutexLayout) (s : SC) (reg : SyncReg) (c i : Nat) :
     Outcome3 (SC × SyncReg) → Prop where
   | ok {st' : SC × SyncReg} : AcquireOk ks L s reg c i st' → AcquireOutcome ks L s reg c i (.ok st')
@@ -327,18 +323,16 @@ theorem resetLock_outcomes {L : MutexLayout} {s : SC} {reg : SyncReg} {c i : Nat
 
 /-! ## `newMutex` (C13) -/
 
-/-- The outcomes of `newMutex(guarded)` executed by `c` (C13, "Outcome": "`ok` when all applicable
-preconditions hold and the registration effect is established; `reject` when any applicable
-precondition fails. This operation defines no `fail` outcome"): `ok` with the effect of C13,
-`reject` when a precondition C13.1–C13.11 fails. No waiting outcome. -/
+/-- The outcomes of `newMutex(guarded)` executed by `c` (C13, outcome paragraph): `ok` with the
+effect of C13, `reject` when a precondition C13.1–C13.11 fails. No waiting outcome. -/
 inductive NewMutexOutcome (k : K) (L : MutexLayout) (ar : ArenaReg) (s : SC) (reg : SyncReg)
     (c g : Nat) : Outcome3 (SC × SyncReg) → Prop where
   | ok {st' : SC × SyncReg} : NewMutexOk k L ar s reg c g st' →
       NewMutexOutcome k L ar s reg c g (.ok st')
   | reject : ¬ NewMutexPre k L ar s reg c g → NewMutexOutcome k L ar s reg c g .reject
 
-/-- `newMutex` (C13, "Outcome"): for every constructing context, live or not, `ok` exactly when
-C13.1–C13.11 hold, else `reject`; no `fail`. Fragment: every state. -/
+/-- `newMutex` (C13, outcome paragraph): for every constructing context, live or not, `ok` exactly
+when C13.1–C13.11 hold, else `reject`; no `fail`. Fragment: every state. -/
 theorem newMutex_outcomes {k : K} {L : MutexLayout} {ar : ArenaReg} {s : SC} {reg : SyncReg}
     {c g : Nat} :
     (NewMutexPre k L ar s reg c g ↔ ∃ st', NewMutexOk k L ar s reg c g st') ∧
@@ -352,15 +346,14 @@ theorem newMutex_outcomes {k : K} {L : MutexLayout} {ar : ArenaReg} {s : SC} {re
 
 /-! ## Requests of a context that is not live (C2; Spec 1 §58) -/
 
-/-- **Theorem 7**, requests of a context that is not live (C2: "all occurrences of 'the current
-frame' refer to the top of the live local stack of `c`"; Spec 1 §58: every operation has an
+/-- **Theorem 7**, requests of a context that is not live (C2; Spec 1 §58: every operation has an
 outcome): such a context has no current frame, so the requester-side precondition of each clause
 fails and every request has the outcome `reject`: the inherited operations O1–O16 (C2), `spawn` and
 by-value `spawn` (C4.1), `terminate` (C7), `deriveSync` (C15.6) under every contract `K_C`,
 `newMutex` (C13.2), `acquire` (C14.3 by C16.1; never legal, hence never non-enabled), `unlock` and
 `resetLock` (C17.4, C18.4), the arena operations (Spec 1 §76.1, §77.1, §78), `readShared` (C37.2),
 the concurrent `writeShared` and the compare-and-exchange (Spec 1 §68.2, C39), and `join` (C8,
-"Requesting-context validity"), whatever its target. Fragment: every state, every registry. -/
+condition on the requester), whatever its target. Fragment: every state, every registry. -/
 theorem dead_requests_reject {ks : KShared} {L : MutexLayout} {s : SC} {reg : SyncReg}
     {ar : ArenaReg} {c : Nat} (hc : ¬ s.Live c) :
     (∀ op, opStepC ks.toK op c s .reject) ∧
@@ -532,8 +525,7 @@ theorem lstep_live {ks : KShared} {L : MutexLayout} {lbl : Label}
 theorem guarded_exists {σ : Type} {P : Prop} {eff : σ} : ∃ o, Guarded P eff o :=
   (Classical.em P).elim (fun h => ⟨_, .ok h⟩) (fun h => ⟨_, .reject h⟩)
 
-/-- Every operation O1–O16 of Spec 1 has an outcome (Spec 1 §58: "Every operation has a conceptual
-outcome"). -/
+/-- Every operation O1–O16 of Spec 1 has an outcome (Spec 1 §58). -/
 theorem kernelStep_exists (k : K) (op : KernelOp) (t : S3) : ∃ o, op.Step k t o := by
   cases op with
   | alloc pr ow ls =>
@@ -556,14 +548,13 @@ theorem opStepC_exists (k : K) (op : KernelOp) (c : Nat) (s : SC) : ∃ o, opSte
     obtain ⟨o₃, h⟩ := kernelStep_exists k _ (s.view c)
     exact ⟨_, o₃, h, rfl⟩
 
-/-- **Theorem 7** (Spec 1 §58: "Every operation has a conceptual outcome"; C26: only a legal but
-non-enabled request has no successful transition and no `reject`): every request of the machine
-other than `join` and `acquire`, by every requester, live or not, has an outcome among `ok`,
-`reject` and `fail`: the inherited operations O1–O16 (C2), `spawn` and by-value `spawn` (C4, C5),
-`terminate` (C7), `deriveSync` (C15) under every contract `K_C`, `newMutex` (C13, "Outcome"),
-`unlock` (C17), `resetLock` (C18), the arena operations (Spec 1 §76–§78), `readShared` (C37), the
-concurrent `writeShared` (C39) and the compare-and-exchange (C39, C40). Fragment: every state,
-every registry. -/
+/-- **Theorem 7** (Spec 1 §58; C26: only a legal but non-enabled request has no successful
+transition and no `reject`): every request of the machine other than `join` and `acquire`, by every
+requester, live or not, has an outcome among `ok`, `reject` and `fail`: the inherited operations
+O1–O16 (C2), `spawn` and by-value `spawn` (C4, C5), `terminate` (C7), `deriveSync` (C15) under every
+contract `K_C`, `newMutex` (C13, outcome paragraph), `unlock` (C17), `resetLock` (C18), the arena
+operations (Spec 1 §76–§78), `readShared` (C37), the concurrent `writeShared` (C39) and the
+compare-and-exchange (C39, C40). Fragment: every state, every registry. -/
 theorem requests_have_outcome {ks : KShared} {L : MutexLayout} {s : SC} {reg : SyncReg}
     {ar : ArenaReg} {c : Nat} :
     (∀ op, ∃ o, opStepC ks.toK op c s o) ∧
@@ -651,11 +642,10 @@ theorem requests_have_outcome {ks : KShared} {L : MutexLayout} {s : SC} {reg : S
         exact ⟨o, .inr ⟨ho, h⟩⟩
     · exact ⟨_, .inl ⟨ho, rfl⟩⟩
 
-/-- **Theorem 7** (C8, C16, C26: "A legal but non-enabled request has no successful abstract
-transition; an illegal request has the specified `reject` outcome"): the class "legal and not
-activable" is inhabited only by a live requester, and only for `join` and `acquire`: for these two
-operations it is exactly the absence of an outcome, and every other request has an outcome
-(`requests_have_outcome`). Fragment: every state, every registry. -/
+/-- **Theorem 7** (C8, C16, C26): the class "legal and not activable" is inhabited only by a live
+requester, and only for `join` and `acquire`: for these two operations it is exactly the absence of
+an outcome, and every other request has an outcome (`requests_have_outcome`). Fragment: every state,
+every registry. -/
 theorem notEnabled_live {ks : KShared} {L : MutexLayout} {s : SC} {reg : SyncReg} {c d i : Nat} :
     (JoinNotEnabled s c d → s.Live c) ∧ (AcquireNotEnabled L s reg c i → s.Live c) ∧
     ((¬ ∃ o, JoinStep s c d o) ↔ JoinNotEnabled s c d) ∧

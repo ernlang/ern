@@ -13,7 +13,7 @@ the conditional composition theorem, proven by cases on the conflicting pair.
   criterion of C43 (`PairHandoff`), the agreement of the atomic event of a step with that step
   (`StepOrders`), the units of the events of steps (`UnitLeaf`), the conditions (a)–(f) of C51
   item 2 and `SafeConcurrentTrace`, the correspondence premises Q1–Q3 (C52) and Q4 (C26,
-  `CorrQ4`), and the hypothesis on the controller leaf (`CtlAtomic`).
+  `CorrQ4`), and the premise on the controller leaf (`CtlAtomic`).
 * Under Q4 and `UnitLeaf` (C26, C29, C38): a step with a classified access to an `Atomic` leaf of
   nonzero size has an event that designates a unit of nonempty byte range (`atomic_covered`).
 * 14a (C51): within one context `hb` and `po` coincide (`hb_iff_po`); ordering across distinct
@@ -42,22 +42,26 @@ Formalization hypotheses (retained readings, not rules of the specification):
   correspondence does not say which step emits them;
 * reading 9: the storage identity of each access event is data of the correspondence; an initial
   write (a write of `G` that is the event of no step) is the construction write of its storage;
-* reading 10: "ordered by an established synchronization mechanism" (C51 item 2(d)) is ordered by
-  `hb` in one direction or the other;
+* reading 10: the branch of C51 item 2(d) on the order by a synchronization mechanism is read as
+  `hb` in one direction or the other (`SyncOrdered`);
 * reading 11: the obligation `LockOrder` is its edge: when the event of an `acquire(e)` reads by
   `rf` the publication of an `unlock(e)` or a `resetLock(e)`, that publication is `hb`-before it;
   delegated grants are not covered;
-* reading 12: where a statement says so, the controller leaf has the class `Atomic(size, align)`,
-  `size ≠ 0`, at every `newMutex`, `acquire`, `unlock` and `resetLock` step (`CtlAtomic`);
-* reading 13: an access pair is exclusive (C44) when the capability of the context of the earlier
-  access on the leaf, `cap(·,c′,l)` at the step of that access, is incompatible, under the `Modify`
-  criterion of C43, with the mode used by the later access (C45: "the capability used by `e2`";
-  `usedMode`); the capability held by the context of the later access is not compared;
 * reading 14: an initial write (reading 9) with an event of a step `hb`-before it is not atomic:
   fragment F represents no atomic access outside the steps. A condition of the fragment, not a
   rule of C31, and not a proof that an initial write is the physical initial contents of its
   storage; an atomic access performed during the execution by a phase that is not a step is
   outside the fragment (`OB-C20`).
+
+Readings 12 and 13 are stated by the specification:
+
+* reading 12 (C48, first paragraph): `CtlAtomic`, which reads the class of the controller leaf at
+  each `newMutex`, `acquire`, `unlock` or `resetLock` step, a premise of the statements that use it;
+* reading 13 (C44, first paragraph): `ExclusivePair`, which takes the `Modify` criterion of C43
+  (`IncompatModify`) and, for the second access of the pair, `usedMode` (C45). In
+  `SafeConcurrentTrace`, `ExclusivePair` restricts `HandoffOrdered` (leaves that are not
+  `Confined`) and `SyncOrdered` (`Synchronized` leaves); the pairs on a `Confined` leaf are under
+  `ConfinedHandoff`, with the `Confined` criterion.
 -/
 
 namespace Ern.ConcurrencyModel
@@ -85,10 +89,9 @@ end Events.Graph
 /-- The data of the access correspondence (reading 9; C27, C29, C31, C50): the storage identity of
 each access event (`sid`, read on access events only), and the initial writes (`init`): writes of
 `G` that are the event of no step. A represented initial write is the construction write of its
-storage (C31: "Initial writes or initialized storage must have an explicitly represented source";
-C51). An initial write that an event of a step precedes by `hb` is not atomic, a condition of
-fragment F (reading 14, `init_origin`). Exported obligation `OB-C12` (C25, C50), stated part. The
-obligation is exported and remains open (`ExportedObligations`). -/
+storage (C31; C51). An initial write that an event of a step precedes by `hb` is not atomic, a
+condition of fragment F (reading 14, `init_origin`). Exported obligation `OB-C12` (C25, C50), stated
+part. The obligation is exported and remains open (`ExportedObligations`). -/
 structure AccessData {E U V S : Type} (G : Events.Graph E Nat U V S) (lbls : List Label)
     (K : StepEvents E) where
   sid : E → S
@@ -108,12 +111,8 @@ section Lifetime
 
 variable {E U V S : Type} {G : Events.Graph E Nat U V S} {lbls : List Label} {K : StepEvents E}
 
-/-- `LifetimeOrdered` (C51: "Each access `a` to physical storage with logical identity `x` must be
-ordered after `beginValidity(x)` and before `endValidity(x)` when those events exist. Within one
-context the required order is `po` or a declared within-step order; across contexts it is `hb`. A
-construction write of a fresh destination must precede any access to that destination in another
-context"), on the graph and the data of reading 9, with `hb` in both cases (within one context,
-`hb` is `po` under conjunct 5: `hb_iff_po`):
+/-- `LifetimeOrdered` (C51), on the graph and the data of reading 9, with `hb` in both cases (within
+one context, `hb` is `po` under conjunct 5: `hb_iff_po`):
 
 * L1: every access to `x` is `hb`-after every begin-validity event of `x`;
 * L2: every access to `x` is `hb`-before every end-validity event of `x`;
@@ -195,20 +194,17 @@ instance (ks : KShared) (σ : Nat → SC × SyncReg × ArenaReg) (lbls : List La
     decidable_of_iff (UsesModify ks (σ k) lbls[k] x) ⟨fun h' => ⟨h, h'⟩, fun ⟨_, h'⟩ => h'⟩
   else isFalse fun ⟨h', _⟩ => h h'
 
-/-- The mode used by the access `y` of step `j` (C45: "the capability used by `e2`"; 12e): `Modify`
-when the step uses `Modify` for it (`UsesModify`, including the `read3` of an `Atomic` leaf under the
-rule of C42), otherwise the mode its authority requires. -/
+/-- The mode used by the access `y` of step `j` (C45; 12e): `Modify` when the step uses `Modify` for
+it (`UsesModify`, including the `read3` of an `Atomic` leaf under the rule of C42), otherwise the
+mode its authority requires. -/
 def usedMode (ks : KShared) (σ : Nat → SC × SyncReg × ArenaReg) (lbls : List Label) (j : Nat)
     (y : LeafAccess) : Mode :=
   if UsesModifyAt ks σ lbls j y then .modify else y.mode
 
-/-- The pair of the access `x` of step `i` and the access `y` of step `j` is exclusive (C44:
-"`HandoffOrdered` applies only if the pair is **exclusive**: its relevant context capabilities are
-incompatible under C43"; C45: "the period containing `e1` during which `cap(·,c′,l)` is incompatible
-with the capability used by `e2`"; reading 13): the capability of the context of step `i` on the
-leaf of `x`, in the state of step `i`, is incompatible under the `Modify` criterion of C43
-(`IncompatModify`) with the mode used by `y` (`usedMode`). The capability of the context of step
-`j` is not compared. -/
+/-- The pair of the access `x` of step `i` and the access `y` of step `j` is exclusive (C44; C45;
+reading 13): the capability of the context of step `i` on the leaf of `x`, in the state of step `i`,
+is incompatible under the `Modify` criterion of C43 (`IncompatModify`) with the mode used by `y`
+(`usedMode`). The capability of the context of step `j` is not compared. -/
 def ExclusivePair (ks : KShared) (σ : Nat → SC × SyncReg × ArenaReg) (lbls : List Label)
     (i j : Nat) (x y : LeafAccess) : Prop :=
   IncompatModify (cap (σ i).1 (σ i).2.1 (ctxAt lbls i) x.leaf) (usedMode ks σ lbls j y)
@@ -228,8 +224,7 @@ instance {Inc : Option Mode → Mode → Prop} [∀ v m, Decidable (Inc v m)]
 `Confined`) (C45, C46; position of 12d): for the events `a` of step `i` and `d` of step `j`, there
 is a first step `r`, `i ≤ r < j`, at the end of which the capability on the leaf of the context of
 step `i` is compatible, under `Inc`, with the mode used by step `j`; step `r` has an event `b`; and
-`hb(b, d)`. The existence of the marker is part of the obligation (C46: "not permission to assume
-a hidden marker"). -/
+`hb(b, d)`. The existence of the marker is part of the obligation (C46). -/
 def PairHandoff (Inc : Option Mode → Mode → Prop) {E U V S : Type} (ks : KShared)
     (σ : Nat → SC × SyncReg × ArenaReg) (lbls : List Label) (G : Events.Graph E Nat U V S)
     (K : StepEvents E) (i j : Nat) (x y : LeafAccess) : Prop :=
@@ -252,15 +247,13 @@ instance (ks : KShared) (l : Nat) : Decidable (SyncLeaf ks l) := by
   unfold SyncLeaf; infer_instance
 
 /-- The atomic event of a step carries the kind and the memory order of an atomic access of that
-step in the sense of 11e (`StepAccess`) (C37, for `readShared(access, leaf, order)`: "`order` is
-permitted for an atomic read by C40"; C39: "That annotation applies **only** to the atomic event on
-that leaf"; C40: "A failed CAS contributes an atomic read event and the `failure` order"). Under 11e
-the controller accesses of `acquire`, `unlock` and `resetLock` carry the orders of `R`. Exported
-obligation `OB-C20` (C27–C29, C50), stated part: the kind and the memory order of the atomic event
-of a step. The obligation is exported and remains open (`ExportedObligations`). The condition
-relates neither leaves to units, which is the condition `UnitLeaf`, nor byte ranges, and says
-nothing of an event that is the event of no step, of the accesses of compound steps or of failed
-attempts. -/
+step in the sense of 11e (`StepAccess`) (C37, for `readShared(access, leaf, order)`; C39; C40).
+Under 11e the controller accesses of `acquire`, `unlock` and `resetLock` carry the orders of `R`.
+Exported obligation `OB-C20` (C27–C29, C50), stated part: the kind and the memory order of the
+atomic event of a step. The obligation is exported and remains open (`ExportedObligations`). The
+condition relates neither leaves to units, which is the condition `UnitLeaf`, nor byte ranges, and
+says nothing of an event that is the event of no step, of the accesses of compound steps or of
+failed attempts. -/
 def StepOrders {E U V S : Type} (ks : KShared) (L : MutexLayout) (R : CtlOrders)
     (σ : Nat → SC × SyncReg × ArenaReg) (lbls : List Label) (G : Events.Graph E Nat U V S)
     (K : StepEvents E) : Prop :=
@@ -467,11 +460,10 @@ def CorrQ2 {E U V S : Type} (ks : KShared) (L : MutexLayout) (R : CtlOrders)
     ∃ x y, StepAccess ks L R σ lbls i x ∧ StepAccess ks L R σ lbls j y ∧ x.leaf = y.leaf ∧
       AccTyped G a x ∧ AccTyped G d y
 
-/-- Q3 (C51: "If bytes are reused for a distinct logical storage identity, the prior identity's
-relevant accesses and end-validity must be ordered before new accesses"; C50; `OB-C12`): when two
-conflicting access events have distinct storage identities, an end-validity event of one is
-`hb`-before a begin-validity event of the other. Exported obligation `OB-C12` (C25, C50), stated
-part. The obligation is exported and remains open (`ExportedObligations`). -/
+/-- Q3 (C51; C50; `OB-C12`): when two conflicting access events have distinct storage identities, an
+end-validity event of one is `hb`-before a begin-validity event of the other. Exported obligation
+`OB-C12` (C25, C50), stated part. The obligation is exported and remains open
+(`ExportedObligations`). -/
 def CorrQ3 {E U V S : Type} {G : Events.Graph E Nat U V S} {lbls : List Label}
     {K : StepEvents E} (D : AccessData G lbls K) : Prop :=
   ∀ a d, G.Conflict a d → D.sid a ≠ D.sid d →
@@ -510,9 +502,9 @@ def ctlLeafAt (L : MutexLayout) (st : SC × SyncReg × ArenaReg) : Label → Opt
   | .acquire _ i | .unlock _ i | .resetLock _ i => ctlOf L st i
   | _ => none
 
-/-- Reading 12 (a fragment hypothesis, C13.6 open): at every `newMutex`, `acquire`, `unlock` or
-`resetLock` step, the controller leaf has the class `Atomic(size, align)` with `size ≠ 0`
-(C35, C38). -/
+/-- Reading 12 (C48, first paragraph; C35, C38): at every `newMutex`, `acquire`, `unlock` or
+`resetLock` step, the controller leaf has the class `Atomic(size, align)` with `size ≠ 0`. A premise
+of the statements that use it: `NewMutexPre` does not require it. -/
 def CtlAtomic (ks : KShared) (L : MutexLayout) (σ : Nat → SC × SyncReg × ArenaReg)
     (lbls : List Label) : Prop :=
   ∀ k (h : k < lbls.length) ctl, ctlLeafAt L (σ k) lbls[k] = some ctl →
@@ -567,9 +559,8 @@ theorem writeShared_legal {ks : KShared} {L : MutexLayout} {c a : Nat} {region :
 
 /-! ## 14a: lifetime ordering (C51) -/
 
-/-- **Theorem 14a.1** (C51: "Within one context the required order is `po` or a declared
-within-step order; across contexts it is `hb`"; C33): under conjunct 5 of `EventConsistent`, for
-two events of the same context, `hb` and `po` coincide. -/
+/-- **Theorem 14a.1** (C51; C33): under conjunct 5 of `EventConsistent`, for two events of the same
+context, `hb` and `po` coincide. -/
 theorem hb_iff_po {E C U V S : Type} {G : Events.Graph E C U V S} (h5 : G.HbIrrefl) {a b : E}
     (hc : G.ctx a = G.ctx b) : G.HB a b ↔ G.po a b := by
   refine ⟨fun h => ?_, hb_of_po⟩
@@ -578,9 +569,7 @@ theorem hb_iff_po {E C U V S : Type} {G : Events.Graph E C U V S} (h5 : G.HbIrre
   · exact hp
   · exact absurd (Relation.TransGen.tail h (.inl hp)) (h5 a)
 
-/-- **Theorem 14a.2** (C51: "If bytes are reused for a distinct logical storage identity, the prior
-identity's relevant accesses and end-validity must be ordered before new accesses through the
-required lifetime order"): under `LifetimeOrdered`, if an end-validity event of `x` is `hb`-before
+/-- **Theorem 14a.2** (C51): under `LifetimeOrdered`, if an end-validity event of `x` is `hb`-before
 a begin-validity event of `y`, every access to `x` is `hb`-before every access to `y`. -/
 theorem lifetime_reuse {E U V S : Type} {G : Events.Graph E Nat U V S} {lbls : List Label}
     {K : StepEvents E} {D : AccessData G lbls K} (hL : LifetimeOrdered G D) {x y : S} {v w : E}
@@ -591,9 +580,8 @@ theorem lifetime_reuse {E U V S : Type} {G : Events.Graph E Nat U V S} {lbls : L
 
 /-! ## 14b: a contract, not the set of `ok` traces (C51) -/
 
-/-- **Theorem 14b** (C51: "`SafeConcurrentTrace`: a subset of `EncapsulatedTrace`"): every
-`SafeConcurrentTrace` is an `EncapsulatedTrace` from its first state. The converse is false
-(C51: "It is not the set of all kernel-`ok` traces"): witnesses S1 and S3–S8 (`WitnessSafe`). -/
+/-- **Theorem 14b** (C51): every `SafeConcurrentTrace` is an `EncapsulatedTrace` from its first
+state. The converse is false (C51): witnesses S1 and S3–S8 (`WitnessSafe`). -/
 theorem SafeConcurrentTrace.encapsulated {E U V S : Type} {ks : KShared} {L : MutexLayout}
     {R : CtlOrders} {σ : Nat → SC × SyncReg × ArenaReg} {lbls : List Label}
     {G : Events.Graph E Nat U V S} {K : StepEvents E} {D : AccessData G lbls K}
@@ -710,10 +698,8 @@ theorem pair_exclusive {D : AccessData G lbls K} (hdd : DDSound ks.toK) (hst : S
   subst this
   exact hb_of_marker hK hfc.1 hrj hj hreq ha hb hbd
 
-/-- **Theorem 14c.4** (C44: "Their ordering is established by the particular `Synchronized`
-protocol"; C52: "the required `hb` order is a premise of `SafeConcurrentTrace` (C51, item 2(d)),
-not a consequence of this theorem"): for a non-exclusive pair in conflict on a `Synchronized`
-leaf, the events are ordered by `hb` in one direction or the other, by premise (d). -/
+/-- **Theorem 14c.4** (C44; C52): for a non-exclusive pair in conflict on a `Synchronized` leaf, the
+events are ordered by `hb` in one direction or the other, by premise (d). -/
 theorem pair_synchronized {D : AccessData G lbls K} (hS : SafeConcurrentTrace pm ks L R σ lbls G K D)
     {i j : Nat} {x y : LeafAccess} (hp : ConflictPair ks L R σ lbls i j x y)
     (hx : ¬ ExclusivePair ks σ lbls i j x y) (hs : SyncLeaf ks x.leaf) {a d : E}
@@ -740,7 +726,7 @@ theorem atomicLeaf_of {l sz al : Nat} (h : ks.SharedDiscipline l = some (.atomic
   unfold AtomicLeaf; rw [h]; rfl
 
 /-- The classified accesses of an admitted step (11e) that does not use `Modify` for `x`, under
-the rule of 11f for the step and the hypothesis of reading 12 for its controller leaf: `x` is an
+the rule of 11f for the step and the premise of reading 12 for its controller leaf: `x` is an
 atomic access of an `Atomic` leaf, a non-atomic read of a leaf that is not `Atomic`, or a
 non-atomic access of a `Synchronized` or `Confined` leaf (C35–C39, C42; C48 with reading 12). -/
 theorem access_class {lbl : Label} {st st' : SC × SyncReg × ArenaReg} {acc : List LeafAccess}
@@ -840,7 +826,7 @@ theorem access_class {lbl : Label} {st st' : SC × SyncReg × ArenaReg} {acc : L
   | _ => simp only [classify, Option.some.injEq] at hc; subst hc; simp at hx
 
 /-- **Theorem 14c.5** (C35, C42, C43, C44; C51 item 2(b); readings 12, 13), exhaustiveness: in a
-`SafeConcurrentTrace` from the initial state of Spec 1 §47, under `DDSound` and the hypothesis of
+`SafeConcurrentTrace` from the initial state of Spec 1 §47, under `DDSound` and the premise of
 reading 12, a non-exclusive pair in conflict is on a `Synchronized` or `Confined` leaf. A pair that
 is not exclusive has no step that uses `Modify` for its access: the access of a step is covered by
 the capability of its context (12a; `cap_of_access`, `cap_of_usesModifyAt`). The rest uses the
@@ -932,12 +918,11 @@ theorem isAcc_of_range {E C U V S : Type} {G : Events.Graph E C U V S} {e : E} {
   rw [hn] at h
   cases h
 
-/-- **Theorem 14d**, conditional composition theorem on fragment F (C52: "Every execution graph
-satisfying the stated `EventConsistent` obligations and arising from a `SafeConcurrentTrace` is free
-from data races as defined in C33"; `OB-C06`). Proven on fragment F only, not as a universal proof
-of C52: `DDSound`, well-formed statics, an execution from the initial state of Spec 1 §47 with its
-graph and the partial correspondence K1–K4, the data of reading 9, the correspondence premises
-Q1–Q3 and the hypothesis of reading 12. Then no pair of events of `G` is a race (C33).
+/-- **Theorem 14d**, conditional composition theorem on fragment F (C52; `OB-C06`). Proven on
+fragment F only, not as a universal proof of C52: `DDSound`, well-formed statics, an execution from
+the initial state of Spec 1 §47 with its graph and the partial correspondence K1–K4, the data of
+reading 9, the correspondence premises Q1–Q3 and the premise of reading 12. Then no pair of
+events of `G` is a race (C33).
 
 Pairs of distinct storage identities go through Q3 and 14a.2; pairs of one identity through Q2 and
 14c (14c.2, 14c.3, 14c.5 with 14c.4); initial writes through L3. The proof uses neither
@@ -1004,20 +989,17 @@ variable {E S : Type} {G : Events.Graph E Nat Nat Nat S} {L : MutexLayout}
   {σ : Nat → SC × SyncReg × ArenaReg} {lbls : List Label} {K : StepEvents E} {e x : Nat}
   {R : CtlOrders} {v₀ v₁ : Nat}
 
-/-- **Theorem 14e.1** (C48: "When a later acquiring RMW **directly reads** this release
-modification (`rf`), the protocol yields the requisite `sw` and thus `hb`"; C49; `OB-C04`),
-corollary of 13d.3 and 13d.4: on a graph with the correspondence K1–K4 and realization R for the
-entry `e` and the unit `x`, under conjuncts 1 and 3 of `EventConsistent`, with release-capable
-orders of `unlock` and `resetLock` and an acquire-capable order of `acquire`, let `q` be an
-`acquire(e)` step at which the controller of `e` is `x`. If its event reads by `rf` the event of an
-`unlock(e)` or `resetLock(e)` step `p`, that event is `hb`-before it, by `sw`. That `p` is a
-controller step of `(e, x)` is not assumed: 13d.3 makes the `rf` source the event of a controller
-step, and K1 identifies that step with `p`.
+/-- **Theorem 14e.1** (C48; C49; `OB-C04`), corollary of 13d.3 and 13d.4: on a graph with the
+correspondence K1–K4 and realization R for the entry `e` and the unit `x`, under conjuncts 1 and 3
+of `EventConsistent`, with release-capable orders of `unlock` and `resetLock` and an acquire-capable
+order of `acquire`, let `q` be an `acquire(e)` step at which the controller of `e` is `x`. If its
+event reads by `rf` the event of an `unlock(e)` or `resetLock(e)` step `p`, that event is
+`hb`-before it, by `sw`. That `p` is a controller step of `(e, x)` is not assumed: 13d.3 makes the
+`rf` source the event of a controller step, and K1 identifies that step with `p`.
 
-The condition on the controller of `e` at `q` is that of C49 ("`ControlOf(entry)` becoming
-undefined or designating another leaf"): R speaks only of the steps whose controller is `x`, and
-an `ok` execution can move the controller of a live entry to another leaf (`witness_w12`, a
-`transfer` of the mutex value `M`). Conjunct 2 is not used. -/
+The condition on the controller of `e` at `q` is that of C49 (last paragraph): R speaks only of the
+steps whose controller is `x`, and an `ok` execution can move the controller of a live entry to
+another leaf (`witness_w12`, a `transfer` of the mutex value `M`). Conjunct 2 is not used. -/
 theorem lock_edge (hK : Corresponds G σ lbls K) (hR : Realizes G L σ lbls K e x R v₀ v₁)
     (h1 : G.RfWF) (h3 : G.RmwAtomic) (hrel : ReleaseOrder R.rel)
     (hreset : ReleaseOrder R.reset) (hacq : AcquireOrder R.acq) {p q : Nat}
@@ -1038,9 +1020,8 @@ theorem lock_edge (hK : Corresponds G σ lbls K) (hR : Realizes G L σ lbls K e 
 acquire-capable order of `acquire`, if the controller of `e` is `x` at every protocol step on `e`
 (the stability of the controller leaf, condition of 13e), the edge of reading 11 holds for `e`.
 
-The stability condition is that of C49 ("`ControlOf(entry)` becoming undefined or designating
-another leaf"): an `ok` execution can move the controller of a live entry to another leaf
-(`witness_w12`, a `transfer` of the mutex value `M`). -/
+The stability condition is that of C49 (last paragraph): an `ok` execution can move the controller
+of a live entry to another leaf (`witness_w12`, a `transfer` of the mutex value `M`). -/
 theorem lock_edge_entry (hR : Realizes G L σ lbls K e x R v₀ v₁) (hrel : ReleaseOrder R.rel)
     (hreset : ReleaseOrder R.reset) (hacq : AcquireOrder R.acq)
     (hstab : ∀ k, ProtoOn lbls e k → ctlOf L (σ k) e = some x) :

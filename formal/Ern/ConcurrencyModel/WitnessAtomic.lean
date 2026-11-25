@@ -150,8 +150,8 @@ theorem witness_6h : CasOrdersOK .acqRel .acquire ∧
 /-- **Witness 6i, C38 third paragraph, C39** (`ok`): a concurrent `writeShared(root_V, {3})` over
 the `Synchronized` leaf 3, then `writeShared(root_V, {4})` over the `Confined` leaf 4, each without
 a memory-order annotation: the O11 preconditions hold (Spec 1 §68), the region is of a single class
-(C38) and the annotation does not apply (C39, "Operation kind and atomic memory-order
-annotations"). The step is the O11 step with its effect. -/
+(C38) and the annotation does not apply (C39, rules on the kind and the annotation). The step is the
+O11 step with its effect. -/
 theorem witness_6i : WriteSharedCPre kAtomic v0 0 0 [3] none .store ∧
     LStep kAtomic mutexLayout (.writeShared 0 0 [3] none .store) (v0, [], [])
       (writeSharedCEff v0 0 [3], [], []) ∧
@@ -166,9 +166,9 @@ theorem witness_6i : WriteSharedCPre kAtomic v0 0 0 [3] none .store ∧
 
 /-- **Witness 6j, C39** (`reject`): the requests of witness 6i with the memory-order annotation
 `release`, which is in the store row of C40. Single cause: an annotation is supplied on
-`Synchronized` (then `Confined`) storage (C39, "Operation kind and atomic memory-order annotations");
-the O11 preconditions hold and the region is of a single class. No labelled step. Positive twin:
-witness 6i. -/
+`Synchronized` (then `Confined`) storage (C39, rules on the kind and the annotation); the O11
+preconditions hold and the region is of a single class. No labelled step. Positive twin: witness
+6i. -/
 theorem witness_6j : StoreOrderOK .release ∧
     (WriteSharedPre kAtomic.toK (v0.view 0) 0 [3] ∧
       kAtomic.SharedDiscipline 3 = some .synchronized ∧
@@ -197,9 +197,9 @@ theorem witness_6j : StoreOrderOK .release ∧
 
 /-- **Witness 6k, C39** (`reject`): a concurrent `writeShared(root_V, {1})` over the `Atomic` leaf 1
 without a memory-order annotation. Single cause: the annotation required on `Atomic` storage is
-missing (C39, "Operation kind and atomic memory-order annotations"); the O11 preconditions hold and
-the region is a single `Atomic` leaf. No labelled step. Positive twin: witness 6d, the same store
-annotated `release`. -/
+missing (C39, rules on the kind and the annotation); the O11 preconditions hold and the region is a
+single `Atomic` leaf. No labelled step. Positive twin: witness 6d, the same store annotated
+`release`. -/
 theorem witness_6k : WriteSharedPre kAtomic.toK (v0.view 0) 0 [1] ∧ AtomicLeaf kAtomic 1 ∧
     ¬ WriteDisciplineOK kAtomic [1] none .store ∧
     WriteSharedCStep kAtomic v0 0 0 [1] none .store .reject ∧

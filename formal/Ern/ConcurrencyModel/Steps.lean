@@ -466,7 +466,7 @@ theorem termStep_live {k : K} {s s' : SC} {c : Nat} (h : TermStep k s c (.ok s')
 /-! ## `join` (C8) -/
 
 /-- `join d` executed by `c` (C8): `reject` when the requesting context `c` is not live, whatever
-the target (C8, "Requesting-context validity", which takes precedence over the classification by
+the target (C8, condition on the requester, which takes precedence over the classification by
 target), or when `d` is unknown to the execution (no context has identity `d`, identities being the
 indices of `C`); for a live requester, `ok` with the state unchanged when `d` has the completed
 lifecycle state, and no outcome while `d` is live (C8: awaiting completion is not an `Outcome3`
@@ -476,8 +476,7 @@ inductive JoinStep (s : SC) (c d : Nat) : Outcome3 SC → Prop where
   | deadRequester : ¬ s.Live c → JoinStep s c d .reject
   | unknown : s.C[d]? = none → JoinStep s c d .reject
 
-/-- An `ok` `join` requires the requesting context to be live (C8, "Requesting-context
-validity"). -/
+/-- An `ok` `join` requires the requesting context to be live (C8, condition on the requester). -/
 theorem joinStep_live {s s' : SC} {c d : Nat} (h : JoinStep s c d (.ok s')) : s.Live c := by
   cases h with | ok hl _ => exact hl
 

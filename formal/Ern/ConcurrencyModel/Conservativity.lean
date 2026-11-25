@@ -97,9 +97,7 @@ theorem filter_nil_of {α : Type} {p : α → Bool} : ∀ {l : List α}, (∀ a 
 
 /-- The initial context is live, without parent, and no other context is live (C24): a
 single-context state (`SC.Single`), or a state reached once every additional context has
-terminated, their identities remaining with the completed lifecycle state (C24: "A transition
-history involving additional contexts must not return to an invalid single-context authority
-state"). -/
+terminated, their identities remaining with the completed lifecycle state (C24, last paragraph). -/
 def SC.Sole (s : SC) : Prop :=
   (∃ stk, s.C[0]? = some ⟨stk, .live, none⟩) ∧ ∀ c, s.Live c → c = 0
 
@@ -203,9 +201,8 @@ theorem single_parC (hs : s.Sole) (f : Nat) : s.parC f = parIn none f (s.stk 0) 
       exact List.find?_eq_none.2 fun c hc => by rw [hrest c hc]; exact Bool.false_ne_true
     simp [SC.parC, this, parIn_not_mem hf]
 
-/-- C24 ("sequential ancestry is recovered"), C3 ("on corresponding single-context
-states, it coincides exactly with Spec 1 §39"): on a single-context state with a strictly
-decreasing stack, `ancestorC` is `ancestor` of Spec 1 §39 on the stack. -/
+/-- C24, C3: on a single-context state with a strictly decreasing stack, `ancestorC` is `ancestor`
+of Spec 1 §39 on the stack. -/
 theorem single_ancestorC (hs : s.Sole) (hd : (s.stk 0).Pairwise (· > ·)) (g f : Nat) :
     s.ancestorC g f ↔ ancestor (s.stk 0) g f := by
   unfold SC.ancestorC ancestor
@@ -291,9 +288,8 @@ theorem single_anchorOrderHeldC (hs : s.Sole) (hd : (s.stk 0).Pairwise (· > ·)
     forall_congr' fun y => imp_congr_right fun _ => imp_congr_right fun _ =>
       imp_congr_right fun _ => single_effAnchorOKC hs hd x _
 
-/-- C24 ("the applicable sequential invariants"): on a single-context state, the re-indexed
-kernel invariant is the frame structure together with the kernel invariant of Spec 1 §57 on the
-projection. -/
+/-- C24: on a single-context state, the re-indexed kernel invariant is the frame structure together
+with the kernel invariant of Spec 1 §57 on the projection. -/
 theorem single_kInvC (hs : s.Sole) : KInvC s ↔ FramesC s ∧ KInv s.toS3 := by
   have hv : ∀ c, s.view c = s.toS3 ∨ I4 (s.view c) := fun c => .inr (i4_always _)
   constructor
@@ -557,10 +553,9 @@ theorem exitPreC_single (hs : s.Sole) (hd : (s.stk 0).Pairwise (· > ·)) :
   · rintro ⟨a, b, c, d, e⟩
     refine ⟨a, ?_, ?_, ?_, haoh.2 e⟩ <;> simp only [hv] <;> assumption
 
-/-- Theorem 1 (C24, "preconditions and outcomes coincide; projected effects coincide"): on a
-state whose only live context is the initial one, with the frame structure `FramesC`, every
-inherited operation O1–O16 executed by the context has exactly the outcomes of Spec 1 (§58,
-§60–§75) on the projection `SC.toS3`, outcome by outcome. Fragment: states whose only live
+/-- Theorem 1 (C24): on a state whose only live context is the initial one, with the frame structure
+`FramesC`, every inherited operation O1–O16 executed by the context has exactly the outcomes of Spec
+1 (§58, §60–§75) on the projection `SC.toS3`, outcome by outcome. Fragment: states whose only live
 context is the initial one (`SC.Sole`), single-context states included; operations O1–O16. -/
 theorem conservative_op (hs : s.Sole) (hfr : FramesC s) (op : KernelOp) :
     (∀ o, opStepC k op 0 s o → op.Step k s.toS3 (omap SC.toS3 o)) ∧
@@ -690,9 +685,9 @@ theorem parIn_lt : ∀ {F : List Nat}, F.Pairwise (· > ·) → ∀ {f g : Nat},
 /-- Projection of the single-context state of an `S3` (C24). -/
 theorem toS3_ofS3 (t : S3) : (SC.ofS3 t).toS3 = t := by cases t; rfl
 
-/-- C24 ("the reachable sequential domain ... must correspond"): every state reachable in
-Spec 1 (§57) is the projection of a single-context state with the frame structure `FramesC`, the
-domain of `conservative_op`; with `single_kInvC`, the re-indexed kernel invariant holds there. -/
+/-- C24: every state reachable in Spec 1 (§57) is the projection of a single-context state with the
+frame structure `FramesC`, the domain of `conservative_op`; with `single_kInvC`, the re-indexed
+kernel invariant holds there. -/
 theorem reachable_single {k : K} {statics : Statics} {t : S3} (hdd : DDSound k)
     (hst : StaticsOK statics) (h : Reachable k statics t) :
     (SC.ofS3 t).Single ∧ FramesC (SC.ofS3 t) ∧ (SC.ofS3 t).toS3 = t ∧ KInvC (SC.ofS3 t) := by

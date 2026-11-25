@@ -4,19 +4,21 @@ import Ern.ConcurrencyModel.EventInfinite
 /-!
 # Witnesses G1–G4: infinite graphs and the finite causal past (C34; `OB-C23`)
 
-C34, "Infinite-graph verification targets": "Check witnesses with an infinite originless read/RMW
-chain and with an infinite `mo`-past but finite causal past". Each witness is an infinite graph.
+G1 and G2 are the two witnesses that the verification targets of C34 call for; the part of C34
+that motivates G3 and G4 is given with each. Each witness is an infinite graph.
 
-* G1: the infinite witness of `EventInfinite` (an `rf` chain of RMWs with no origin) satisfies the
-  seven conjuncts and has no finite causal past (C34: "an infinite backward `rf` chain").
-* G2: a context writes `x` once; another writes `x` without end; `mo` puts the endless writes first.
-  `EventConsistent`, finite causal past, `mo` not prefix-finite, no race (C34: "No
-  `PrefixFinite(mo)` or `PrefixFinite(rb)` condition is imposed").
-* G3: contexts `c_n`, each started by `c_{n+1}`: `EventConsistent`, `(po ∪ rf)⁺` prefix-finite, no
-  finite causal past, through `sw` alone (C34: "an infinite `spawn`/`start` ancestry").
-* G4: infinitely many pure authority markers, then an atomic write: `G` and `erasePure(G)` are
-  `EventConsistent`; `G` has no finite causal past, `erasePure(G)` has one (C34: "no converse is
-  claimed").
+* G1 (C34, verification targets): the infinite witness of `EventInfinite` (an `rf` chain of RMWs
+  with no origin) satisfies the seven conjuncts and has no finite causal past.
+* G2 (C34, verification targets): a context writes `x` once; another writes `x` without end; `mo`
+  puts the endless writes first. `EventConsistent`, finite causal past, `mo` not prefix-finite, no
+  race.
+* G3 (C34, paragraph on the finite causal past, which names this case): contexts `c_n`, each
+  started by `c_{n+1}`: `EventConsistent`, `(po ∪ rf)⁺` prefix-finite, no finite causal past,
+  through `sw` alone.
+* G4 (C34, verification targets, erasure target): infinitely many pure authority markers, then an
+  atomic write: `G` and `erasePure(G)` are `EventConsistent`; `G` has no finite causal past,
+  `erasePure(G)` has one. No witness is called for here: G4 refutes the converse of theorem 10i
+  (`erasePure_finiteCausalPast`), a converse that C34 does not claim.
 -/
 
 namespace Ern.ConcurrencyModel.Events
@@ -43,10 +45,8 @@ theorem not_bounded {E : Type} {R : E → E → Prop} {e : E} (g : Nat → E) (f
 
 /-! ## G1 -/
 
-/-- **Witness G1** (C34: an admissible graph must have a finite causal past; this condition
-"excludes events requiring an infinite causal history, including an infinite backward `rf` chain"):
-the infinite witness of `EventInfinite` satisfies the seven conjuncts of `EventConsistent` and has no
-finite causal past: every `v_{k+2}` is an `rf`-ancestor of `v_1`. -/
+/-- **Witness G1** (C34): the infinite witness of `EventInfinite` satisfies the seven conjuncts of
+`EventConsistent` and has no finite causal past: every `v_{k+2}` is an `rf`-ancestor of `v_1`. -/
 theorem witness_g1 : Infinite.G.EventConsistent ∧ ¬ Infinite.G.FiniteCausalPast := by
   refine ⟨Infinite.infinite_consistent, fun hf => ?_⟩
   have hR : ∀ k, TransGen Infinite.G.PoSwRf (.v (k + 1)) (.v 0) := by
@@ -138,9 +138,8 @@ theorem eco_mo {x y : Ev} (h : G.ECO x y) : mo x y := by
 
 end G2
 
-/-- **Witness G2** (C34: "No `PrefixFinite(mo)` or `PrefixFinite(rb)` condition is imposed: neither
-memory fairness nor progress is guaranteed"): `EventConsistent`; finite causal past; `mo` is not
-prefix-finite (the write of `A` has every write of `B` before it in `mo`); no race. -/
+/-- **Witness G2** (C34): `EventConsistent`; finite causal past; `mo` is not prefix-finite (the
+write of `A` has every write of `B` before it in `mo`); no race. -/
 theorem witness_g2 : G2.G.EventConsistent ∧ G2.G.FiniteCausalPast ∧ ¬ PrefixFinite G2.G.mo ∧
     ∀ x y, ¬ G2.G.Race x y := by
   have hsc : ∀ e, ¬ G2.G.SC e := fun e ⟨u, k, hk⟩ => by cases e <;> cases hk
@@ -262,10 +261,8 @@ theorem not_reads (e : Ev) : ¬ G.Reads e := fun ⟨k, hk, _⟩ => by cases e <;
 
 end G3
 
-/-- **Witness G3** (C34: the finite causal past "excludes events requiring an infinite causal
-history, including ... an infinite `spawn`/`start` ancestry"): `EventConsistent`; `(po ∪ rf)⁺` is
-prefix-finite; the graph has no finite causal past, through `sw` alone: every `start(c_{k+1})` is a
-causal predecessor of `start(c_0)`. -/
+/-- **Witness G3** (C34): `EventConsistent`; `(po ∪ rf)⁺` is prefix-finite; the graph has no finite
+causal past, through `sw` alone: every `start(c_{k+1})` is a causal predecessor of `start(c_0)`. -/
 theorem witness_g3 : G3.G.EventConsistent ∧ PrefixFinite (TransGen G3.G.PoRf) ∧
     ¬ G3.G.FiniteCausalPast := by
   have heco : ∀ a b, ¬ G3.G.ECO a b := fun a b h => by
@@ -405,10 +402,8 @@ theorem consistent : G.EventConsistent := by
 
 end G4
 
-/-- **Witness G4** (C34: "Verify that erasure of pure-authority markers preserves finite causal past
-**from the original graph to its erasure**; no converse is claimed"): `G` and `erasePure(G)` are
-`EventConsistent`; `G` has no finite causal past (the write has infinitely many `po` predecessors);
-`erasePure(G)` has one. -/
+/-- **Witness G4** (C34): `G` and `erasePure(G)` are `EventConsistent`; `G` has no finite causal
+past (the write has infinitely many `po` predecessors); `erasePure(G)` has one. -/
 theorem witness_g4 : G4.G.EventConsistent ∧ G4.G.erasePure.EventConsistent ∧
     ¬ G4.G.FiniteCausalPast ∧ G4.G.erasePure.FiniteCausalPast := by
   refine ⟨G4.consistent, (G4.G.erasePure_consistent_iff (fun _ _ h => h.elim)

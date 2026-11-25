@@ -128,13 +128,11 @@ theorem s4_run : EncapRun pm kAtomic mutexLayout s4σ s4L := by
   | 3, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
 
-/-- **Witness S4** (C35: "concurrent evaluation of `writeShared` over a nonempty region is `reject`
-if any targeted leaf lacks a selected `K_C.SharedDiscipline` class"; C51 item 2(e)):
-`o := derive(root, Observe, {U})`; `spawn c1` yielding `o`; `c1` and then `c0` run the inherited
-`writeShared` on `{U}`, through `o` and through `root`. All steps are `ok` in the kernel; (e) fails
-for both writes; every other condition of the safe trace holds; Q1, Q3, Q4 and reading 12 hold; Q2
-fails: an inherited `writeShared` outside the table has no access in 11e. The two writes race.
-Admitted twin: `witness_s4_twin`. -/
+/-- **Witness S4** (C35; C51 item 2(e)): `o := derive(root, Observe, {U})`; `spawn c1` yielding `o`;
+`c1` and then `c0` run the inherited `writeShared` on `{U}`, through `o` and through `root`. All
+steps are `ok` in the kernel; (e) fails for both writes; every other condition of the safe trace
+holds; Q1, Q3, Q4 and reading 12 hold; Q2 fails: an inherited `writeShared` outside the table has no
+access in 11e. The two writes race. Admitted twin: `witness_s4_twin`. -/
 theorem witness_s4 :
     EncapRun pm kAtomic mutexLayout s4σ s4L ∧ s4G.toGraph.EventConsistent ∧
     s4G.toGraph.FiniteCausalPast ∧ OrdinaryAtomicOK kAtomic s4σ s4L ∧
@@ -284,13 +282,11 @@ theorem s5_run : EncapRun pm kAtomic mutexLayout s5σ s5L := by
   | 3, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .writeShared (.ok ⟨by decide, by decide, fun h => absurd rfl h⟩)⟩
 
-/-- **Witness S5** (C44: "Conflicting **non-atomic** `writeShared` operations on `Synchronized`
-storage performed under shared compatible `Observe` rights are **not** covered by the
-exclusive-handoff premise"; C51 item 2(d); C52): `o := derive(root, Observe, {S})`; `spawn c1`
-yielding `o`; `c1` and then `c0` run the concurrent `writeShared` of kind `store` without
-annotation on `{S}`, through `o` and through `root`. (d) fails: the two writes form a
-non-exclusive pair in conflict on `S` not ordered by `hb`. Every other condition holds; Q1–Q4 and
-reading 12 hold. The two writes race. Admitted twin: `witness_s5_twin`. -/
+/-- **Witness S5** (C44; C51 item 2(d); C52): `o := derive(root, Observe, {S})`; `spawn c1` yielding
+`o`; `c1` and then `c0` run the concurrent `writeShared` of kind `store` without annotation on
+`{S}`, through `o` and through `root`. (d) fails: the two writes form a non-exclusive pair in
+conflict on `S` not ordered by `hb`. Every other condition holds; Q1–Q4 and reading 12 hold. The two
+writes race. Admitted twin: `witness_s5_twin`. -/
 theorem witness_s5 :
     EncapRun pm kAtomic mutexLayout s5σ s5L ∧ s5G.toGraph.EventConsistent ∧
     s5G.toGraph.FiniteCausalPast ∧ OrdinaryAtomicOK kAtomic s5σ s5L ∧
@@ -425,13 +421,12 @@ theorem s6_run : EncapRun pm kAtomic mutexLayout s6σ s6L := by
   | 3, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
 
-/-- **Witness S6** (C42: "an ordinary `read3` or `write3` on an `Atomic` leaf requires an
-**effective and exercisable `Modify`** capability for that leaf"; C51 item 2(b)): `o :=
-derive(root, Observe, {A})`; `spawn c1` yielding `o`; `c0 : writeShared` of kind `store` on `{A}`
-with `release`; `c1 : read3(A)` through `o`, whose event reads the write of `c0` by `rf`. All steps
-are `ok`; the condition `OrdinaryAtomicOK` of (b) (C42) fails at the `read3`; every other
-condition holds, the two other conditions of (b) included; Q1–Q4 and reading 12 hold. The
-atomic write and the non-atomic read race. Admitted twin: `witness_s6_twin`. -/
+/-- **Witness S6** (C42; C51 item 2(b)): `o := derive(root, Observe, {A})`; `spawn c1` yielding `o`;
+`c0 : writeShared` of kind `store` on `{A}` with `release`; `c1 : read3(A)` through `o`, whose event
+reads the write of `c0` by `rf`. All steps are `ok`; the condition `OrdinaryAtomicOK` of (b) (C42)
+fails at the `read3`; every other condition holds, the two other conditions of (b) included; Q1–Q4
+and reading 12 hold. The atomic write and the non-atomic read race. Admitted twin:
+`witness_s6_twin`. -/
 theorem witness_s6 :
     EncapRun pm kAtomic mutexLayout s6σ s6L ∧ s6G.toGraph.EventConsistent ∧
     s6G.toGraph.FiniteCausalPast ∧ ¬ OrdinaryAtomicOK kAtomic s6σ s6L ∧
@@ -560,14 +555,12 @@ theorem s7_run : EncapRun pm kAtomic mutexLayout s7σ s7L := by
   | 3, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
 
-/-- **Witness S7** (C35: "On a `Confined` leaf, simultaneous `Observe` capabilities in two contexts
-are forbidden by that safe contract"; C51 item 2(c)): `o := derive(root, Observe, {C})`; `spawn c1`
-yielding `o`; `c1 : writeShared` of kind `store` without annotation on `{C}`; `c0 : read3(C)`
-through `root`. All steps are `ok`; (c) fails: after the `spawn`, `c0` and `c1` both have a present
-capability on `C`, and the pair of the write of `c1` and the read of `c0` has no ordered handoff
-under the `Confined` criterion (the capability of `c1` never becomes `none`). Every other condition
-holds; Q1–Q4 and reading 12 hold. The write and the read race. Admitted twin:
-`witness_s7_twin`. -/
+/-- **Witness S7** (C35; C51 item 2(c)): `o := derive(root, Observe, {C})`; `spawn c1` yielding `o`;
+`c1 : writeShared` of kind `store` without annotation on `{C}`; `c0 : read3(C)` through `root`. All
+steps are `ok`; (c) fails: after the `spawn`, `c0` and `c1` both have a present capability on `C`,
+and the pair of the write of `c1` and the read of `c0` has no ordered handoff under the `Confined`
+criterion (the capability of `c1` never becomes `none`). Every other condition holds; Q1–Q4 and
+reading 12 hold. The write and the read race. Admitted twin: `witness_s7_twin`. -/
 theorem witness_s7 :
     EncapRun pm kAtomic mutexLayout s7σ s7L ∧ s7G.toGraph.EventConsistent ∧
     s7G.toGraph.FiniteCausalPast ∧ OrdinaryAtomicOK kAtomic s7σ s7L ∧
@@ -750,16 +743,13 @@ theorem s8_run : EncapRun pm kAtomic mutexLayout s8σ s8L := by
   | 7, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .kernel ⟨_, .ok (by decide), rfl⟩⟩
 
-/-- **Witness S8** (C51, `LifetimeOrdered`: "If bytes are reused for a distinct logical storage
-identity, the prior identity's relevant accesses and end-validity must be ordered before new
-accesses"; C6: "There is no implicit wait"; C27): `c0 : enterFrame` with a local `X`; `a :=
-derive(root_X, Modify)`; `spawn c1` yielding `a`; `c1 : write3(X)` by `a`; `c1 : release(a)`;
+/-- **Witness S8** (C51, `LifetimeOrdered`; C6; C27): `c0 : enterFrame` with a local `X`;
+`a := derive(root_X, Modify)`; `spawn c1` yielding `a`; `c1 : write3(X)` by `a`; `c1 : release(a)`;
 `c0 : exitFrame`; `c0 : enterFrame` with a local `Y`; `c0 : write3(Y)`. `X` and `Y` have the same
 bytes and distinct identities; the events of the `enterFrame` and `exitFrame` steps are the begin
 and end of validity of `X` and the begin of validity of `Y`. All steps are `ok`; `LifetimeOrdered`
-fails by L2: the write of `c1` is not `hb`-before the end of validity of `X`. Every other
-condition holds; Q1–Q4 and reading 12 hold. The two writes race. Admitted twin:
-`witness_s8_twin`. -/
+fails by L2: the write of `c1` is not `hb`-before the end of validity of `X`. Every other condition
+holds; Q1–Q4 and reading 12 hold. The two writes race. Admitted twin: `witness_s8_twin`. -/
 theorem witness_s8 :
     EncapRun pm kAtomic mutexLayout s8σ s8L ∧ s8G.toGraph.EventConsistent ∧
     s8G.toGraph.FiniteCausalPast ∧ OrdinaryAtomicOK kAtomic s8σ s8L ∧

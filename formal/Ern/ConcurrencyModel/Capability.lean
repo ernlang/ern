@@ -11,17 +11,18 @@ is involved.
 * `cap(s, c, l)` (C43): the greatest effective mode on `l` attributable to `c` through an active
   authority held by a frame of the stack of `c`, or held in a place through a valid holder chain
   that passes through the `guarded` authority of no live entry (`CapAttr`, `cap`). It is defined
-  on the pattern of the guard-free exercise of C22.6 (`ExerFree`), with "the current frame"
-  replaced by "a frame of the stack of `c`"; it is not `ExercisableAt`.
+  on the pattern of the guard-free exercise of C22.6 (`ExerFree`), with a frame of the stack of `c`
+  in place of the current frame; it is not `ExercisableAt`.
 * The incompatibility of a capability value with a mode used by another context (C43): the
   `Modify` criterion (`IncompatModify`) and the `Confined` criterion (`IncompatConfined`).
 * 12a: `cap` covers every access of a step (11e) in the state before the step (`cap_covers`).
 * 12b: L2, state form (C45; `OB-C18`): no reached state gives two distinct contexts incompatible
   capabilities on a leaf under the `Modify` criterion (`cap_l2`).
 
-Formalization hypothesis (reading 8 of C43): the live frames of a context are the frames of its
-stack; a "suspended" frame is a frame of the stack other than the current one; `cap` covers every
-frame of the stack.
+Reading 8 is stated by C43 (second paragraph); the attribution in a mode that `CapAttr` defines is
+stated by C43 (third paragraph). `CapAttr` reads the frames of `c` as the frames of its stack
+`s.stk c`, its current frame and its suspended frames alike, so `cap` covers every frame of the
+stack.
 
 Fragment of the trace statements: `DDSound` (Spec 1 §80), well-formed statics (Spec 1 §47), an
 `EncapsulatedTrace` (C51.1) from the initial state of Spec 1 §47.
@@ -162,16 +163,14 @@ def capRank : Option Mode → Nat
   | some .modify => 2
 
 /-- C43, `Modify` criterion: a present capability value `v` of one context is incompatible with the
-mode `m` used by another context on the same leaf when one of the two is `Modify` ("present `cap`
-values on a leaf are incompatible when at least one is `Modify`"). -/
+mode `m` used by another context on the same leaf when one of the two is `Modify`. -/
 def IncompatModify (v : Option Mode) (m : Mode) : Prop :=
   match v with
   | none => False
   | some v => v = .modify ∨ m = .modify
 
 /-- C43, `Confined` criterion: any present capability value of one context is incompatible with
-any mode used by another context ("for `Confined`, any two present capabilities are
-incompatible"). -/
+any mode used by another context. -/
 def IncompatConfined (v : Option Mode) (_m : Mode) : Prop := v ≠ none
 
 instance (v : Option Mode) (m : Mode) : Decidable (IncompatModify v m) := by
@@ -326,11 +325,10 @@ theorem encapsulated_inv {ks : KShared} {L : MutexLayout} {statics : Statics} {l
   obtain ⟨hk, hs⟩ := init_inv hdd hst L
   exact trace_inv hdd h.restricted hk hs
 
-/-- **Theorem 12b**, L2, state form (C45: "On an `EncapsulatedTrace`, no state gives two distinct
-contexts incompatible `cap` values on the same leaf under the `Modify` criterion of C43";
-`OB-C18`): at every state reached by an `EncapsulatedTrace` from the initial state of Spec 1 §47,
-under `DDSound` and well-formed statics, a present capability of `c` on `l` is not incompatible,
-under the `Modify` criterion, with that of another context `c'`. -/
+/-- **Theorem 12b**, L2, state form (C45; `OB-C18`): at every state reached by an
+`EncapsulatedTrace` from the initial state of Spec 1 §47, under `DDSound` and well-formed statics, a
+present capability of `c` on `l` is not incompatible, under the `Modify` criterion, with that of
+another context `c'`. -/
 theorem cap_l2 {ks : KShared} {L : MutexLayout} {statics : Statics} {lbls : List Label}
     {st : SC × SyncReg × ArenaReg} (hdd : DDSound ks.toK) (hst : StaticsOK statics)
     (h : EncapsulatedTrace pm ks L (SC.ofS3 (S3.init statics), [], []) lbls st) {c c' l : Nat}

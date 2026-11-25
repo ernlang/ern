@@ -11,7 +11,7 @@ each execution is an `EncapsulatedTrace` with named states from the initial stat
 (`EncapRun`), with a hand-written graph of fragment F, its correspondence (K1–K4) and the data of
 reading 9 (storage identities of type `Unit`, no initial write: `unitData`). A trace that is not
 safe states the condition of `SafeConcurrentTrace` that fails, every other condition, the
-correspondence premises Q1–Q3 (C52) and Q4 (C26), the hypothesis of reading 12 (`CtlAtomic`) and
+correspondence premises Q1–Q3 (C52) and Q4 (C26), the premise of reading 12 (`CtlAtomic`) and
 the race (C33). A safe trace states `SafeConcurrentTrace`, Q1–Q4, reading 12, and applies 14d
 (`no_race`). Each docstring gives the expected verdict with its clause, the obtained verdict and the
 twin. The expected order of the loss marker and the expected races are those of C45, C46 and C33.

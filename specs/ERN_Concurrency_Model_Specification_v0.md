@@ -1,6 +1,6 @@
 # ERN — Concurrency Model Specification v0
 
-**Edition v0 — November 16, 2026. Status: validated for reference reconstruction; not frozen.**
+**Edition v0 — November 25, 2026. Status: validated and frozen.**
 
 **Higher normative authority:** *ERN — Language Charter v0* (frozen).
 
@@ -8,7 +8,7 @@
 
 ## Validation and Revision Procedure
 
-This edition has normative authority for reference reconstruction by the language owner’s explicit validation of this exact text. It is not frozen. Formal models, proof reports, and bounded tests are instruments for verifying this specification and do not supply additional language rules. Any change in normative meaning requires explicit identification of the affected clauses and renewed owner authorization.
+This edition has normative authority by the language owner’s explicit validation and freeze of this exact text. Formal models, proof reports, and bounded tests are instruments for verifying this specification and do not supply additional language rules. Any change in normative meaning requires explicit identification of the affected clauses and renewed owner authorization.
 
 ## Scope
 
@@ -193,7 +193,9 @@ A frame exit is rejected when it would invalidate a surviving authority or depen
 
 Conversely, the departure of a creating frame need not terminate a child context whose surviving authorities and resources remain valid after legal reanchoring and reparenting.
 
-The complete typing and composition rules for transferable and shareable values remain an interface obligation for Spec 4.
+This specification defines the semantic conditions under which a value may be transferred between execution contexts or its access shared across contexts (Spec 1 §29). Those conditions are the step preconditions and the safe-trace and event-ordering obligations of this specification, together with the authority, initialization, dependency and lifetime rules of Spec 1.
+
+The static typing and composition rules that determine the eligibility of values for such transfer or sharing remain an interface obligation for Spec 4 (`OB-C07`). Static eligibility does not establish the legality of a particular transfer or shared access, which remains subject to those semantic conditions.
 
 ## C10. External Contexts
 
@@ -852,7 +854,9 @@ For the L1/L2 capacity-period definition, for state `s`, execution context `c`, 
 cap(s, c, l) ∈ { none, Observe, Modify }
 ```
 
-For the safe-handoff proof, it is the greatest **effective** mode on `l` attributable to `c` through active authorities held by its live frames, **including suspended frames**, or held in a place through a valid holder chain, **provided the attributing chain does not pass through the `guarded` authority of any live synchronization entry**. This guarded-chain-excluding capability permits valid frame-held grants and their legally held descendants but excludes attribution through live `guarded` authorities. It does not change the rights of any authority in the frozen Spec 1.
+For the safe-handoff proof, it is the greatest **effective** mode on `l` attributable to `c` through active authorities held by its live frames, **including suspended frames**, or held in a place through a valid holder chain, **provided the attributing chain does not pass through the `guarded` authority of any live synchronization entry**. This guarded-chain-excluding capability permits valid frame-held grants and their legally held descendants but excludes attribution through live `guarded` authorities. It does not change the rights of any authority in the frozen Spec 1. A **suspended frame** of a context is a frame of its local stack other than its current frame.
+
+An authority is attributable to `c` in mode `m` if and only if the definition of `ExercisableAt(·, m)` in Spec 1 §43 is satisfied with a live frame of `c` in place of the current frame, along a witnessing holder chain in which neither the attributed authority itself nor any other authority is the `guarded` authority of a live synchronization entry. For an authority held by a place `p`, attribution in mode `m` requires a single authority itself attributable to `c` in mode `m` whose effective mode permits `m` on every leaf of `p`'s footprint. For the maximum defining `cap(s,c,l)`, a mode `m` is eligible exactly when an authority attributable to `c` in mode `m` has an effective mode on `l` permitting `m`.
 
 `cap` is **not** `ExercisableAt`. The latter applies the frozen §43 rules to the executing context's **current frame** and is used to decide **kernel** operation preconditions; C22.6 separately restricts which successful kernel operations the **safe interface** may expose. `cap` summarizes guarded-chain-excluding contextual entitlement across the context's frames and relevant held places, including rights not currently exercisable from the top frame. Derivation, reborrowing and frame changes need not terminate a context's `cap` merely because an individual authority becomes inactive or non-exercisable. Unrestricted contextual capability is distinct from this guarded-chain-excluding `cap` and is not the quantity used by L1/L2.
 
@@ -860,7 +864,7 @@ For two distinct contexts, present `cap` values on a leaf are **incompatible** w
 
 ## C44. Scope of Exclusive Handoff Ordering
 
-Let `e1` and `e2` be access events in **different contexts**, associated with the same logical leaf and conflicting byte ranges, where at least one is non-atomic. `HandoffOrdered` applies only if the pair is **exclusive**: its relevant context capabilities are incompatible under C43 and the declared storage discipline. It does not impose `hb` between two genuinely concurrent atomic accesses under compatible observation rights.
+Let `e1` and `e2` be access events in **different contexts**, associated with the same logical leaf and conflicting byte ranges, where at least one is non-atomic. `HandoffOrdered` applies only if the pair is **exclusive**: the capability of the context of the earlier access on that leaf, taken at the step of that access, is incompatible, under C43 and the declared storage discipline, with the capability used by the later access (C45). The capability held by the context of the later access is not compared. It does not impose `hb` between two genuinely concurrent atomic accesses under compatible observation rights.
 
 Typical cases in scope are:
 
@@ -919,7 +923,7 @@ For by-value `spawn`, access events emitted by the transfers belong to the actua
 
 ## C48. Reference Mutex: Acquire, Unlock, and Grant Events
 
-The reference `newMutex` initializes a physical controller in a state corresponding to `grant = none` and must establish the positional, identity and initialization requirements of C12–C13, C21 and Spec 1 §56. As clarified in C13, this is a physical non-atomic write of the controller synchronization value to an **already abstractly `Init`** leaf, not the abstract initialization of an `Uninit` structural leaf. C13.11 requires ordinary `Modify` authority, with applicable O10.1/O10.2 conditions. Its concrete metadata operations have events as required by C27/C29.
+The reference `newMutex` initializes a physical controller in a state corresponding to `grant = none` and must establish the positional, identity and initialization requirements of C12–C13, C21 and Spec 1 §56. As clarified in C13, this is a physical non-atomic write of the controller synchronization value to an **already abstractly `Init`** leaf, not the abstract initialization of an `Uninit` structural leaf. C13.11 requires ordinary `Modify` authority, with applicable O10.1/O10.2 conditions. Its concrete metadata operations have events as required by C27/C29. The controller leaf of a reference mutex is an `Atomic(size, align)` unit of nonzero supported size under `K_C.SharedDiscipline` (C35, C38).
 
 A successful `acquire` has an atomic controller-acquisition event, for example a successful CAS/RMW with an acquire-capable memory order. This event must observe (`rf`) the appropriate released/available controller state, satisfy atomic coherence, and linearize the reservation of the controller before the new grant is made externally exercisable. A **gain marker** is placed `po`-after the successful acquire event. A failed CAS does not grant authority; a busy controller and an invalid request remain classified under C16, with `reject` taking priority per abstract state.
 

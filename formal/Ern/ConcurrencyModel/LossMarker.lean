@@ -103,10 +103,9 @@ theorem exists_first {P : Nat → Prop} [DecidablePred P] {i j : Nat} (hij : i <
 /-! ## 12d: the loss marker (C45, L2; C46) -/
 
 /-- Step `r` is the first step at or after `i` at the end of which the capability of `c'` on `l`
-is compatible with the mode `m` under the incompatibility criterion `Inc` (C43, C45: "the loss
-marker that ends the period containing `e1` during which `cap(·,c′,l)` is incompatible with the
-capability used by `e2`"): `cap(·, c', l)` is incompatible with `m` from state `i` to state `r`,
-and compatible in state `r + 1`. -/
+is compatible with the mode `m` under the incompatibility criterion `Inc` (C43, C45):
+`cap(·, c', l)` is incompatible with `m` from state `i` to state `r`, and compatible in state
+`r + 1`. -/
 def FirstCompatible (Inc : Option Mode → Mode → Prop) (σ : Nat → SC × SyncReg × ArenaReg)
     (i c' l : Nat) (m : Mode) (r : Nat) : Prop :=
   i ≤ r ∧ ¬ Inc (cap (σ (r + 1)).1 (σ (r + 1)).2.1 c' l) m ∧
@@ -168,13 +167,11 @@ theorem loss_marker_of {Inc : Option Mode → Mode → Prop} [∀ v m, Decidable
   obtain ⟨he, hs⟩ := hr r hrl
   exact local_loss hdd hst hpre he hs c' l (hdrop (hfc.2.2 r h1 (Nat.le_refl _)) h3)
 
-/-- **Theorem 12d**, `Modify` criterion (C45, L2: "a step of `c′` that reduces `cap(·,c′,l)` below
-incompatibility with the capability used by `e2` lies at or after the step emitting `e1` and
-before the step emitting `e2` in the abstract trace; that step carries the loss marker"; C46):
-for `i < j`, distinct contexts `c'` and `c`, a leaf `l` and a mode `m` with `cap(σ j, c, l)` at
-least `m` and `cap(σ i, c', l)` incompatible with `m` (C43, `Modify` criterion), there is a first
-step `r ≥ i` at the end of which `cap(·, c', l)` is compatible with `m`; it is unique;
-`i ≤ r < j`; and step `r` is a step of `c'`. Compatibility at `j` is L2 (`cap_l2`). -/
+/-- **Theorem 12d**, `Modify` criterion (C45, L2; C46): for `i < j`, distinct contexts `c'` and `c`,
+a leaf `l` and a mode `m` with `cap(σ j, c, l)` at least `m` and `cap(σ i, c', l)` incompatible with
+`m` (C43, `Modify` criterion), there is a first step `r ≥ i` at the end of which `cap(·, c', l)` is
+compatible with `m`; it is unique; `i ≤ r < j`; and step `r` is a step of `c'`. Compatibility at `j`
+is L2 (`cap_l2`). -/
 theorem loss_marker_modify {ks : KShared} {L : MutexLayout} {statics : Statics}
     {σ : Nat → SC × SyncReg × ArenaReg} {lbls : List Label} (hdd : DDSound ks.toK)
     (hst : StaticsOK statics) (h0 : σ 0 = (SC.ofS3 (S3.init statics), [], []))
@@ -204,11 +201,8 @@ theorem loss_marker_modify {ks : KShared} {L : MutexLayout} {statics : Statics}
         · cases h'
         · exact .inr h'
 
-/-- **Theorem 12d**, `Confined` criterion (C43: "for `Confined`, any two present capabilities are
-incompatible"; C45, L2: "for `Confined` storage, that no state gives two distinct contexts a
-present capability on the same leaf is a premise of the safe-storage contract (C35; C51, item
-2(c))"): under that premise for `l` on every state of the execution, the conclusion of
-`loss_marker_modify` holds for the `Confined` criterion. -/
+/-- **Theorem 12d**, `Confined` criterion (C43; C45, L2): under that premise for `l` on every state
+of the execution, the conclusion of `loss_marker_modify` holds for the `Confined` criterion. -/
 theorem loss_marker_confined {ks : KShared} {L : MutexLayout} {statics : Statics}
     {σ : Nat → SC × SyncReg × ArenaReg} {lbls : List Label} (hdd : DDSound ks.toK)
     (hst : StaticsOK statics) (h0 : σ 0 = (SC.ofS3 (S3.init statics), [], []))
@@ -265,8 +259,7 @@ theorem exerFree_modify {s : SC} {reg : SyncReg} {c : Nat} (hI : I1 s.flat) (hw 
       exact .held hng hy ha hm hp (ih rfl hb') hc
 
 /-- The access `x` of the step `lbl` from `st` uses `Modify` (C44, C42): its required mode is
-`Modify`, or it is a `read3` of an `Atomic` leaf that satisfies the rule of C42 (11f), which
-"requires an effective and exercisable `Modify` capability for that leaf". -/
+`Modify`, or it is a `read3` of an `Atomic` leaf that satisfies the rule of C42 (11f). -/
 def UsesModify (ks : KShared) (st : SC × SyncReg × ArenaReg) (lbl : Label) (x : LeafAccess) :
     Prop :=
   x.mode = .modify ∨

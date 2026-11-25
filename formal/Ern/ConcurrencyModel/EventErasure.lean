@@ -4,8 +4,7 @@ import Ern.ConcurrencyModel.EventDecide
 # Theorem 10b, 10c: erasure of pure authority markers (C29, C34; `OB-C19` abstract part, `OB-C26`)
 
 `erase G X` removes the events satisfying `X`, projects `po` on the surviving events and restricts
-`rf` and `mo` to them (C29, C34); `erasePure G` removes every pure authority marker (C34:
-"`erasePure(G)` remove[s] all pure-authority markers identified in C29").
+`rf` and `mo` to them (C29, C34); `erasePure G` removes every pure authority marker (C34).
 
 * 10b (C29, `OB-C19` abstract part): for every graph and every set of pure authority markers, `hb`
   between surviving events is the same before and after the erasure (`erase_hb_iff`), with the two
@@ -235,14 +234,13 @@ theorem erase_hb_iff (hX : ∀ e, X e → G.Pure e) (a b : {e // ¬ X e}) :
   exact tg_restrict_iff (R := G.PoSw) (po := G.po) (fun _ _ h => Or.inl h) (fun _ _ _ => G.po_trans)
     (G.posw_X_po hX) a b
 
-/-- **Theorem 10b, one marker** (C29: "removing … such markers … preserves `hb` between surviving
-events"): the erasure of a single pure authority marker `m`. -/
+/-- **Theorem 10b, one marker** (C29): the erasure of a single pure authority marker `m`. -/
 theorem eraseOne_hb_iff {m : E} (hm : G.Pure m) (a b : {e // ¬ e = m}) :
     (G.erase (· = m)).HB a b ↔ G.HB a.1 b.1 :=
   G.erase_hb_iff (X := fun e => e = m) (fun e h => by subst h; exact hm) a b
 
-/-- **Theorem 10b, all markers** (C29: "removing all such markers, with the appropriate `po`
-projection, preserves `hb` between surviving events"). -/
+/-- **Theorem 10b, all markers** (C29): between surviving events, `hb` in `erasePure(G)` is `hb` in
+`G`. -/
 theorem erasePure_hb_iff (a b : {e // ¬ G.Pure e}) : G.erasePure.HB a b ↔ G.HB a.1 b.1 :=
   G.erase_hb_iff (fun _ h => h) a b
 
@@ -526,10 +524,9 @@ theorem erasePure_noThinAir_iff (hrf : G.RfAvoidsPure) : G.erasePure.NoThinAir �
 theorem erasePure_scConsistent_iff (hrf : G.RfAvoidsPure) : G.erasePure.SCConsistent ↔ G.SCConsistent :=
   G.erase_scConsistent_iff (fun _ h => h) hrf
 
-/-- **Theorem 10c** (C34: "the required property is `EventConsistent(G) ↔
-EventConsistent(erasePure(G))`"; `OB-C26`): under the premises of C34, that no erased marker is an
-endpoint of an `rf` or `mo` edge, `EventConsistent` holds on the graph exactly when it holds on its
-erasure. The absence of `sw` edges on the markers is derived (`sw_not_pure`). Proved, not posed. -/
+/-- **Theorem 10c** (C34; `OB-C26`): under the premises of C34, that no erased marker is an endpoint
+of an `rf` or `mo` edge, `EventConsistent` holds on the graph exactly when it holds on its erasure.
+The absence of `sw` edges on the markers is derived (`sw_not_pure`). Proved, not posed. -/
 theorem erasePure_consistent_iff (hrf : G.RfAvoidsPure) (hmo : G.MoAvoidsPure) : G.erasePure.EventConsistent ↔ G.EventConsistent :=
   and_congr (erasePure_rfWF_iff hrf) (and_congr (erasePure_moTotal_iff hmo)
     (and_congr (erasePure_rmwAtomic_iff hrf hmo) (and_congr (erasePure_coherence_iff hrf hmo)

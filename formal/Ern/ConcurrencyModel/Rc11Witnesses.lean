@@ -251,9 +251,8 @@ theorem ga_check (f : Bool) : (Ga f).Check := by cases f <;> decide +kernel
 /-- `Ga` is a graph of the fragment. -/
 theorem ga_frag (f : Bool) : (Ga f).toGraph.Frag := (Ga f).frag (ga_check f)
 
-/-- **(a)**, RC11 side (C34: "Inclusion of executions consistent with the **published** `rc11.cat`
-model is **not** an expected comparison property"): `Ga` is consistent for the published
-`rc11.cat` and inconsistent for RC11 amended, by its check `SC` alone. -/
+/-- **(a)**, RC11 side (C34): `Ga` is consistent for the published `rc11.cat` and inconsistent for
+RC11 amended, by its check `SC` alone. -/
 theorem ga_rc11 (f : Bool) : (Ga f).toGraph.ConsistentPub ∧ ¬ (Ga f).toGraph.ConsistentAm ∧
     ¬ (Ga f).toGraph.SCCheck (Ga f).toGraph.scbAm := by
   cases f <;> decide +kernel
@@ -301,8 +300,7 @@ theorem gc_rc11 (f : Bool) : ¬ (Gc f).toGraph.Coherence1 ∧ (Gc f).toGraph.Coh
     ¬ (Gc f).toGraph.ConsistentPub ∧ ¬ (Gc f).toGraph.ConsistentAm := by
   cases f <;> decide +kernel
 
-/-- **(c)**, ERN side: the projection of `Gc` satisfies `EventConsistent` (C48: "Ordinary atomic
-stores, including same-thread non-RMW stores, do **not** extend the sequence"). -/
+/-- **(c)**, ERN side: the projection of `Gc` satisfies `EventConsistent` (C48). -/
 theorem gc_proj (f : Bool) : ((Gc f).toGraph.proj (gc_frag f)).EventConsistent := by
   cases f <;> decide +kernel
 

@@ -3,8 +3,7 @@ import Ern.ConcurrencyModel.EventGraph
 /-!
 # Theorem 10e: RC11 on the fence-free fragment, an object of comparison (C34; `OB-C23`, `OB-C26`)
 
-The definitions of this module are **objects of comparison, not rules of ERN** (C34: RC11 "is a
-**comparative reference**, not an adopted normative definition of ERN").
+The definitions of this module are **objects of comparison, not rules of ERN** (C34).
 
 Sources:
 

@@ -3,9 +3,9 @@
 
 One entry per label of the row "exported" of the table "Obligation labels" of `formal/DESIGN.md`,
 and one for layout and ABI. The labels and their clauses are those of the table of external
-contracts of `specs/ERN_Concurrency_Model_Specification_v0.md` ("External Contracts and Proof
-Boundaries"). Each entry identifies the parts of the obligation by the requirement they cover and
-gives the status of each part, with the criteria of `formal/DESIGN.md`:
+contracts of `specs/ERN_Concurrency_Model_Specification_v0.md`. Each entry identifies the parts of
+the obligation by the requirement they cover and gives the status of each part, with the criteria of
+`formal/DESIGN.md`:
 
 * **stated**: a Lean predicate or hypothesis expresses the part, the theorems that rely on it carry
   it as a hypothesis, and its documentation cites the clause and the label;
@@ -154,9 +154,9 @@ Results (abstract part, C29): `Events.Graph.erase_hb_iff` (10b), `Events.Graph.e
 * Presence of an event for a step with a classified access (C26). **Stated**: `CorrQ4`, a
   correspondence premise, not a condition of the safe trace (C51). Carried by `pair_covered`
   (14c.6) and `atomic_covered`; it is not a premise of `no_race`. Outside this part: it is not the
-  coverage of C29 (the part "Coverage of physical accesses" below): it does not say that the event
-  carries an access, nor its byte footprint, and says nothing of the accesses of compound steps or
-  of failed attempts.
+  coverage of C29 (the part on the coverage of physical accesses, below): it does not say that the
+  event carries an access, nor its byte footprint, and says nothing of the accesses of compound
+  steps or of failed attempts.
 * Authority and footprint at the grain of leaves: the leaf, kind and atomicity of each conflicting
   access event are those of an access of its step (Q2). **Stated**: `CorrQ2`. Carried by
   `no_race`.

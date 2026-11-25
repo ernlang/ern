@@ -21,12 +21,12 @@ other than the `v_n` writes the value `7`. So the finiteness condition of statem
 not exclude an infinite sequence of RMWs reading one another with no origin.
 
 What it does not show: it is a declarative graph, with no initial write and no creation of
-contexts. It violates the finite causal past that C34 requires of an admissible graph ("an infinite
-backward `rf` chain"; `witness_g1` of `EventFinitePastWitnesses`): it is not an admissible graph, and
-no ERN execution has it. On admissible graphs the interval reading and the chains give the same
-members (`rsMember_iff_chain_fcp`). Conjunct 2 requires `mo` to be a
-strict total order of the modifications of the unit, the represented initial write included as one
-of them; it does not require an initial write to exist, and this graph has none.
+contexts. It violates the finite causal past that C34 requires of an admissible graph (`witness_g1`
+of `EventFinitePastWitnesses`): it is not an admissible graph, and no ERN execution has it. On
+admissible graphs the interval reading and the chains give the same members
+(`rsMember_iff_chain_fcp`). Conjunct 2 requires `mo` to be a strict total order of the modifications
+of the unit, the represented initial write included as one of them; it does not require an initial
+write to exist, and this graph has none.
 -/
 
 namespace Ern.ConcurrencyModel.Events

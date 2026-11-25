@@ -250,11 +250,10 @@ theorem lstep_base {ks : KShared} {L : MutexLayout} {lbl : Label}
     · exact opStepC_base hfr hk
     · rw [e]
 
-/-- **Theorem 3** (C3: "The initial context contains the base frame of Spec 1, which never
-exits"): along every run from the initial state of Spec 1 §47 (one context, empty registries),
-the bottom of the local stack of context 0 stays the base frame 0, under `DDSound` (Spec 1 §80)
-and well-formed statics (Spec 1 §47). Fragment: every run of the labelled step relation, without
-trace restriction. -/
+/-- **Theorem 3** (C3): along every run from the initial state of Spec 1 §47 (one context, empty
+registries), the bottom of the local stack of context 0 stays the base frame 0, under `DDSound`
+(Spec 1 §80) and well-formed statics (Spec 1 §47). Fragment: every run of the labelled step
+relation, without trace restriction. -/
 theorem base_frame_run {ks : KShared} {L : MutexLayout} {statics : Statics} {lbls : List Label}
     {st' : SC × SyncReg × ArenaReg} (hdd : DDSound ks.toK) (hst : StaticsOK statics)
     (h : LRun ks L (SC.ofS3 (S3.init statics), [], []) lbls st') :

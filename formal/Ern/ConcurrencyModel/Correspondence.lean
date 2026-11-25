@@ -279,12 +279,11 @@ theorem hb_of_po {E C U V S : Type} {G : Events.Graph E C U V S} {a b : E} (h : 
     G.HB a b :=
   .single (.inl h)
 
-/-- **Theorem 12f**, composition (C46: "When the event-model mapping has also established
-`po(e1,r)`, the protocol requirement `hb(r,e2)` implies `hb(e1,e2)` by transitivity"; C33;
-`OB-C25`): for steps `i ≤ r < j` with `r` a step of the context of `i`, their events `a`, `b`,
-and any event `d` (in particular the event of step `j`): `a = b` or `po(a, b)`; and if `hb(b, d)`
-(`HandoffOrdered`), then `hb(a, d)`, and `(a, d)` is not a race. A composition statement: it assumes `HandoffOrdered` and does not establish it. When
-`r = i` the hypothesis is `hb(a, d)` itself: no exemption (C46). -/
+/-- **Theorem 12f**, composition (C46; C33; `OB-C25`): for steps `i ≤ r < j` with `r` a step of the
+context of `i`, their events `a`, `b`, and any event `d` (in particular the event of step `j`):
+`a = b` or `po(a, b)`; and if `hb(b, d)` (`HandoffOrdered`), then `hb(a, d)`, and `(a, d)` is not a
+race. A composition statement: it assumes `HandoffOrdered` and does not establish it. When `r = i`
+the hypothesis is `hb(a, d)` itself: no exemption (C46). -/
 theorem handoff_compose {E U V S : Type} {G : Events.Graph E Nat U V S}
     {σ : Nat → SC × SyncReg × ArenaReg} {lbls : List Label} {K : StepEvents E}
     (hK : Corresponds G σ lbls K) {i r j : Nat} (hir : i ≤ r) (hrj : r < j)
@@ -335,11 +334,8 @@ theorem encapRun_C_mono {ks : KShared} {L : MutexLayout} {σ : Nat → SC × Syn
     · exact Nat.le_trans (ih (by omega) (by omega)) (lstep_life (hr j (by omega)).2 0).1
     · subst h; exact Nat.le_refl _
 
-/-- **Theorem 13a** (C47: "the creator's authority-yield loss marker precedes its `spawn`
-synchronization event within the parent context; the latter `sw`-precedes the child's `start(c)`
-marker"; C32.2: "the parent's `spawn(c)` event `sw`-precedes the child's `start(c)` event, with all
-prior parent events and subsequent child events related through `po`"; `OB-C11`): let `s` be the
-step that creates `c`, with event `es` and the marker `start(c)` = `x`.
+/-- **Theorem 13a** (C47; C32.2; `OB-C11`): let `s` be the step that creates `c`, with event `es`
+and the marker `start(c)` = `x`.
 
 1. Trace fact: every step of `c` follows `s` (before `s`, `c` is not a context).
 2. The event of every step `p ≤ s` of the creator is `hb`-before the event of every step of `c`:
@@ -408,11 +404,8 @@ theorem lstep_join {ks : KShared} {L : MutexLayout} {st st' : SC × SyncReg × A
   cases h with
   | join hj => exact hj
 
-/-- **Theorem 13b** (C47: "every earlier event of the terminating context is `po`-before
-`complete(c)`; a successful `join(c)` in another context is the target of `sw` from that
-`complete(c)` event. The `join` event is placed in the caller's `po` before subsequent
-operations"; C32.3; `OB-C11`): let `q` be a step `join(d)` of a context `c`, with event `eq`, and
-the marker `complete(d)` = `x`.
+/-- **Theorem 13b** (C47; C32.3; `OB-C11`): let `q` be a step `join(d)` of a context `c`, with event
+`eq`, and the marker `complete(d)` = `x`.
 
 1. Trace facts: some step `t < q` is `terminate(d)`, and no step of `d` follows it.
 2. The event of every step of `d` is `hb`-before `eq` and the event of every step of `c` after
