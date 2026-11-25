@@ -493,14 +493,13 @@ itself the holder or owner of an authority or allocated resource.
   (Spec 1 §78): no leaf.
 
 The datum `pm` (`ProviderMeta`) represents, for each `alloc` step, the leaves that its accesses to
-the metadata of the provider may write. The specification does not fix it: C22.4 evaluates the
-restriction against the leaves actually affected, physical metadata accesses included, without
-saying which leaves those accesses write, and Spec 1 §81 leaves the representation of library
-metadata open. It may depend on the state before the step, on the context that executes it and on
-its arguments, and it is not bounded by the leaves of the provider (Spec 1 §71.2 requires rights
-over the provider, not that its metadata lie in its leaves). That the datum covers the actual
-physical accesses of the provider is an open part of `OB-C20` (C27–C29, C50): no write of provider
-metadata is represented by the concrete machine. -/
+the metadata of the provider may write. The specification does not fix it: C22.4 does not say which
+leaves are written by the physical metadata accesses that it takes into account, and Spec 1 §81
+leaves the representation of library metadata open. It may depend on the state before the step, on
+the context that executes it and on its arguments, and it is not bounded by the leaves of the
+provider (Spec 1 §71.2 requires rights over the provider, not that its metadata lie in its leaves).
+That the datum covers the actual physical accesses of the provider is an open part of `OB-C20`
+(C27–C29, C50): no write of provider metadata is represented by the concrete machine. -/
 def ActualFootprint (pm : ProviderMeta) (L : MutexLayout) (st : SC × SyncReg × ArenaReg) :
     Label → Nat → Prop
   | .kernel c (.alloc pr ow ls), l => pm st c pr ow ls l = true ∨ l = ow ∨ st.1.P.length ≤ l

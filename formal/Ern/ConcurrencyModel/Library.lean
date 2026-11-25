@@ -272,8 +272,9 @@ def mutexOf (s : SC) (g : Nat) : Option Nat :=
 
 /-- Preconditions of `newMutex(guarded)` executed by `c` (C13.1–C13.11), the arena registry
 `ar` being the other registry of live administrations (Spec 1 §56). The interface and realization
-obligations of C13 (C13.3, C13.6, initial physical controller state) are not represented: they lie
-outside the authority-only state `S_C` (C13). -/
+obligations of C13 (C13, paragraph on these obligations) are not represented: those attached to
+C13.3 and C13.6, and the one on the initial physical controller state. The items C13.3 and C13.6
+themselves enter only as the preconditions `control` and `sharedMutable`. -/
 structure NewMutexPre (k : K) (L : MutexLayout) (ar : ArenaReg) (s : SC) (reg : SyncReg)
     (c g : Nat) : Prop where
   /-- C13.1: `guarded` is active, of own mode `Modify`, and held by a usable place. -/

@@ -4,8 +4,8 @@ import Ern.ConcurrencyModel.EventErasure
 # Theorem 10, complement: finite causal past (C26, C29, C34, C48; `OB-C23`)
 
 This module defines the finite causal past of C34, `PrefixFinite((po ∪ sw ∪ rf)⁺)`
-(`FiniteCausalPast`), apart from the seven conjuncts of `EventConsistent`. The verification targets
-of C34:
+(`FiniteCausalPast`), a definition distinct from `EventConsistent`: it is not one of its seven
+conjuncts. The verification targets of C34:
 
 * 10f: every graph whose type of events is finite has a finite causal past (`finiteCausalPast_of_finite`);
 * 10g: under conjuncts 1 to 3 and a finite causal past, membership in the release sequence (retained

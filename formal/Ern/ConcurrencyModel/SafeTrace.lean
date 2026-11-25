@@ -42,7 +42,8 @@ Formalization hypotheses (retained readings, not rules of the specification):
   correspondence does not say which step emits them;
 * reading 9: the storage identity of each access event is data of the correspondence; an initial
   write (a write of `G` that is the event of no step) is the construction write of its storage;
-* reading 10: the order that C51 item 2(d) requires is `hb` in one direction or the other;
+* reading 10: the branch of C51 item 2(d) on the order by a synchronization mechanism is read as
+  `hb` in one direction or the other (`SyncOrdered`);
 * reading 11: the obligation `LockOrder` is its edge: when the event of an `acquire(e)` reads by
   `rf` the publication of an `unlock(e)` or a `resetLock(e)`, that publication is `hb`-before it;
   delegated grants are not covered;

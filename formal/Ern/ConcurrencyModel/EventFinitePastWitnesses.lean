@@ -4,16 +4,21 @@ import Ern.ConcurrencyModel.EventInfinite
 /-!
 # Witnesses G1–G4: infinite graphs and the finite causal past (C34; `OB-C23`)
 
-The witnesses that the verification targets of C34 call for. Each witness is an infinite graph.
+G1 and G2 are the two witnesses that the verification targets of C34 call for; the part of C34
+that motivates G3 and G4 is given with each. Each witness is an infinite graph.
 
-* G1: the infinite witness of `EventInfinite` (an `rf` chain of RMWs with no origin) satisfies the
-  seven conjuncts and has no finite causal past (C34).
-* G2: a context writes `x` once; another writes `x` without end; `mo` puts the endless writes first.
-  `EventConsistent`, finite causal past, `mo` not prefix-finite, no race (C34).
-* G3: contexts `c_n`, each started by `c_{n+1}`: `EventConsistent`, `(po ∪ rf)⁺` prefix-finite, no
-  finite causal past, through `sw` alone (C34).
-* G4: infinitely many pure authority markers, then an atomic write: `G` and `erasePure(G)` are
-  `EventConsistent`; `G` has no finite causal past, `erasePure(G)` has one (C34).
+* G1 (C34, verification targets): the infinite witness of `EventInfinite` (an `rf` chain of RMWs
+  with no origin) satisfies the seven conjuncts and has no finite causal past.
+* G2 (C34, verification targets): a context writes `x` once; another writes `x` without end; `mo`
+  puts the endless writes first. `EventConsistent`, finite causal past, `mo` not prefix-finite, no
+  race.
+* G3 (C34, paragraph on the finite causal past, which names this case): contexts `c_n`, each
+  started by `c_{n+1}`: `EventConsistent`, `(po ∪ rf)⁺` prefix-finite, no finite causal past,
+  through `sw` alone.
+* G4 (C34, verification targets, erasure target): infinitely many pure authority markers, then an
+  atomic write: `G` and `erasePure(G)` are `EventConsistent`; `G` has no finite causal past,
+  `erasePure(G)` has one. No witness is called for here: G4 refutes the converse of theorem 10i
+  (`erasePure_finiteCausalPast`), a converse that C34 does not claim.
 -/
 
 namespace Ern.ConcurrencyModel.Events
