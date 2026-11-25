@@ -1,9 +1,10 @@
 import Ern.Corpus.ConcurrencyMutex
+import Ern.ConcurrencyModel.WitnessCapacity
 
 /-!
 # Corpus of the concurrency model: steps excluded or admitted by encapsulation (test module)
 
-Cases `R25`–`R45` of the concurrency model
+Cases `R25`–`R45` and `R59` of the concurrency model
 (`specs/ERN_Concurrency_Model_Specification_v0.md`),
 replayed on the concurrent authority machine (`LStep`) and on the step condition of
 `EncapsulatedTrace` (`EncapStep`: `RestrictedStep` for C22.1–C22.3 and C22.5,
@@ -12,7 +13,9 @@ admitted is `ok` (`LStep`) from a state reached by an `EncapsulatedTrace` from t
 of Spec 1 §47; an excluded step states the negation of the conjunct of `EncapStep` that carries the
 requirement of C22 named by its docstring, and hence `¬ EncapStep`; an admitted step states
 `EncapStep`. After an excluded step, the following steps of a case have a machine verdict only.
-Other verdicts are outcomes of the relation of the step. Each docstring gives the situation, the
+Other verdicts are outcomes of the relation of the step; `R59` also states effective modes,
+exercisability and the capability of contexts (C43) in a reached state, on the execution of witness
+W13 (`WitnessCapacity`). Each docstring gives the situation, the
 expected verdict with its clause, the obtained verdict and the twin. The reference mutex and its
 variants are those of `Ern.Corpus.Concurrency` (`ConcurrencyMutex`). This is a test module: no
 model module imports it.
@@ -830,5 +833,23 @@ theorem R45 : EncapsulatedTrace pm kMutex mutexLayout (m0, [], []) sharedMutexL 
       (m4.set (m4.view 1), regFree, []) :=
   ⟨sharedMutex_encap, .kernel ⟨_, .ok (by decide), rfl⟩, by decide_ctl, .kernel ⟨_, .ok (by decide), rfl⟩,
     by decide_ctl⟩
+
+/-! ## R59: capability attributed in the requested mode (C43) -/
+
+/-- **R59** (eight steps `ok`, admitted). The execution of witness W13 (`WitnessCapacity`): in
+frame 0, `a := derive(root_X, Modify, {X})`, `store(a, p)`, `o1 := derive(root_p, Observe, {p})`,
+`o2 := derive(root_p, Observe, {p})`, `spawn c1` yielding `o1`, `spawn c2` yielding `o2`; then
+`c1 : read3(a, X)` and `c2 : read3(a, X)`. Expected (Spec 1 §43, O8, O9; C43, third paragraph):
+every step `ok`; after the two `spawn`, the effective mode of `a` on `X` is `Modify`, `a` is
+exercisable in `Observe` and not in `Modify` from the current frame of `c1` and from that of `c2`,
+and `cap(c1, X) = cap(c2, X) = Observe`, not `Modify`; the execution is an `EncapsulatedTrace`.
+Obtained: the same. No twin. -/
+theorem R59 : EncapsulatedTrace pm kMutex mutexLayout (w13σ 0) w13L (w13σ 8) ∧
+    effective (w13σ 6).1.flat 2 0 = some .modify ∧
+    ((w13σ 6).1.view 1).ExercisableAt 2 .observe ∧ ¬ ((w13σ 6).1.view 1).ExercisableAt 2 .modify ∧
+    ((w13σ 6).1.view 2).ExercisableAt 2 .observe ∧ ¬ ((w13σ 6).1.view 2).ExercisableAt 2 .modify ∧
+    cap (w13σ 6).1 (w13σ 6).2.1 1 0 = some .observe ∧
+    cap (w13σ 6).1 (w13σ 6).2.1 2 0 = some .observe :=
+  ⟨w13_trace, by decide, by decide, by decide, by decide, by decide, by decide, by decide⟩
 
 end Ern.Corpus.Concurrency
