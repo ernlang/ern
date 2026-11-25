@@ -13,7 +13,7 @@ the conditional composition theorem, proven by cases on the conflicting pair.
   criterion of C43 (`PairHandoff`), the agreement of the atomic event of a step with that step
   (`StepOrders`), the units of the events of steps (`UnitLeaf`), the conditions (a)–(f) of C51
   item 2 and `SafeConcurrentTrace`, the correspondence premises Q1–Q3 (C52) and Q4 (C26,
-  `CorrQ4`), and the hypothesis on the controller leaf (`CtlAtomic`).
+  `CorrQ4`), and the premise on the controller leaf (`CtlAtomic`).
 * Under Q4 and `UnitLeaf` (C26, C29, C38): a step with a classified access to an `Atomic` leaf of
   nonzero size has an event that designates a unit of nonempty byte range (`atomic_covered`).
 * 14a (C51): within one context `hb` and `po` coincide (`hb_iff_po`); ordering across distinct
@@ -47,17 +47,21 @@ Formalization hypotheses (retained readings, not rules of the specification):
 * reading 11: the obligation `LockOrder` is its edge: when the event of an `acquire(e)` reads by
   `rf` the publication of an `unlock(e)` or a `resetLock(e)`, that publication is `hb`-before it;
   delegated grants are not covered;
-* reading 12: where a statement says so, the controller leaf has the class `Atomic(size, align)`,
-  `size ≠ 0`, at every `newMutex`, `acquire`, `unlock` and `resetLock` step (`CtlAtomic`);
-* reading 13: an access pair is exclusive (C44) when the capability of the context of the earlier
-  access on the leaf, `cap(·,c′,l)` at the step of that access, is incompatible, under the `Modify`
-  criterion of C43, with the mode used by the later access (C45; `usedMode`); the capability held by
-  the context of the later access is not compared;
 * reading 14: an initial write (reading 9) with an event of a step `hb`-before it is not atomic:
   fragment F represents no atomic access outside the steps. A condition of the fragment, not a
   rule of C31, and not a proof that an initial write is the physical initial contents of its
   storage; an atomic access performed during the execution by a phase that is not a step is
   outside the fragment (`OB-C20`).
+
+Readings 12 and 13 are stated by the specification:
+
+* reading 12 (C48, first paragraph): `CtlAtomic`, which reads the class of the controller leaf at
+  each `newMutex`, `acquire`, `unlock` or `resetLock` step, a premise of the statements that use it;
+* reading 13 (C44, first paragraph): `ExclusivePair`, which takes the `Modify` criterion of C43
+  (`IncompatModify`) and, for the second access of the pair, `usedMode` (C45). In
+  `SafeConcurrentTrace`, `ExclusivePair` restricts `HandoffOrdered` (leaves that are not
+  `Confined`) and `SyncOrdered` (`Synchronized` leaves); the pairs on a `Confined` leaf are under
+  `ConfinedHandoff`, with the `Confined` criterion.
 -/
 
 namespace Ern.ConcurrencyModel
@@ -498,9 +502,9 @@ def ctlLeafAt (L : MutexLayout) (st : SC × SyncReg × ArenaReg) : Label → Opt
   | .acquire _ i | .unlock _ i | .resetLock _ i => ctlOf L st i
   | _ => none
 
-/-- Reading 12 (a fragment hypothesis, C13.6 open): at every `newMutex`, `acquire`, `unlock` or
-`resetLock` step, the controller leaf has the class `Atomic(size, align)` with `size ≠ 0`
-(C35, C38). -/
+/-- Reading 12 (C48, first paragraph; C35, C38): at every `newMutex`, `acquire`, `unlock` or
+`resetLock` step, the controller leaf has the class `Atomic(size, align)` with `size ≠ 0`. A premise
+of the statements that use it: `NewMutexPre` does not require it. -/
 def CtlAtomic (ks : KShared) (L : MutexLayout) (σ : Nat → SC × SyncReg × ArenaReg)
     (lbls : List Label) : Prop :=
   ∀ k (h : k < lbls.length) ctl, ctlLeafAt L (σ k) lbls[k] = some ctl →
@@ -722,7 +726,7 @@ theorem atomicLeaf_of {l sz al : Nat} (h : ks.SharedDiscipline l = some (.atomic
   unfold AtomicLeaf; rw [h]; rfl
 
 /-- The classified accesses of an admitted step (11e) that does not use `Modify` for `x`, under
-the rule of 11f for the step and the hypothesis of reading 12 for its controller leaf: `x` is an
+the rule of 11f for the step and the premise of reading 12 for its controller leaf: `x` is an
 atomic access of an `Atomic` leaf, a non-atomic read of a leaf that is not `Atomic`, or a
 non-atomic access of a `Synchronized` or `Confined` leaf (C35–C39, C42; C48 with reading 12). -/
 theorem access_class {lbl : Label} {st st' : SC × SyncReg × ArenaReg} {acc : List LeafAccess}
@@ -822,7 +826,7 @@ theorem access_class {lbl : Label} {st st' : SC × SyncReg × ArenaReg} {acc : L
   | _ => simp only [classify, Option.some.injEq] at hc; subst hc; simp at hx
 
 /-- **Theorem 14c.5** (C35, C42, C43, C44; C51 item 2(b); readings 12, 13), exhaustiveness: in a
-`SafeConcurrentTrace` from the initial state of Spec 1 §47, under `DDSound` and the hypothesis of
+`SafeConcurrentTrace` from the initial state of Spec 1 §47, under `DDSound` and the premise of
 reading 12, a non-exclusive pair in conflict is on a `Synchronized` or `Confined` leaf. A pair that
 is not exclusive has no step that uses `Modify` for its access: the access of a step is covered by
 the capability of its context (12a; `cap_of_access`, `cap_of_usesModifyAt`). The rest uses the
@@ -917,7 +921,7 @@ theorem isAcc_of_range {E C U V S : Type} {G : Events.Graph E C U V S} {e : E} {
 /-- **Theorem 14d**, conditional composition theorem on fragment F (C52; `OB-C06`). Proven on
 fragment F only, not as a universal proof of C52: `DDSound`, well-formed statics, an execution from
 the initial state of Spec 1 §47 with its graph and the partial correspondence K1–K4, the data of
-reading 9, the correspondence premises Q1–Q3 and the hypothesis of reading 12. Then no pair of
+reading 9, the correspondence premises Q1–Q3 and the premise of reading 12. Then no pair of
 events of `G` is a race (C33).
 
 Pairs of distinct storage identities go through Q3 and 14a.2; pairs of one identity through Q2 and

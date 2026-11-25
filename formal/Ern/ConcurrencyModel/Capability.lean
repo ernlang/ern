@@ -19,9 +19,10 @@ is involved.
 * 12b: L2, state form (C45; `OB-C18`): no reached state gives two distinct contexts incompatible
   capabilities on a leaf under the `Modify` criterion (`cap_l2`).
 
-Formalization hypothesis (reading 8 of C43): the live frames of a context are the frames of its
-stack; a "suspended" frame is a frame of the stack other than the current one; `cap` covers every
-frame of the stack.
+Reading 8 is stated by C43 (second paragraph); the attribution in a mode that `CapAttr` defines is
+stated by C43 (third paragraph). `CapAttr` reads the frames of `c` as the frames of its stack
+`s.stk c`, its current frame and its suspended frames alike, so `cap` covers every frame of the
+stack.
 
 Fragment of the trace statements: `DDSound` (Spec 1 §80), well-formed statics (Spec 1 §47), an
 `EncapsulatedTrace` (C51.1) from the initial state of Spec 1 §47.

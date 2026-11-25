@@ -8,7 +8,7 @@ Cases `R49`–`R58` of the concurrency model
 each execution is an `EncapsulatedTrace` with named states from the initial state of Spec 1 §47
 (`EncapRun`), with a hand-written graph of fragment F, its correspondence (K1–K4) and the data of
 reading 9. A trace that is not safe states every condition of `SafeConcurrentTrace`, the one that
-fails being negated, the correspondence premises Q1–Q3 (C52) and Q4 (C26), the hypothesis of
+fails being negated, the correspondence premises Q1–Q3 (C52) and Q4 (C26), the premise of
 reading 12 (`CtlAtomic`), and that no pair of events races (C33): each case isolates one
 condition. A safe trace states `SafeConcurrentTrace`, Q1–Q4, reading 12, and applies 14d
 (`no_race`). Each docstring gives the expected verdict with its clause, the obtained verdict and
