@@ -59,11 +59,9 @@ theorem witness_7a : opStepC kFrames.toK (.derive 2 [2] .modify) 0 f4 (.ok f5) �
   have hp : SpawnValPre kFrames.toK f5 0 [4] [(none, 0)] [(1, 4)] := by decide
   ⟨⟨_, .ok (by decide), rfl⟩, hp, .spawnVal (.ok hp)⟩
 
-/-- C4 ("An active `Modify` derivative transferred to the child continues to suppress conflicting
-effective exercise through its origin in the creator, by Spec 1 §43"), C9: before the derivation
-`root_p` has effective mode `Modify` on `p` for context 0; after the composite of `witness_7a` yields
-`a := derive(root_p, Modify, {p})` to context 1, `a` is active and `root_p` has no effective mode
-on `p` for context 0 (`SC.effective_view`). -/
+/-- C4, C9: before the derivation `root_p` has effective mode `Modify` on `p` for context 0; after
+the composite of `witness_7a` yields `a := derive(root_p, Modify, {p})` to context 1, `a` is active
+and `root_p` has no effective mode on `p` for context 0 (`SC.effective_view`). -/
 theorem witness_derivative_restricts : effective (f4.view 0) 2 2 = some .modify ∧
     (spawnValEff f5 0 [4] [(none, 0)] [(1, 4)]).flat.Active 4 ∧
     effective ((spawnValEff f5 0 [4] [(none, 0)] [(1, 4)]).view 0) 2 2 = none := by

@@ -7,8 +7,8 @@ import Ern.ConcurrencyModel.SequentialConservativity
 Each witness states its situation, its expected outcome and the clause that gives it. States are
 built from the initial state of Spec 1 §47 by `ok` steps. A rejection states its single cause: the named condition fails and
 every other precondition of the clause holds in the same state; its positive twin is cited in its
-docstring. Outcome classes are those of `Outcomes` (theorem 7, and `NewMutexOutcome` for C13,
-"Outcome").
+docstring. Outcome classes are those of `Outcomes` (theorem 7, and `NewMutexOutcome` for the outcome
+paragraph of C13).
 -/
 
 namespace Ern.ConcurrencyModel
@@ -86,11 +86,10 @@ theorem mutex_encapsulated : EncapsulatedTrace pm kMutex mutexLayout (m0, [], []
   .cons ⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩
     (.unlock (st' := (m6, regFree)) mutex_steps.2.2.2.2.2.2) .nil
 
-/-- C22 ("It is not implied by structural exclusivity I1 alone"): from the constructed mutex,
-context 1 takes a raw `deriveSync(guarded)`, `ok` under the library instantiation of
-`SyncAuthorized` (C15) and excluded by C22.2 (`RestrictedStep`). The resulting state satisfies
-`I1` (Spec 1 §50) while the entry records `grant = none` and an active descendant covers `T`:
-`GrantDiscipline` fails. -/
+/-- C22: from the constructed mutex, context 1 takes a raw `deriveSync(guarded)`, `ok` under the
+library instantiation of `SyncAuthorized` (C15) and excluded by C22.2 (`RestrictedStep`). The
+resulting state satisfies `I1` (Spec 1 §50) while the entry records `grant = none` and an active
+descendant covers `T`: `GrantDiscipline` fails. -/
 theorem grantDiscipline_not_of_i1 :
     DeriveSyncStep (libKC kMutex mutexLayout) regFree m4 1 2 (.ok m5) ∧
     ¬ RestrictedStep mutexLayout (m4, regFree, []) (.deriveSync 1 2) ∧ I1 m5.flat ∧
@@ -158,9 +157,9 @@ theorem witness_1c : TermStep kMutex.toK m4 1 (.ok mJ) ∧ JoinOkClass mJ 0 1 �
     LStep kMutex mutexLayout (.join 0 1) (mJ, regFree, []) (mJ, regFree, []) :=
   ⟨(.ok (by decide)), by unfold JoinOkClass; decide, .join (.ok (by decide) (by decide))⟩
 
-/-- **Witness 1d, C8, "Requesting-context validity"** (`reject`): `join` of the terminated context
-1, requested by context 1 itself after its termination. Single cause: the requester is not live;
-the target has the completed lifecycle state, so a live requester obtains `ok`. No labelled step.
+/-- **Witness 1d, C8, condition on the requester** (`reject`): `join` of the terminated context 1,
+requested by context 1 itself after its termination. Single cause: the requester is not live; the
+target has the completed lifecycle state, so a live requester obtains `ok`. No labelled step.
 Positive twin: `witness_1c`. -/
 theorem witness_1d : ¬ mJ.Live 1 ∧ OptP (mJ.C[1]?) (fun x => x.life = .done) False ∧
     JoinReject mJ 1 1 ∧ JoinStep mJ 1 1 .reject ∧
@@ -168,9 +167,9 @@ theorem witness_1d : ¬ mJ.Live 1 ∧ OptP (mJ.C[1]?) (fun x => x.life = .done) 
   have hc : ¬ mJ.Live 1 := by decide
   ⟨hc, by decide, .inl hc, .deadRequester hc, fun _ h => hc (lstep_live h)⟩
 
-/-- **Witness 1e, C8, "Requesting-context validity"** (`reject`): `join` of the live context 2,
-requested by the terminated context 1. Single cause: the requester is not live; the target is
-live. No labelled step. Positive twin: the same target joined by the live context 0, legal and not
+/-- **Witness 1e, C8, condition on the requester** (`reject`): `join` of the live context 2,
+requested by the terminated context 1. Single cause: the requester is not live; the target is live.
+No labelled step. Positive twin: the same target joined by the live context 0, legal and not
 enabled, with no outcome. -/
 theorem witness_1e : SpawnStep mJ 0 [] [] (.ok mJ2) ∧ ¬ mJ2.Live 1 ∧
     OptP (mJ2.C[2]?) (fun x => x.life = .live) False ∧ JoinReject mJ2 1 2 ∧
@@ -280,10 +279,10 @@ theorem witness_3a : UnlockPre mutexLayout m5 regTaken 1 0 ∧
     .unlock (st' := (m6, regFree)) mutex_steps.2.2.2.2.2.2⟩
 
 /-- **Witness 3b** (C17, `reject`): the recorded grant 4 has become inactive by an ordinary `release`
-(O3; C18: "inherited legal release"). Single cause: the activity of C17.2 fails; the entry is live
-and records `grant = some 4`, the other conditions of O3 hold (derived, holder right, no active
-descendant, no anchor), and C17.4 holds before the step and in the prospective state. Positive
-twin: `witness_3a`. -/
+(O3; C18). Single cause: the activity of C17.2 fails; the entry is live and records
+`grant = some 4`, the other conditions of O3 hold (derived, holder right, no active descendant, no
+anchor), and C17.4 holds before the step and in the prospective state. Positive twin:
+`witness_3a`. -/
 theorem witness_3b : opStepC kMutex.toK (.release 4) 1 m5 (.ok m6) ∧
     (⟨2, some 4⟩ : SyncEntry).Live m6 ∧ ¬ (m6.view 1).Active 4 ∧
     OptP ((m6.view 1).A[4]?) (fun y => y.origin ≠ none) False ∧
@@ -437,9 +436,9 @@ theorem witness_2e : regFree[1]? = none ∧ AcquireReject mutexLayout m4 regFree
 
 /-! ## `newMutex` (C13)
 
-C13, "Outcome": `reject` when an applicable precondition fails, no `fail`
-(`NewMutexOutcome`). Each rejection also shows the absence of an `ok` step, `NewMutexOk` and
-`LStep` alike, with exactly the named precondition failing. -/
+C13, outcome paragraph: `reject` when an applicable precondition fails, no `fail`
+(`NewMutexOutcome`). Each rejection also shows the absence of an `ok` step, `NewMutexOk` and `LStep`
+alike, with exactly the named precondition failing. -/
 
 /-- **Witness 5a** (C13, `ok`): `newMutex(guarded)` by context 0 after `store(guarded, slot)`: the
 twelve preconditions C13.1–C13.11 hold (C13.11 through `root_M`, of effective mode `Modify` on

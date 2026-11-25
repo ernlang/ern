@@ -50,12 +50,11 @@ deriving DecidableEq, Repr
   leaf `l` (C35), `none` when it selects none. `K.SharedMutable` keeps its Spec 1 meaning (C35).
 * `CompositeContract region`: a separately established composite contract (C38) for a region that
   combines `SharedDiscipline` classes. It returns the declared within-step order of the region it
-  admits (C28: the contract "must determine the within-step `po` order of its actual access
-  events"; a step whose relative order the composite contract leaves undetermined is not
-  admitted), `none` when the region is not admitted. It receives neither the memory-order
-  annotation nor the kind of the step (C39: "A composite contract (C38) cannot override these
-  rules"). That the contract reads only the region and that the declared order is an enumeration
-  of the leaves of the region is a formalization hypothesis (reading 7, module `Atomic`). -/
+  admits (C28; a step whose relative order the composite contract leaves undetermined is not
+  admitted), `none` when the region is not admitted. It receives neither the memory-order annotation
+  nor the kind of the step (C39). That the contract reads only the region and that the declared
+  order is an enumeration of the leaves of the region is a formalization hypothesis (reading 7,
+  module `Atomic`). -/
 structure KShared extends K where
   SharedDiscipline : Nat → Option Discipline
   CompositeContract : List Nat → Option (List Nat)

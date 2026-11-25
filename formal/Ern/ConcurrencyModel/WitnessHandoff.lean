@@ -233,11 +233,9 @@ def w3G : ListGraph 7 Nat Nat Nat Unit where
 /-- The correspondence of W3. -/
 def w3K : StepEvents (Fin 7) := listK [0, 1, 2, 4, 5, 6] [(1, 3)] []
 
-/-- **Witness W3** (C47, first paragraph: "A parent's operation executed after `spawn` is not
-ordered before a child's operation merely because the parent was the creator"; C46): the loss
-marker of the pair is `release(b)`, step 4 of `c0` (the capability of `c0` on `X` is `Modify` from
-step 3 to step 4, `none` after it); no `hb` from the write of `c0` to that of `c1`;
-`HandoffOrdered` is false; the writes race. -/
+/-- **Witness W3** (C47, first paragraph; C46): the loss marker of the pair is `release(b)`, step 4
+of `c0` (the capability of `c0` on `X` is `Modify` from step 3 to step 4, `none` after it); no `hb`
+from the write of `c0` to that of `c1`; `HandoffOrdered` is false; the writes race. -/
 theorem witness_w3 :
     w3σ 0 = (SC.ofS3 (S3.init xStatics), [], []) ∧ EncapRun pm kX mutexLayout w3σ w3L ∧
     Corresponds w3G.toGraph w3σ w3L w3K ∧ w3G.toGraph.EventConsistent ∧
@@ -380,10 +378,9 @@ def w5G : ListGraph 13 Nat Nat Nat Unit where
 /-- The correspondence of W5. -/
 def w5K : StepEvents (Fin 13) := listK [0, 1, 3, 4, 6, 7, 8, 9, 11, 12] [(1, 2), (2, 5)] [(1, 10)]
 
-/-- **Witness W5** (C47, third paragraph: "a successful join of an intermediate context does not
-imply completion of a surviving descendant"; C46): the loss marker of the pair is `release(a₂)`,
-step 5 of `c2`; no `hb` relates the two writes despite the successful `join(c1)`;
-`HandoffOrdered` is false; the writes race. -/
+/-- **Witness W5** (C47, third paragraph; C46): the loss marker of the pair is `release(a₂)`, step 5
+of `c2`; no `hb` relates the two writes despite the successful `join(c1)`; `HandoffOrdered` is
+false; the writes race. -/
 theorem witness_w5 :
     w5σ 0 = (SC.ofS3 (S3.init xStatics), [], []) ∧ EncapRun pm kX mutexLayout w5σ w5L ∧
     Corresponds w5G.toGraph w5σ w5L w5K ∧ w5G.toGraph.EventConsistent ∧
@@ -464,10 +461,9 @@ def w6G : ListGraph 16 Nat Nat Nat Unit where
 def w6K : StepEvents (Fin 16) :=
   listK [0, 1, 3, 4, 6, 7, 8, 10, 11, 12, 14, 15] [(1, 2), (2, 5)] [(2, 9), (1, 13)]
 
-/-- **Witness W6** (C47: "Correct reference reuse may require **transitive** joining"; twin of
-W5): `c2` terminates after `release(a₂)` and `c1` joins it before `release(a)`; the writes are
-ordered through `complete(c2)` to `join(c2)` and `complete(c1)` to `join(c1)`; the loss marker is
-`release(a₂)`, step 5; `HandoffOrdered` holds; no race. -/
+/-- **Witness W6** (C47; twin of W5): `c2` terminates after `release(a₂)` and `c1` joins it before
+`release(a)`; the writes are ordered through `complete(c2)` to `join(c2)` and `complete(c1)` to
+`join(c1)`; the loss marker is `release(a₂)`, step 5; `HandoffOrdered` holds; no race. -/
 theorem witness_w6 :
     w6σ 0 = (SC.ofS3 (S3.init xStatics), [], []) ∧ EncapRun pm kX mutexLayout w6σ w6L ∧
     Corresponds w6G.toGraph w6σ w6L w6K ∧ w6G.toGraph.EventConsistent ∧

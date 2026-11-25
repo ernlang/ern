@@ -219,12 +219,11 @@ def w8G (R : CtlOrders) : ListGraph 13 Nat Nat Nat Unit where
 /-- The correspondence of W8. -/
 def w8K : StepEvents (Fin 13) := listK [0, 1, 2, 3, 4, 6, 7, 8, 9, 10, 11, 12] [(1, 5)] []
 
-/-- **Witness W8** (C48, C49: "Recovery is **not automatically** a substitute for an acquire/release
-edge missing from an abandoned grant"; C18): under the reference triple, the `acquire` of `c0`
-reads the `resetLock`; `sw` is the edge from `spawn(c1)` to `start(c1)` and the edge from the
-`resetLock` to the `acquire`, alone; no edge leaves the `unlock`; no `hb` relates the two writes of
-`T`, which race; the loss marker is `unlock(e)` (step 7); `HandoffOrdered` is false; the recorded
-grant is `none` at the `resetLock`. -/
+/-- **Witness W8** (C48, C49; C18): under the reference triple, the `acquire` of `c0` reads the
+`resetLock`; `sw` is the edge from `spawn(c1)` to `start(c1)` and the edge from the `resetLock` to
+the `acquire`, alone; no edge leaves the `unlock`; no `hb` relates the two writes of `T`, which
+race; the loss marker is `unlock(e)` (step 7); `HandoffOrdered` is false; the recorded grant is
+`none` at the `resetLock`. -/
 theorem witness_w8 :
     w8σ 0 = (SC.ofS3 (S3.init mutexStatics), [], []) ∧ EncapRun pm kMutex mutexLayout w8σ w8L ∧
     Corresponds (w8G refOrders).toGraph w8σ w8L w8K ∧ (w8G refOrders).toGraph.EventConsistent ∧

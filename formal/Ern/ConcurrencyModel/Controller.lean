@@ -38,13 +38,10 @@ variable {pm : ProviderMeta}
 
 /-! ## 13c: `LockOrder`, direct form (C49, C48, C32.1) -/
 
-/-- **Theorem 13c** (C49: "the protected accesses in an earlier critical section of one mutex are
-`hb`-before conflicting protected accesses in a later critical section whose lock-acquisition event
-receives the preceding release"; C48: "An acquire-capable read/RMW which reads via `rf` from any
-member of this sequence synchronizes with the head release `h`"; C32.1; `OB-C04`): in every graph,
-if a release-capable publication `p` and an acquire-capable take `q` are on the same unit and `q`
-reads by `rf` a member of the release sequence of `p`, then `sw(p, q)`, and every event that is `p`
-or `po`-before `p` is `hb`-before every event that is `q` or `po`-after `q`. -/
+/-- **Theorem 13c** (C49; C48; C32.1; `OB-C04`): in every graph, if a release-capable publication
+`p` and an acquire-capable take `q` are on the same unit and `q` reads by `rf` a member of the
+release sequence of `p`, then `sw(p, q)`, and every event that is `p` or `po`-before `p` is
+`hb`-before every event that is `q` or `po`-after `q`. -/
 theorem lock_order_direct {E C U V S : Type} {G : Events.Graph E C U V S} {p q m : E} {u : U}
     (hp : G.RelCap p u) (hq : G.AcqCap q u) (hm : G.RSMember u p m) (hrf : G.rf m q) :
     G.SW p q ∧ ∀ a b, (a = p ∨ G.po a p) → (b = q ∨ G.po q b) → G.HB a b := by
@@ -156,9 +153,7 @@ C48, C49), stated part (`ExportedObligations`); the obligation is exported and r
 def CtlOrders.Legal (R : CtlOrders) : Prop :=
   RMWOrderOK R.acq ∧ StoreOrderOK R.rel ∧ StoreOrderOK R.reset
 
-/-- The reference triple (C48: "an acquire-capable memory order"; "an atomic release publication";
-"The reference successful recovery publishes the controller's available state by an atomic
-**`release` store**"): `(acquire, release, release)`. -/
+/-- The reference triple (C48): `(acquire, release, release)`. -/
 def refOrders : CtlOrders := ⟨.acquire, .release, .release⟩
 
 /-- An order with release semantics for a write (C32.1, C40): `release`, `acq_rel`, `seq_cst`. -/
@@ -207,11 +202,9 @@ def ctlAcc (x : Nat) (R : CtlOrders) (v₀ v₁ : Nat) : Label → Events.Acc Na
   | _ => .unit x (.write v₀)
 
 /-- The `sync` attribute of the event of a controller step under realization R, a realization
-hypothesis (C27: "An event may carry both `acc` and `sync`, notably a successful atomic controller
-operation used by the reference mutex"; C31, for the write of `newMutex`: "their inclusion in `mo`
-does not confer atomicity or `sw` on them"; C48; `OB-C05`): role `protocol` for `acquire`, `unlock`
-and `resetLock`; no `sync` for `newMutex`. Exported obligation `OB-C05` (C25, C41, C48, C49), stated
-part (`ExportedObligations`); the obligation is exported and remains open. -/
+hypothesis (C27; C31, for the write of `newMutex`; C48; `OB-C05`): role `protocol` for `acquire`,
+`unlock` and `resetLock`; no `sync` for `newMutex`. Exported obligation `OB-C05` (C25, C41, C48,
+C49), stated part (`ExportedObligations`); the obligation is exported and remains open. -/
 def ctlSync : Label → Option (Events.SyncRole Nat)
   | .acquire _ _ | .unlock _ _ | .resetLock _ _ => some .protocol
   | _ => none
@@ -266,11 +259,10 @@ theorem acquire_readOn (hR : Realizes G L σ lbls K i x R v₀ v₁) {k c j : Na
   · unfold Events.Graph.unitOf; rw [hacc]; rfl
   · exact ⟨.rmw, by unfold Events.Graph.kind?; rw [hacc]; rfl, trivial⟩
 
-/-- **Theorem 13d.3**, bridge (C31: "For a successful atomic RMW, its read component obtains the
-immediately preceding modification of its atomic location in `mo`"; C48): in every graph that
-satisfies R for entry `i` and unit `x` and the conjuncts 1 and 3 of `EventConsistent`, the event of
-an `acquire` controller step `k` has an `rf` source, and every `rf` source of it is the event of the
-last controller step before `k` in the trace. -/
+/-- **Theorem 13d.3**, bridge (C31; C48): in every graph that satisfies R for entry `i` and unit `x`
+and the conjuncts 1 and 3 of `EventConsistent`, the event of an `acquire` controller step `k` has an
+`rf` source, and every `rf` source of it is the event of the last controller step before `k` in the
+trace. -/
 theorem acquire_rf_source (hR : Realizes G L σ lbls K i x R v₀ v₁) (h1 : G.RfWF)
     (h3 : G.RmwAtomic) {k c j : Nat} (hl : lbls[k]? = some (.acquire c j))
     (hk : CtlStep L σ lbls i x k) {q : E} (hq : K.ev k = some q) :
@@ -330,11 +322,9 @@ theorem sw_ctl_iff (hR : Realizes G L σ lbls K i x R v₀ v₁) {k : Nat} {lbl 
   · rw [hsw] at h; cases lbl <;> simp [ctlSync] at h
   · rw [hsw] at h; cases lbl <;> simp [ctlSync] at h
 
-/-- **Theorem 13d.4**, synchronization (C48: "When a later acquiring RMW **directly reads** this
-release modification (`rf`), the protocol yields the requisite `sw`"; C49; C31: the initializing
-write is non-atomic, and "their inclusion in `mo` does not confer atomicity or `sw` on them"): in
-every graph that satisfies R, if the `rf` source of the event `q` of an `acquire` controller step is
-the event `w` of a controller step `k'`:
+/-- **Theorem 13d.4**, synchronization (C48; C49; C31, for the initializing write, which is
+non-atomic): in every graph that satisfies R, if the `rf` source of the event `q` of an `acquire`
+controller step is the event `w` of a controller step `k'`:
 
 * if `k'` is an `unlock` (a `resetLock`), `sw` relates `w` to `q` exactly when the order of the
   publication, `rel` (`reset`), is release-capable and `acq` is acquire-capable;
@@ -387,10 +377,9 @@ theorem acquire_sw_ref (hR : Realizes G L σ lbls K i x refOrders v₀ v₁) {k 
   · exact (hu c' j' h).2 ⟨.inl rfl, .inl rfl⟩
   · exact (hr c' j' h).2 ⟨.inl rfl, .inl rfl⟩
 
-/-- **Theorem 13d.5**, converse (C48; C49: "Any abstraction of the C48 mutex `sw` edge must respect
-interventions on the controller between the release and the acquisition"): if `rf` relates the
-event of a controller step `k'` to that of an `acquire` controller step `k`, then `k' < k` and no
-controller step lies strictly between them. -/
+/-- **Theorem 13d.5**, converse (C48; C49): if `rf` relates the event of a controller step `k'` to
+that of an `acquire` controller step `k`, then `k' < k` and no controller step lies strictly between
+them. -/
 theorem rf_no_between (hR : Realizes G L σ lbls K i x R v₀ v₁) (h1 : G.RfWF) (h3 : G.RmwAtomic)
     {k c j k' : Nat} (hl : lbls[k]? = some (.acquire c j)) (hk : CtlStep L σ lbls i x k) {q : E}
     (hq : K.ev k = some q) (hk' : CtlStep L σ lbls i x k') {w : E} (hw : K.ev k' = some w)
@@ -468,12 +457,11 @@ theorem lstep_newMutex {st st' : SC × SyncReg × ArenaReg} {c g : Nat}
   cases h with
   | newMutex hn => obtain ⟨-, rfl⟩ := hn; rfl
 
-/-- **Theorem 13d.2**, invariant (C13: "The library registers an initially available
-`SyncEntry`"; C16–C18; C48): along an execution in which the `newMutex` step `n` creates entry `i`
-with controller `x` and every later protocol step on `i` is taken while the controller is `x`, at
-every later state `k` the last controller step `w` before `k` exists, and the recorded grant of `i`
-is `none` exactly when `w` is not an `acquire`, that is when the event of `w` writes `v₀` under
-realization R. -/
+/-- **Theorem 13d.2**, invariant (C13; C16–C18; C48): along an execution in which the `newMutex`
+step `n` creates entry `i` with controller `x` and every later protocol step on `i` is taken while
+the controller is `x`, at every later state `k` the last controller step `w` before `k` exists, and
+the recorded grant of `i` is `none` exactly when `w` is not an `acquire`, that is when the event of
+`w` writes `v₀` under realization R. -/
 theorem grant_invariant (hr : EncapRun pm ks L σ lbls) {i x n c g : Nat}
     (hn : lbls[n]? = some (.newMutex c g)) (hnc : CtlStep L σ lbls i x n)
     (hstab : ∀ k, n < k → ProtoOn lbls i k → ctlOf L (σ k) i = some x) :
@@ -605,13 +593,11 @@ theorem acquire_reads_v0 (hr : EncapRun pm ks L σ lbls) (hR : Realizes G L σ l
   | acquire c'' j'' => exact absurd hlbl (hnacq c'' j'')
   | _ => rfl
 
-/-- **Theorem 13e**, lock order (C49: "`LockOrder` is the obligation that the protected accesses in
-an earlier critical section of one mutex are `hb`-before conflicting protected accesses in a later
-critical section whose lock-acquisition event receives the preceding release"; C48; `OB-C04`). On
-an execution with a correspondence and a graph satisfying R for entry `i` and unit `x`, with
-release-capable publication orders and an acquire-capable acquisition order, and the conjuncts 1
-and 3 of `EventConsistent`: let `u` be an `unlock` or `resetLock` controller step of `i` and `a > u`
-an `acquire` controller step of `i` such that
+/-- **Theorem 13e**, lock order (C49; C48; `OB-C04`). On an execution with a correspondence and a
+graph satisfying R for entry `i` and unit `x`, with release-capable publication orders and an
+acquire-capable acquisition order, and the conjuncts 1 and 3 of `EventConsistent`: let `u` be an
+`unlock` or `resetLock` controller step of `i` and `a > u` an `acquire` controller step of `i` such
+that
 
 * the controller of `i` is `x` at every protocol step on `i` from `u` to `a` (stability of the
   leaf);
@@ -758,15 +744,10 @@ theorem mid_of_same_context (hK : Corresponds G σ lbls K) {u a : Nat}
     obtain ⟨c, hc⟩ := hun; exact (List.getElem?_eq_some_iff.1 hc).1
   exact .single (.inl (hK.po p p' hp hp' ep ep' hpp' (hreq hp hp') hep hep'))
 
-/-- **Theorem 13f**, recovery (C48: "A later acquire-capable read/RMW which obtains its value from
-this release publication ... acquires a justified `sw` edge from recovery"; C49: "Under the C48
-protocol a successful `resetLock` publishes with `release`; when a subsequent `acquire` actually
-reads that publication ..., `rf` and the selected memory orders establish `sw(resetLock, acquire)`";
-"Any `sw` from the `release` recovery publication must be justified by actual `rf` and the chosen
-memory orders"): when an `acquire` controller step `p` is the first protocol step on `i` after a
-`resetLock` controller step `r`, its event reads the publication of `r`; under the reference
-triple, `sw` relates them; with `o_reset = relaxed`, outside the reference, `rf` holds without
-`sw`. -/
+/-- **Theorem 13f**, recovery (C48; C49): when an `acquire` controller step `p` is the first
+protocol step on `i` after a `resetLock` controller step `r`, its event reads the publication of
+`r`; under the reference triple, `sw` relates them; with `o_reset = relaxed`, outside the reference,
+`rf` holds without `sw`. -/
 theorem recovery_sw (hr : EncapRun pm ks L σ lbls) (hR : Realizes G L σ lbls K i x R v₀ v₁)
     (h1 : G.RfWF) (h3 : G.RmwAtomic) {r p cr cp : Nat} (hrp : r < p)
     (hrl : lbls[r]? = some (.resetLock cr i)) (hrc : CtlStep L σ lbls i x r)

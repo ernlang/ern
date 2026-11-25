@@ -93,9 +93,8 @@ theorem sw_hb {a b : E} (h : G.SW a b) : G.HB a b := .single (.inr h)
 
 /-! ## Pure authority markers and `sw` (C29, C32) -/
 
-/-- No `sw` edge has a pure authority marker as source or target (C29: a pure authority marker "is
-not a source or target of an `sw` edge"; C32). A consequence of the definition of `sw`, not a
-hypothesis. -/
+/-- No `sw` edge has a pure authority marker as source or target (C29; C32). A consequence of the
+definition of `sw`, not a hypothesis. -/
 theorem sw_not_pure {a b : E} (h : G.SW a b) : ¬ G.Pure a ∧ ¬ G.Pure b := by
   have hacc : ∀ {e : E} {x : Acc U V}, G.acc? e = some x → ¬ G.Pure e := fun h hp => by
     rw [G.acc?_pure hp] at h; cases h
@@ -113,8 +112,7 @@ theorem conflict_symm {a b : E} (h : G.Conflict a b) : G.Conflict b a := by
   obtain ⟨ra, rb, ha, hb, hc, ⟨n, h1, h2⟩, hw⟩ := h
   exact ⟨rb, ra, hb, ha, Ne.symm hc, ⟨n, h2, h1⟩, hw.symm⟩
 
-/-- Two events without a write component do not conflict (C30: "Two read-only events do not
-conflict"). -/
+/-- Two events without a write component do not conflict (C30). -/
 theorem not_conflict_reads {a b : E} (ha : ¬ G.Writes a) (hb : ¬ G.Writes b) :
     ¬ G.Conflict a b := fun ⟨_, _, _, _, _, _, hw⟩ => hw.elim ha hb
 
@@ -123,13 +121,13 @@ theorem rmw_reads_writes {e : E} (h : G.IsRMW e) : G.Reads e ∧ G.Writes e :=
   ⟨⟨_, h, trivial⟩, ⟨_, h, trivial⟩⟩
 
 /-- An RMW conflicts, as a write, with every access of another context whose range intersects its
-own, a read included (C30: "An RMW counts as both a read and a write for this purpose"). -/
+own, a read included (C30). -/
 theorem conflict_rmw {a b : E} {ra rb : Range} (h : G.IsRMW a) (ha : G.range? a = some ra)
     (hb : G.range? b = some rb) (hc : G.ctx a ≠ G.ctx b) (hi : ra.Inter rb) : G.Conflict a b :=
   ⟨ra, rb, ha, hb, hc, hi, .inl (G.rmw_reads_writes h).2⟩
 
-/-- Conflict is characterized without `hb` (C30: "Conflict is distinct from … whether a sufficient
-event-order relation exists"): it reads only the contexts, the ranges and the kinds. -/
+/-- Conflict is characterized without `hb` (C30): it reads only the contexts, the ranges and the
+kinds. -/
 theorem conflict_iff {a b : E} : G.Conflict a b ↔ ∃ ra rb, G.range? a = some ra ∧
     G.range? b = some rb ∧ G.ctx a ≠ G.ctx b ∧ ra.Inter rb ∧ (G.Writes a ∨ G.Writes b) :=
   Iff.rfl
@@ -275,10 +273,9 @@ namespace Graph
 
 variable {E C U V S : Type} (G : Graph E C U V S)
 
-/-- **The total order `S`** (C34: "For a finite event graph, this is equivalent to the existence of
-a strict total order `S` on the `seq_cst` events that extends `psc`"): on a finite graph,
-`SCConsistent` holds exactly when such an order exists. Finiteness is the hypothesis the clause
-names; it serves only the direction from acyclicity to the order. -/
+/-- **The total order `S`** (C34): on a finite graph, `SCConsistent` holds exactly when such an
+order exists. Finiteness is the hypothesis the clause names; it serves only the direction from
+acyclicity to the order. -/
 theorem scConsistent_iff_order (hfin : Finite E) :
     G.SCConsistent ↔ ∃ R : E → E → Prop, G.SOrder R := by
   constructor
@@ -300,8 +297,7 @@ theorem scConsistent_iff_order (hfin : Finite E) :
 /-! ## Consequences of `psc` (C34) -/
 
 /-- A `seq_cst` modification is release-capable and a `seq_cst` read component is
-acquire-capable (C40: "`seq_cst` has release semantics for stores, acquire semantics for loads,
-and both for RMWs"). -/
+acquire-capable (C40). -/
 theorem relCap_of_sc {e : E} {u : U} (hs : G.SC e) (hm : G.ModOn e u) : G.RelCap e u := by
   obtain ⟨u', k, h⟩ := hs
   obtain ⟨hu, k', hk, hw⟩ := hm
@@ -317,10 +313,9 @@ theorem acqCap_of_sc {e : E} {u : U} (hs : G.SC e) (hr : G.ReadOn e u) : G.AcqCa
   rw [G.kind?_atomic h] at hk; cases hk
   exact ⟨_, k, h, hrd, .inr (.inr rfl)⟩
 
-/-- A consequence of `psc` (C34: "an `SC` read directly observing an `SC` modification follows that
-modification in `S` through `hb|loc`"): if an `SC` read component of the unit `u` reads by `rf` an
-`SC` modification of `u`, then `psc` relates the modification to the read, through `hb|loc`. No
-conjunct is needed: the `rf` edge is an `sw` edge (C32.1, C48, the head as member). -/
+/-- A consequence of `psc` (C34): if an `SC` read component of the unit `u` reads by `rf` an `SC`
+modification of `u`, then `psc` relates the modification to the read, through `hb|loc`. No conjunct
+is needed: the `rf` edge is an `sw` edge (C32.1, C48, the head as member). -/
 theorem psc_of_rf_sc {w r : E} {u : U} (hw : G.SC w) (hwm : G.ModOn w u) (hr : G.SC r)
     (hrr : G.ReadOn r u) (hrf : G.rf w r) : G.PSC w r ∧ G.HBLoc w r := by
   have hsw : G.SW w r :=
@@ -328,10 +323,8 @@ theorem psc_of_rf_sc {w r : E} {u : U} (hw : G.SC w) (hwm : G.ModOn w u) (hr : G
   have hl : G.HBLoc w r := ⟨G.sw_hb hsw, u, hwm.1, hrr.1⟩
   exact ⟨⟨hw, .inr (.inr (.inl hl)), hr⟩, hl⟩
 
-/-- A consequence of `psc` (C34: "an `SC` read of a modification `w` precedes every `SC`
-modification later than `w` in `mo` through `rb`"): if an `SC` event `r` reads `w` by `rf`, then
-`psc` relates `r` to every `SC` event `w'` with `mo(w, w')` other than `r`, through `rb`. No
-conjunct is needed. -/
+/-- A consequence of `psc` (C34): if an `SC` event `r` reads `w` by `rf`, then `psc` relates `r` to
+every `SC` event `w'` with `mo(w, w')` other than `r`, through `rb`. No conjunct is needed. -/
 theorem psc_of_rb_sc {w r w' : E} (hr : G.SC r) (hrf : G.rf w r) (hw' : G.SC w')
     (hmo : G.mo w w') (hne : r ≠ w') : G.PSC r w' ∧ G.RB r w' :=
   have hrb : G.RB r w' := ⟨⟨w, hrf, hmo⟩, hne⟩
@@ -343,7 +336,7 @@ theorem psc_of_rb_sc {w r w' : E} (hr : G.SC r) (hrf : G.rf w r) (hw' : G.SC w')
 theorem rb_irrefl (a : E) : ¬ G.RB a a := fun h => h.2 rfl
 
 /-- Under conjuncts 1 and 2, a pair `(a, a)` of `rf⁻¹ ; mo`, removed by `\ id`, is that of an event
-that reads and writes, hence of an RMW (C34: "excluding a self-pair on an atomic RMW"). -/
+that reads and writes, hence of an RMW (C34). -/
 theorem rfmo_self_rmw (h1 : G.RfWF) (h2 : G.MoTotal) {a w : E} (hrf : G.rf w a) (hmo : G.mo w a) :
     G.IsRMW a := by
   obtain ⟨u, -, -, k, hk, hr⟩ := h1.1 w a hrf
@@ -389,10 +382,9 @@ theorem rsMember_between (h2 : G.MoTotal) {u : U} {h m x : E} (hm : G.RSMember u
     exact G.mo_trans h2 hx hy₂ h₂
 
 /-- The segment of the release sequence stops at the first modification that is not an atomic RMW
-(C48: "Ordinary atomic stores, including same-thread non-RMW stores, do **not** extend the
-sequence"; under conjunct 2; retained reading 5): if a modification `x` of `u` after `h` in `mo` is
-not an atomic RMW, neither it nor any modification of `u` after it is a member. The statement does
-not assume that a first such modification exists. -/
+(C48; under conjunct 2; retained reading 5): if a modification `x` of `u` after `h` in `mo` is not
+an atomic RMW, neither it nor any modification of `u` after it is a member. The statement does not
+assume that a first such modification exists. -/
 theorem not_rsMember_after (h2 : G.MoTotal) {u : U} {h x : E} (hx : G.ModOn x u)
     (h₁ : G.mo h x) (hnr : ¬ G.AtomicRMWOn x u) :
     ¬ G.RSMember u h x ∧ ∀ y, G.ModOn y u → G.mo x y → ¬ G.RSMember u h y := by

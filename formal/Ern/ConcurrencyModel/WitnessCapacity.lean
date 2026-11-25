@@ -52,8 +52,7 @@ theorem w11_run : EncapRun pm kMutex mutexLayout w11σ w11L := by
   | 5, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .acquire (st' := (w11s6, regTaken)) ⟨⟨2, none⟩, rfl, by decide, by decide, rfl⟩⟩
 
-/-- **Witness W11** (C43: `cap` is "not `ExercisableAt`", and excludes "attribution through live
-`guarded` authorities"): after block M (state 5), `guarded` (authority 2) is exercisable in
+/-- **Witness W11** (C43): after block M (state 5), `guarded` (authority 2) is exercisable in
 `Observe` from the current frame of `c1`, while `cap(c1, T)` is `none`; after `c0 : acquire(e)`
 (state 6), `cap(c0, T)` is `Modify`, through the grant (authority 4), held by the frame of `c0`,
 attributable in `Modify` and of effective `Modify` on `T`. -/
@@ -150,13 +149,10 @@ theorem w12_run : EncapRun pm kMutex mutexLayout w12σ w12L := by
   | 10, _ => cases hl; exact ⟨⟨by unfold RestrictedStep; decide, by decide_ctl, by decide⟩,
       .acquire (st' := (y10, regY6)) ⟨⟨3, none⟩, rfl, by decide, by decide, rfl⟩⟩
 
-/-- **Witness W12** (C49, last paragraph: "`ControlOf(entry)` becoming undefined or designating
-another leaf"; C12: "A legal transfer of the **whole mutex value `M`** ... may carry `slot` and its
-controller together and preserve the association positionally"): every step is `ok` in an
-`EncapsulatedTrace` from the initial state; the controller of `e` is `lock` (leaf 2) up to the
-`transfer` (step 9) and `lock′` (leaf 6) after it, at the `acquire` of `c0` (step 10); the
-stability hypothesis of 13e fails for the `unlock` of step 7 and that `acquire`, whatever the
-controller unit. -/
+/-- **Witness W12** (C49, last paragraph; C12): every step is `ok` in an `EncapsulatedTrace` from
+the initial state; the controller of `e` is `lock` (leaf 2) up to the `transfer` (step 9) and
+`lock′` (leaf 6) after it, at the `acquire` of `c0` (step 10); the stability hypothesis of 13e fails
+for the `unlock` of step 7 and that `acquire`, whatever the controller unit. -/
 theorem witness_w12 :
     w12σ 0 = (SC.ofS3 (S3.init mutexStatics3), [], []) ∧
     EncapRun pm kMutex mutexLayout w12σ w12L ∧

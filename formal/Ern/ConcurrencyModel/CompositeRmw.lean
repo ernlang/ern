@@ -4,9 +4,9 @@ import Ern.ConcurrencyModel.RunRefinement
 # The RMW steps (C38, C39)
 
 `rawOps` gives an RMW, a concurrent `writeShared` of kind `rmw`, the raw reads of the leaves of its
-region, then the writes of O11. C39 permits a step of kind RMW "only when its region consists of
-exactly one `Atomic` leaf"; any other region is `reject`, and "No composite RMW read of other
-leaves is implied". So the reads of an RMW are those of its single leaf:
+region, then the writes of O11. The region of an admitted step of kind RMW is exactly one `Atomic`
+leaf, and any other region is `reject` (C39; `rmw_region_rejected` of `Legality`). So the reads of
+an RMW are those of its single leaf:
 
 * `rmw_discipline_cases`, `rmw_single_atomic`: an admitted RMW, and every concurrent `ok` step of
   kind RMW, has for region a single `Atomic` leaf, not of zero physical size (C38), with an
@@ -28,8 +28,8 @@ open Ern.MemoryModel Ern.MemoryModel.Access Ern.MemoryModel.Refinement
 
 /-! ## An RMW has a single `Atomic` leaf (C38, C39) -/
 
-/-- The discipline acceptance of an RMW (C39, "Operation kind and atomic memory-order annotations";
-C38; `WriteDisciplineOK`): its region is a single `Atomic` leaf, not of zero physical size, with an
+/-- The discipline acceptance of an RMW (C39, rules on the kind and the annotation; C38;
+`WriteDisciplineOK`): its region is a single `Atomic` leaf, not of zero physical size, with an
 annotation of the RMW row of C40. -/
 theorem rmw_discipline_cases {ks : KShared} {region : List Nat} {ord : Option MemOrder} {v : Nat}
     (h : WriteDisciplineOK ks region ord (.rmw v)) :
@@ -40,8 +40,7 @@ theorem rmw_discipline_cases {ks : KShared} {region : List Nat} {ord : Option Me
   | none => exact hann.elim
   | some o => exact ⟨l, sz, al, o, e1, e2, hsz, rfl, hann⟩
 
-/-- **Every concurrent `ok` RMW has a single `Atomic` leaf** (C39: "A step of kind `RMW` is permitted
-only when its region consists of exactly one `Atomic` leaf"; C38): the region of a concurrent
+/-- **Every concurrent `ok` RMW has a single `Atomic` leaf** (C39; C38): the region of a concurrent
 `writeShared` of kind RMW with an `ok` outcome is one leaf, of class `Atomic`, not of zero physical
 size. Fragment: every state, every contract `K_C`. -/
 theorem rmw_single_atomic {ks : KShared} {s s' : SC} {c a v : Nat} {region : List Nat}

@@ -43,9 +43,8 @@ theorem witness_d2 : ¬ StoreOrderOK .acquire ∧
       compositeOrder⟩
 
 /-- **Witness D3** (C39, `reject`): the request of D1 without annotation. Single cause: the
-annotation required by the `Atomic` leaf of a mixed-class region is missing (C39: "whether it is
-the entire region or part of a mixed-class composite"); the composite contract admits the region.
-Positive twin: D1. -/
+annotation required by the `Atomic` leaf of a mixed-class region is missing (C39); the composite
+contract admits the region. Positive twin: D1. -/
 theorem witness_d3 : WriteSharedPre kComposite.toK (v0.view 0) 0 [1, 3] ∧
     CompositeAdmits kComposite [1, 3] ∧
     WriteSharedCStep kComposite v0 0 0 [1, 3] none .store .reject :=
@@ -69,10 +68,10 @@ theorem witness_d4 : kComposite.CompositeContract [3, 4] = some [3, 4] ∧
     no_atomic_annotation_rejected (ks := kComposite) (by decide) compositeOrder⟩
 
 /-- **Witness D5** (C39, `reject`): under `kComposite`, the RMW `acq_rel` over `{A, S}`. Single
-cause: an RMW region that is not exactly one `Atomic` leaf (C39: "No composite RMW read of other
-leaves is implied"), although the composite contract admits the region for a store. Positive twins:
-D1 (the store over the same region), and the RMW `acq_rel` over `{A}`, which is `ok` (C39: one
-initialized `Atomic` leaf, an order in the RMW row). -/
+cause: an RMW region that is not exactly one `Atomic` leaf (C39), although the composite contract
+admits the region for a store. Positive twins: D1 (the store over the same region), and the RMW
+`acq_rel` over `{A}`, which is `ok` (C39: one initialized `Atomic` leaf, an order in the RMW
+row). -/
 theorem witness_d5 : CompositeAdmits kComposite [1, 3] ∧ RMWOrderOK .acqRel ∧
     WriteSharedCStep kComposite v0 0 0 [1, 3] (some .acqRel) (.rmw 0) .reject ∧
     WriteSharedCPre kComposite v0 0 0 [1] (some .acqRel) (.rmw 0) ∧
@@ -94,7 +93,7 @@ theorem witness_d6 : WriteSharedCStep kAtomic v0 0 0 [3] none (.rmw 0) .reject �
       cases e; simp [testKS, atomicDisc] at hd) (fun _ => none),
     witness_6i.1⟩
 
-/-- **Witness D7** (C39, "Empty region"):
+/-- **Witness D7** (C39, case of the empty region):
 
 1. the store on the empty region without annotation is `ok` with the state unchanged, the O11
    preconditions holding for the access authority;
@@ -182,8 +181,7 @@ theorem witness_6k_kernel : WriteSharedCStep kAtomic v0 0 0 [1] none .store .rej
 /-- `o := derive(root_V, Observe, {A})`, authority 1, held by frame 0 (O1). -/
 def v1 : SC := v0.set (deriveEff (v0.view 0) 0 [1] .observe)
 
-/-- **Witness D12** (C42: "This is a rule of the safe concurrent interface, not a new O9/O10
-kernel precondition"):
+/-- **Witness D12** (C42):
 
 1. after `derive(root_V, Observe, {A})`, the `read3` of the `Atomic` leaf A through the `Observe`
    authority 1 is kernel-`ok` (Spec 1 §66), and the rule of C42 does not hold: authority 1 is not

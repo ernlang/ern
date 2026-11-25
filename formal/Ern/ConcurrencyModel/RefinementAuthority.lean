@@ -13,10 +13,9 @@ At the grain of abstract steps, for the authorities that the modelled steps use,
 * `modeled_steps_skip_invalidated`: no later step uses an authority that a step left inactive.
 
 Limit of these statements: they are about the authorities that the modelled steps use. They do
-not discharge the obligation of C50 on the physical accesses after invalidation ("no successful
-abstraction proof may conceal an unmodeled physical access after invalidation"): those of the
-realizations that are not modelled, the controller of the mutex included, stay exported
-(`OB-C05`, `OB-C12`, `OB-C20`).
+not discharge the obligation of C50 on the physical accesses after invalidation: those of the
+realizations that are not modelled, the controller of the mutex included, stay exported (`OB-C05`,
+`OB-C12`, `OB-C20`).
 -/
 
 namespace Ern.ConcurrencyModel

@@ -17,8 +17,7 @@ the arena operations executed by any context (C2, C19):
 
 "Uses" is in the sense of `usesOf`. Limit of these statements, as of theorem 9e: they are about the
 authorities that the modelled steps use. They do not discharge the obligation of C50 on the
-physical accesses after invalidation ("no successful abstraction proof may conceal an unmodeled
-physical access after invalidation"): those of the realizations that are not modelled, the
+physical accesses after invalidation: those of the realizations that are not modelled, the
 controller of the mutex included, stay exported (`OB-C05`, `OB-C12`, `OB-C20`).
 -/
 
@@ -57,13 +56,12 @@ theorem bytesOf_write_apart {s2 : Machine.State} {L : Layout} {p l : Nat}
       rw [write_allocs]; exact ite_eq_right e
     simp only [bytesOf, he]
 
-/-- **Theorem 9**, the bytes of an issued region (Spec 1 §86 "Reissuance modifies neither the
-bytes nor the initialization state", §77, Part XIV, §82.7; C2, C19), for an `issue` executed by
-any context `c`, at the grain of abstract steps: the raw operations of an `ok` `issue` (one write
-of the range of the destination, `rawOps_issue`) modify no byte of the issued region, so a reissued
-leaf keeps its bytes. The destination is a leaf that is not in the region (§77.2); under the layout
-interface (Spec 1 §82.1, §23, part of `ReprC`), the range of every leaf of the region is in another
-allocation or disjoint from it. Hypotheses: `ReprC` and the step, as
+/-- **Theorem 9**, the bytes of an issued region (Spec 1 §86, §77, Part XIV, §82.7; C2, C19), for an
+`issue` executed by any context `c`, at the grain of abstract steps: the raw operations of an `ok`
+`issue` (one write of the range of the destination, `rawOps_issue`) modify no byte of the issued
+region, so a reissued leaf keeps its bytes. The destination is a leaf that is not in the region
+(§77.2); under the layout interface (Spec 1 §82.1, §23, part of `ReprC`), the range of every leaf of
+the region is in another allocation or disjoint from it. Hypotheses: `ReprC` and the step, as
 `RefinementArena.issue_keeps_bytes`; no invariant hypothesis. Fragment: every state related by
 `ReprC`, every context. -/
 theorem issue_keeps_bytesC {Ty : Type} {ks : KShared} {ML : MutexLayout} {π : Params Ty}

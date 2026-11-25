@@ -9,22 +9,20 @@ Events (C27), the base relations `po`, `rf`, `mo` (C28, C31), `sw` (C32, C48), `
 (C33), conflicts (C30), and the consistency predicate `EventConsistent` with its seven conjuncts
 (C34); the legality of memory orders (C40) is a separate predicate.
 
-The type of events is arbitrary: a graph may be infinite (C26: "a finite or potentially unbounded
-trace"). No well-foundedness of `po`, `rf` or `mo` is part of the type of graphs or of
-`EventConsistent`; C34 requires of an admissible graph, in addition, a finite causal past,
-`PrefixFinite((po ∪ sw ∪ rf)⁺)` (`FiniteCausalPast`, `EventFinitePast`). Finiteness is a hypothesis of a
-statement only where C34 names it ("For a finite event graph"), and in the statements that state it
-as a hypothesis: statement 3 on release sequences (`rsMember_iff_chain`) and the comparison with
-RC11 (`proj_consistent`).
+The type of events is arbitrary: a graph may be infinite (C26). No well-foundedness of `po`, `rf` or
+`mo` is part of the type of graphs or of `EventConsistent`; C34 requires of an admissible graph, in
+addition, a finite causal past, `PrefixFinite((po ∪ sw ∪ rf)⁺)` (`FiniteCausalPast`,
+`EventFinitePast`). Finiteness is a hypothesis of a statement only where C34 names it, and in the
+statements that state it as a hypothesis: statement 3 on release sequences (`rsMember_iff_chain`)
+and the comparison with RC11 (`proj_consistent`).
 
 Formalization hypotheses (retained readings, not rules of the specification):
 
-1. `sw` is exactly the relation of the three sources of C32 (C32; C48: "This is an axiom of the
-   event graph"); this formalization declares no other mechanism.
+1. `sw` is exactly the relation of the three sources of C32 (C32; C48); this formalization declares
+   no other mechanism.
 2. An access designates at most one atomic unit (`Acc`). An event accessing several atomic units
    is not represented; the events of a composite step or of an access to several leaves stay open.
-3. `po` is total on the events of one context (C28, "the strict order of semantic events within one
-   execution context").
+3. `po` is total on the events of one context (C28).
 4. No map from steps to events is defined.
 5. The release sequence of C48 is read as the interval `RSMember`: on a total `mo`, the maximal
    convex set of atomic RMW modifications following the head. On a graph with a finite causal past
@@ -52,8 +50,7 @@ deriving DecidableEq, Repr
 /-- Byte `n` belongs to the range. -/
 def Range.Mem (r : Range) (n : Nat) : Prop := r.base ≤ n ∧ n < r.base + r.len
 
-/-- Two concrete byte ranges intersect (C30: "their concrete byte ranges intersect"): some byte
-belongs to both. -/
+/-- Two concrete byte ranges intersect (C30): some byte belongs to both. -/
 def Range.Inter (r r' : Range) : Prop := ∃ n, r.Mem n ∧ r'.Mem n
 
 /-- The kind of an access (C27): `read`, `write` or `RMW`. -/
@@ -94,7 +91,7 @@ classification, and a memory order for an atomic access.
 * An atomic access designates exactly one atomic unit and covers its whole range (C30, C31, C38);
   its range is the range of the unit (`Graph.uRange`).
 * A non-atomic access may designate a unit: the initial write (C31), an exclusive ordinary access
-  (C42); it then covers the whole range of the unit ("range-identity", C31).
+  (C42); it then covers the whole range of the unit (C31).
 * A non-atomic access may designate no unit: it carries its own byte range.
 
 An access designates at most one unit (retained reading 2, a limit of this formalization). -/
@@ -271,17 +268,13 @@ def AcqCap (e : E) (u : U) : Prop :=
   ∃ o k, G.acc? e = some (.atomic u o k) ∧ k.kind.Reads ∧
     (o = .acquire ∨ o = .acqRel ∨ o = .seqCst)
 
-/-- A `seq_cst` atomic access event (C34: "the set of `seq_cst` atomic access events (including
-`seq_cst` RMWs)"). -/
+/-- A `seq_cst` atomic access event (C34). -/
 def SC (e : E) : Prop := ∃ u k, G.acc? e = some (.atomic u .seqCst k)
 
 /-! ## `sw` (C32, C48) -/
 
 /-- Membership in the release sequence of the head `h` on the unit `u`, **retained reading 5, a
-formalization hypothesis**. C48: "beginning with release modification `h` of a given atomic unit,
-the release sequence consists of `h` followed by the maximal contiguous `mo` segment of atomic RMW
-modifications on that unit. Ordinary atomic stores, including same-thread non-RMW stores, do
-**not** extend the sequence."
+formalization hypothesis** on the definition of C48.
 
 This formalization reads it as an interval: `m` is a member when `m = h`, or when `m` is an atomic
 RMW modification of `u` with `mo(h, m)` and every modification `x` of `u` with `mo(h, x)` and
@@ -303,7 +296,7 @@ def RSMember (u : U) (h m : E) : Prop :=
 3. Completion observation (C32.3): `complete(c)` to each `join(c)`; a `join(c)` event is the event
    of a successful join (C28).
 
-No other mechanism is declared (C32: "admissible only under an explicit contract"). -/
+No other mechanism is declared (C32). -/
 def SW (a b : E) : Prop :=
   (∃ u m, G.RelCap a u ∧ G.AcqCap b u ∧ G.RSMember u a m ∧ G.rf m b) ∨
   (∃ c, G.sync? a = some (.spawn c) ∧ G.sync? b = some (.start c)) ∨
@@ -374,8 +367,8 @@ def MoTotal : Prop :=
     (∀ a b c, G.ModOn a u → G.ModOn b u → G.ModOn c u → G.mo a b → G.mo b c → G.mo a c) ∧
     (∀ a b, G.ModOn a u → G.ModOn b u → a ≠ b → G.mo a b ∨ G.mo b a)
 
-/-- Conjunct 3, RMW atomicity (C34.3, C31): "the `rf` source of a successful atomic RMW is its
-immediate `mo`-predecessor". A non-atomic RMW is not constrained by this conjunct. -/
+/-- Conjunct 3, RMW atomicity (C34.3, C31): an atomic RMW that reads `w` by `rf` has `w` immediately
+before it in `mo`. A non-atomic RMW is not constrained by this conjunct. -/
 def RmwAtomic : Prop :=
   ∀ w r, G.IsRMW r → G.Atomic r → G.rf w r → G.mo w r ∧ ∀ x, ¬ (G.mo w x ∧ G.mo x r)
 

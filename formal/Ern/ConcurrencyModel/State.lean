@@ -88,8 +88,7 @@ def holderFrame : Holder → Nat
   | .place _ => 0
 
 /-- A frame identity that no authority holds, that is not globally live and that is not yet
-allocated (C2: "all occurrences of 'the current frame' refer to the top of the live local stack of
-`c`"; a context without a live local stack has no current frame). -/
+allocated (C2; a context without a live local stack has no current frame). -/
 def SC.noFrame (s : SC) : Nat := s.nF + s.frames.sum + (s.A.map fun y => holderFrame y.holder).sum + 1
 
 /-- The `S3` seen by executing context `c` (C2): for a live context, the stack of `c` first, so
@@ -193,11 +192,8 @@ theorem SC.live_of_holderRight {s : SC} {c a : Nat} {y : Authority} (hy : s.A[a]
     (h : HolderRight (s.view c) y.holder) : s.Live c :=
   Decidable.byContradiction fun hc => SC.dead_not_holderRight hc hy h
 
-/-- C2 ("The authority and dependency state is globally coherent"), C4 ("An active `Modify`
-derivative transferred to the child continues to suppress conflicting effective exercise through
-its origin in the creator, by Spec 1 §43"), C9 ("An active derivative continues to restrict its
-origin according to effective rights"): effective modes (Spec 1 §43) are read on the global
-authority state, whatever the context whose view is taken. -/
+/-- C2, C4, C9: effective modes (Spec 1 §43) are read on the global authority state, whatever the
+context whose view is taken. -/
 theorem SC.effective_view (s : SC) (c a l : Nat) : effective (s.view c) a l = effective s.flat a l :=
   rfl
 

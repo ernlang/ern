@@ -73,9 +73,8 @@ structure ValTransferPre (k : K) (fin : S3) (t : SC) (c src dst : Nat) : Prop wh
   sameShape : SameShape (t.view c).P src dst
   /-- C5 item 1, Spec 1 §63.3: all source leaves are `Init`. -/
   srcInit : ∀ l ∈ footprint (t.view c).P src, (t.view c).I l = .init
-  /-- C5.1 ("The fresh destination leaves are `Uninit`"), C5 item 2 ("with corresponding `Uninit`
-  leaves"), replacing Spec 1 §63.3 ("no destination leaf is `Init`") for a fresh destination: every
-  destination leaf is `Uninit`. -/
+  /-- C5.1, C5 item 2, replacing Spec 1 §63.3 for a fresh destination: every destination leaf is
+  `Uninit`. -/
   dstUninit : ∀ l ∈ footprint (t.view c).P dst, (t.view c).I l = .uninit
   /-- C5.2, Spec 1 §63.3: disjoint footprints. -/
   disjoint : ¬ overlap (t.view c).P src dst

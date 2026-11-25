@@ -489,9 +489,8 @@ theorem lstep_adminSep {ks : KShared} {L : MutexLayout} {lbl : Label} {st st' : 
 
 /-! ## Uniqueness of the live `internal` identities inside the arena registry (Spec 1 §56) -/
 
-/-- `ArenaReg.unique` (Spec 1 §56, first sentence: "An authority identity may serve as `internal`
-for at most one live administrative abstraction"), inside the arena registry: two live entries,
-by position, do not share their `internal` identity. -/
+/-- `ArenaReg.unique` (Spec 1 §56, first sentence), inside the arena registry: two live entries, by
+position, do not share their `internal` identity. -/
 def ArenaReg.unique (ar : ArenaReg) (s : SC) : Prop :=
   ∀ (i j : Nat) (E E' : Arena.ArenaEntry), ar[i]? = some E → ar[j]? = some E' →
     Arena.Live s.flat E → Arena.Live s.flat E' → E.internal = E'.internal → i = j

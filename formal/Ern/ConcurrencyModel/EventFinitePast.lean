@@ -3,10 +3,9 @@ import Ern.ConcurrencyModel.EventErasure
 /-!
 # Theorem 10, complement: finite causal past (C26, C29, C34, C48; `OB-C23`)
 
-C34: "An admissible event graph, finite or potentially unbounded (C26), must satisfy
-`PrefixFinite((po ∪ sw ∪ rf)⁺)`"; it is "an **additional event-graph admissibility condition**,
-separate from the seven conjuncts of `EventConsistent`". The verification targets of C34
-("Infinite-graph verification targets, not additional axioms"):
+This module defines the finite causal past of C34, `PrefixFinite((po ∪ sw ∪ rf)⁺)`
+(`FiniteCausalPast`), apart from the seven conjuncts of `EventConsistent`. The verification targets
+of C34:
 
 * 10f: every graph whose type of events is finite has a finite causal past (`finiteCausalPast_of_finite`);
 * 10g: under conjuncts 1 to 3 and a finite causal past, membership in the release sequence (retained
@@ -29,7 +28,7 @@ namespace Ern.ConcurrencyModel.Events
 
 open Relation
 
-/-- `PrefixFinite(R)` (C34): "for every event `e`, the set `{ d | R(d, e) }` is finite". -/
+/-- `PrefixFinite(R)` (C34): the `R`-predecessors of every event are contained in a list. -/
 def PrefixFinite {E : Type} (R : E → E → Prop) : Prop := ∀ e, ∃ l : List E, ∀ d, R d e → d ∈ l
 
 namespace Graph
@@ -45,8 +44,8 @@ def FiniteCausalPast : Prop := PrefixFinite (TransGen G.PoSwRf)
 
 /-! ## 10f: finite graphs -/
 
-/-- **Theorem 10f** (C34: "Every finite graph satisfies this condition"; `OB-C23`): a graph whose
-type of events is finite has a finite causal past. -/
+/-- **Theorem 10f** (C34; `OB-C23`): a graph whose type of events is finite has a finite causal
+past. -/
 theorem finiteCausalPast_of_finite (hfin : Finite E) : G.FiniteCausalPast := fun _ =>
   let ⟨l, hl⟩ := hfin
   ⟨l, fun d _ => hl d⟩
@@ -145,13 +144,10 @@ theorem rsMember_iff_chain_of_rfPast (h1 : G.RfWF) (h2 : G.MoTotal) (h3 : G.RmwA
   · exact List.mem_cons_self ..
   · exact List.mem_cons_of_mem _ (hl x hx')
 
-/-- **Theorem 10g** (C48: "beginning with release modification `h` of a given atomic unit, the
-release sequence consists of `h` followed by the maximal contiguous `mo` segment of atomic RMW
-modifications on that unit"; C34, "Infinite-graph verification targets": "verify that C48
-release-sequence membership agrees with a finite chain of immediate `mo`-predecessor atomic RMWs
-leading back to the release head"; `OB-C23`): under conjuncts 1 to 3 and a finite causal past, for
-`m ≠ h`, `m` is a member of the release sequence of `h` (`RSMember`, retained reading 5) exactly when
-a finite chain of atomic RMWs, each reading the previous one by `rf`, relates `h` to `m`. -/
+/-- **Theorem 10g** (C48; C34, verification targets; `OB-C23`): under conjuncts 1 to 3 and a finite
+causal past, for `m ≠ h`, `m` is a member of the release sequence of `h` (`RSMember`, retained
+reading 5) exactly when a finite chain of atomic RMWs, each reading the previous one by `rf`,
+relates `h` to `m`. -/
 theorem rsMember_iff_chain_fcp (h1 : G.RfWF) (h2 : G.MoTotal) (h3 : G.RmwAtomic)
     (hf : G.FiniteCausalPast) {u : U} {h m : E} (hne : m ≠ h) :
     G.RSMember u h m ↔ G.Chain u h m :=
@@ -179,10 +175,9 @@ theorem past_bound (hf : G.FiniteCausalPast) :
     · exact List.mem_append_left _ (hl' x hx)
     · exact List.mem_append_right _ (hl x ⟨e', he', hx⟩)
 
-/-- **Theorem 10h**, item 1 (C34: "each finite event set has a finite causal-predecessor-closed
-extension"; `OB-C23`): under a finite causal past, every finite list of events `S` is contained in
-a finite set `P` (bounded by a list) closed under the predecessors of `po ∪ sw ∪ rf`: the events of
-`S` and their causal past. -/
+/-- **Theorem 10h**, item 1 (C34; `OB-C23`): under a finite causal past, every finite list of events
+`S` is contained in a finite set `P` (bounded by a list) closed under the predecessors of
+`po ∪ sw ∪ rf`: the events of `S` and their causal past. -/
 theorem exists_closed_extension (hf : G.FiniteCausalPast) (S : List E) :
     ∃ P : E → Prop, (∃ l : List E, ∀ x, P x → x ∈ l) ∧ (∀ e ∈ S, P e) ∧
       ∀ e d, P e → G.PoSwRf d e → P d := by
@@ -220,9 +215,8 @@ theorem tg_lift {P : E → Prop} {R : E → E → Prop} {R' : {e // P e} → {e 
     have hz : P z := hcl y z hy hzy
     exact .tail (ih hz) (hR ⟨z, hz⟩ ⟨y, hy⟩ hzy)
 
-/-- **Theorem 10h**, item 2 (C34: "whose induced graph preserves the relevant `sw`, `hb`, race and
-consistency judgments on that set"; `OB-C23`): under `EventConsistent`, for a finite set `P`
-(bounded by a list) closed under the predecessors of `po ∪ sw ∪ rf`, the graph induced on `P` is
+/-- **Theorem 10h**, item 2 (C34; `OB-C23`): under `EventConsistent`, for a finite set `P` (bounded
+by a list) closed under the predecessors of `po ∪ sw ∪ rf`, the graph induced on `P` is
 `EventConsistent`, and between two events of `P`, `sw`, `hb` and the race (C33) are those of the
 whole graph. -/
 theorem induced_judgments (hc : G.EventConsistent) {P : E → Prop}
@@ -312,11 +306,9 @@ theorem induced_judgments (hc : G.EventConsistent) {P : E → Prop}
 
 /-! ## 10i: erasure (C29, C34) -/
 
-/-- **Theorem 10i** (C34: "Verify that erasure of pure-authority markers preserves finite causal
-past **from the original graph to its erasure**; no converse is claimed"; C29; `OB-C23`): if `G` has
-a finite causal past, so has `erasePure(G)`. The erasure premises of C34 (no `rf` or `mo` edge at a
-marker) are not needed in this direction: on surviving events `sw` is unchanged (`erase_sw_iff`).
-The converse is refuted by witness G4. -/
+/-- **Theorem 10i** (C34; C29; `OB-C23`): if `G` has a finite causal past, so has `erasePure(G)`.
+The erasure premises of C34 (no `rf` or `mo` edge at a marker) are not needed in this direction: on
+surviving events `sw` is unchanged (`erase_sw_iff`). The converse is refuted by witness G4. -/
 theorem erasePure_finiteCausalPast (hf : G.FiniteCausalPast) : G.erasePure.FiniteCausalPast := by
   classical
   intro e

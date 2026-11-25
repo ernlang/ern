@@ -4,10 +4,9 @@ import Ern.ConcurrencyModel.SpawnValuePreserve
 /-!
 # Theorem 12c: L1, local loss (C43, C45)
 
-Theorem 12 of `formal/DESIGN.md`, Milestone 4, target theorems: L1 (C45: "On an `EncapsulatedTrace`
-(C51), a strict reduction of `cap(·,c′,l)` occurs only at a step of `c′` itself"; `OB-C17`), for
-every label, the atomic step cases included (C39, "Authority-machine operation coverage"). One
-lemma per label; the assembly is `local_loss`.
+Theorem 12 of `formal/DESIGN.md`, Milestone 4, target theorems: L1 (C45; `OB-C17`), for every label,
+the atomic step cases included (C39, last paragraph). One lemma per label; the assembly is
+`local_loss`.
 
 The proofs use the unrestricted contextual attribution of C43 (`UnrestrictedAttr`: the holder
 chains of Spec 1 §43 read from a frame of the stack, through `guarded` authorities included),
@@ -23,9 +22,8 @@ variable {pm : ProviderMeta}
 
 /-! ## Unrestricted attribution (C43) -/
 
-/-- `x` is attributable to context `c` in mode `m` without the `guarded` exclusion (C43:
-"Unrestricted contextual capability is distinct from this guarded-chain-excluding `cap`"): the
-holder chains of Spec 1 §43 read from a frame of the stack of `c` (reading 8). -/
+/-- `x` is attributable to context `c` in mode `m` without the `guarded` exclusion (C43): the holder
+chains of Spec 1 §43 read from a frame of the stack of `c` (reading 8). -/
 inductive UnrestrictedAttr (s : SC) (c : Nat) : Nat → Mode → Prop where
   | base {a : Nat} {m : Mode} {y : Authority} {f : Nat} : s.A[a]? = some y → y.active = true →
       m.le y.mode → y.holder = .frame f → f ∈ s.stk c → UnrestrictedAttr s c a m
@@ -2218,12 +2216,10 @@ theorem local_loss_spawnVal {ks : KShared} {L : MutexLayout} {statics : Statics}
 
 /-! ## L1 -/
 
-/-- **Theorem 12c**, L1 (C45: "On an `EncapsulatedTrace` (C51), a strict reduction of
-`cap(·,c′,l)` occurs only at a step of `c′` itself"; `OB-C17`): under `DDSound` (Spec 1 §80) and
-well-formed statics (§47), from any state reached by an `EncapsulatedTrace` from the initial state
-of Spec 1 §47, a step of the trace (`EncapStep`, C51.1) that strictly lowers `cap` of a context `c`
-on a leaf is a step of `c`. Every label, the atomic step cases included (C39, "Authority-machine
-operation coverage"); one lemma per label. -/
+/-- **Theorem 12c**, L1 (C45; `OB-C17`): under `DDSound` (Spec 1 §80) and well-formed statics (§47),
+from any state reached by an `EncapsulatedTrace` from the initial state of Spec 1 §47, a step of the
+trace (`EncapStep`, C51.1) that strictly lowers `cap` of a context `c` on a leaf is a step of `c`.
+Every label, the atomic step cases included (C39, last paragraph); one lemma per label. -/
 theorem local_loss {ks : KShared} {L : MutexLayout} {statics : Statics} {lbls : List Label}
     {st st' : SC × SyncReg × ArenaReg} {lbl : Label} (hdd : DDSound ks.toK)
     (hst : StaticsOK statics)

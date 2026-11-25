@@ -30,11 +30,9 @@ instance (s : SC) (reg : SyncReg) (a : Nat) : Decidable (NotGuarded s reg a) := 
   unfold NotGuarded; infer_instance
 
 /-- `ExercisableAt` (Spec 1 §43) from the current frame of `c`, justified by a holder chain none
-of whose authorities is the `guarded` authority of a live entry of `reg` (C22.6: a valid
-justification "whose entire authority-holder chain excludes the `guarded` authority of every live
-synchronization entry"). The constructors are those of `S3.ExercisableAt` on the view of `c`, each
-with `NotGuarded` for the authority it concludes. An acquired grant is tested as itself, not
-through its origin (C22.6). -/
+of whose authorities is the `guarded` authority of a live entry of `reg` (C22.6). The constructors
+are those of `S3.ExercisableAt` on the view of `c`, each with `NotGuarded` for the authority it
+concludes. An acquired grant is tested as itself, not through its origin (C22.6). -/
 inductive ExerFree (s : SC) (reg : SyncReg) (c : Nat) : Nat → Mode → Prop where
   | base {a : Nat} {m : Mode} {y : Authority} : NotGuarded s reg a → s.A[a]? = some y →
       y.active = true → m.le y.mode → y.holder = .frame (s.view c).top → ExerFree s reg c a m
@@ -258,8 +256,8 @@ theorem metaRight_of_free {st : SC × SyncReg} {c : Nat} {E : Arena.ArenaEntry}
   | none => exact id
   | some v => exact hasRight_of_free
 
-/-- `Grounds` (Spec 1 §43; §63.4, §69.2, §70.3: "the exercisable authority on which that right
-rests") with `ExerFree` in place of `ExercisableAt`, from the current frame of `c` (C22.6). -/
+/-- `Grounds` (Spec 1 §43; §63.4, §69.2, §70.3) with `ExerFree` in place of `ExercisableAt`, from
+the current frame of `c` (C22.6). -/
 def GroundsFree (st : SC × SyncReg) (c : Nat) (m : Mode) (q g : Nat) : Prop :=
   g ∈ List.range st.1.A.length ∧ ExerFree st.1 st.2 c g m ∧
     ∀ l ∈ footprint st.1.P q, Allows (effective st.1.flat g l) m
@@ -382,13 +380,10 @@ instance (L : MutexLayout) (st : SC × SyncReg) (c g : Nat) :
   unfold NewMutexRightFree; infer_instance
 
 /-- The check of C18.1, `ExercisableAt(entry.guarded, Modify)` for entry `i`, under the
-`resetLock` exception of C22.6: "Its **subject** `entry.guarded` is exempt from the
-no-live-`guarded` test for that recovery check alone. The right on the holding `slot` that
-justifies this exercise must nevertheless have a valid holder chain containing **no other** live
-entry's `guarded`." The subject is checked as in Spec 1 §43 (active, own mode permitting
+`resetLock` exception of C22.6. The subject is checked as in Spec 1 §43 (active, own mode permitting
 `Modify`) with no `NotGuarded` test; when it is held by a place `slot`, the right over `slot` is
-`HasRightFree` over the registry without entry `i`; when it is held by the current frame there is
-no holder chain. -/
+`HasRightFree` over the registry without entry `i`; when it is held by the current frame there is no
+holder chain. -/
 def ResetExerciseFree (st : SC × SyncReg) (c i : Nat) : Prop :=
   OptP (st.2[i]?) (fun e => OptP (st.1.A[e.guarded]?) (fun y => y.active = true ∧
     Mode.modify.le y.mode ∧ HolderRightFree (st.1, st.2.eraseIdx i) c y.holder) False) False
@@ -432,9 +427,8 @@ instance (s s' : SC) (l : Nat) : Decidable (Dying s s' l) := by unfold Dying; in
 /-- The leaves of the places a step from `st` names as accessed or changed, each named place
 counted by its leaves. C22.4 is read on `ActualFootprint`, which differs only for `alloc`: the
 provider counted here by its leaves, there by the datum of the provider metadata
-(`ProviderMeta`), and the owner counted here by its leaves (C22.4: "Merely naming a structural
-place containing the controller does not establish that the controller leaf itself is accessed
-or modified"); the other cases are described on `ActualFootprint`. -/
+(`ProviderMeta`), and the owner counted here by its leaves (C22.4); the other cases are described on
+`ActualFootprint`. -/
 def StepFootprint (L : MutexLayout) (st : SC × SyncReg × ArenaReg) : Label → Nat → Prop
   | .kernel _ (.read _ ls), l | .kernel _ (.write _ ls), l | .kernel _ (.writeShared _ ls), l =>
     l ∈ ls
@@ -465,35 +459,28 @@ instance (L : MutexLayout) (st : SC × SyncReg × ArenaReg) (lbl : Label) (l : N
     Decidable (StepFootprint L st lbl l) := by
   unfold StepFootprint; split <;> infer_instance
 
-/-- The datum of the provider metadata of `alloc` (C22.4: "`alloc` whose provider-metadata accesses
-may write the controller leaf"; Spec 1 §71): for a step `alloc(pr, ow, ls)` executed by context
-`c` from the state `st`, the leaves `l` with `pm st c pr ow ls l = true` are the leaves that the
-accesses of that step to the metadata of the provider may write. It is a parameter of
-`ActualFootprint` and of every definition and statement built on it, quantified over; no instance
-is fixed. See `ActualFootprint` for what the specification leaves open about it. -/
+/-- The datum of the provider metadata of `alloc` (C22.4; Spec 1 §71): for a step
+`alloc(pr, ow, ls)` executed by context `c` from the state `st`, the leaves `l` with
+`pm st c pr ow ls l = true` are the leaves that the accesses of that step to the metadata of the
+provider may write. It is a parameter of `ActualFootprint` and of every definition and statement
+built on it, quantified over; no instance is fixed. See `ActualFootprint` for what the specification
+leaves open about it. -/
 abbrev ProviderMeta : Type :=
   SC × SyncReg × ArenaReg → (c pr ow : Nat) → LocalShape → Nat → Bool
 
-/-- The leaves a step from `st` actually affects (C22.4: "evaluated against the leaves actually
-affected by an operation, including relevant physical metadata accesses"), counting the three
-kinds of effect C22.4 names: physical reads and writes, changes to the initialization state, and
-changes that make a leaf itself the holder or owner of an authority or allocated resource.
+/-- The leaves a step from `st` actually affects (C22.4), counting the three kinds of effect C22.4
+names: physical reads and writes, changes to the initialization state, and changes that make a leaf
+itself the holder or owner of an authority or allocated resource.
 
 * `read3`, `write3`, kernel `writeShared` (Spec 1 §66–§68): the leaves read or written; the
   ordinary `read3` and `write3` and the out-of-protocol `writeShared` of C22.4.
 * `readShared` (C37), concurrent `writeShared` (C39), compare-and-exchange (C39, both branches):
   the atomic leaf read, the leaves of the region written, the leaf read or read and modified.
-* `store` (Spec 1 §65): its target leaf, which becomes the holder (C22.4: "`store` targeting the
-  controller leaf").
-* `issue` (Spec 1 §77): its destination, written and made the holder of the block (C22.4:
-  "`issue` using the controller leaf as its destination").
+* `store` (Spec 1 §65): its target leaf, which becomes the holder (C22.4).
+* `issue` (Spec 1 §77): its destination, written and made the holder of the block (C22.4).
 * `alloc` (Spec 1 §71): the leaves that the datum `pm` designates for the step, those its
-  accesses to the metadata of the provider may write (C22.4: "`alloc` whose provider-metadata
-  accesses may write the controller leaf"; "Merely naming a structural place containing the
-  controller does not establish that the controller leaf itself is accessed or modified"); the
-  owner as the place itself, the owner of the new root (C22.4: "`alloc` using the controller leaf
-  itself as the owner"; "`alloc(owner = M)` is not excluded solely because `ControlOf(entry)` is a
-  structural leaf of `M`"); the fresh leaves.
+  accesses to the metadata of the provider may write (C22.4); the owner as the place itself, the
+  owner of the new root (C22.4); the fresh leaves.
 * `transfer` (Spec 1 §63): the leaves of the source (moved) and of the destination (written).
 * by-value `spawn` (C5): the fresh locals and the leaves of each transfer source.
 * `endUse` (Spec 1 §69): the leaves of the place (made `Uninit`) and the leaves that die with it;
@@ -502,21 +489,18 @@ changes that make a leaf itself the holder or owner of an authority or allocated
 * `newMutex`, `acquire`, `unlock`, `resetLock`: the controller of their entry, the access of the
   controller protocol (C13, C16–C18).
 * `derive`, `split`, `release`, `pin`, `unpin`: no leaf; they change authorities or pinning
-  obligations only (C22.4: "An authority whose footprint includes the controller does not, by
-  that fact alone, constitute an access or effect on the controller"). `depend`: no leaf (C22.4:
-  "A change solely to a dependency relation ... is not excluded by this item"). `join`,
-  `deriveSync`, `newArena`, `reset` (Spec 1 §78: "No leaf is made `Init` by `reset`"): no
-  leaf.
+  obligations only (C22.4). `depend`: no leaf (C22.4). `join`, `deriveSync`, `newArena`, `reset`
+  (Spec 1 §78): no leaf.
 
 The datum `pm` (`ProviderMeta`) represents, for each `alloc` step, the leaves that its accesses to
 the metadata of the provider may write. The specification does not fix it: C22.4 evaluates the
-restriction against the leaves actually affected, "including relevant physical metadata
-accesses", without saying which leaves those accesses write, and Spec 1 §81 leaves the
-representation of library metadata open. It may depend on the state before the step, on the
-context that executes it and on its arguments, and it is not bounded by the leaves of the
-provider (Spec 1 §71.2 requires rights over the provider, not that its metadata lie in its
-leaves). That the datum covers the actual physical accesses of the provider is an open part of
-`OB-C20` (C27–C29, C50): no write of provider metadata is represented by the concrete machine. -/
+restriction against the leaves actually affected, physical metadata accesses included, without
+saying which leaves those accesses write, and Spec 1 §81 leaves the representation of library
+metadata open. It may depend on the state before the step, on the context that executes it and on
+its arguments, and it is not bounded by the leaves of the provider (Spec 1 §71.2 requires rights
+over the provider, not that its metadata lie in its leaves). That the datum covers the actual
+physical accesses of the provider is an open part of `OB-C20` (C27–C29, C50): no write of provider
+metadata is represented by the concrete machine. -/
 def ActualFootprint (pm : ProviderMeta) (L : MutexLayout) (st : SC × SyncReg × ArenaReg) :
     Label → Nat → Prop
   | .kernel c (.alloc pr ow ls), l => pm st c pr ow ls l = true ∨ l = ow ∨ st.1.P.length ≤ l
@@ -541,9 +525,7 @@ theorem actualFootprint_of_not_alloc {pm : ProviderMeta} {L : MutexLayout}
     | _ => rfl
   | _ => rfl
 
-/-- The steps of the validated controller protocol of entry `i` (C22.4: "Valid internal controller
-operations performed by `acquire`, `unlock`, or authorized `resetLock` remain within their
-respective validated protocols"). -/
+/-- The steps of the validated controller protocol of entry `i` (C22.4). -/
 def ProtocolStepOf (i : Nat) : Label → Prop
   | .acquire _ j | .unlock _ j | .resetLock _ j => j = i
   | _ => False
@@ -560,11 +542,9 @@ instance instDecidableEncapVals (L : MutexLayout) (reg : SyncReg) (c : Nat) :
     haveI := instDecidableEncapVals L reg c (transferEffC t c v.1 v.2) vs
     inferInstanceAs (Decidable (TransferExcl L (t, reg) v.1 ∧ _))
 
-/-- The move exception of C22.4 for entry `x`: "A legal transfer of the whole mutex value `M`,
-including by-value `spawn`, or of a structurally enclosing value remains eligible under C22.3 and
-the unchanged O4 preconditions". A `transfer` whose source is `M` (`mutexOf`, C12) or encloses it,
-or a by-value `spawn` one of whose sources is `M` or encloses it, in each case satisfying C22.3
-(`TransferExcl`, `EncapVals`). Legality (O4, C5) is the step relation's. -/
+/-- The move exception of C22.4 for entry `x`: a `transfer` whose source is `M` (`mutexOf`, C12) or
+encloses it, or a by-value `spawn` one of whose sources is `M` or encloses it, in each case
+satisfying C22.3 (`TransferExcl`, `EncapVals`). Legality (O4, C5) is the step relation's. -/
 def WholeValueMove (L : MutexLayout) (st : SC × SyncReg) (x : SyncEntry) : Label → Prop
   | .kernel _ (.transfer src _) => TransferExcl L st src ∧
       OptP (mutexOf st.1 x.guarded) (fun m => partOf st.1.P m src) False
@@ -580,8 +560,8 @@ instance (L : MutexLayout) (st : SC × SyncReg) (x : SyncEntry) (lbl : Label) :
 /-- C22.4 for a step from `st` to `st'`: for every entry `i` live before the step, if the leaves
 the step actually affects contain `ControlOf(i)`, the step is a step of the controller protocol
 of entry `i`, a move of the whole mutex value admissible under C22.3 (`WholeValueMove`), or entry
-`i` is dead after it (C22.4: "Operations that make the entry dead remain eligible"). A predicate on
-steps of the safe abstraction, not a precondition of a kernel transition (C22.4). -/
+`i` is dead after it (C22.4). A predicate on steps of the safe abstraction, not a precondition of a
+kernel transition (C22.4). -/
 def ControllerRestriction (pm : ProviderMeta) (L : MutexLayout) (st : SC × SyncReg × ArenaReg)
     (lbl : Label) (st' : SC × SyncReg × ArenaReg) : Prop :=
   ∀ i ∈ List.range st.2.1.length, OptP (st.2.1[i]?) (fun x => x.Live st.1 →
@@ -618,11 +598,8 @@ theorem view_storeEffC {s : SC} {c : Nat} (a p : Nat) (hc : s.Live c) :
     (storeEffC s c a p).view c = storeEff (s.view c) a p :=
   SC.view_set hc (by unfold storeEff; split <;> rfl)
 
-/-- The inventory of the rights a step from `st` reads (C22.6: "every ordinary exercisability
-judgment under Spec 1 §43 (`ExercisableAt`) or right over a place (`HasRight`)" the step depends
-on, "including the source, target, owner, holder, controller and administration rights where
-relevant", and the rights "checked in intermediate or resulting states of a composite step"),
-each in the state where the step relation reads it:
+/-- The inventory of the rights a step from `st` reads (C22.6), each in the state where the step
+relation reads it:
 
 * `derive`, `split`, `read3`, `write3`, kernel `writeShared`: the exercise of the authority
   argument (Spec 1 §60.1, §61.1, §66.2, §67.1, §68.2);
@@ -636,7 +613,7 @@ each in the state where the step relation reads it:
 * `newMutex`: C13.2, and C13.11 with its O10.2 exclusivity;
 * `acquire`: C14.3 for the entry and `SyncAuthorized` within `deriveSync` (C15.3);
 * `unlock`: O3 for the grant (C17.2, Spec 1 §62.2), C17.4 in the state before the step and in
-  the prospective state `prospectiveUnlock` (C22.6, "For `unlock` specifically");
+  the prospective state `prospectiveUnlock` (C22.6, case of `unlock`);
 * `resetLock`: C18.1 and C18.4;
 * by-value `spawn`: the source right and source-access clause of each transfer phase (C5.2);
 * `newArena`: §76.1 and §76.2;
@@ -714,8 +691,7 @@ def RightsRead (ks : KShared) (L : MutexLayout) (st : SC × SyncReg × ArenaReg)
 place of `ExercisableAt`, in the state where the step relation reads it, the registry being that
 of the step (for `unlock`, C17.4 in the state before the step and in `prospectiveUnlock`, both
 guard-free, C22.6). For `resetLock`, the check of C18.1 is `ResetExerciseFree` (the exception of
-C22.6); the controller right of C18.4 is not exempt (C22.6: the exception concerns "that recovery
-check alone"). -/
+C22.6); the controller right of C18.4 is not exempt (C22.6). -/
 def RightsReadFree (ks : KShared) (L : MutexLayout) (st : SC × SyncReg × ArenaReg) :
     Label → Prop
   | .kernel c (.derive a _ m) => ExerFree st.1 st.2.1 c a m
@@ -1052,11 +1028,11 @@ def EncapStep (pm : ProviderMeta) (ks : KShared) (L : MutexLayout) (st : SC × S
     (lbl : Label) (st' : SC × SyncReg × ArenaReg) : Prop :=
   RestrictedStep L st lbl ∧ ControllerRestriction pm L st lbl st' ∧ RightsReadFree ks L st lbl
 
-/-- `EncapsulatedTrace` (C51.1: "the safe **reference-mutex** trace contract of C22"): a run every
-step of which satisfies `EncapStep`, the six requirements of C22, in the state where it is
-taken. Exported obligation `OB-C08` (C22), stated part (`ExportedObligations`): a property of the
-executions of the safe abstraction; it does not establish that the safe interfaces and the
-library produce only such executions. The obligation is exported and remains open. -/
+/-- `EncapsulatedTrace` (C51.1): a run every step of which satisfies `EncapStep`, the six
+requirements of C22, in the state where it is taken. Exported obligation `OB-C08` (C22), stated part
+(`ExportedObligations`): a property of the executions of the safe abstraction; it does not establish
+that the safe interfaces and the library produce only such executions. The obligation is exported
+and remains open. -/
 inductive EncapsulatedTrace (pm : ProviderMeta) (ks : KShared) (L : MutexLayout) :
     SC × SyncReg × ArenaReg → List Label → SC × SyncReg × ArenaReg → Prop where
   | nil {st : SC × SyncReg × ArenaReg} : EncapsulatedTrace pm ks L st [] st

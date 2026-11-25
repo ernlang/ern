@@ -201,16 +201,14 @@ theorem r49_corr : Corresponds r49G.toGraph r49σ r49L r49K where
 /-- **R49** (not safe: `HandoffOrdered` alone fails; no race). The base frame of `c0` holds
 `root`; `c0` writes `S` by the concurrent `writeShared` of kind `store` without annotation;
 `c0 : derive(root, Observe, {S})`; `spawn c1` yielding the derived authority; `c1` writes `S` in
-the same way through it. The `derive` has no event. Expected (C43; C44; C45: "the period
-containing `e1` during which `cap(·,c′,l)` is incompatible with the capability used by `e2`"; C46:
-"not permission to assume a hidden marker"; C47): `HandoffOrdered` alone fails; no race. The pair
-of the writes of steps 0 and 3 is exclusive: at step 0 the capability of `c0` on `S` is `Modify`,
-and the access of step 3 uses `Observe`; its loss marker is the `derive` (step 1), which has no
-event; the two writes are ordered by the creation edge. Obtained: the execution is an
-`EncapsulatedTrace`; the pair is an `ExclusivePair` (reading 13); its loss marker is step 1
-(`FirstCompatible`), which has no event; `HandoffOrdered` fails for that pair; every other condition
-of the safe trace holds, and Q1–Q4 and reading 12 hold; no pair of events races. Twin:
-`R49_twin`. -/
+the same way through it. The `derive` has no event. Expected (C43; C44; C45; C46; C47):
+`HandoffOrdered` alone fails; no race. The pair of the writes of steps 0 and 3 is exclusive: at step
+0 the capability of `c0` on `S` is `Modify`, and the access of step 3 uses `Observe`; its loss
+marker is the `derive` (step 1), which has no event; the two writes are ordered by the creation
+edge. Obtained: the execution is an `EncapsulatedTrace`; the pair is an `ExclusivePair` (reading
+13); its loss marker is step 1 (`FirstCompatible`), which has no event; `HandoffOrdered` fails for
+that pair; every other condition of the safe trace holds, and Q1–Q4 and reading 12 hold; no pair of
+events races. Twin: `R49_twin`. -/
 theorem R49 :
     r49σ 0 = (SC.ofS3 (S3.init atomicStatics), [], []) ∧
     EncapRun pm kAtomic mutexLayout r49σ r49L ∧ Corresponds r49G.toGraph r49σ r49L r49K ∧
@@ -288,17 +286,16 @@ def r50TD : AccessData (r50G .relaxed).toGraph s6tL r50K :=
 twin of S6: `o := derive(root, Observe, {A})`; `spawn c1` yielding `o`; `c0 : writeShared({A})` of
 kind `store` with `release`; `c1 : readShared(o, A, acquire)`, which reads that write by `rf`. The
 graph starts with an atomic write of `A` by `c0` with the order `acquire`, which is the event of no
-step: an initial write of the data of reading 9, first in `mo` (C31). Expected (C40; C34: "Legality
-of memory-order annotations (C40) is a typing condition on events, separate from these conjuncts";
-C51 item 2(b)): the legality of the orders alone fails; no race: `acquire` is not in the row of the
-atomic store. Obtained: `OrderLegal` fails; every other condition of the safe trace holds,
-`StepOrders` included, and Q1–Q4 and reading 12 hold; no pair of events races. An abstract
-witness, admissible under the condition of the fragment on initial writes (reading 14): no event of
-a step is `hb`-before its atomic initial write; the case does not say that an initialization is
-atomic, nor that this event is the physical initial contents of `A`. The event is the event of no
-step because the order of an `ok` `readShared`,
-`writeShared` or compare-and-exchange is legal (`atomic_steps_legal`, `writeShared_legal`): an
-illegal order on its event would also make `StepOrders` fail. Twin: `R50_twin`. -/
+step: an initial write of the data of reading 9, first in `mo` (C31). Expected (C40; C34; C51 item
+2(b)): the legality of the orders alone fails; no race: `acquire` is not in the row of the atomic
+store. Obtained: `OrderLegal` fails; every other condition of the safe trace holds, `StepOrders`
+included, and Q1–Q4 and reading 12 hold; no pair of events races. An abstract witness, admissible
+under the condition of the fragment on initial writes (reading 14): no event of a step is
+`hb`-before its atomic initial write; the case does not say that an initialization is atomic, nor
+that this event is the physical initial contents of `A`. The event is the event of no step because
+the order of an `ok` `readShared`, `writeShared` or compare-and-exchange is legal
+(`atomic_steps_legal`, `writeShared_legal`): an illegal order on its event would also make
+`StepOrders` fail. Twin: `R50_twin`. -/
 theorem R50 :
     s6tσ 0 = (SC.ofS3 (S3.init atomicStatics), [], []) ∧
     EncapRun pm kAtomic mutexLayout s6tσ s6tL ∧
@@ -466,12 +463,12 @@ abbrev r51TD {G : Events.Graph (Fin 7) Nat Nat Nat Nat} : AccessData G r51TL r51
 `writeShared` of kind `store` without annotation; `c0 : writeShared({A})` of kind `store` with
 `relaxed`; `c1 : readShared(o, A, relaxed)`, which reads that write by `rf`; `c1` writes `S` as `c0`
 did. In the graph, the event of step 3 carries `release` and that of step 4 carries `acquire`.
-Expected (C39: "That annotation applies **only** to the atomic event on that leaf"; C37; C40): the
-agreement of the atomic events with their steps alone fails; no race in this graph: the two orders
-of the graph are legal for their kinds, and the `sw` edge they give (C32.1) orders the two writes of
-`S`, while no step justifies it. Obtained: `StepOrders` fails at step 3; every other condition of
-the safe trace holds, `OrderLegal` included, and Q1–Q4 and reading 12 hold; `sw` relates the event
-of step 3 to that of step 4; no pair of events races. Twin: `R51_twin`. -/
+Expected (C39; C37; C40): the agreement of the atomic events with their steps alone fails; no race
+in this graph: the two orders of the graph are legal for their kinds, and the `sw` edge they give
+(C32.1) orders the two writes of `S`, while no step justifies it. Obtained: `StepOrders` fails at
+step 3; every other condition of the safe trace holds, `OrderLegal` included, and Q1–Q4 and reading
+12 hold; `sw` relates the event of step 3 to that of step 4; no pair of events races. Twin:
+`R51_twin`. -/
 theorem R51 :
     r51σ 0 = (SC.ofS3 (S3.init atomicStatics), [], []) ∧
     EncapRun pm kAtomic mutexLayout r51σ r51L ∧
